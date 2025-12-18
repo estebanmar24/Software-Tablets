@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "TiempoProcesos.App",
+    "slug": "TiempoProcesos.App",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/LOGO_ALEPH_IMPRESORES.jpg",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/LOGO_ALEPH_IMPRESORES.jpg",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/LOGO_ALEPH_IMPRESORES.jpg",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.juane.TiempoProcesosApp",
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/LOGO_ALEPH_IMPRESORES.jpg"
+    }
+  }
+}
