@@ -1,7 +1,7 @@
 // API Service for Production Screens (compatible with axios-style responses)
 // This file provides functions that match the interface expected by screens migrated from Software-Empresa-Elliot
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.0.101:5144/api';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.189:5144/api';
 
 // Wrapper to make fetch responses compatible with axios { data } structure
 async function axiosWrapper<T>(url: string, options?: RequestInit): Promise<{ data: T }> {
@@ -9,7 +9,9 @@ async function axiosWrapper<T>(url: string, options?: RequestInit): Promise<{ da
     if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
     }
-    const data = await response.json();
+    // Handle 204 NoContent and empty responses
+    const text = await response.text();
+    const data = text ? JSON.parse(text) : null;
     return { data };
 }
 

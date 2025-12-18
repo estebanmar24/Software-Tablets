@@ -209,24 +209,48 @@ public class TiempoProcesoService : ITiempoProcesoService
 
     public async Task<bool> LimpiarDatosDelDiaAsync(DateTime fecha, int? maquinaId, int? usuarioId)
     {
-        var query = _context.TiemposProceso.Where(t => t.Fecha.Date == fecha.Date);
+        bool seEliminoAlgo = false;
+
+        // 1. Eliminar de TiempoProcesos (historial individual)
+        var queryTiempos = _context.TiemposProceso.Where(t => t.Fecha.Date == fecha.Date);
 
         if (maquinaId.HasValue)
-            query = query.Where(t => t.MaquinaId == maquinaId.Value);
+            queryTiempos = queryTiempos.Where(t => t.MaquinaId == maquinaId.Value);
 
         if (usuarioId.HasValue)
-            query = query.Where(t => t.UsuarioId == usuarioId.Value);
+            queryTiempos = queryTiempos.Where(t => t.UsuarioId == usuarioId.Value);
 
-        var registros = await query.ToListAsync();
+        var registrosTiempos = await queryTiempos.ToListAsync();
         
-        if (registros.Any())
+        if (registrosTiempos.Any())
         {
-            _context.TiemposProceso.RemoveRange(registros);
-            await _context.SaveChangesAsync();
-            return true;
+            _context.TiemposProceso.RemoveRange(registrosTiempos);
+            seEliminoAlgo = true;
         }
 
-        return false;
+        // 2. Eliminar de ProduccionDiaria (resumen diario)
+        var queryProduccion = _context.ProduccionDiaria.Where(p => p.Fecha == fecha.Date);
+
+        if (maquinaId.HasValue)
+            queryProduccion = queryProduccion.Where(p => p.MaquinaId == maquinaId.Value);
+
+        if (usuarioId.HasValue)
+            queryProduccion = queryProduccion.Where(p => p.UsuarioId == usuarioId.Value);
+
+        var registrosProduccion = await queryProduccion.ToListAsync();
+        
+        if (registrosProduccion.Any())
+        {
+            _context.ProduccionDiaria.RemoveRange(registrosProduccion);
+            seEliminoAlgo = true;
+        }
+
+        if (seEliminoAlgo)
+        {
+            await _context.SaveChangesAsync();
+        }
+
+        return seEliminoAlgo;
     }
 
     private async Task ActualizarProduccionDiaria(DateTime fecha, int maquinaId, int usuarioId)
@@ -292,6 +316,7 @@ public class TiempoProcesoService : ITiempoProcesoService
 
         // 3. Reiniciar contadores
         diario.TiempoPuestaPunto = 0;
+        diario.HorasOperativas = 0;  // Tiempo de producción (02)
         diario.TotalHorasProductivas = 0;
         diario.TirosDiarios = 0;
         diario.Desperdicio = 0;
@@ -317,7 +342,7 @@ public class TiempoProcesoService : ITiempoProcesoService
             {
                 case "01": diario.TiempoPuestaPunto += horas; break;
                 case "02": 
-                    diario.TotalHorasProductivas += horas;
+                    diario.HorasOperativas += horas;  // Tiempo de producción va a HorasOperativas
                     diario.TirosDiarios += t.Tiros;
                     diario.Desperdicio += t.Desperdicio;
                     horasProd += horas;
@@ -333,14 +358,16 @@ public class TiempoProcesoService : ITiempoProcesoService
         }
 
         // 5. Cálculos derivados
-        diario.HorasOperativas = diario.TotalHorasProductivas + diario.TiempoPuestaPunto;
+        // TotalHorasProductivas = Suma de HorasOperativas (Producción) + TiempoPuestaPunto
+        diario.TotalHorasProductivas = diario.HorasOperativas + diario.TiempoPuestaPunto;
         diario.TotalHorasAuxiliares = diario.HorasMantenimiento + diario.HorasDescanso + diario.HorasOtrosAux;
         diario.TotalTiemposMuertos = diario.TiempoFaltaTrabajo + diario.TiempoReparacion + diario.TiempoOtroMuerto;
-        diario.TotalHoras = diario.HorasOperativas + diario.TotalHorasAuxiliares + diario.TotalTiemposMuertos;
+        diario.TotalHoras = diario.TotalHorasProductivas + diario.TotalHorasAuxiliares + diario.TotalTiemposMuertos;
 
-        if (diario.TotalHorasProductivas > 0)
+        if (diario.HorasOperativas > 0)
         {
-            diario.RendimientoFinal = diario.TirosDiarios / diario.TotalHorasProductivas;
+            // Rendimiento se calcula sobre HorasOperativas (solo tiempo de producción efectiva)
+            diario.RendimientoFinal = diario.TirosDiarios / diario.HorasOperativas;
             diario.PromedioHoraProductiva = diario.RendimientoFinal;
         }
 

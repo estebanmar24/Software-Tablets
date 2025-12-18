@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, Image, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, Image, Platform, Alert } from 'react-native';
 import { Picker } from '@react-native-picker/picker'; // Added Picker import
 import api from '../services/productionApi';
 // jsPDF moved to dynamic import to avoid Android TextDecoder 'latin1' startup crash
 // import { jsPDF } from 'jspdf';
 // import autoTable from 'jspdf-autotable';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import * as IntentLauncher from 'expo-intent-launcher';
 import { Asset } from 'expo-asset';
 import { Chart, registerables } from 'chart.js';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
@@ -70,6 +72,29 @@ export default function DashboardScreen({ navigation }) {
 
 
     const getBase64FromUrl = async (url) => {
+        // Use expo-file-system for mobile, FileReader for web
+        if (Platform.OS !== 'web') {
+            try {
+                const base64 = await FileSystem.readAsStringAsync(url, {
+                    encoding: 'base64',
+                });
+                // Determine MIME type from URL
+                const ext = url.split('.').pop().toLowerCase();
+                const mimeTypes = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif' };
+                const mime = mimeTypes[ext] || 'image/jpeg';
+                return `data:${mime};base64,${base64}`;
+            } catch (err) {
+                console.log('Error reading file with expo-file-system, trying fetch:', err);
+                // Fallback: try downloading and reading
+                const tempPath = FileSystem.cacheDirectory + 'temp_logo.' + (url.split('.').pop() || 'jpg');
+                await FileSystem.downloadAsync(url, tempPath);
+                const base64 = await FileSystem.readAsStringAsync(tempPath, {
+                    encoding: 'base64',
+                });
+                return `data:image/jpeg;base64,${base64}`;
+            }
+        }
+        // Web fallback using FileReader
         const data = await fetch(url);
         const blob = await data.blob();
         return new Promise((resolve) => {
@@ -348,7 +373,13 @@ export default function DashboardScreen({ navigation }) {
             };
 
             // Helper: Generate Chart Image using Chart.js (HTML5 Canvas)
+            // NOTE: Chart.js requires DOM, so charts are only generated on web
             const generateChartImage = async (title, labels, data, type = 'bar', options = {}) => {
+                // Skip chart generation on mobile - Chart.js requires DOM
+                if (Platform.OS !== 'web') {
+                    console.log('Skipping chart generation on mobile (no DOM available)');
+                    return null;
+                }
                 return new Promise((resolve, reject) => {
                     try {
                         const canvas = document.createElement('canvas');
@@ -459,7 +490,7 @@ export default function DashboardScreen({ navigation }) {
             let chartY = (doc.lastAutoTable && doc.lastAutoTable.finalY) ? doc.lastAutoTable.finalY + 20 : 120;
             const addChartToDoc = async (imgData) => {
                 if (!imgData) {
-                    console.error("No image data to add to doc");
+                    // This is expected on mobile since charts are skipped
                     return;
                 }
                 // Check space (height approx 110 + margin)
@@ -719,7 +750,72 @@ export default function DashboardScreen({ navigation }) {
             } else {
                 fileName = `Reporte_${getMesNombre(mes)}_${anio}.pdf`;
             }
-            doc.save(fileName);
+
+            // Platform-specific save logic
+            if (Platform.OS === 'web') {
+                doc.save(fileName);
+            } else {
+                // Mobile: Use expo-file-system and expo-sharing
+                try {
+                    const pdfBase64 = doc.output('datauristring').split(',')[1];
+                    const fileUri = FileSystem.documentDirectory + fileName;
+
+                    console.log('Saving PDF to:', fileUri);
+                    await FileSystem.writeAsStringAsync(fileUri, pdfBase64, {
+                        encoding: 'base64',
+                    });
+
+                    // Verify file was written
+                    const fileInfo = await FileSystem.getInfoAsync(fileUri);
+                    console.log('File info:', fileInfo);
+
+                    if (!fileInfo.exists) {
+                        throw new Error('El archivo no se pudo guardar');
+                    }
+
+                    // Try to open PDF directly on Android using Intent
+                    if (Platform.OS === 'android') {
+                        try {
+                            // Get content URI for the file
+                            const contentUri = await FileSystem.getContentUriAsync(fileUri);
+                            console.log('Content URI:', contentUri);
+
+                            await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+                                data: contentUri,
+                                flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
+                                type: 'application/pdf',
+                            });
+                        } catch (intentError) {
+                            console.log('Intent failed, trying sharing:', intentError);
+                            // Fallback to sharing if intent fails
+                            const sharingAvailable = await Sharing.isAvailableAsync();
+                            if (sharingAvailable) {
+                                await Sharing.shareAsync(fileUri, {
+                                    mimeType: 'application/pdf',
+                                    dialogTitle: 'Abrir o Compartir PDF',
+                                });
+                            } else {
+                                Alert.alert('Éxito', `PDF generado correctamente.\n\nGuardado en: ${fileUri}`);
+                            }
+                        }
+                    } else {
+                        // iOS - use sharing
+                        const sharingAvailable = await Sharing.isAvailableAsync();
+                        if (sharingAvailable) {
+                            await Sharing.shareAsync(fileUri, {
+                                mimeType: 'application/pdf',
+                                dialogTitle: 'Abrir o Compartir PDF',
+                                UTI: 'com.adobe.pdf',
+                            });
+                        } else {
+                            Alert.alert('Éxito', `PDF generado correctamente.\n\nGuardado en: ${fileUri}`);
+                        }
+                    }
+                } catch (saveError) {
+                    console.error('Error saving/sharing PDF:', saveError);
+                    Alert.alert('Error', 'No se pudo guardar o compartir el PDF: ' + saveError.message);
+                }
+            }
 
         } catch (error) {
             console.error('Error generating PDF:', error);
