@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.DTOs;
 using TiempoProcesos.API.Models;
+using TiempoProcesos.API.Helpers;
 
 namespace TiempoProcesos.API.Services;
 
@@ -62,7 +63,10 @@ public class TiempoProcesoService : ITiempoProcesoService
             {
                 Id = m.Id,
                 Nombre = m.Nombre,
-                MetaRendimiento = m.MetaRendimiento
+                MetaRendimiento = m.MetaRendimiento,
+                ValorPorTiro = m.ValorPorTiro,
+                Importancia = m.Importancia,
+                Meta100Porciento = m.Meta100Porciento
             })
             .ToListAsync();
     }
@@ -329,6 +333,40 @@ public class TiempoProcesoService : ITiempoProcesoService
         diario.ValorAPagar = 0;
         diario.ValorTiroSnapshot = 0;
         diario.RendimientoFinal = 0;
+        // Contadores bonificables
+        diario.TirosBonificables = 0;
+        diario.DesperdicioBonificable = 0;
+        diario.ValorAPagarBonificable = 0;
+        diario.EsHorarioLaboral = false;
+
+        // 3.1 Calcular Cambios de OP (cuenta transiciones entre diferentes OPs)
+        // Incluye comparación con la última OP del día anterior
+        // Ejemplo: Si ayer terminó con 7075 y hoy empieza con 7076, cuenta como 1 cambio
+        var tiemposOrdenados = tiempos
+            .Where(t => t.OrdenProduccionId.HasValue)
+            .OrderBy(t => t.HoraInicio)
+            .ToList();
+        
+        int cambios = 0;
+        
+        // Buscar la última OP del día anterior para este operario/máquina
+        var fechaAyer = fecha.AddDays(-1);
+        var ultimoRegistroAyer = await _context.TiemposProceso
+            .Where(t => t.Fecha == fechaAyer && t.MaquinaId == maquinaId && t.UsuarioId == usuarioId && t.OrdenProduccionId.HasValue)
+            .OrderByDescending(t => t.HoraFin)
+            .FirstOrDefaultAsync();
+        
+        int? opAnterior = ultimoRegistroAyer?.OrdenProduccionId;
+        
+        foreach (var t in tiemposOrdenados)
+        {
+            if (opAnterior.HasValue && t.OrdenProduccionId != opAnterior)
+            {
+                cambios++;
+            }
+            opAnterior = t.OrdenProduccionId;
+        }
+        diario.Cambios = cambios;
 
         decimal horasProd = 0;
 
@@ -337,6 +375,12 @@ public class TiempoProcesoService : ITiempoProcesoService
         {
             decimal horas = (decimal)TimeSpan.FromTicks(t.Duracion).TotalHours;
             string codigo = t.Actividad?.Codigo ?? "";
+            
+            // Validar si el registro está dentro del horario laboral bonificable
+            bool esBonificable = HorarioLaboralHelper.EsRegistroBonificable(
+                t.Fecha, 
+                t.HoraInicio.TimeOfDay, 
+                t.HoraFin.TimeOfDay);
 
             switch (codigo)
             {
@@ -346,6 +390,13 @@ public class TiempoProcesoService : ITiempoProcesoService
                     diario.TirosDiarios += t.Tiros;
                     diario.Desperdicio += t.Desperdicio;
                     horasProd += horas;
+                    
+                    // Solo agregar a bonificables si está dentro del horario laboral
+                    if (esBonificable)
+                    {
+                        diario.TirosBonificables += t.Tiros;
+                        diario.DesperdicioBonificable += t.Desperdicio;
+                    }
                     break;
                 case "03": diario.TiempoReparacion += horas; break;
                 case "04": diario.HorasDescanso += horas; break;
@@ -375,8 +426,14 @@ public class TiempoProcesoService : ITiempoProcesoService
         if (maquina != null)
         {
             diario.ValorTiroSnapshot = maquina.ValorPorTiro;
+            // ValorAPagar total (indicadores) - incluye todos los tiros
             diario.ValorAPagar = (diario.TirosDiarios - diario.Desperdicio) * diario.ValorTiroSnapshot;
+            // ValorAPagarBonificable - solo tiros dentro del horario laboral
+            diario.ValorAPagarBonificable = (diario.TirosBonificables - diario.DesperdicioBonificable) * diario.ValorTiroSnapshot;
         }
+        
+        // Marcar si hay tiros bonificables
+        diario.EsHorarioLaboral = diario.TirosBonificables > 0;
 
         await _context.SaveChangesAsync();
     }

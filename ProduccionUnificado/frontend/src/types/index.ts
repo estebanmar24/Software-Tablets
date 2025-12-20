@@ -17,6 +17,9 @@ export interface Maquina {
   id: number;
   nombre: string;
   metaRendimiento: number; // Daily goal
+  valorPorTiro: number; // Value per shot for bonus calculation
+  importancia: number; // Priority level (1 = most important)
+  meta100Porciento: number; // Shots that represent 100% performance
 }
 
 export interface OrdenProduccion {

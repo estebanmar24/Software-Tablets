@@ -35,7 +35,8 @@ public class ProduccionDiaria
     public int TirosDiarios { get; set; }
     
     // Computed property for equivalence calculation
-    public int TirosConEquivalencia => TirosDiarios;
+    // Formula: (Cambios × Maquina.TirosReferencia) + TirosDiarios
+    public int TirosConEquivalencia => (Cambios * (Maquina?.TirosReferencia ?? 0)) + TirosDiarios;
     
     // Cálculos Productivos
     [Column(TypeName = "decimal(10, 2)")]
@@ -91,4 +92,28 @@ public class ProduccionDiaria
     public decimal Desperdicio { get; set; }
     
     public int DiaLaborado { get; set; } = 1;
+    
+    // Campos para validación de horario laboral (bonificación)
+    /// <summary>
+    /// Indica si el registro fue realizado dentro del horario laboral normal.
+    /// L-V: 7am-4pm, Sábado: 8am-12pm
+    /// </summary>
+    public bool EsHorarioLaboral { get; set; } = true;
+    
+    /// <summary>
+    /// Tiros que cuentan para bonificación (solo los realizados dentro del horario laboral).
+    /// </summary>
+    public int TirosBonificables { get; set; }
+    
+    /// <summary>
+    /// Desperdicio dentro del horario laboral bonificable.
+    /// </summary>
+    [Column(TypeName = "decimal(10, 2)")]
+    public decimal DesperdicioBonificable { get; set; }
+    
+    /// <summary>
+    /// Valor a pagar calculado solo con tiros bonificables.
+    /// </summary>
+    [Column(TypeName = "decimal(10, 2)")]
+    public decimal ValorAPagarBonificable { get; set; }
 }

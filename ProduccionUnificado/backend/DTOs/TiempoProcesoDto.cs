@@ -20,6 +20,9 @@ public class MaquinaDto
     public int Id { get; set; }
     public string Nombre { get; set; } = string.Empty;
     public int MetaRendimiento { get; set; }
+    public decimal ValorPorTiro { get; set; }
+    public int Importancia { get; set; }
+    public int Meta100Porciento { get; set; }
 }
 
 public class OrdenProduccionDto

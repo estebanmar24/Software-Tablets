@@ -5,16 +5,30 @@ interface DailyTotalsProps {
     tirosTotales: number;
     desperdicioTotal: number;
     meta?: number;
+    valorPorTiro?: number;
 }
 
-export function DailyTotals({ tirosTotales, desperdicioTotal, meta = 0 }: DailyTotalsProps) {
+export function DailyTotals({ tirosTotales, desperdicioTotal, meta = 0, valorPorTiro = 0 }: DailyTotalsProps) {
     const formatNumber = (num: number): string => {
         return num.toLocaleString('es-CO');
     };
 
+    const formatCurrency = (num: number): string => {
+        return num.toLocaleString('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    };
+
+    // Calcular rendimiento (%)
+    const rendimiento = meta > 0 ? ((tirosTotales / meta) * 100) : 0;
+
+    // Calcular bonificación: (tiros - meta) * valorPorTiro (solo si supera la meta)
+    const tirosExcedente = Math.max(0, tirosTotales - meta);
+    const bonificacion = tirosExcedente * valorPorTiro;
+
     return (
         <View style={styles.container}>
             <Text style={styles.title}>Producción del Día</Text>
+
+            {/* Primera fila: Tiros y Desperdicio */}
             <View style={styles.cardsRow}>
                 <View style={[styles.card, styles.cardTiros]}>
                     <Text style={styles.cardValue}>{formatNumber(tirosTotales)}</Text>
@@ -22,30 +36,38 @@ export function DailyTotals({ tirosTotales, desperdicioTotal, meta = 0 }: DailyT
                 </View>
                 <View style={[styles.card, styles.cardDesperdicio]}>
                     <Text style={styles.cardValue}>{formatNumber(desperdicioTotal)}</Text>
-                    <Text style={styles.cardLabel}>Desperdicio Total</Text>
+                    <Text style={styles.cardLabel}>Desperdicio</Text>
                 </View>
             </View>
 
-            {/* Eficiencia / Rendimiento - Siempre visible */}
-            <View style={styles.efficiencyContainer}>
-                <Text style={styles.efficiencyLabel}>Rendimiento del Operario</Text>
-                {meta > 0 ? (
-                    <>
-                        <Text style={styles.efficiencyValue}>
-                            {((tirosTotales / meta) * 100).toFixed(1)}%
-                        </Text>
-                        <Text style={styles.efficiencyMeta}>
-                            Meta: {formatNumber(meta)} tiros
-                        </Text>
-                    </>
-                ) : (
-                    <>
-                        <Text style={[styles.efficiencyValue, { color: '#A0AEC0' }]}>-- %</Text>
-                        <Text style={[styles.efficiencyMeta, { color: '#A0AEC0' }]}>
-                            Seleccione Máquina
-                        </Text>
-                    </>
-                )}
+            {/* Segunda fila: Rendimiento y Bonificación */}
+            <View style={[styles.cardsRow, { marginTop: 12 }]}>
+                <View style={[styles.card, styles.cardRendimiento]}>
+                    {meta > 0 ? (
+                        <>
+                            <Text style={[styles.cardValue, rendimiento >= 100 ? styles.valueGood : styles.valueLow]}>
+                                {rendimiento.toFixed(1)}%
+                            </Text>
+                            <Text style={styles.cardLabel}>Rendimiento</Text>
+                            <Text style={styles.cardSubLabel}>Meta: {formatNumber(meta)}</Text>
+                        </>
+                    ) : (
+                        <>
+                            <Text style={[styles.cardValue, { color: '#A0AEC0' }]}>--%</Text>
+                            <Text style={styles.cardLabel}>Rendimiento</Text>
+                            <Text style={styles.cardSubLabel}>Seleccione Máquina</Text>
+                        </>
+                    )}
+                </View>
+                <View style={[styles.card, styles.cardBonificacion]}>
+                    <Text style={[styles.cardValue, bonificacion > 0 ? styles.valueGood : { color: '#A0AEC0' }]}>
+                        {formatCurrency(bonificacion)}
+                    </Text>
+                    <Text style={styles.cardLabel}>Bonificación</Text>
+                    {bonificacion > 0 && (
+                        <Text style={styles.cardSubLabel}>+{formatNumber(tirosExcedente)} tiros extra</Text>
+                    )}
+                </View>
             </View>
         </View>
     );
@@ -89,11 +111,27 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: '#FDE68A',
     },
+    cardRendimiento: {
+        backgroundColor: '#F0FFF4',
+        borderWidth: 1,
+        borderColor: '#C6F6D5',
+    },
+    cardBonificacion: {
+        backgroundColor: '#FAF5FF',
+        borderWidth: 1,
+        borderColor: '#E9D8FD',
+    },
     cardValue: {
-        fontSize: 28,
+        fontSize: 24,
         fontWeight: '700',
         color: '#1E3A5F',
         fontVariant: ['tabular-nums'],
+    },
+    valueGood: {
+        color: '#276749',
+    },
+    valueLow: {
+        color: '#C53030',
     },
     cardLabel: {
         fontSize: 12,
@@ -101,29 +139,10 @@ const styles = StyleSheet.create({
         marginTop: 4,
         fontWeight: '500',
     },
-    efficiencyContainer: {
-        marginTop: 12,
-        backgroundColor: '#F0FFF4',
-        borderWidth: 1,
-        borderColor: '#C6F6D5',
-        borderRadius: 10,
-        padding: 12,
-        alignItems: 'center',
-    },
-    efficiencyLabel: {
-        fontSize: 12,
-        color: '#2F855A',
-        fontWeight: '600',
-        marginBottom: 4,
-    },
-    efficiencyValue: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        color: '#276749',
-    },
-    efficiencyMeta: {
-        fontSize: 11,
-        color: '#48BB78',
+    cardSubLabel: {
+        fontSize: 10,
+        color: '#94A3B8',
         marginTop: 2,
     },
 });
+

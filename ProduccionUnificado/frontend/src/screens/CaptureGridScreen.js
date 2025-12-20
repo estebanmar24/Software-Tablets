@@ -374,6 +374,126 @@ export default function CaptureGridScreen({ navigation }) {
         return parseFloat(cleaned) || 0;
     };
 
+    // ========== FESTIVOS COLOMBIA ==========
+
+    // Calcular Pascua usando algoritmo de Gauss
+    const calcularPascua = (year) => {
+        const a = year % 19;
+        const b = Math.floor(year / 100);
+        const c = year % 100;
+        const d = Math.floor(b / 4);
+        const e = b % 4;
+        const f = Math.floor((b + 8) / 25);
+        const g = Math.floor((b - f + 1) / 3);
+        const h = (19 * a + b - d - g + 15) % 30;
+        const i = Math.floor(c / 4);
+        const k = c % 4;
+        const l = (32 + 2 * e + 2 * i - h - k) % 7;
+        const m = Math.floor((a + 11 * h + 22 * l) / 451);
+        const mes = Math.floor((h + l - 7 * m + 114) / 31);
+        const dia = ((h + l - 7 * m + 114) % 31) + 1;
+        return new Date(year, mes - 1, dia);
+    };
+
+    // Trasladar al lunes siguiente (Ley Emiliani)
+    const trasladarALunes = (fecha) => {
+        const diaSemana = fecha.getDay();
+        if (diaSemana === 1) return fecha; // Ya es lunes
+        const diasHastaLunes = (1 - diaSemana + 7) % 7 || 7;
+        return new Date(fecha.getTime() + diasHastaLunes * 24 * 60 * 60 * 1000);
+    };
+
+    // Obtener festivos de Colombia para un año
+    const obtenerFestivosColombia = (year) => {
+        const festivos = [];
+
+        // Festivos fijos
+        festivos.push(new Date(year, 0, 1));   // Año Nuevo
+        festivos.push(new Date(year, 4, 1));   // Día del Trabajo
+        festivos.push(new Date(year, 6, 20));  // Grito de Independencia
+        festivos.push(new Date(year, 7, 7));   // Batalla de Boyacá
+        festivos.push(new Date(year, 11, 8));  // Inmaculada Concepción
+        festivos.push(new Date(year, 11, 25)); // Navidad
+
+        // Pascua y festivos basados en Pascua
+        const pascua = calcularPascua(year);
+        festivos.push(new Date(pascua.getTime() - 3 * 24 * 60 * 60 * 1000)); // Jueves Santo
+        festivos.push(new Date(pascua.getTime() - 2 * 24 * 60 * 60 * 1000)); // Viernes Santo
+        festivos.push(trasladarALunes(new Date(pascua.getTime() + 39 * 24 * 60 * 60 * 1000))); // Ascensión
+        festivos.push(trasladarALunes(new Date(pascua.getTime() + 60 * 24 * 60 * 60 * 1000))); // Corpus Christi
+        festivos.push(trasladarALunes(new Date(pascua.getTime() + 68 * 24 * 60 * 60 * 1000))); // Sagrado Corazón
+
+        // Festivos con Ley Emiliani
+        festivos.push(trasladarALunes(new Date(year, 0, 6)));   // Reyes Magos
+        festivos.push(trasladarALunes(new Date(year, 2, 19)));  // San José
+        festivos.push(trasladarALunes(new Date(year, 5, 29)));  // San Pedro y San Pablo
+        festivos.push(trasladarALunes(new Date(year, 7, 15)));  // Asunción de la Virgen
+        festivos.push(trasladarALunes(new Date(year, 9, 12)));  // Día de la Raza
+        festivos.push(trasladarALunes(new Date(year, 10, 1)));  // Todos los Santos
+        festivos.push(trasladarALunes(new Date(year, 10, 11))); // Independencia de Cartagena
+
+        return festivos;
+    };
+
+    // Verificar si una fecha es festivo
+    const esFestivoColombia = (fecha) => {
+        const festivos = obtenerFestivosColombia(fecha.getFullYear());
+        return festivos.some(f =>
+            f.getDate() === fecha.getDate() &&
+            f.getMonth() === fecha.getMonth() &&
+            f.getFullYear() === fecha.getFullYear()
+        );
+    };
+
+    // ========== FIN FESTIVOS COLOMBIA ==========
+
+    // Función para calcular el porcentaje de tiempo dentro del horario laboral
+    const calcularPorcentajeBonificable = (day) => {
+        if (!day.horaInicio || !day.horaFin || day.horaInicio.length < 5 || day.horaFin.length < 5) {
+            return 1; // Sin horas = asumimos 100% bonificable
+        }
+
+        // Calcular día de la semana para el día dado
+        const fecha = new Date(anio, mes - 1, day.day);
+        const diaSemana = fecha.getDay();
+
+        // Domingo o Festivo -> No bonificable
+        if (diaSemana === 0 || esFestivoColombia(fecha)) return 0;
+
+        // Definir límites del horario laboral
+        let horaInicioLaboral, horaFinLaboral;
+        if (diaSemana === 6) { // Sábado: 8am - 12pm
+            horaInicioLaboral = 8;
+            horaFinLaboral = 12;
+        } else { // Lunes a Viernes: 7am - 4pm
+            horaInicioLaboral = 7;
+            horaFinLaboral = 16;
+        }
+
+        // Parsear horas del registro
+        const [hI, mI] = day.horaInicio.split(':').map(Number);
+        const [hF, mF] = day.horaFin.split(':').map(Number);
+        const horaInicioReg = hI + (mI / 60);
+        const horaFinReg = hF + (mF / 60);
+
+        // Si termina antes del inicio laboral o empieza después del fin laboral -> 0%
+        if (horaFinReg <= horaInicioLaboral || horaInicioReg >= horaFinLaboral) {
+            return 0;
+        }
+
+        // Calcular horas totales trabajadas
+        const horasTotales = horaFinReg - horaInicioReg;
+        if (horasTotales <= 0) return 0;
+
+        // Calcular horas dentro del horario laboral
+        const inicioEfectivo = Math.max(horaInicioReg, horaInicioLaboral);
+        const finEfectivo = Math.min(horaFinReg, horaFinLaboral);
+        const horasBonificables = Math.max(0, finEfectivo - inicioEfectivo);
+
+        // Retornar porcentaje
+        return horasBonificables / horasTotales;
+    };
+
     const calculateRow = (day) => {
         const maquinaId = day.maquinaId || selectedMaquina;
         const rowMaquina = getMaquinaById(maquinaId);
@@ -389,6 +509,7 @@ export default function CaptureGridScreen({ navigation }) {
         const FaltaTrabajo = parseNumberInput(day.faltaTrabajo);
         const Reparacion = parseNumberInput(day.reparacion);
         const OtroMuerto = parseNumberInput(day.otroMuerto);
+        const Desperdicio = parseNumberInput(day.desperdicio);
 
         const TirosRef = rowMaquina.tirosReferencia || 0;
         const TirosEquivalentes = (TirosRef * Cambios) + R_Final;
@@ -403,9 +524,21 @@ export default function CaptureGridScreen({ navigation }) {
         const TotalMuertos = FaltaTrabajo + Reparacion + OtroMuerto;
         const TotalHoras = TotalHorasProd + TotalAux + TotalMuertos;
 
+        // Calcular valores bonificables (proporcional al tiempo en horario laboral)
+        const porcentajeBonif = calcularPorcentajeBonificable(day);
+        const TirosBonificables = Math.round(TirosEquivalentes * porcentajeBonif);
+        const DesperdicioBonif = Desperdicio * porcentajeBonif;
+        const Meta75DiffBonif = TirosBonificables - MetaRendimiento;
+        const VrPagarBonif = Meta75DiffBonif * (rowMaquina.valorPorTiro || 0);
+
         return {
             TirosEquivalentes, TotalHorasProd, Promedio, Meta75Diff, VrPagar,
-            TotalAux, TotalMuertos, TotalHoras
+            TotalAux, TotalMuertos, TotalHoras,
+            // Nuevos campos bonificables
+            PorcentajeBonif: porcentajeBonif,
+            TirosBonificables,
+            Meta75DiffBonif,
+            VrPagarBonif
         };
     };
 
@@ -638,6 +771,26 @@ export default function CaptureGridScreen({ navigation }) {
                 </View>
             </View>
 
+            {/* Leyenda de colores */}
+            <View style={{ flexDirection: 'row', justifyContent: 'center', padding: 8, backgroundColor: colors.background, flexWrap: 'wrap' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 15 }}>
+                    <View style={{ width: 16, height: 16, backgroundColor: '#FFE0B2', marginRight: 5, borderRadius: 3, borderWidth: 1, borderColor: '#FFB74D' }} />
+                    <Text style={{ fontSize: 11, color: colors.text }}>Festivo</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 15 }}>
+                    <View style={{ width: 16, height: 16, backgroundColor: '#CFD8DC', marginRight: 5, borderRadius: 3, borderWidth: 1, borderColor: '#B0BEC5' }} />
+                    <Text style={{ fontSize: 11, color: colors.text }}>Domingo</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 15 }}>
+                    <View style={{ width: 16, height: 16, backgroundColor: '#C8E6C9', marginRight: 5, borderRadius: 3, borderWidth: 1, borderColor: '#A5D6A7' }} />
+                    <Text style={{ fontSize: 11, color: colors.text }}>Sábado</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={{ width: 16, height: 16, backgroundColor: colors.rowEven, marginRight: 5, borderRadius: 3, borderWidth: 1, borderColor: '#ddd' }} />
+                    <Text style={{ fontSize: 11, color: colors.text }}>L-V Normal</Text>
+                </View>
+            </View>
+
             <ScrollView horizontal style={{ backgroundColor: colors.background }}>
                 <View>
                     {/* HEADER ROW */}
@@ -653,6 +806,11 @@ export default function CaptureGridScreen({ navigation }) {
                         <Text style={[styles.cell, styles.calc]}>Tiros Eq</Text>
                         <Text style={[styles.cell, styles.calc]}>T.H.Prod</Text>
                         <Text style={[styles.cell, styles.calc]}>Promedio</Text>
+                        {/* Columnas Bonificables */}
+                        <Text style={[styles.cell, styles.bonif]}>T.Bonif</Text>
+                        <Text style={[styles.cell, styles.bonif]}>75%Bonif</Text>
+                        <Text style={[styles.cell, styles.bonif]}>VrBonif</Text>
+                        {/* Columnas Totales */}
                         <Text style={[styles.cell, styles.calc]}>75% Meta</Text>
                         <Text style={[styles.cell, styles.calc]}>Vr Pagar</Text>
                         <Text style={[styles.cell]}>Mant/Aseo</Text>
@@ -679,8 +837,27 @@ export default function CaptureGridScreen({ navigation }) {
                         renderItem={({ item: day, index }) => {
                             const calcs = calculateRow(day);
                             const isSelected = selectedRowIndex === index;
+
+                            // Determinar color de fila según tipo de día
+                            const fecha = new Date(anio, mes - 1, day.day);
+                            const diaSemana = fecha.getDay();
+                            const esFestivo = esFestivoColombia(fecha);
+
+                            let rowColor;
+                            if (isSelected) {
+                                rowColor = colors.rowHover;
+                            } else if (esFestivo) {
+                                rowColor = '#FFE0B2'; // Naranja suave - Festivo
+                            } else if (diaSemana === 0) {
+                                rowColor = '#CFD8DC'; // Gris azulado - Domingo
+                            } else if (diaSemana === 6) {
+                                rowColor = '#C8E6C9'; // Verde menta - Sábado
+                            } else {
+                                rowColor = index % 2 === 0 ? colors.rowEven : colors.rowOdd;
+                            }
+
                             return (
-                                <View style={[styles.row, { backgroundColor: isSelected ? colors.rowHover : (index % 2 === 0 ? colors.rowEven : colors.rowOdd) }]}>
+                                <View style={[styles.row, { backgroundColor: rowColor }]}>
                                     <TouchableOpacity onPress={() => handleRowClick(index)} onLongPress={(e) => handleContextMenu(e, index)}>
                                         <Text style={[styles.cell, { width: 30 }]}>{day.day}</Text>
                                     </TouchableOpacity>
@@ -701,6 +878,11 @@ export default function CaptureGridScreen({ navigation }) {
                                     <Text style={[styles.cell, styles.calc]}>{formatNumber(calcs.TirosEquivalentes?.toFixed(0))}</Text>
                                     <Text style={[styles.cell, styles.calc]}>{calcs.TotalHorasProd?.toFixed(2)}</Text>
                                     <Text style={[styles.cell, styles.calc]}>{calcs.Promedio?.toFixed(1)}</Text>
+                                    {/* Columnas Bonificables */}
+                                    <Text style={[styles.cell, styles.bonif, { color: calcs.PorcentajeBonif === 1 ? '#2196F3' : calcs.PorcentajeBonif > 0 ? '#FF9800' : '#999' }]}>{formatNumber(calcs.TirosBonificables?.toFixed(0))}</Text>
+                                    <Text style={[styles.cell, styles.bonif, { color: calcs.PorcentajeBonif === 1 ? '#2196F3' : calcs.PorcentajeBonif > 0 ? '#FF9800' : '#999' }]}>{formatNumber(calcs.Meta75DiffBonif?.toFixed(0))}</Text>
+                                    <Text style={[styles.cell, styles.bonif, { color: calcs.PorcentajeBonif === 1 ? '#2196F3' : calcs.PorcentajeBonif > 0 ? '#FF9800' : '#999' }]}>{formatNumber(calcs.VrPagarBonif?.toFixed(0))}</Text>
+                                    {/* Columnas Totales */}
                                     <Text style={[styles.cell, styles.calc]}>{formatNumber(calcs.Meta75Diff?.toFixed(0))}</Text>
                                     <Text style={[styles.cell, styles.calc, { color: 'green' }]}>{formatNumber(calcs.VrPagar?.toFixed(0))}</Text>
 
@@ -817,6 +999,7 @@ const styles = StyleSheet.create({
     cell: { width: 60, height: 40, borderWidth: 0.5, borderColor: '#ccc', textAlign: 'center', padding: 2, backgroundColor: 'white', fontSize: 10 },
     timeCell: { width: 50, backgroundColor: '#f0f8ff' },
     calc: { backgroundColor: '#e6f7ff', fontWeight: 'bold', color: '#0056b3', fontSize: 10 },
+    bonif: { backgroundColor: '#e3f2fd', fontWeight: 'bold', color: '#1976D2', fontSize: 10 },
     total: { backgroundColor: '#d4edda', fontWeight: 'bold', color: '#155724', fontSize: 10 },
     pickerCell: { width: 150, height: 50, borderWidth: 0.5, borderColor: '#ccc', justifyContent: 'center' },
     pickerSmall: { height: 50, width: '100%', color: 'black' },

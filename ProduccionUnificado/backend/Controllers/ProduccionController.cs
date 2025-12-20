@@ -263,16 +263,32 @@ public class ProduccionController : ControllerBase
             decimal metaEsperada = 0;
             decimal eficiencia = 0;
             string color = "Gris";
+            string color100 = "Gris";
             decimal metaBonif = 0;
+            decimal meta100 = 0;
+            decimal porcentaje75 = 0;
+            decimal porcentaje100 = 0;
 
             if (maqu != null && diasTrabajados > 0)
             {
                 metaEsperada = diasTrabajados * maqu.MetaRendimiento;
-                metaBonif = metaEsperada; 
+                metaBonif = metaEsperada; // Meta 75%
+                meta100 = diasTrabajados * maqu.Meta100Porciento; // Meta 100%
                 eficiencia = metaEsperada > 0 ? (totalTiros / metaEsperada) : 0;
+                
+                // Calcular porcentajes
+                porcentaje75 = metaBonif > 0 ? (totalTiros / metaBonif) * 100 : 0;
+                porcentaje100 = meta100 > 0 ? (totalTiros / meta100) * 100 : 0;
 
+                // Semáforo 75% (Rojo si < 100% de la metaBonif, Verde si >= 100% de la metaBonif)
+                // Nota: metaBonif ya es el 75% de la meta total. Eficiencia es sobre metaBonif.
                 if (eficiencia >= 1.0m) color = "Verde";
                 else color = "Rojo";
+                
+                // Semáforo 100% (Rojo 0-74%, Amarillo 75-99%, Verde >= 100%)
+                if (porcentaje100 >= 100) color100 = "Verde";
+                else if (porcentaje100 >= 75) color100 = "Amarillo";
+                else color100 = "Rojo";
             }
 
             resultado.ResumenOperarios.Add(new ResumenOperarioDto
@@ -284,11 +300,18 @@ public class ProduccionController : ControllerBase
                 TotalTiros = totalTiros,
                 TotalHorasProductivas = grupo.Sum(x => x.TotalHorasProductivas),
                 ValorAPagar = eficiencia >= 1.0m ? grupo.Sum(x => x.ValorAPagar) : 0,
+                // Valores bonificables - solo tiros dentro del horario laboral (L-V 7am-4pm, Sáb 8am-12pm)
+                TirosBonificables = grupo.Sum(x => x.TirosBonificables),
+                ValorAPagarBonificable = eficiencia >= 1.0m ? grupo.Sum(x => x.ValorAPagarBonificable) : 0,
                 PromedioHoraProductiva = promedio,
                 TotalHoras = grupo.Sum(x => x.TotalHoras),
                 SemaforoColor = color,
+                SemaforoColor100 = color100,
+                PorcentajeRendimiento75 = porcentaje75,
+                PorcentajeRendimiento100 = porcentaje100,
                 DiasLaborados = diasTrabajados,
                 MetaBonificacion = metaBonif,
+                Meta100Porciento = meta100,
                 Eficiencia = eficiencia
             });
         }
@@ -305,6 +328,7 @@ public class ProduccionController : ControllerBase
                 var tirosTotales = grupo.Sum(x => x.TirosConEquivalencia);
                 var diasUnicos = grupo.Select(x => x.Fecha.Date).Distinct().Count();
                 var metaEsperada = diasUnicos * maquina.MetaRendimiento;
+                var meta100 = diasUnicos * maquina.Meta100Porciento;
                 var porcentaje = metaEsperada > 0 ? ((decimal)tirosTotales / metaEsperada) : 0;
 
                 string color = "Rojo";
@@ -316,6 +340,8 @@ public class ProduccionController : ControllerBase
                     Maquina = maquina.Nombre,
                     TirosTotales = tirosTotales,
                     RendimientoEsperado = metaEsperada,
+                    Meta75Porciento = metaEsperada,
+                    Meta100Porciento = meta100,
                     PorcentajeRendimiento = porcentaje,
                     SemaforoColor = color,
                     TotalTiemposMuertos = grupo.Sum(x => x.TotalTiemposMuertos),
@@ -326,12 +352,15 @@ public class ProduccionController : ControllerBase
             }
             else
             {
+                // Aunque no haya datos, mostramos las metas configuradas de la máquina
                 resultado.ResumenMaquinas.Add(new ResumenMaquinaDto
                 {
                     MaquinaId = maquina.Id,
                     Maquina = maquina.Nombre,
                     TirosTotales = 0,
                     RendimientoEsperado = 0,
+                    Meta75Porciento = maquina.MetaRendimiento, // Meta 75% de la máquina
+                    Meta100Porciento = maquina.Meta100Porciento, // Meta 100% de la máquina
                     PorcentajeRendimiento = 0,
                     SemaforoColor = "Rojo",
                     TotalTiemposMuertos = 0,

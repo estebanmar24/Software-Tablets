@@ -69,11 +69,26 @@ export const borrarProduccion = (mes: number, anio: number, usuarioId?: number, 
 
 export const getPeriodosDisponibles = () => axiosWrapper<any[]>(`${API_BASE_URL}/produccion/periodos-disponibles`);
 
-// Generic get for flexibility
-export const get = (url: string) => {
+// Generic get for flexibility - now supports params like axios
+export const get = (url: string, options?: { params?: Record<string, any> }) => {
     // If url starts with /, append base. Otherwise use as is?
     // DashboardScreen uses relative paths like '/maquinas'
-    const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+    let fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+
+    // Add query params if provided
+    if (options?.params) {
+        const searchParams = new URLSearchParams();
+        for (const key in options.params) {
+            if (options.params[key] !== undefined && options.params[key] !== null) {
+                searchParams.append(key, String(options.params[key]));
+            }
+        }
+        const queryString = searchParams.toString();
+        if (queryString) {
+            fullUrl += (fullUrl.includes('?') ? '&' : '?') + queryString;
+        }
+    }
+
     return axiosWrapper<any>(fullUrl);
 };
 

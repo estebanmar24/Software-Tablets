@@ -18,12 +18,18 @@ public class ResumenOperarioDto
     public decimal PromedioHoraProductiva { get; set; }
     public decimal TotalHoras { get; set; }
     public decimal ValorAPagar { get; set; }
+    public decimal ValorAPagarBonificable { get; set; } // Solo tiros dentro del horario laboral
+    public int TirosBonificables { get; set; } // Tiros dentro del horario laboral
     
     // Fields for reporting
     public int DiasLaborados { get; set; }
-    public decimal MetaBonificacion { get; set; }
+    public decimal MetaBonificacion { get; set; } // Meta 75%
+    public decimal Meta100Porciento { get; set; } // Meta 100%
     public decimal Eficiencia { get; set; }
-    public string SemaforoColor { get; set; } = "Gris";
+    public decimal PorcentajeRendimiento75 { get; set; } // Porcentaje vs meta 75%
+    public decimal PorcentajeRendimiento100 { get; set; } // Porcentaje vs meta 100%
+    public string SemaforoColor { get; set; } = "Gris"; // Semáforo 75%
+    public string SemaforoColor100 { get; set; } = "Gris"; // Semáforo 100%
 }
 
 public class ResumenMaquinaDto
@@ -32,6 +38,8 @@ public class ResumenMaquinaDto
     public string Maquina { get; set; } = string.Empty;
     public decimal TirosTotales { get; set; }
     public decimal RendimientoEsperado { get; set; }
+    public decimal Meta75Porciento { get; set; } // Meta 75%
+    public decimal Meta100Porciento { get; set; } // Meta 100%
     public decimal PorcentajeRendimiento { get; set; }
     public string SemaforoColor { get; set; } = "Gris";
     public decimal TotalTiemposMuertos { get; set; } 

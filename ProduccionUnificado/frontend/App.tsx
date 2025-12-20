@@ -221,7 +221,10 @@ export default function App() {
       const mappedMaquinas = (maquinasData as any[]).map(m => ({
         id: m.id || m.Id,
         nombre: m.nombre || m.Nombre,
-        metaRendimiento: m.metaRendimiento || m.MetaRendimiento || 0
+        metaRendimiento: m.metaRendimiento || m.MetaRendimiento || 0,
+        valorPorTiro: m.valorPorTiro || m.ValorPorTiro || 0,
+        importancia: m.importancia || m.Importancia || 1,
+        meta100Porciento: m.meta100Porciento || m.Meta100Porciento || 0
       }));
       console.log('Maquinas Mapped:', JSON.stringify(mappedMaquinas.slice(0, 3), null, 2)); // Debug log
       setMaquinas(mappedMaquinas);
@@ -246,9 +249,9 @@ export default function App() {
         { id: 3, nombre: 'Carlos López' },
       ]);
       setMaquinas([
-        { id: 1, nombre: 'Convertidora 1', metaRendimiento: 15000 },
-        { id: 2, nombre: 'Guillotina Principal', metaRendimiento: 20000 },
-        { id: 3, nombre: 'Troqueladora A', metaRendimiento: 10000 },
+        { id: 1, nombre: 'Convertidora 1', metaRendimiento: 15000, valorPorTiro: 0.5, importancia: 1, meta100Porciento: 20000 },
+        { id: 2, nombre: 'Guillotina Principal', metaRendimiento: 20000, valorPorTiro: 0.3, importancia: 2, meta100Porciento: 25000 },
+        { id: 3, nombre: 'Troqueladora A', metaRendimiento: 10000, valorPorTiro: 0.8, importancia: 3, meta100Porciento: 15000 },
       ]);
       setOrdenes([
         { id: 1, numero: 'OP-2024-001', descripcion: 'Etiquetas para producto A', estado: 'EnProceso' },
@@ -292,14 +295,11 @@ export default function App() {
         return;
       }
 
-      // Si hay usuario seleccionado, traemos TODO su historial (sin filtrar por máquina)
-      // Si no, filtramos por la máquina seleccionada (si hay)
-      const maquinaFilter = selectedUsuario ? undefined : (selectedMaquina || undefined);
-
+      // Filtrar por AMBOS: usuario Y máquina seleccionados
       const produccionData = await api.getProduccionDia(
         undefined, // fecha (hoy)
-        maquinaFilter,
-        selectedUsuario || undefined
+        selectedMaquina, // siempre filtrar por máquina seleccionada
+        selectedUsuario  // siempre filtrar por usuario seleccionado
       );
 
       setHistorial(produccionData.historial);
@@ -307,8 +307,10 @@ export default function App() {
       setDesperdicioTotalDia(produccionData.desperdicioTotal);
     } catch (error) {
       console.log('API no disponible (producción)');
-      // Si falla la API en local, podríamos limpiar datos o dejar logica de demo, 
-      // pero para "asociar con operario" necesitamos el backend.
+      // Limpiar datos si hay error
+      setHistorial([]);
+      setTirosTotalesDia(0);
+      setDesperdicioTotalDia(0);
     }
   };
 
@@ -321,6 +323,14 @@ export default function App() {
       showAlert('Datos incompletos', 'Debe seleccionar máquina, operario y actividad antes de iniciar.');
       return;
     }
+
+    // Validar OP para Producción (02) y Puesta a Punto (01)
+    const requiresOP = selectedActividad?.codigo === '01' || selectedActividad?.codigo === '02';
+    if (requiresOP && !selectedOrden) {
+      showAlert('OP Requerida', 'Debe seleccionar una Orden de Producción (OP) antes de iniciar Producción o Puesta a Punto.');
+      return;
+    }
+
     timer.start();
   };
 
@@ -383,7 +393,8 @@ export default function App() {
       const result = await api.registrarTiempo(payload);
       console.log('Guardado exitoso:', result);
 
-      setOpSearchText(''); // Limpiar también el texto
+      // NO limpiar OP para que persista entre procesos
+      // setOpSearchText('');
       clearState(); // Limpiar persistencia de sesión
     } catch (error: any) {
       const errorMsg = error.response?.data?.error || error.message || 'Error desconocido';
@@ -532,6 +543,7 @@ export default function App() {
               tirosTotales={tirosTotalesDia + tirosAcumulados}
               desperdicioTotal={desperdicioTotalDia + desperdicioAcumulado}
               metaDia={maquinas.find(m => m.id === selectedMaquina)?.metaRendimiento || 0}
+              valorPorTiro={maquinas.find(m => m.id === selectedMaquina)?.valorPorTiro || 0}
             />
           </ScrollView>
         ) : (
@@ -551,6 +563,7 @@ export default function App() {
             tirosTotales={tirosTotalesDia + tirosAcumulados}
             desperdicioTotal={desperdicioTotalDia + desperdicioAcumulado}
             metaDia={maquinas.find(m => m.id === selectedMaquina)?.metaRendimiento || 0}
+            valorPorTiro={maquinas.find(m => m.id === selectedMaquina)?.valorPorTiro || 0}
           />
         )}
       </View>
@@ -559,7 +572,7 @@ export default function App() {
 }
 
 // Extracted Content Component to avoid duplication logic
-const Content = ({ timer, selectedActividad, canStart, handleStart, handleStop, isMobile, actividades, handleSelectActividad, handleAddTiros, handleAddDesperdicio, historial, handleClearData, tirosTotales, desperdicioTotal, metaDia }: any) => (
+const Content = ({ timer, selectedActividad, canStart, handleStart, handleStop, isMobile, actividades, handleSelectActividad, handleAddTiros, handleAddDesperdicio, historial, handleClearData, tirosTotales, desperdicioTotal, metaDia, valorPorTiro }: any) => (
   <View style={!isMobile ? { minHeight: '100%', padding: 20 } : {}}>
     {/* Header con cronómetro */}
     <TimerHeader
@@ -601,6 +614,7 @@ const Content = ({ timer, selectedActividad, canStart, handleStart, handleStop, 
             tirosTotales={tirosTotales}
             desperdicioTotal={desperdicioTotal}
             meta={metaDia}
+            valorPorTiro={valorPorTiro}
           />
         </View>
       </View>

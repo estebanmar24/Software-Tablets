@@ -23,6 +23,10 @@ public class Maquina
     public int SemaforoNormal { get; set; }
     public int SemaforoMax { get; set; }
     
+    // Nuevas columnas
+    public int Importancia { get; set; } = 1;
+    public int Meta100Porciento { get; set; } = 0;
+    
     [Column("Activa")]
     public bool Activo { get; set; } = true;
 }

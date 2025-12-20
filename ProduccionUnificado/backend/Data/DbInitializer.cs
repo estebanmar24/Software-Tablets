@@ -242,6 +242,10 @@ public static class DbInitializer
                         [Novedades] nvarchar(max) NULL,
                         [Desperdicio] decimal(10, 2) NOT NULL,
                         [DiaLaborado] int NOT NULL,
+                        [EsHorarioLaboral] bit NOT NULL DEFAULT 1,
+                        [TirosBonificables] int NOT NULL DEFAULT 0,
+                        [DesperdicioBonificable] decimal(10, 2) NOT NULL DEFAULT 0,
+                        [ValorAPagarBonificable] decimal(10, 2) NOT NULL DEFAULT 0,
                         CONSTRAINT [PK_ProduccionDiaria] PRIMARY KEY ([Id]),
                         CONSTRAINT [FK_ProduccionDiaria_Maquinas_MaquinaId] FOREIGN KEY ([MaquinaId]) REFERENCES [Maquinas] ([Id]) ON DELETE CASCADE,
                         CONSTRAINT [FK_ProduccionDiaria_Usuarios_UsuarioId] FOREIGN KEY ([UsuarioId]) REFERENCES [Usuarios] ([Id]) ON DELETE CASCADE
@@ -249,6 +253,31 @@ public static class DbInitializer
                     CREATE INDEX [IX_ProduccionDiaria_MaquinaId] ON [ProduccionDiaria] ([MaquinaId]);
                     CREATE INDEX [IX_ProduccionDiaria_UsuarioId] ON [ProduccionDiaria] ([UsuarioId]);
                     PRINT 'Tabla ProduccionDiaria creada/verificada.';
+                END
+
+                -- Add missing columns if table exists but columns don't
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ProduccionDiaria' AND COLUMN_NAME = 'EsHorarioLaboral')
+                BEGIN
+                    ALTER TABLE [ProduccionDiaria] ADD [EsHorarioLaboral] bit NOT NULL DEFAULT 1;
+                    PRINT 'Columna EsHorarioLaboral agregada.';
+                END
+
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ProduccionDiaria' AND COLUMN_NAME = 'TirosBonificables')
+                BEGIN
+                    ALTER TABLE [ProduccionDiaria] ADD [TirosBonificables] int NOT NULL DEFAULT 0;
+                    PRINT 'Columna TirosBonificables agregada.';
+                END
+
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ProduccionDiaria' AND COLUMN_NAME = 'DesperdicioBonificable')
+                BEGIN
+                    ALTER TABLE [ProduccionDiaria] ADD [DesperdicioBonificable] decimal(10, 2) NOT NULL DEFAULT 0;
+                    PRINT 'Columna DesperdicioBonificable agregada.';
+                END
+
+                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ProduccionDiaria' AND COLUMN_NAME = 'ValorAPagarBonificable')
+                BEGIN
+                    ALTER TABLE [ProduccionDiaria] ADD [ValorAPagarBonificable] decimal(10, 2) NOT NULL DEFAULT 0;
+                    PRINT 'Columna ValorAPagarBonificable agregada.';
                 END
             ");
             Console.WriteLine("[DB INIT] ProduccionDiaria checked/created.");

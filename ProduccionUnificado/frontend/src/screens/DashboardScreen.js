@@ -57,18 +57,30 @@ export default function DashboardScreen({ navigation }) {
     }, [mes, anio, reportPeriod, semana]);
 
     // Actualizar listas filtradas cuando cambian los datos o las listas base
+    // Filtrar para mostrar solo usuarios/máquinas con datos en el período
     useEffect(() => {
-        if (operariosConDatos.length > 0) {
-            const opIds = operariosConDatos.map(o => o.usuarioId);
-            const maqIds = operariosConDatos.map(o => o.maquinaId);
+        // Fuente principal: Resumen cargado (consistencia con tarjetas). Fallback: operariosConDatos
+        const sourceData = (resumen?.resumenOperarios && resumen.resumenOperarios.length > 0) ? resumen.resumenOperarios : operariosConDatos;
+        // Para máquinas usamos resumenMaquinas si existe, sino fallback a sourceData (que tiene maquinaId)
+        const sourceMaquinas = (resumen?.resumenMaquinas && resumen.resumenMaquinas.length > 0) ? resumen.resumenMaquinas : operariosConDatos;
 
-            setFilteredUsuarios(usuarios.filter(u => opIds.includes(u.id)));
-            setFilteredMaquinas(maquinas.filter(m => maqIds.includes(m.id)));
+        if (sourceData.length > 0 && usuarios.length > 0) {
+            // Filtrar solo usuarios que tienen datos en el período
+            const opIds = [...new Set(sourceData.map(o => Number(o.usuarioId)))];
+            const maqIds = [...new Set(sourceMaquinas.map(m => Number(m.maquinaId)))];
+
+            const usuariosConDatos = usuarios.filter(u => opIds.includes(Number(u.id)));
+            const maquinasConDatos = maquinas.filter(m => maqIds.includes(Number(m.id)));
+
+            // Strict filtering: Only show if data exists
+            setFilteredUsuarios(usuariosConDatos);
+            setFilteredMaquinas(maquinasConDatos);
         } else {
+            // Si no hay datos, no mostrar opciones (lista vacía)
             setFilteredUsuarios([]);
             setFilteredMaquinas([]);
         }
-    }, [operariosConDatos, usuarios, maquinas]);
+    }, [resumen, operariosConDatos, usuarios, maquinas]);
 
 
     const getBase64FromUrl = async (url) => {
@@ -132,14 +144,25 @@ export default function DashboardScreen({ navigation }) {
 
     const cargarListas = async () => {
         try {
+            console.log('DEBUG: Iniciando cargarListas...');
             const [m, u] = await Promise.all([
                 api.get('/maquinas'),
                 api.get('/usuarios')
             ]);
-            setMaquinas(m.data.filter(x => x.activa));
-            setUsuarios(u.data.filter(x => x.estado));
+            console.log('DEBUG: Respuesta maquinas:', m);
+            console.log('DEBUG: Respuesta usuarios:', u);
+            // Usar todos los usuarios y máquinas sin filtrar
+            const maqActivas = m.data || [];
+            const usrActivos = u.data || [];
+            console.log('DEBUG: maqActivas:', maqActivas);
+            console.log('DEBUG: usrActivos:', usrActivos);
+            setMaquinas(maqActivas);
+            setUsuarios(usrActivos);
+            // Inicializar con todos los usuarios/máquinas disponibles
+            setFilteredUsuarios(usrActivos);
+            setFilteredMaquinas(maqActivas);
         } catch (e) {
-            console.error(e);
+            console.error('DEBUG ERROR en cargarListas:', e);
         }
     };
 
@@ -275,30 +298,33 @@ export default function DashboardScreen({ navigation }) {
             // Prepare Table Data Batches
             let tablesPayload = []; // { title, columns, data, headStyles? }
 
-            const colsOperario = ['Maquina', 'Dias Lab', 'Meta Bonif.', 'Tiros', 'Horas Prod', 'Promedio/H', 'Valor a Pagar', 'Semaforo'];
-            const colsMaquina = ['Tiros Totales', 'Rendimiento Esperado', 'Eficiencia (%)', 'Semaforo'];
+            const colsOperario = ['Maquina', 'Dias Lab', 'Meta 75%', 'Meta 100%', 'Tiros', 'Horas Prod', 'Promedio/H', 'Valor a Pagar', 'Sem 75%', 'Sem 100%'];
+            const colsMaquina = ['Tiros Totales', 'Meta 75%', 'Meta 100%', 'Eficiencia (%)', 'Semaforo'];
 
             if (reportType === 'general') {
-                const columns = ['Operario', 'Maquina', 'Dias Lab', 'Meta Bonif.', 'Tiros', 'Horas Prod', 'Promedio/H', 'Semaforo'];
+                const columns = ['Operario', 'Maquina', 'Dias Lab', 'Meta 75%', 'Meta 100%', 'Tiros', 'Horas Prod', 'Promedio/H', 'Sem 75%', 'Sem 100%'];
                 const data = (resumen?.resumenOperarios || []).map(item => [
                     item.operario,
                     item.maquina,
                     item.diasLaborados?.toString() || '0',
                     item.metaBonificacion?.toFixed(0) || '0',
+                    item.meta100Porciento?.toFixed(0) || '0',
                     item.totalTiros?.toString() || '0',
                     item.totalHorasProductivas?.toFixed(2) || '0',
                     item.promedioHoraProductiva?.toFixed(2) || '0',
-                    item.semaforoColor || '-'
+                    `${item.semaforoColor || 'Gris'}|${(item.porcentajeRendimiento75 || 0).toFixed(0)}%`,
+                    `${item.semaforoColor100 || 'Gris'}|${(item.porcentajeRendimiento100 || 0).toFixed(0)}%`
                 ]);
                 tablesPayload.push({ title: 'Reporte General', columns, data });
 
                 // Summary for general report
                 if (resumen?.resumenMaquinas?.length > 0) {
-                    const maqColumns = ['Maquina', 'Tiros Totales', 'Rend. Esperado', 'Eficiencia', 'Semaforo'];
+                    const maqColumns = ['Maquina', 'Tiros Totales', 'Meta 75%', 'Meta 100%', 'Eficiencia', 'Semaforo'];
                     const maqData = resumen.resumenMaquinas.map(item => [
                         item.maquina,
                         item.tirosTotales?.toString() || '0',
-                        item.rendimientoEsperado?.toFixed(0) || '0',
+                        item.meta75Porciento?.toFixed(0) || '0',
+                        item.meta100Porciento?.toFixed(0) || '0',
                         `${(item.porcentajeRendimiento * 100)?.toFixed(1) || '0'}%`,
                         item.semaforoColor || '-'
                     ]);
@@ -324,11 +350,13 @@ export default function DashboardScreen({ navigation }) {
                         item.maquina,
                         item.diasLaborados?.toString() || '0',
                         item.metaBonificacion?.toFixed(0) || '0',
+                        item.meta100Porciento?.toFixed(0) || '0',
                         item.totalTiros?.toString() || '0',
                         item.totalHorasProductivas?.toFixed(2) || '0',
                         item.promedioHoraProductiva?.toFixed(2) || '0',
-                        `$${item.valorAPagar?.toFixed(0) || '0'}`,
-                        item.semaforoColor || '-'
+                        `$${item.valorAPagarBonificable?.toFixed(0) || '0'}`, // Solo tiros dentro del horario laboral
+                        `${item.semaforoColor || 'Gris'}|${(item.porcentajeRendimiento75 || 0).toFixed(0)}%`,
+                        `${item.semaforoColor100 || 'Gris'}|${(item.porcentajeRendimiento100 || 0).toFixed(0)}%`
                     ]);
                     tablesPayload.push({ title: `Operario: ${operarioNombre}`, columns: colsOperario, data });
                 });
@@ -345,7 +373,8 @@ export default function DashboardScreen({ navigation }) {
                     const maquinaNombre = maquinas.find(m => m.id == maqId)?.nombre || maquinaData[0].maquina || 'Desconocida';
                     const data = maquinaData.map(item => [
                         item.tirosTotales?.toString() || '0',
-                        item.rendimientoEsperado?.toFixed(0) || '0',
+                        item.meta75Porciento?.toFixed(0) || '0',
+                        item.meta100Porciento?.toFixed(0) || '0',
                         `${(item.porcentajeRendimiento * 100)?.toFixed(1) || '0'}%`,
                         item.semaforoColor || '-'
                     ]);
@@ -357,111 +386,181 @@ export default function DashboardScreen({ navigation }) {
             let lastY = 60;
 
             const setSemaforoColor = (data) => {
-                const text = data.cell.raw;
-                if (!text) return;
-                const lowerText = text.toString().toLowerCase();
+                const raw = data.cell.raw;
+                if (!raw) return;
+                const text = raw.toString();
+
+                let colorKey = text;
+                let displayText = '';
+
+                if (text.includes('|')) {
+                    const parts = text.split('|');
+                    colorKey = parts[0];
+                    displayText = parts[1];
+                } else if (text === '-') {
+                    return; // No styling
+                }
+
+                const lowerText = colorKey.toLowerCase();
+
+                // Set percentage text if available, otherwise clear simple color text
+                data.cell.text = displayText;
+
                 if (lowerText.includes('rojo')) {
-                    data.cell.styles.fillColor = [255, 204, 204];
-                    data.cell.text = '';
+                    data.cell.styles.fillColor = [255, 204, 204]; // Light Red
                 } else if (lowerText.includes('amarillo')) {
-                    data.cell.styles.fillColor = [255, 245, 204]; // Should not happen with binary, but kept for safety
-                    data.cell.text = '';
+                    data.cell.styles.fillColor = [255, 245, 204];
                 } else if (lowerText.includes('verde')) {
-                    data.cell.styles.fillColor = [204, 255, 204];
-                    data.cell.text = '';
+                    data.cell.styles.fillColor = [204, 255, 204]; // Light Green
                 }
             };
 
-            // Helper: Generate Chart Image using Chart.js (HTML5 Canvas)
-            // NOTE: Chart.js requires DOM, so charts are only generated on web
-            const generateChartImage = async (title, labels, data, type = 'bar', options = {}) => {
-                // Skip chart generation on mobile - Chart.js requires DOM
-                if (Platform.OS !== 'web') {
-                    console.log('Skipping chart generation on mobile (no DOM available)');
-                    return null;
+            // Helper: Draw a bar chart directly in the PDF using jsPDF primitives
+            // This works on both web and mobile without requiring DOM
+            const drawBarChart = (doc, title, labels, data, startY, options = {}) => {
+                const { colors = null, width = 180, height = 80 } = options;
+                const pageWidth = doc.internal.pageSize.getWidth();
+                const startX = (pageWidth - width) / 2;
+
+                // Check if we need a new page
+                if (startY + height + 30 > doc.internal.pageSize.getHeight() - 20) {
+                    doc.addPage();
+                    startY = 30;
                 }
-                return new Promise((resolve, reject) => {
-                    try {
-                        const canvas = document.createElement('canvas');
-                        canvas.width = 1400; // Wider for more labels
-                        canvas.height = 800; // Taller for better visibility
-                        const { backgroundColors, valueSuffix = '', showLegend = false, textColor = '#333' } = options;
-                        const ctx = canvas.getContext('2d');
 
-                        new Chart(ctx, {
-                            type: type,
-                            data: {
-                                labels: labels,
-                                datasets: [{
-                                    label: title,
-                                    data: data,
-                                    backgroundColor: backgroundColors || '#4169E1',
-                                    borderColor: '#333',
-                                    borderWidth: 1
-                                }]
-                            },
-                            options: {
-                                responsive: false,
-                                animation: false,
-                                layout: { padding: { top: 40, bottom: 20, left: 20, right: 20 } },
-                                plugins: {
-                                    legend: { display: showLegend },
-                                    title: {
-                                        display: true,
-                                        text: title,
-                                        font: { size: 36, weight: 'bold' },
-                                        padding: { bottom: 30 }
-                                    },
-                                    datalabels: {
-                                        anchor: 'end',
-                                        align: 'top',
-                                        formatter: (value) => `${value}${valueSuffix}`,
-                                        font: { size: 14, weight: 'bold' },
-                                        color: textColor,
-                                        rotation: -45 // Rotate labels to avoid overlap
-                                    }
-                                },
-                                scales: {
-                                    y: {
-                                        beginAtZero: true,
-                                        ticks: { font: { size: 18 } },
-                                        grid: { color: '#e0e0e0' }
-                                    },
-                                    x: {
-                                        ticks: {
-                                            font: { size: 11, weight: 'bold' },
-                                            autoSkip: false,
-                                            maxRotation: 45, // Less aggressive rotation
-                                            minRotation: 45
-                                        },
-                                        grid: { display: false }
-                                    }
-                                }
-                            }
-                        });
+                // Title
+                doc.setFontSize(12);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(0, 0, 0);
+                doc.text(title, pageWidth / 2, startY, { align: 'center' });
 
-                        // Small timeout to ensure render
-                        setTimeout(() => {
-                            const imgData = canvas.toDataURL('image/png');
-                            resolve(imgData);
-                            canvas.remove();
-                        }, 100);
+                const chartStartY = startY + 10;
+                const chartHeight = height - 20;
+                const barWidth = (width - 20) / Math.max(data.length, 1);
+                const maxValue = Math.max(...data.map(d => typeof d === 'number' ? d : parseFloat(d) || 0), 1);
 
-                    } catch (error) {
-                        console.error("Error creating chart:", error);
-                        resolve(null);
+                // Draw bars
+                data.forEach((value, index) => {
+                    const numValue = typeof value === 'number' ? value : parseFloat(value) || 0;
+                    const barHeight = (numValue / maxValue) * chartHeight;
+                    const x = startX + 10 + (index * barWidth);
+                    const y = chartStartY + chartHeight - barHeight;
+
+                    // Bar color
+                    let color = [65, 105, 225]; // Default royal blue
+                    if (colors && colors[index]) {
+                        const hex = colors[index].replace('#', '');
+                        color = [
+                            parseInt(hex.substring(0, 2), 16),
+                            parseInt(hex.substring(2, 4), 16),
+                            parseInt(hex.substring(4, 6), 16)
+                        ];
+                    }
+
+                    doc.setFillColor(...color);
+                    doc.rect(x + 1, y, barWidth - 2, barHeight, 'F');
+
+                    // Value on top
+                    doc.setFontSize(7);
+                    doc.setTextColor(0, 0, 0);
+                    const valueText = numValue >= 1000 ? (numValue / 1000).toFixed(1) + 'k' : numValue.toString();
+                    doc.text(valueText, x + barWidth / 2, y - 2, { align: 'center' });
+
+                    // Label at bottom (truncated)
+                    const label = typeof labels[index] === 'string'
+                        ? labels[index].substring(0, 8)
+                        : Array.isArray(labels[index])
+                            ? labels[index][0].substring(0, 8)
+                            : '';
+                    doc.setFontSize(6);
+                    doc.text(label, x + barWidth / 2, chartStartY + chartHeight + 8, { align: 'center' });
+                });
+
+                // Draw axis line
+                doc.setDrawColor(200, 200, 200);
+                doc.line(startX + 10, chartStartY + chartHeight, startX + width - 10, chartStartY + chartHeight);
+
+                return startY + height + 15;
+            };
+
+            // Helper: Draw a line chart directly in the PDF
+            const drawLineChart = (doc, title, labels, data, startY, options = {}) => {
+                const { width = 180, height = 80 } = options;
+                const pageWidth = doc.internal.pageSize.getWidth();
+                const startX = (pageWidth - width) / 2;
+
+                // Check if we need a new page
+                if (startY + height + 30 > doc.internal.pageSize.getHeight() - 20) {
+                    doc.addPage();
+                    startY = 30;
+                }
+
+                // Title
+                doc.setFontSize(12);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(0, 0, 0);
+                doc.text(title, pageWidth / 2, startY, { align: 'center' });
+
+                const chartStartY = startY + 10;
+                const chartHeight = height - 20;
+                const pointSpacing = (width - 30) / Math.max(data.length - 1, 1);
+                const maxValue = Math.max(...data.map(d => typeof d === 'number' ? d : parseFloat(d) || 0), 1);
+
+                // Draw grid lines
+                doc.setDrawColor(230, 230, 230);
+                for (let i = 0; i <= 4; i++) {
+                    const y = chartStartY + (chartHeight * i / 4);
+                    doc.line(startX + 15, y, startX + width - 15, y);
+                }
+
+                // Draw line
+                doc.setDrawColor(0, 123, 255);
+                doc.setLineWidth(0.5);
+
+                const points = data.map((value, index) => {
+                    const numValue = typeof value === 'number' ? value : parseFloat(value) || 0;
+                    return {
+                        x: startX + 15 + (index * pointSpacing),
+                        y: chartStartY + chartHeight - (numValue / maxValue) * chartHeight
+                    };
+                });
+
+                for (let i = 0; i < points.length - 1; i++) {
+                    doc.line(points[i].x, points[i].y, points[i + 1].x, points[i + 1].y);
+                }
+
+                // Draw points and values
+                doc.setFillColor(0, 123, 255);
+                points.forEach((point, index) => {
+                    doc.circle(point.x, point.y, 1.5, 'F');
+
+                    // Value on top
+                    const numValue = typeof data[index] === 'number' ? data[index] : parseFloat(data[index]) || 0;
+                    doc.setFontSize(6);
+                    doc.setTextColor(0, 0, 0);
+                    const valueText = numValue >= 1000 ? (numValue / 1000).toFixed(1) + 'k' : numValue.toString();
+                    doc.text(valueText, point.x, point.y - 4, { align: 'center' });
+
+                    // Label at bottom (every few points to avoid clutter)
+                    if (index % Math.ceil(data.length / 10) === 0 || index === data.length - 1) {
+                        const label = typeof labels[index] === 'string' ? labels[index].substring(0, 6) : '';
+                        doc.text(label, point.x, chartStartY + chartHeight + 8, { align: 'center' });
                     }
                 });
+
+                // Draw axis line
+                doc.setDrawColor(200, 200, 200);
+                doc.line(startX + 15, chartStartY + chartHeight, startX + width - 15, chartStartY + chartHeight);
+
+                return startY + height + 15;
             };
 
-            // ... Existing Table Rendering ...
+            // Render Tables
             tablesPayload.forEach((tbl, idx) => {
-                // If not first table, check space or add page break if needed?
-                // AutoTable handles page breaks automatically, but we start new table.
-                // We want titles.
+                // If not first table, advance Y position
                 if (idx > 0) lastY = doc.lastAutoTable.finalY + 15;
 
-                // If lastY is too low, add page? AutoTable logic usually handles Y, but for the TITLE we need to check.
+                // If lastY is too low, add page
                 if (lastY > doc.internal.pageSize.getHeight() - 30) {
                     doc.addPage();
                     lastY = 20;
@@ -478,7 +577,11 @@ export default function DashboardScreen({ navigation }) {
                     headStyles: tbl.headStyles || { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' },
                     alternateRowStyles: { fillColor: [245, 245, 245] },
                     didParseCell: (data) => {
-                        if (data.section === 'body' && (data.column.index === tbl.columns.length - 1)) {
+                        if (data.section === 'head') return;
+                        // Robust check: Apply to any column with header containing "Sem" or "Semaforo"
+                        // tbl.columns provides the header strings
+                        const header = tbl.columns[data.column.index];
+                        if (header && (header.includes('Semaforo') || header.includes('Sem '))) {
                             setSemaforoColor(data);
                         }
                     },
@@ -486,138 +589,72 @@ export default function DashboardScreen({ navigation }) {
                 });
             });
 
-            // CHARTS GENERATION (IMPROVED WITH Chart.js)
+            // CHARTS GENERATION using jsPDF primitives (works on web and mobile)
             let chartY = (doc.lastAutoTable && doc.lastAutoTable.finalY) ? doc.lastAutoTable.finalY + 20 : 120;
-            const addChartToDoc = async (imgData) => {
-                if (!imgData) {
-                    // This is expected on mobile since charts are skipped
-                    return;
-                }
-                // Check space (height approx 110 + margin)
-                if (chartY + 130 > doc.internal.pageSize.getHeight() - 20) {
-                    doc.addPage();
-                    chartY = 20;
-                }
-                try {
-                    doc.addImage(imgData, 'PNG', 10, chartY, 190, 110); // Larger image
-                    chartY += 120; // Advance Y
-                } catch (e) {
-                    console.error("Error adding image to PDF:", e);
-                }
-            };
 
             if (reportType === 'general') {
                 console.log("Generating general report charts...");
-                console.log("resumen?.resumenOperarios:", resumen?.resumenOperarios);
+
+                // Chart 1: Top Production (Tiros)
                 if ((resumen?.resumenOperarios || []).length > 0) {
                     const topOps = [...resumen.resumenOperarios]
                         .sort((a, b) => b.totalTiros - a.totalTiros)
-                        .slice(0, 15);
-                    console.log("topOps data:", topOps);
+                        .slice(0, 10);
+
                     if (topOps.length > 0) {
-                        // Colors based on semaphore
                         const chartColors = topOps.map(o => {
                             if (o.semaforoColor === 'Verde') return '#28a745';
                             if (o.semaforoColor === 'Amarillo') return '#ffc107';
-                            return '#dc3545'; // Rojo
+                            return '#dc3545';
                         });
+                        const chartLabels = topOps.map(o => o.operario.substring(0, 10));
+                        const chartData = topOps.map(o => o.totalTiros);
 
-                        // Labels with Machine Name (Multiline array for Chart.js)
-                        const chartLabels = topOps.map(o => [o.operario.substring(0, 15), o.maquina]);
-
-                        console.log("Creating Top Production chart...");
-                        const img = await generateChartImage(
-                            "Top Producción (Tiros)",
-                            chartLabels,
-                            topOps.map(o => o.totalTiros),
-                            'bar',
-                            { backgroundColors: chartColors, textColor: '#333' }
-                        );
-                        console.log("Chart image generated:", img ? "OK" : "FAILED");
-                        await addChartToDoc(img);
-                    }
-                } else {
-                    console.log("No resumenOperarios data found!");
-                }
-            }
-
-            if (reportType === 'general' || reportType === 'maquina') {
-                if ((resumen?.resumenMaquinas || []).length > 0) {
-                    const chartDataEff = [...resumen.resumenMaquinas].sort((a, b) => b.porcentajeRendimiento - a.porcentajeRendimiento);
-                    const imgEff = await generateChartImage("Eficiencia por Máquina (%)", chartDataEff.map(m => m.maquina), chartDataEff.map(m => (m.porcentajeRendimiento * 100).toFixed(1)), 'bar', { valueSuffix: '%', backgroundColors: chartDataEff.map(m => m.porcentajeRendimiento >= 0.75 ? '#28a745' : '#dc3545'), textColor: '#333' });
-                    await addChartToDoc(imgEff);
-
-                    if (reportType === 'maquina') {
-                        // Chart: Total Tiempos Muertos por Maquina (Bar Chart)
-                        // Use the same order (Efficiency) or sort by Downtime? 
-                        // User said "also this chart...". 
-                        // To match the report order, we use chartDataEff order.
-                        const downtimeData = chartDataEff.map(m => ({
-                            maquina: m.maquina,
-                            total: m.totalTiemposMuertos || 0
-                        }));
-
-                        // Filter out machines with 0 downtime? 
-                        // User said "salgan todas las maquinas". So we keep them.
-
-                        if (downtimeData.length > 0) {
-                            const imgDowntime = await generateChartImage(
-                                "Total Tiempos Muertos (Horas)",
-                                downtimeData.map(d => d.maquina),
-                                downtimeData.map(d => d.total.toFixed(1)),
-                                'bar',
-                                {
-                                    backgroundColors: '#dc3545', // Red for downtime
-                                    valueSuffix: ' h',
-                                    textColor: '#333'
-                                }
-                            );
-                            await addChartToDoc(imgDowntime);
-                        }
+                        chartY = drawBarChart(doc, "Top Producción (Tiros)", chartLabels, chartData, chartY, { colors: chartColors });
                     }
                 }
-            }
 
-            // 2. Tendencia Diaria (Global - Only for General)
-            if (reportType === 'general' && (resumen?.tendenciaDiaria || []).length > 0) {
-                const dailyData = [...resumen.tendenciaDiaria].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
-                const labels = dailyData.map(d => d.fecha.split('T')[0].split('-').slice(1).join('/')); // MM/DD
-
-                // Production Trend
-                const imgTrend = await generateChartImage(
-                    "Tendencia Producción Diaria (Tiros)",
-                    labels,
-                    dailyData.map(d => d.tiros),
-                    'line',
-                    { backgroundColors: '#007bff', textColor: '#333' }
-                );
-                await addChartToDoc(imgTrend);
-            }
-
-            // 3. Velocidad Operarios (Only General)
-            if (reportType === 'general') {
+                // Chart 2: Speed (Promedio/Hora)
                 if ((resumen?.resumenOperarios || []).length > 0) {
                     const speedData = [...resumen.resumenOperarios]
                         .sort((a, b) => b.promedioHoraProductiva - a.promedioHoraProductiva)
-                        .slice(0, 15);
+                        .slice(0, 10);
 
-                    const speedColors = speedData.map(o => {
-                        if (o.semaforoColor === 'Verde') return '#28a745';
-                        if (o.semaforoColor === 'Amarillo') return '#ffc107';
-                        return '#dc3545';
-                    });
+                    if (speedData.length > 0) {
+                        const speedColors = speedData.map(o => {
+                            if (o.semaforoColor === 'Verde') return '#28a745';
+                            if (o.semaforoColor === 'Amarillo') return '#ffc107';
+                            return '#dc3545';
+                        });
+                        const speedLabels = speedData.map(o => o.operario.substring(0, 10));
+                        const speedValues = speedData.map(o => Math.round(o.promedioHoraProductiva));
 
-                    const speedLabels = speedData.map(o => [o.operario.substring(0, 15), o.maquina]);
-
-                    const imgSpeed = await generateChartImage(
-                        "Velocidad Promedio (Tiros/Hora)",
-                        speedLabels,
-                        speedData.map(o => o.promedioHoraProductiva.toFixed(0)),
-                        'bar',
-                        { backgroundColors: speedColors, textColor: '#333' }
-                    );
-                    await addChartToDoc(imgSpeed);
+                        chartY = drawBarChart(doc, "Velocidad Promedio (Tiros/Hora)", speedLabels, speedValues, chartY, { colors: speedColors });
+                    }
                 }
+            }
+
+            // Chart: Efficiency by Machine (for general and machine reports)
+            if (reportType === 'general' || reportType === 'maquina') {
+                if ((resumen?.resumenMaquinas || []).length > 0) {
+                    const chartDataEff = [...resumen.resumenMaquinas]
+                        .sort((a, b) => b.porcentajeRendimiento - a.porcentajeRendimiento);
+
+                    const effColors = chartDataEff.map(m => m.porcentajeRendimiento >= 0.75 ? '#28a745' : '#dc3545');
+                    const effLabels = chartDataEff.map(m => m.maquina.substring(0, 10));
+                    const effValues = chartDataEff.map(m => Math.round(m.porcentajeRendimiento * 100));
+
+                    chartY = drawBarChart(doc, "Eficiencia por Máquina (%)", effLabels, effValues, chartY, { colors: effColors });
+                }
+            }
+
+            // Chart: Daily Trend (line chart for general report)
+            if (reportType === 'general' && (resumen?.tendenciaDiaria || []).length > 0) {
+                const dailyData = [...resumen.tendenciaDiaria].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+                const dailyLabels = dailyData.map(d => d.fecha.split('T')[0].split('-').slice(1).join('/'));
+                const dailyValues = dailyData.map(d => d.tiros);
+
+                chartY = drawLineChart(doc, "Tendencia Producción Diaria", dailyLabels, dailyValues, chartY);
             }
 
             // 4. Specific Charts and Detailed Table for Operator Report (ONLY when specific operator selected)
@@ -691,8 +728,8 @@ export default function DashboardScreen({ navigation }) {
 
                             chartY = doc.lastAutoTable.finalY + 15;
 
-                            // --- SIMPLE CHART ---
-                            const dailyTotals = [];
+                            // --- TRAZABILIDAD RENDIMIENTO (META 100%) ---
+                            const dailyPcts = [];
                             const labels = [];
 
                             for (let day = dStart; day <= dEnd; day++) {
@@ -701,23 +738,99 @@ export default function DashboardScreen({ navigation }) {
                                     const dDay = parseInt(dDate.split('-')[2]);
                                     return dDay === day;
                                 });
-                                const total = dayData.reduce((sum, d) => sum + (d.tirosDiarios || 0), 0);
-                                if (total > 0) {
-                                    dailyTotals.push(total);
+
+                                // Calcular totales del día
+                                // Usamos tirosConEquivalencia si existe (backend computed), sino tirosDiarios
+                                const totalTiros = dayData.reduce((sum, d) => sum + (d.tirosConEquivalencia || d.tirosDiarios || 0), 0);
+
+                                // Meta 100% del día (suma de metas de las máquinas usadas en cada registro)
+                                // Cada registro cuenta como un turno/jornada, así que sumamos la meta de la máquina asociada
+                                const totalMeta100 = dayData.reduce((sum, d) => sum + (d.maquina?.meta100Porciento || 0), 0);
+
+                                if (dayData.length > 0) {
+                                    let pct = 0;
+                                    if (totalMeta100 > 0) {
+                                        pct = (totalTiros / totalMeta100) * 100;
+                                    }
+                                    // Cap reasonable max for visual clarity chart if needed, but showing real data is better
+                                    dailyPcts.push(pct);
                                     labels.push(`${mes.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}`);
                                 }
                             }
 
-                            if (dailyTotals.length > 0) {
-                                const imgOperario = await generateChartImage(
-                                    `Tendencia Producción Diaria (Tiros)`,
+                            if (dailyPcts.length > 0) {
+                                // Assign colors based on threshold
+                                const barColors = dailyPcts.map(pct => {
+                                    if (pct >= 100) return '#28a745'; // Green
+                                    if (pct >= 75) return '#ffc107';  // Yellow
+                                    return '#dc3545';                 // Red
+                                });
+
+                                chartY = drawBarChart(
+                                    doc,
+                                    `Trazabilidad Rendimiento Mensual (% vs Meta 100%)`,
                                     labels,
-                                    dailyTotals,
-                                    'line',
-                                    { backgroundColors: '#007bff', textColor: '#333' }
+                                    dailyPcts.map(p => p.toFixed(1) + '%'), // Format values as percentage string 
+                                    chartY,
+                                    { colors: barColors }
                                 );
-                                await addChartToDoc(imgOperario);
                             }
+
+                            // --- GRÁFICAS POR MÁQUINA (DESGLOSE) ---
+                            const uniqueMaqIds = [...new Set(sortedHistory.map(d => d.maquinaId))];
+
+                            uniqueMaqIds.forEach(mId => {
+                                const maqDataTotal = sortedHistory.filter(d => d.maquinaId === mId);
+                                const maqName = maqDataTotal[0]?.maquina?.nombre || 'Máquina Desconocida';
+
+                                const dailyPctsMaq = [];
+                                const labelsMaq = [];
+
+                                for (let day = dStart; day <= dEnd; day++) {
+                                    const dayRecords = maqDataTotal.filter(d => {
+                                        const dDate = d.fecha.split('T')[0];
+                                        const dDay = parseInt(dDate.split('-')[2]);
+                                        return dDay === day;
+                                    });
+
+                                    if (dayRecords.length > 0) {
+                                        const totalTiros = dayRecords.reduce((sum, d) => sum + (d.tirosConEquivalencia || d.tirosDiarios || 0), 0);
+                                        const totalMeta100 = dayRecords.reduce((sum, d) => sum + (d.maquina?.meta100Porciento || 0), 0);
+
+                                        let pct = 0;
+                                        if (totalMeta100 > 0) {
+                                            pct = (totalTiros / totalMeta100) * 100;
+                                        }
+
+                                        dailyPctsMaq.push(pct);
+                                        labelsMaq.push(`${mes.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}`);
+                                    }
+                                }
+
+                                if (dailyPctsMaq.length > 0) {
+                                    if (chartY + 100 > doc.internal.pageSize.getHeight() - 20) {
+                                        doc.addPage();
+                                        chartY = 20;
+                                    } else {
+                                        chartY += 10;
+                                    }
+
+                                    const barColorsMaq = dailyPctsMaq.map(pct => {
+                                        if (pct >= 100) return '#28a745';
+                                        if (pct >= 75) return '#ffc107';
+                                        return '#dc3545';
+                                    });
+
+                                    chartY = drawBarChart(
+                                        doc,
+                                        `Rendimiento: ${maqName} (% vs Meta 100%)`,
+                                        labelsMaq,
+                                        dailyPctsMaq.map(p => p.toFixed(1) + '%'),
+                                        chartY,
+                                        { colors: barColorsMaq }
+                                    );
+                                }
+                            });
                         }
 
                     } catch (err) {
@@ -1029,13 +1142,46 @@ export default function DashboardScreen({ navigation }) {
                             <Text style={[styles.noData, { color: colors.subText }]}>No hay datos para el periodo seleccionado</Text>
                         ) : (
                             (resumen?.resumenOperarios || []).map((item, index) => (
-                                <View key={index} style={[styles.card, { backgroundColor: getColor(item.semaforoColor), borderColor: 'transparent', borderWidth: 1 }]}>
-                                    <Text style={[styles.cardTitle, { color: '#000' }]}>{item.operario} - {item.maquina}</Text>
-                                    <Text style={{ color: '#000' }}>Meta Bonif: {item.metaBonificacion?.toFixed(0) || '0'}</Text>
-                                    <Text style={{ color: '#000' }}>Tiros: {item.totalTiros}</Text>
-                                    <Text style={{ color: '#000' }}>Horas Prod: {item.totalHorasProductivas?.toFixed(2)}</Text>
-                                    <Text style={{ color: '#000' }}>Promedio/H: {item.promedioHoraProductiva?.toFixed(2)}</Text>
-                                    <Text style={{ color: '#000' }}>💰 A Pagar: ${item.valorAPagar?.toFixed(0) || '0'}</Text>
+                                <View key={index} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}>
+                                    <Text style={[styles.cardTitle, { color: colors.text }]}>{item.operario} - {item.maquina}</Text>
+                                    <Text style={{ color: colors.text }}>Meta 75%: {item.metaBonificacion?.toFixed(0) || '0'} | Meta 100%: {item.meta100Porciento?.toFixed(0) || '0'}</Text>
+                                    <Text style={{ color: colors.text }}>Tiros: {item.totalTiros}</Text>
+                                    <Text style={{ color: colors.text }}>Horas Prod: {item.totalHorasProductivas?.toFixed(2)}</Text>
+                                    <Text style={{ color: colors.text }}>Promedio/H: {item.promedioHoraProductiva?.toFixed(2)}</Text>
+                                    <Text style={{ color: colors.text }}>💰 Bonificación: ${item.valorAPagarBonificable?.toFixed(0) || '0'}</Text>
+
+                                    {/* Semáforos con porcentajes */}
+                                    <View style={{ flexDirection: 'row', marginTop: 10, gap: 15 }}>
+                                        {/* Semáforo 75% */}
+                                        <View style={{ alignItems: 'center' }}>
+                                            <Text style={{ fontSize: 10, color: colors.subText, marginBottom: 3 }}>Meta 75%</Text>
+                                            <View style={{
+                                                width: 60, height: 40, borderRadius: 8,
+                                                backgroundColor: getColor(item.semaforoColor),
+                                                justifyContent: 'center', alignItems: 'center',
+                                                borderWidth: 2, borderColor: '#333'
+                                            }}>
+                                                <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 14 }}>
+                                                    {(item.porcentajeRendimiento75 || 0).toFixed(0)}%
+                                                </Text>
+                                            </View>
+                                        </View>
+
+                                        {/* Semáforo 100% */}
+                                        <View style={{ alignItems: 'center' }}>
+                                            <Text style={{ fontSize: 10, color: colors.subText, marginBottom: 3 }}>Meta 100%</Text>
+                                            <View style={{
+                                                width: 60, height: 40, borderRadius: 8,
+                                                backgroundColor: getColor(item.semaforoColor100),
+                                                justifyContent: 'center', alignItems: 'center',
+                                                borderWidth: 2, borderColor: '#333'
+                                            }}>
+                                                <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 14 }}>
+                                                    {(item.porcentajeRendimiento100 || 0).toFixed(0)}%
+                                                </Text>
+                                            </View>
+                                        </View>
+                                    </View>
                                 </View>
                             ))
                         )}
