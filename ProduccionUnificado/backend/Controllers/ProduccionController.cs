@@ -330,6 +330,12 @@ public class ProduccionController : ControllerBase
                 var metaEsperada = diasUnicos * maquina.MetaRendimiento;
                 var meta100 = diasUnicos * maquina.Meta100Porciento;
                 var porcentaje = metaEsperada > 0 ? ((decimal)tirosTotales / metaEsperada) : 0;
+                
+                // Calcular Sem 100% (porcentaje vs meta 100%)
+                var porcentaje100 = meta100 > 0 ? ((decimal)tirosTotales / meta100) * 100 : 0;
+                
+                // Calificación = Sem100% × (Importancia / 100)
+                var calificacion = porcentaje100 * ((decimal)maquina.Importancia / 100);
 
                 string color = "Rojo";
                 if (porcentaje >= 0.75m) color = "Verde";
@@ -347,7 +353,11 @@ public class ProduccionController : ControllerBase
                     TotalTiemposMuertos = grupo.Sum(x => x.TotalTiemposMuertos),
                     TotalTiempoReparacion = grupo.Sum(x => x.TiempoReparacion),
                     TotalTiempoFaltaTrabajo = grupo.Sum(x => x.TiempoFaltaTrabajo),
-                    TotalTiempoOtro = grupo.Sum(x => x.TiempoOtroMuerto)
+                    TotalTiempoOtro = grupo.Sum(x => x.TiempoOtroMuerto),
+                    // Nuevos campos para calificación
+                    Importancia = maquina.Importancia,
+                    PorcentajeRendimiento100 = porcentaje100,
+                    Calificacion = calificacion
                 });
             }
             else
@@ -366,7 +376,11 @@ public class ProduccionController : ControllerBase
                     TotalTiemposMuertos = 0,
                     TotalTiempoReparacion = 0,
                     TotalTiempoFaltaTrabajo = 0,
-                    TotalTiempoOtro = 0
+                    TotalTiempoOtro = 0,
+                    // Máquina sin datos = 0 puntos, pero mantener importancia
+                    Importancia = maquina.Importancia,
+                    PorcentajeRendimiento100 = 0,
+                    Calificacion = 0
                 });
             }
         }
@@ -380,6 +394,9 @@ public class ProduccionController : ControllerBase
             })
             .ThenBy(x => x.Maquina)
             .ToList();
+        
+        // Calcular Calificación Total de la Planta (suma de todas las calificaciones)
+        resultado.CalificacionTotalPlanta = resultado.ResumenMaquinas.Sum(m => m.Calificacion);
 
         // 3. Tendencia Diaria
         var gruposFecha = data.GroupBy(d => d.Fecha.Date);

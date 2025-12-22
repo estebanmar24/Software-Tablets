@@ -92,6 +92,17 @@ export const get = (url: string, options?: { params?: Record<string, any> }) => 
     return axiosWrapper<any>(fullUrl);
 };
 
+// Generic post for flexibility
+export const post = (url: string, data?: any) => {
+    let fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+
+    return axiosWrapper<any>(fullUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: data ? JSON.stringify(data) : undefined
+    });
+};
+
 export default {
     getMaquinas,
     getUsuarios,
@@ -107,5 +118,6 @@ export default {
     borrarProduccion,
     getPeriodosDisponibles,
     get,
+    post,
     API_URL
 };

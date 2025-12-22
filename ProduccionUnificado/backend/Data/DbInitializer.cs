@@ -283,5 +283,30 @@ public static class DbInitializer
             Console.WriteLine("[DB INIT] ProduccionDiaria checked/created.");
         }
         catch (Exception ex) { Console.WriteLine($"[DB ERROR] ProduccionDiaria: {ex.Message}"); }
+
+        // CALIFICACIONES MENSUALES (para historial de calificaciones de planta)
+        try
+        {
+            context.Database.ExecuteSqlRaw(@"
+                IF OBJECT_ID('dbo.CalificacionesMensuales', 'U') IS NULL
+                BEGIN
+                    CREATE TABLE [CalificacionesMensuales] (
+                        [Id] int NOT NULL IDENTITY,
+                        [Mes] int NOT NULL,
+                        [Anio] int NOT NULL,
+                        [CalificacionTotal] decimal(10, 2) NOT NULL DEFAULT 0,
+                        [FechaCalculo] datetime NOT NULL DEFAULT GETDATE(),
+                        [Notas] nvarchar(500) NULL,
+                        [DesgloseMaquinas] nvarchar(max) NULL,
+                        CONSTRAINT [PK_CalificacionesMensuales] PRIMARY KEY ([Id]),
+                        CONSTRAINT [UQ_CalificacionesMensuales_MesAnio] UNIQUE ([Mes], [Anio])
+                    );
+                    CREATE INDEX [IX_CalificacionesMensuales_Anio] ON [CalificacionesMensuales] ([Anio] DESC, [Mes] DESC);
+                    PRINT 'Tabla CalificacionesMensuales creada.';
+                END
+            ");
+            Console.WriteLine("[DB INIT] CalificacionesMensuales checked/created.");
+        }
+        catch (Exception ex) { Console.WriteLine($"[DB ERROR] CalificacionesMensuales: {ex.Message}"); }
     }
 }

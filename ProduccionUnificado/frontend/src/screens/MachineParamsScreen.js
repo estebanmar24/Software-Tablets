@@ -80,15 +80,16 @@ export default function MachineParamsScreen({ navigation }) {
 
     // Calculate total importancia percentage (excluding current editing machine)
     const calcularTotalImportancia = () => {
-        return maquinas
+        const total = maquinas
             .filter(m => m.activa !== false && (!editingMachine || m.id !== editingMachine.id))
-            .reduce((sum, m) => sum + (m.importancia || 0), 0);
+            .reduce((sum, m) => sum + (parseFloat(m.importancia) || 0), 0);
+        return Math.round(total * 100) / 100; // Redondear a 2 decimales
     };
 
     const totalImportanciaOthers = calcularTotalImportancia();
-    const totalImportanciaAll = maquinas
+    const totalImportanciaAll = Math.round(maquinas
         .filter(m => m.activa !== false)
-        .reduce((sum, m) => sum + (m.importancia || 0), 0);
+        .reduce((sum, m) => sum + (parseFloat(m.importancia) || 0), 0) * 100) / 100;
 
     const handleSave = async () => {
         const payload = {
@@ -99,7 +100,7 @@ export default function MachineParamsScreen({ navigation }) {
             metaDesperdicio: parseFloat(form.metaDesperdicio) || 0,
             valorPorTiro: parseFloat(form.valorPorTiro) || 0,
             tirosReferencia: parseInt(form.tirosReferencia) || 0,
-            importancia: parseInt(form.importancia) || 1,
+            importancia: parseFloat(form.importancia) || 0,
             semaforoMin: 0,
             semaforoNormal: 0,
             semaforoMax: 0,
@@ -134,10 +135,10 @@ export default function MachineParamsScreen({ navigation }) {
             <Button title="Nueva Máquina" onPress={openNew} />
 
             {/* Total Importancia Warning */}
-            <View style={[styles.totalBar, totalImportanciaAll !== 100 && styles.totalBarWarning]}>
+            <View style={[styles.totalBar, Math.abs(totalImportanciaAll - 100) > 0.1 && styles.totalBarWarning]}>
                 <Text style={styles.totalText}>
-                    Total Importancia: {totalImportanciaAll}%
-                    {totalImportanciaAll !== 100 && ' ⚠️ Debe sumar 100%'}
+                    Total Importancia: {totalImportanciaAll.toFixed(2)}%
+                    {Math.abs(totalImportanciaAll - 100) > 0.1 && ' ⚠️ Debe sumar 100%'}
                 </Text>
             </View>
 
@@ -156,7 +157,7 @@ export default function MachineParamsScreen({ navigation }) {
                             </Text>
                         </View>
                         <Text>Meta 100%: {item.meta100Porciento || '-'} | Meta 75%: {item.metaRendimiento}</Text>
-                        <Text>Valor/Tiro: ${item.valorPorTiro} | Importancia: {item.importancia || 0}%</Text>
+                        <Text>Valor/Tiro: ${item.valorPorTiro} | Importancia: {(parseFloat(item.importancia) || 0).toFixed(2)}%</Text>
                     </TouchableOpacity>
                 )}
             />
@@ -192,8 +193,8 @@ export default function MachineParamsScreen({ navigation }) {
                         />
                         <Text style={styles.percentSign}>%</Text>
                     </View>
-                    <Text style={[styles.hintText, (totalImportanciaOthers + (parseInt(form.importancia) || 0)) !== 100 && styles.hintWarning]}>
-                        Otras máquinas: {totalImportanciaOthers}% | Total: {totalImportanciaOthers + (parseInt(form.importancia) || 0)}%
+                    <Text style={[styles.hintText, Math.abs(totalImportanciaOthers + (parseFloat(form.importancia) || 0) - 100) > 0.1 && styles.hintWarning]}>
+                        Otras máquinas: {totalImportanciaOthers.toFixed(2)}% | Total: {(totalImportanciaOthers + (parseFloat(form.importancia) || 0)).toFixed(2)}%
                     </Text>
 
                     <Text style={styles.label}>Meta 100% (Tiros):</Text>

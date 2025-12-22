@@ -5,6 +5,9 @@ public class ResumenMensualDto
     public List<ResumenOperarioDto> ResumenOperarios { get; set; } = new();
     public List<ResumenMaquinaDto> ResumenMaquinas { get; set; } = new();
     public List<ResumenDiarioDto> TendenciaDiaria { get; set; } = new();
+    
+    // Calificación Total de la Planta (suma de calificaciones de todas las máquinas)
+    public decimal CalificacionTotalPlanta { get; set; }
 }
 
 public class ResumenOperarioDto
@@ -46,6 +49,11 @@ public class ResumenMaquinaDto
     public decimal TotalTiempoReparacion { get; set; }
     public decimal TotalTiempoFaltaTrabajo { get; set; }
     public decimal TotalTiempoOtro { get; set; }
+    
+    // Campos para Calificación de la Planta
+    public decimal Importancia { get; set; } // % de importancia de la máquina (suma 100% entre todas)
+    public decimal PorcentajeRendimiento100 { get; set; } // Sem 100% (TirosTotales / Meta100)
+    public decimal Calificacion { get; set; } // PorcentajeRendimiento100 * (Importancia / 100)
 }
 
 public class ResumenDiarioDto

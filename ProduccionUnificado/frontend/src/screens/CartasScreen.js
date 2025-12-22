@@ -54,6 +54,16 @@ export default function CartasScreen({ navigation }) {
     };
 
     const generarCartas = async () => {
+        // Verificar si está en móvil
+        if (Platform.OS !== 'web') {
+            Alert.alert(
+                'Solo disponible en escritorio',
+                'La generación de cartas solo está disponible en la versión de escritorio (navegador web) debido al manejo de archivos PDF y ZIP.',
+                [{ text: 'Entendido', style: 'default' }]
+            );
+            return;
+        }
+
         setLoading(true);
         setStatusText('Obteniendo datos...');
         try {
@@ -94,13 +104,13 @@ export default function CartasScreen({ navigation }) {
                 operarioMap.get(key).maquinas.push({
                     maquina: op.maquina,
                     diasLaborados: op.diasLaborados,
-                    metaBonificacion: op.metaBonificacion,
+                    meta100Porciento: op.meta100Porciento,
                     totalTiros: op.totalTiros,
                     totalHorasProductivas: op.totalHorasProductivas,
                     promedioHoraProductiva: op.promedioHoraProductiva,
-                    valorAPagar: op.valorAPagar,
-                    eficiencia: op.eficiencia,
-                    semaforoColor: op.semaforoColor
+                    valorAPagarBonificable: op.valorAPagarBonificable,
+                    porcentajeRendimiento100: op.porcentajeRendimiento100,
+                    semaforoColor100: op.semaforoColor100
                 });
             }
 
@@ -156,11 +166,15 @@ export default function CartasScreen({ navigation }) {
 
                 // Calcular totales
                 const totalTirosGlobal = opData.maquinas.reduce((sum, m) => sum + m.totalTiros, 0);
-                const totalValorPagar = opData.maquinas.reduce((sum, m) => sum + (m.valorAPagar || 0), 0);
+                const totalValorPagar = opData.maquinas.reduce((sum, m) => sum + (m.valorAPagarBonificable || 0), 0);
 
-                // Contar máquinas en verde y rojo
-                const maquinasVerdes = opData.maquinas.filter(m => (m.semaforoColor || '').toLowerCase().includes('verde'));
-                const maquinasRojas = opData.maquinas.filter(m => (m.semaforoColor || '').toLowerCase().includes('rojo'));
+                // Contar máquinas según el rendimiento (calculado directamente)
+                const maquinasVerdes = opData.maquinas.filter(m => (m.porcentajeRendimiento100 || 0) >= 100);
+                const maquinasAmarillas = opData.maquinas.filter(m => {
+                    const pct = m.porcentajeRendimiento100 || 0;
+                    return pct >= 75 && pct < 100;
+                });
+                const maquinasRojas = opData.maquinas.filter(m => (m.porcentajeRendimiento100 || 0) < 75);
 
                 // Carta mixta para TODOS los operarios
                 doc.setTextColor(0, 51, 102); // Azul oscuro
@@ -172,15 +186,25 @@ export default function CartasScreen({ navigation }) {
 
                 // Mensaje personalizado basado en el desempeño
                 let mensaje = '';
-                if (maquinasVerdes.length === opData.maquinas.length) {
-                    // Todas en verde
+                const totalMaq = opData.maquinas.length;
+
+                if (maquinasVerdes.length === totalMaq) {
+                    // Todas en verde (>=100%)
                     mensaje = 'Felicitaciones! Has alcanzado las metas en todas las maquinas asignadas. Sigue asi!';
-                } else if (maquinasRojas.length === opData.maquinas.length) {
-                    // Todas en rojo
+                } else if (maquinasRojas.length === totalMaq) {
+                    // Todas en rojo (<75%)
                     mensaje = 'Te invitamos a revisar tu desempeno para alcanzar las metas establecidas. Contamos con tu esfuerzo.';
+                } else if (maquinasVerdes.length > 0 && maquinasAmarillas.length > 0) {
+                    // Tiene verdes y amarillas (y posiblemente rojas)
+                    mensaje = `Excelente! Alcanzaste la meta en ${maquinasVerdes.length} maquina(s) y estas cerca en ${maquinasAmarillas.length}. Sigue esforzandote!`;
+                } else if (maquinasVerdes.length > 0) {
+                    // Tiene algunas en verde (y posiblemente rojas, sin amarillas)
+                    mensaje = `Felicitaciones! Alcanzaste la meta en ${maquinasVerdes.length} de ${totalMaq} maquina(s). Te invitamos a mejorar en las demas.`;
+                } else if (maquinasAmarillas.length > 0) {
+                    // Solo amarillas (y posiblemente rojas), sin verdes
+                    mensaje = `Estas cerca de alcanzar las metas en ${maquinasAmarillas.length} maquina(s). Un poco mas de esfuerzo para llegar al 100%!`;
                 } else {
-                    // Mixto
-                    mensaje = `Destacamos tu buen desempeno en ${maquinasVerdes.length} maquina(s). Te invitamos a mejorar en las demas para alcanzar todas las metas.`;
+                    mensaje = 'Te invitamos a mejorar tu desempeno para alcanzar las metas establecidas.';
                 }
                 doc.text(mensaje, 20, 78);
 
@@ -188,45 +212,71 @@ export default function CartasScreen({ navigation }) {
                 doc.setFont('helvetica', 'bold');
                 doc.text('Resumen de Desempeno por Maquina:', 20, 90);
 
-                const tableData = opData.maquinas.map(m => [
-                    m.maquina,
-                    m.diasLaborados?.toString() || '0',
-                    m.metaBonificacion?.toFixed(0) || '0',
-                    m.totalTiros?.toString() || '0',
-                    m.totalHorasProductivas?.toFixed(2) || '0',
-                    m.promedioHoraProductiva?.toFixed(0) || '0',
-                    `$${(m.valorAPagar || 0).toLocaleString()}`,
-                    m.semaforoColor || 'Gris'
-                ]);
+                // Ordenar máquinas naturalmente antes de mapear
+                const sortedMaquinas = [...opData.maquinas].sort((a, b) => {
+                    const getNum = (str) => { const m = str.match(/^(\d+)/); return m ? parseInt(m[1]) : 999; };
+                    const numA = getNum(a.maquina || '');
+                    const numB = getNum(b.maquina || '');
+                    if (numA !== numB) return numA - numB;
+                    return (a.maquina || '').localeCompare(b.maquina || '');
+                });
+
+                const tableData = sortedMaquinas.map(m => {
+                    const pct100 = m.porcentajeRendimiento100 || 0;
+                    let colorSem = 'Rojo';
+                    if (pct100 >= 100) colorSem = 'Verde';
+                    else if (pct100 >= 75) colorSem = 'Amarillo';
+
+                    return [
+                        m.maquina,
+                        m.diasLaborados?.toString() || '0',
+                        m.meta100Porciento?.toFixed(0) || '0',
+                        m.totalTiros?.toString() || '0',
+                        m.totalHorasProductivas?.toFixed(2) || '0',
+                        m.promedioHoraProductiva?.toFixed(0) || '0',
+                        `$${(m.valorAPagarBonificable || 0).toLocaleString()}`,
+                        `${colorSem}|${pct100.toFixed(0)}%`
+                    ];
+                });
 
                 const setSemaforoColor = (data) => {
                     const text = data.cell.raw;
                     if (!text) return;
-                    const lowerText = text.toString().toLowerCase();
-                    if (lowerText.includes('rojo')) {
-                        data.cell.styles.fillColor = [255, 204, 204];
-                        data.cell.text = '';
-                    } else if (lowerText.includes('verde')) {
-                        data.cell.styles.fillColor = [204, 255, 204];
-                        data.cell.text = '';
+                    const textStr = text.toString();
+
+                    // Separar color y porcentaje
+                    if (textStr.includes('|')) {
+                        const [colorKey, pctText] = textStr.split('|');
+                        data.cell.text = [pctText]; // Mostrar solo el porcentaje
+
+                        if (colorKey.toLowerCase().includes('rojo')) {
+                            data.cell.styles.fillColor = [255, 102, 102];
+                            data.cell.styles.textColor = 255;
+                        } else if (colorKey.toLowerCase().includes('amarillo')) {
+                            data.cell.styles.fillColor = [255, 193, 7];
+                            data.cell.styles.textColor = 0;
+                        } else if (colorKey.toLowerCase().includes('verde')) {
+                            data.cell.styles.fillColor = [40, 167, 69];
+                            data.cell.styles.textColor = 255;
+                        }
                     }
                 };
 
                 autoTable(doc, {
                     startY: 95,
-                    head: [['Maquina', 'Dias', 'Meta', 'Tiros', 'H.Prod', 'Prom/H', 'Valor', 'Sem']],
+                    head: [['Máquina', 'Días', 'Tiros 100%', 'Tiros', 'H.Prod', 'Prom/H', 'Valor', 'Sem 100%']],
                     body: tableData,
-                    styles: { fontSize: 8, cellPadding: 2 },
-                    headStyles: { fillColor: [66, 139, 202], textColor: 255, fontSize: 8 },
+                    styles: { fontSize: 8, cellPadding: 2, halign: 'center' },
+                    headStyles: { fillColor: [0, 51, 102], textColor: 255, fontSize: 8, halign: 'center' },
                     columnStyles: {
-                        0: { cellWidth: 40 },
+                        0: { cellWidth: 40, halign: 'left' },
                         1: { cellWidth: 15, halign: 'center' },
-                        2: { cellWidth: 22, halign: 'right' },
-                        3: { cellWidth: 22, halign: 'right' },
-                        4: { cellWidth: 18, halign: 'right' },
-                        5: { cellWidth: 18, halign: 'right' },
-                        6: { cellWidth: 25, halign: 'right' },
-                        7: { cellWidth: 15, halign: 'center' }
+                        2: { cellWidth: 22, halign: 'center' },
+                        3: { cellWidth: 22, halign: 'center' },
+                        4: { cellWidth: 18, halign: 'center' },
+                        5: { cellWidth: 18, halign: 'center' },
+                        6: { cellWidth: 25, halign: 'center' },
+                        7: { cellWidth: 20, halign: 'center' }
                     },
                     didParseCell: (data) => {
                         if (data.section === 'body' && data.column.index === 7) {
@@ -237,16 +287,196 @@ export default function CartasScreen({ navigation }) {
 
                 let finalY = doc.lastAutoTable.finalY + 10;
 
+                // Calcular rendimiento promedio general del mes
+                const rendimientoPromedio = sortedMaquinas.length > 0
+                    ? sortedMaquinas.reduce((sum, m) => sum + (m.porcentajeRendimiento100 || 0), 0) / sortedMaquinas.length
+                    : 0;
+
                 doc.setFontSize(10);
                 doc.setFont('helvetica', 'bold');
                 doc.text(`Total Tiros: ${totalTirosGlobal.toLocaleString()}`, 20, finalY);
 
+                // Rendimiento promedio general
+                finalY += 7;
+                const colorRendimiento = rendimientoPromedio >= 100 ? [40, 167, 69] : rendimientoPromedio >= 75 ? [255, 193, 7] : [220, 53, 69];
+                doc.setTextColor(...colorRendimiento);
+                doc.text(`Rendimiento Promedio del Mes: ${rendimientoPromedio.toFixed(1)}%`, 20, finalY);
+                doc.setTextColor(0, 0, 0);
+
                 if (totalValorPagar > 0) {
-                    finalY += 10;
+                    finalY += 12;
                     doc.setFontSize(14);
                     doc.setTextColor(0, 100, 0);
                     doc.text(`BONIFICACION TOTAL A PAGAR: $${totalValorPagar.toLocaleString()}`, pageWidth / 2, finalY, { align: 'center' });
                     doc.setTextColor(0, 0, 0);
+                }
+
+                // ========== GRÁFICA DE RENDIMIENTO POR MÁQUINA ==========
+                if (sortedMaquinas.length > 0) {
+                    finalY += 20;
+
+                    doc.setFontSize(12);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setTextColor(0, 51, 102);
+                    doc.text('Rendimiento por Máquina', pageWidth / 2, finalY, { align: 'center' });
+                    doc.setTextColor(0, 0, 0);
+
+                    finalY += 5;
+
+                    // Configuración de la gráfica
+                    const chartHeight = 40;
+                    const chartWidth = pageWidth - 40;
+                    const chartStartX = 20;
+                    const chartStartY = finalY;
+                    const barWidth = Math.min(25, (chartWidth - 10) / sortedMaquinas.length);
+                    const maxValue = 120; // Máximo 120% para la escala
+
+                    // Dibujar línea base y línea meta 100%
+                    doc.setDrawColor(200, 200, 200);
+                    doc.line(chartStartX, chartStartY + chartHeight, chartStartX + chartWidth, chartStartY + chartHeight);
+
+                    // Línea de referencia 100%
+                    const y100 = chartStartY + chartHeight - (100 / maxValue) * chartHeight;
+                    doc.setDrawColor(0, 150, 0);
+                    doc.setLineDash([2, 2]);
+                    doc.line(chartStartX, y100, chartStartX + chartWidth, y100);
+                    doc.setLineDash([]);
+                    doc.setFontSize(6);
+                    doc.setTextColor(0, 150, 0);
+                    doc.text('100%', chartStartX - 2, y100 + 1, { align: 'right' });
+
+                    // Línea de referencia del promedio general
+                    const yPromedio = chartStartY + chartHeight - (Math.min(rendimientoPromedio, maxValue) / maxValue) * chartHeight;
+                    doc.setDrawColor(0, 51, 102); // Azul oscuro
+                    doc.setLineDash([4, 2]);
+                    doc.line(chartStartX, yPromedio, chartStartX + chartWidth, yPromedio);
+                    doc.setLineDash([]);
+                    doc.setFontSize(6);
+                    doc.setTextColor(0, 51, 102);
+                    doc.text(`Prom: ${rendimientoPromedio.toFixed(0)}%`, chartStartX + chartWidth + 2, yPromedio + 1, { align: 'left' });
+
+                    // Dibujar barras
+                    sortedMaquinas.forEach((maq, index) => {
+                        const pct = Math.min(maq.porcentajeRendimiento100 || 0, maxValue);
+                        const barHeight = (pct / maxValue) * chartHeight;
+                        const x = chartStartX + 5 + (index * (barWidth + 3));
+                        const y = chartStartY + chartHeight - barHeight;
+
+                        // Color de la barra según el rendimiento
+                        if (pct >= 100) {
+                            doc.setFillColor(40, 167, 69); // Verde
+                        } else if (pct >= 75) {
+                            doc.setFillColor(255, 193, 7); // Amarillo
+                        } else {
+                            doc.setFillColor(220, 53, 69); // Rojo
+                        }
+
+                        doc.rect(x, y, barWidth - 2, barHeight, 'F');
+
+                        // Valor encima de la barra
+                        doc.setFontSize(6);
+                        doc.setTextColor(0, 0, 0);
+                        doc.text(`${(maq.porcentajeRendimiento100 || 0).toFixed(0)}%`, x + (barWidth - 2) / 2, y - 2, { align: 'center' });
+
+                        // Nombre de la máquina debajo (abreviado)
+                        doc.setFontSize(5);
+                        const nombreCorto = (maq.maquina || '').substring(0, 8);
+                        doc.text(nombreCorto, x + (barWidth - 2) / 2, chartStartY + chartHeight + 5, { align: 'center' });
+                    });
+
+                    finalY = chartStartY + chartHeight + 15;
+                }
+
+                // ========== GRÁFICA DE TENDENCIA HISTÓRICA DEL OPERARIO ==========
+                try {
+                    // Primero guardar el rendimiento del mes actual (pasamos el valor ya calculado)
+                    await api.post(`/rendimientooperario/guardar-directo?usuarioId=${opData.usuarioId}&mes=${mes}&anio=${anio}&rendimiento=${rendimientoPromedio.toFixed(2)}&totalTiros=${totalTirosGlobal}&totalMaquinas=${sortedMaquinas.length}`);
+
+                    // Obtener historial del operario
+                    const historialRes = await api.get(`/rendimientooperario/historial/${opData.usuarioId}?limit=6`);
+                    const historial = historialRes?.data || [];
+
+                    if (historial.length > 0) {
+                        // Ordenar de más antiguo a más reciente
+                        const historialOrdenado = [...historial].sort((a, b) => {
+                            if (a.anio !== b.anio) return a.anio - b.anio;
+                            return a.mes - b.mes;
+                        });
+
+                        // Verificar si hay espacio en la página, si no, agregar nueva página
+                        if (finalY > 240) {
+                            doc.addPage();
+                            finalY = 20;
+                        }
+
+                        finalY += 10;
+                        doc.setFontSize(12);
+                        doc.setFont('helvetica', 'bold');
+                        doc.setTextColor(0, 51, 102);
+                        doc.text('Tendencia Histórica de Rendimiento', pageWidth / 2, finalY, { align: 'center' });
+                        doc.setTextColor(0, 0, 0);
+
+                        finalY += 5;
+
+                        // Configuración de la gráfica
+                        const trendChartHeight = 35;
+                        const trendChartWidth = pageWidth - 60;
+                        const trendChartStartX = 30;
+                        const trendChartStartY = finalY;
+                        const trendBarWidth = Math.min(25, (trendChartWidth - 10) / historialOrdenado.length);
+                        const maxTrendValue = 120;
+
+                        // Línea base
+                        doc.setDrawColor(200, 200, 200);
+                        doc.line(trendChartStartX, trendChartStartY + trendChartHeight, trendChartStartX + trendChartWidth, trendChartStartY + trendChartHeight);
+
+                        // Línea 100%
+                        const yTrend100 = trendChartStartY + trendChartHeight - (100 / maxTrendValue) * trendChartHeight;
+                        doc.setDrawColor(0, 150, 0);
+                        doc.setLineDash([2, 2]);
+                        doc.line(trendChartStartX, yTrend100, trendChartStartX + trendChartWidth, yTrend100);
+                        doc.setLineDash([]);
+                        doc.setFontSize(6);
+                        doc.setTextColor(0, 150, 0);
+                        doc.text('Meta', trendChartStartX - 2, yTrend100 + 1, { align: 'right' });
+
+                        // Dibujar barras
+                        const mesesNombres = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+                        const totalBarsWidth = historialOrdenado.length * (trendBarWidth + 5);
+                        const offsetX = (trendChartWidth - totalBarsWidth) / 2;
+
+                        historialOrdenado.forEach((reg, index) => {
+                            const pct = Math.min(reg.rendimientoPromedio || 0, maxTrendValue);
+                            const barHeight = (pct / maxTrendValue) * trendChartHeight;
+                            const x = trendChartStartX + offsetX + (index * (trendBarWidth + 5));
+                            const y = trendChartStartY + trendChartHeight - barHeight;
+
+                            // Color de la barra
+                            if (pct >= 100) {
+                                doc.setFillColor(0, 51, 102); // Azul oscuro (meta cumplida)
+                            } else if (pct >= 75) {
+                                doc.setFillColor(66, 139, 202); // Azul medio
+                            } else {
+                                doc.setFillColor(135, 206, 250); // Azul claro
+                            }
+
+                            doc.rect(x, y, trendBarWidth, barHeight, 'F');
+
+                            // Valor encima
+                            doc.setFontSize(7);
+                            doc.setTextColor(0, 0, 0);
+                            doc.text(`${(reg.rendimientoPromedio || 0).toFixed(0)}%`, x + trendBarWidth / 2, y - 2, { align: 'center' });
+
+                            // Etiqueta del mes
+                            doc.setFontSize(6);
+                            const mesLabel = `${mesesNombres[reg.mes]} ${reg.anio.toString().slice(-2)}`;
+                            doc.text(mesLabel, x + trendBarWidth / 2, trendChartStartY + trendChartHeight + 5, { align: 'center' });
+                        });
+
+                        finalY = trendChartStartY + trendChartHeight + 15;
+                    }
+                } catch (histErr) {
+                    console.log("No se pudo obtener historial del operario", histErr);
                 }
 
                 finalY += 25;

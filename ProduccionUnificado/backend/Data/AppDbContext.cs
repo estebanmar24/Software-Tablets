@@ -15,6 +15,8 @@ public class AppDbContext : DbContext
     public DbSet<OrdenProduccion> OrdenesProduccion { get; set; }
     public DbSet<TiempoProceso> TiemposProceso { get; set; }
     public DbSet<ProduccionDiaria> ProduccionDiaria { get; set; }
+    public DbSet<CalificacionMensual> CalificacionesMensuales { get; set; }
+    public DbSet<RendimientoOperarioMensual> RendimientoOperariosMensual { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -27,6 +29,8 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<OrdenProduccion>().ToTable("OrdenesProduccion");
         modelBuilder.Entity<TiempoProceso>().ToTable("TiempoProcesos");
         modelBuilder.Entity<ProduccionDiaria>().ToTable("ProduccionDiaria");
+        modelBuilder.Entity<CalificacionMensual>().ToTable("CalificacionesMensuales");
+        modelBuilder.Entity<RendimientoOperarioMensual>().ToTable("RendimientoOperariosMensual");
 
         // Configurar relaciones para TiempoProceso
         modelBuilder.Entity<TiempoProceso>()

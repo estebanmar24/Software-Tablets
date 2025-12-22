@@ -24,7 +24,8 @@ public class Maquina
     public int SemaforoMax { get; set; }
     
     // Nuevas columnas
-    public int Importancia { get; set; } = 1;
+    [Column(TypeName = "decimal(5, 2)")]
+    public decimal Importancia { get; set; } = 0;
     public int Meta100Porciento { get; set; } = 0;
     
     [Column("Activa")]

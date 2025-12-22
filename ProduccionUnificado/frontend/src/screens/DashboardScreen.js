@@ -258,6 +258,20 @@ export default function DashboardScreen({ navigation }) {
             const doc = new jsPDF();
             const pageWidth = doc.internal.pageSize.getWidth();
 
+            // Función de ordenamiento natural (para ordenar 1, 2, 3... 10, 11 en vez de 1, 10, 11, 2, 3)
+            const naturalSort = (a, b) => {
+                // Extraer número del inicio del nombre de la máquina
+                const getNumber = (str) => {
+                    const match = str.match(/^(\d+)/);
+                    return match ? parseInt(match[1]) : 999;
+                };
+                const numA = getNumber(a.maquina);
+                const numB = getNumber(b.maquina);
+                if (numA !== numB) return numA - numB;
+                // Si tienen el mismo número, ordenar por nombre completo
+                return a.maquina.localeCompare(b.maquina);
+            };
+
             // Load Logo
             try {
                 const asset = Asset.fromModule(logoSource);
@@ -281,53 +295,77 @@ export default function DashboardScreen({ navigation }) {
                 : `Semana ${semana} de ${getMesNombre(mes)} ${anio}`;
             doc.text(`Periodo: ${periodText}`, pageWidth / 2, 30, { align: 'center' });
 
-            // Calificacion General
-            if (resumen?.resumenMaquinas?.length > 0 && reportType !== 'operario') {
-                const totalEff = resumen.resumenMaquinas.reduce((sum, m) => sum + (m.porcentajeRendimiento || 0), 0);
-                const avgEff = (totalEff / resumen.resumenMaquinas.length) * 100;
+            // Calificación Real de la Planta (Sem100% × Importancia por cada máquina)
+            let historialCalificaciones = [];
+            if (resumen?.calificacionTotalPlanta !== undefined && reportType !== 'operario') {
+                const calificacion = resumen.calificacionTotalPlanta;
 
-                doc.setFontSize(14);
+                doc.setFontSize(16);
                 doc.setFont('helvetica', 'bold');
-                // Color based on score
-                const color = avgEff >= 75 ? [40, 167, 69] : [220, 53, 69]; // Green/Red
+                // Color based on score (>= 75 verde, else rojo)
+                const color = calificacion >= 75 ? [40, 167, 69] : calificacion >= 50 ? [255, 193, 7] : [220, 53, 69];
                 doc.setTextColor(...color);
-                doc.text(`Calificación General: ${avgEff.toFixed(1)}%`, pageWidth / 2, 40, { align: 'center' });
+                doc.text(`CALIFICACIÓN PLANTA: ${calificacion.toFixed(1)} pts`, pageWidth / 2, 42, { align: 'center' });
                 doc.setTextColor(0, 0, 0); // Reset
+
+                // Guardar calificación automáticamente para el mes actual
+                try {
+                    await api.post(`/calificacion/calcular-y-guardar?mes=${mes}&anio=${anio}`);
+                    console.log('Calificación guardada exitosamente');
+                } catch (saveErr) {
+                    console.log('Error guardando calificación (puede que la tabla no exista aún):', saveErr);
+                }
+
+                // Obtener historial de calificaciones para la gráfica comparativa
+                try {
+                    const histRes = await api.get('/calificacion/historial?limite=6');
+                    historialCalificaciones = histRes.data || [];
+                } catch (histErr) {
+                    console.log('Error obteniendo historial de calificaciones:', histErr);
+                }
+                // Nota: La gráfica de tendencia histórica se dibuja al final, después de la tabla de calificaciones
             }
 
             // Prepare Table Data Batches
             let tablesPayload = []; // { title, columns, data, headStyles? }
 
-            const colsOperario = ['Maquina', 'Dias Lab', 'Meta 75%', 'Meta 100%', 'Tiros', 'Horas Prod', 'Promedio/H', 'Valor a Pagar', 'Sem 75%', 'Sem 100%'];
-            const colsMaquina = ['Tiros Totales', 'Meta 75%', 'Meta 100%', 'Eficiencia (%)', 'Semaforo'];
+            // Columnas sin 75% - Solo mostramos Meta 100% y Sem 100%
+            const colsOperario = ['Maquina', 'Dias Lab', 'Meta 100%', 'Tiros', 'Horas Prod', 'Promedio/H', 'Valor a Pagar', 'Sem 100%'];
+            const colsMaquina = ['Tiros Totales', 'Meta 100%', 'Sem 100%'];
 
             if (reportType === 'general') {
-                const columns = ['Operario', 'Maquina', 'Dias Lab', 'Meta 75%', 'Meta 100%', 'Tiros', 'Horas Prod', 'Promedio/H', 'Sem 75%', 'Sem 100%'];
+                const columns = ['Operario', 'Maquina', 'Dias Lab', 'Meta 100%', 'Tiros', 'Horas Prod', 'Promedio/H', 'Sem 100%'];
                 const data = (resumen?.resumenOperarios || []).map(item => [
                     item.operario,
                     item.maquina,
                     item.diasLaborados?.toString() || '0',
-                    item.metaBonificacion?.toFixed(0) || '0',
                     item.meta100Porciento?.toFixed(0) || '0',
                     item.totalTiros?.toString() || '0',
                     item.totalHorasProductivas?.toFixed(2) || '0',
                     item.promedioHoraProductiva?.toFixed(2) || '0',
-                    `${item.semaforoColor || 'Gris'}|${(item.porcentajeRendimiento75 || 0).toFixed(0)}%`,
                     `${item.semaforoColor100 || 'Gris'}|${(item.porcentajeRendimiento100 || 0).toFixed(0)}%`
                 ]);
                 tablesPayload.push({ title: 'Reporte General', columns, data });
 
-                // Summary for general report
+                // Summary for general report - ordenada por número natural
                 if (resumen?.resumenMaquinas?.length > 0) {
-                    const maqColumns = ['Maquina', 'Tiros Totales', 'Meta 75%', 'Meta 100%', 'Eficiencia', 'Semaforo'];
-                    const maqData = resumen.resumenMaquinas.map(item => [
-                        item.maquina,
-                        item.tirosTotales?.toString() || '0',
-                        item.meta75Porciento?.toFixed(0) || '0',
-                        item.meta100Porciento?.toFixed(0) || '0',
-                        `${(item.porcentajeRendimiento * 100)?.toFixed(1) || '0'}%`,
-                        item.semaforoColor || '-'
-                    ]);
+                    const maqColumns = ['Maquina', 'Tiros Totales', 'Meta 100%', 'Sem 100%'];
+                    const maqData = [...resumen.resumenMaquinas]
+                        .sort(naturalSort) // Orden natural (1, 2, 3... 10, 11)
+                        .map(item => {
+                            // Calcular color del semáforo basado en porcentajeRendimiento100
+                            const pct100 = item.porcentajeRendimiento100 || 0;
+                            let colorMaq = 'Rojo';
+                            if (pct100 >= 100) colorMaq = 'Verde';
+                            else if (pct100 >= 75) colorMaq = 'Amarillo';
+
+                            return [
+                                item.maquina,
+                                item.tirosTotales?.toString() || '0',
+                                item.meta100Porciento?.toFixed(0) || '0',
+                                `${colorMaq}|${pct100.toFixed(0)}%`
+                            ];
+                        });
                     tablesPayload.push({
                         title: 'Resumen por Maquina',
                         columns: maqColumns,
@@ -346,16 +384,22 @@ export default function DashboardScreen({ navigation }) {
                     if (operarioData.length === 0) return;
 
                     const operarioNombre = usuarios.find(u => u.id == opId)?.nombre || operarioData[0].operario || 'Desconocido';
-                    const data = operarioData.map(item => [
+                    // Ordenar máquinas naturalmente dentro del operario
+                    const sortedData = [...operarioData].sort((a, b) => {
+                        const getNum = (str) => { const m = str.match(/^(\d+)/); return m ? parseInt(m[1]) : 999; };
+                        const numA = getNum(a.maquina || '');
+                        const numB = getNum(b.maquina || '');
+                        if (numA !== numB) return numA - numB;
+                        return (a.maquina || '').localeCompare(b.maquina || '');
+                    });
+                    const data = sortedData.map(item => [
                         item.maquina,
                         item.diasLaborados?.toString() || '0',
-                        item.metaBonificacion?.toFixed(0) || '0',
                         item.meta100Porciento?.toFixed(0) || '0',
                         item.totalTiros?.toString() || '0',
                         item.totalHorasProductivas?.toFixed(2) || '0',
                         item.promedioHoraProductiva?.toFixed(2) || '0',
                         `$${item.valorAPagarBonificable?.toFixed(0) || '0'}`, // Solo tiros dentro del horario laboral
-                        `${item.semaforoColor || 'Gris'}|${(item.porcentajeRendimiento75 || 0).toFixed(0)}%`,
                         `${item.semaforoColor100 || 'Gris'}|${(item.porcentajeRendimiento100 || 0).toFixed(0)}%`
                     ]);
                     tablesPayload.push({ title: `Operario: ${operarioNombre}`, columns: colsOperario, data });
@@ -366,24 +410,42 @@ export default function DashboardScreen({ navigation }) {
                     ? [...new Set((resumen?.resumenMaquinas || []).map(i => i.maquinaId))]
                     : [selectedMaquina];
 
-                targetIds.sort().forEach(maqId => {
+                // Ordenar IDs de máquina naturalmente antes de iterar
+                const sortedMaqIds = targetIds.map(id => {
+                    const maq = maquinas.find(m => m.id == id);
+                    return { id, nombre: maq?.nombre || '' };
+                }).sort((a, b) => {
+                    const getNum = (str) => { const m = str.match(/^(\d+)/); return m ? parseInt(m[1]) : 999; };
+                    const numA = getNum(a.nombre);
+                    const numB = getNum(b.nombre);
+                    if (numA !== numB) return numA - numB;
+                    return a.nombre.localeCompare(b.nombre);
+                });
+
+                sortedMaqIds.forEach(({ id: maqId }) => {
                     const maquinaData = (resumen?.resumenMaquinas || []).filter(item => item.maquinaId == maqId);
                     if (maquinaData.length === 0) return;
 
                     const maquinaNombre = maquinas.find(m => m.id == maqId)?.nombre || maquinaData[0].maquina || 'Desconocida';
-                    const data = maquinaData.map(item => [
-                        item.tirosTotales?.toString() || '0',
-                        item.meta75Porciento?.toFixed(0) || '0',
-                        item.meta100Porciento?.toFixed(0) || '0',
-                        `${(item.porcentajeRendimiento * 100)?.toFixed(1) || '0'}%`,
-                        item.semaforoColor || '-'
-                    ]);
+                    const data = maquinaData.map(item => {
+                        // Calcular color del semáforo basado en porcentajeRendimiento100
+                        const pct100 = item.porcentajeRendimiento100 || 0;
+                        let colorMaq = 'Rojo';
+                        if (pct100 >= 100) colorMaq = 'Verde';
+                        else if (pct100 >= 75) colorMaq = 'Amarillo';
+
+                        return [
+                            item.tirosTotales?.toString() || '0',
+                            item.meta100Porciento?.toFixed(0) || '0',
+                            `${colorMaq}|${pct100.toFixed(0)}%`
+                        ];
+                    });
                     tablesPayload.push({ title: `Maquina: ${maquinaNombre}`, columns: colsMaquina, data });
                 });
             }
 
             // Render Logic (Sequential)
-            let lastY = 60;
+            let lastY = 60; // Después del título y calificación
 
             const setSemaforoColor = (data) => {
                 const raw = data.cell.raw;
@@ -655,6 +717,97 @@ export default function DashboardScreen({ navigation }) {
                 const dailyValues = dailyData.map(d => d.tiros);
 
                 chartY = drawLineChart(doc, "Tendencia Producción Diaria", dailyLabels, dailyValues, chartY);
+            }
+
+            // =========== TABLA DE CALIFICACIONES POR MÁQUINA ===========
+            if ((reportType === 'general' || reportType === 'maquina') && resumen?.resumenMaquinas?.length > 0) {
+                // Check if we need a new page
+                if (chartY + 60 > doc.internal.pageSize.getHeight() - 20) {
+                    doc.addPage();
+                    chartY = 30;
+                }
+
+                // Title
+                doc.setFontSize(14);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(0, 51, 102);
+                doc.text('CALIFICACIÓN POR MÁQUINA', pageWidth / 2, chartY, { align: 'center' });
+                doc.setTextColor(0, 0, 0);
+                chartY += 5;
+
+                // Tabla de calificaciones - ordenada por nombre descendente
+                const calColumns = ['Máquina', 'Sem 100%', 'Importancia', 'Puntos'];
+                const calData = resumen.resumenMaquinas
+                    .filter(m => m.importancia > 0) // Solo máquinas activas con importancia
+                    .sort(naturalSort) // Orden natural (1, 2, 3... 10, 11)
+                    .map(m => [
+                        m.maquina,
+                        `${(m.porcentajeRendimiento100 || 0).toFixed(1)}%`,
+                        `${(m.importancia || 0).toFixed(2)}%`, // Mostrar con 2 decimales
+                        (m.calificacion || 0).toFixed(2) // 2 decimales para puntos
+                    ]);
+
+                // Agregar fila de total
+                calData.push([
+                    'TOTAL PLANTA',
+                    '',
+                    '100%',
+                    (resumen.calificacionTotalPlanta || 0).toFixed(2)
+                ]);
+
+                autoTable(doc, {
+                    head: [calColumns],
+                    body: calData,
+                    startY: chartY,
+                    styles: { fontSize: 10, cellPadding: 3 },
+                    headStyles: { fillColor: [0, 51, 102], textColor: 255, fontStyle: 'bold' },
+                    alternateRowStyles: { fillColor: [245, 245, 245] },
+                    // Estilo especial para fila de total
+                    didParseCell: (data) => {
+                        if (data.section === 'body' && data.row.index === calData.length - 1) {
+                            data.cell.styles.fontStyle = 'bold';
+                            data.cell.styles.fillColor = [0, 51, 102];
+                            data.cell.styles.textColor = 255;
+                        }
+                        // Color de Sem 100% según rendimiento
+                        if (data.section === 'body' && data.column.index === 1 && data.row.index < calData.length - 1) {
+                            const pctText = data.cell.raw?.toString() || '0';
+                            const pct = parseFloat(pctText);
+                            if (pct >= 100) {
+                                data.cell.styles.textColor = [40, 167, 69]; // Verde
+                            } else if (pct >= 75) {
+                                data.cell.styles.textColor = [255, 193, 7]; // Amarillo
+                            } else {
+                                data.cell.styles.textColor = [220, 53, 69]; // Rojo
+                            }
+                        }
+                    },
+                    margin: { top: 10 }
+                });
+
+                chartY = doc.lastAutoTable.finalY + 15;
+
+                // =========== GRÁFICA DE TENDENCIA HISTÓRICA DE CALIFICACIONES ===========
+                // Dibujar gráfica de barras con el historial de calificaciones (si hay datos)
+                if (historialCalificaciones.length >= 1) {
+                    const mesesNombres = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+                    // Ordenar por fecha (más antiguo primero)
+                    const historialOrdenado = [...historialCalificaciones]
+                        .sort((a, b) => {
+                            if (a.anio !== b.anio) return a.anio - b.anio;
+                            return a.mes - b.mes;
+                        });
+
+                    const histLabels = historialOrdenado.map(h => `${mesesNombres[h.mes]} ${h.anio}`);
+                    // Valores con 1 decimal (sin redondear a entero)
+                    const histValues = historialOrdenado.map(h => parseFloat(h.calificacionTotal.toFixed(1)));
+                    // Usar color azul oscuro del tema (consistente con el resto del app)
+                    const histColors = historialOrdenado.map(() => '#003366'); // Azul oscuro uniforme
+
+                    // Usar la función drawBarChart existente
+                    chartY = drawBarChart(doc, "Tendencia Histórica de Calificación", histLabels, histValues, chartY, { colors: histColors });
+                }
             }
 
             // 4. Specific Charts and Detailed Table for Operator Report (ONLY when specific operator selected)
