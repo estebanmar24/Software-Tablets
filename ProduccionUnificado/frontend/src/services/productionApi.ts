@@ -1,8 +1,7 @@
 // API Service for Production Screens (compatible with axios-style responses)
 // This file provides functions that match the interface expected by screens migrated from Software-Empresa-Elliot
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.189:5144/api';
-
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
 // Wrapper to make fetch responses compatible with axios { data } structure
 async function axiosWrapper<T>(url: string, options?: RequestInit): Promise<{ data: T }> {
     const response = await fetch(url, options);

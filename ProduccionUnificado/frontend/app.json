@@ -6,7 +6,7 @@
     "orientation": "default",
     "icon": "./assets/LOGO_ALEPH_IMPRESORES.jpg",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/LOGO_ALEPH_IMPRESORES.jpg",
       "resizeMode": "contain",
