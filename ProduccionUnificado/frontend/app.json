@@ -22,7 +22,8 @@
       },
       "package": "com.juane.TiempoProcesosApp",
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "usesCleartextTraffic": true
     },
     "web": {
       "favicon": "./assets/LOGO_ALEPH_IMPRESORES.jpg"

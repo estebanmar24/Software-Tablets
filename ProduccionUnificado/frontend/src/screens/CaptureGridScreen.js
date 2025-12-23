@@ -569,7 +569,7 @@ export default function CaptureGridScreen({ navigation }) {
                     RendimientoFinal: parseNumberInput(day.rFinal),
                     Cambios: parseInt(day.cambios) || 0,
                     TiempoPuestaPunto: parseNumberInput(day.puestaPunto),
-                    TirosDiarios: Math.round(calcs.TirosEquivalentes),
+                    TirosDiarios: parseNumberInput(day.rFinal),  // R.Final raw input, NOT TirosEquivalentes
                     TotalHorasProductivas: calcs.TotalHorasProd,
                     PromedioHoraProductiva: calcs.Promedio,
                     ValorTiroSnapshot: rowMaq?.valorPorTiro || 0,

@@ -250,11 +250,15 @@ public class ProduccionController : ControllerBase
         {
             var maqu = await _context.Maquinas.FindAsync(grupo.Key.MaquinaId);
             
-            // Lógica de Promedio ignorando ceros
-            var horasProdNoCero = grupo.Where(x => x.PromedioHoraProductiva > 0).Select(x => x.PromedioHoraProductiva);
-            var promedio = horasProdNoCero.Any() ? horasProdNoCero.Average() : 0;
-            
+            // Calculate total values
             var totalTiros = grupo.Sum(x => x.TirosConEquivalencia);
+            var totalHorasProd = grupo.Sum(x => x.TotalHorasProductivas);
+            var totalHorasOp = grupo.Sum(x => x.HorasOperativas);
+            
+            // Calculate Promedio/H correctly: Tiros / Horas (using best available hours)
+            decimal horasParaPromedio = totalHorasProd > 0 ? totalHorasProd : totalHorasOp;
+            decimal promedio = horasParaPromedio > 0 ? (totalTiros / horasParaPromedio) : 0;
+            
             var diasTrabajados = grupo.Sum(x => x.DiaLaborado);
             var diasNaturales = grupo.Count();
             
@@ -291,6 +295,15 @@ public class ProduccionController : ControllerBase
                 else color100 = "Rojo";
             }
 
+            // Calcular bonificación correctamente: (TirosExtra = Tiros - Meta) × ValorPorTiro
+            decimal tirosExtra = Math.Max(0, totalTiros - metaEsperada);
+            decimal valorPorTiro = maqu?.ValorPorTiro ?? 0;
+            decimal valorCalculado = tirosExtra * valorPorTiro;
+            
+            // Solo pagar si supera la meta (eficiencia >= 1.0)
+            decimal valorAPagar = eficiencia >= 1.0m ? valorCalculado : 0;
+            decimal valorAPagarBonificable = eficiencia >= 1.0m ? valorCalculado : 0;
+
             resultado.ResumenOperarios.Add(new ResumenOperarioDto
             {
                 UsuarioId = grupo.Key.UsuarioId,
@@ -298,11 +311,10 @@ public class ProduccionController : ControllerBase
                 Operario = grupo.Key.Nombre ?? "Desc",
                 Maquina = grupo.Key.MaquinaNombre ?? "Desc",
                 TotalTiros = totalTiros,
-                TotalHorasProductivas = grupo.Sum(x => x.TotalHorasProductivas),
-                ValorAPagar = eficiencia >= 1.0m ? grupo.Sum(x => x.ValorAPagar) : 0,
-                // Valores bonificables - solo tiros dentro del horario laboral (L-V 7am-4pm, Sáb 8am-12pm)
+                TotalHorasProductivas = totalHorasProd > 0 ? totalHorasProd : totalHorasOp,
+                ValorAPagar = valorAPagar,
                 TirosBonificables = grupo.Sum(x => x.TirosBonificables),
-                ValorAPagarBonificable = eficiencia >= 1.0m ? grupo.Sum(x => x.ValorAPagarBonificable) : 0,
+                ValorAPagarBonificable = valorAPagarBonificable,
                 PromedioHoraProductiva = promedio,
                 TotalHoras = grupo.Sum(x => x.TotalHoras),
                 SemaforoColor = color,

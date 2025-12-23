@@ -93,12 +93,14 @@ const styles = StyleSheet.create({
     },
     cardsRow: {
         flexDirection: 'row',
-        gap: 12,
+        gap: 8,
+        flexWrap: 'wrap',
     },
     card: {
         flex: 1,
+        minWidth: 100,
         borderRadius: 10,
-        padding: 16,
+        padding: 12,
         alignItems: 'center',
     },
     cardTiros: {
@@ -122,7 +124,7 @@ const styles = StyleSheet.create({
         borderColor: '#E9D8FD',
     },
     cardValue: {
-        fontSize: 24,
+        fontSize: 20,
         fontWeight: '700',
         color: '#1E3A5F',
         fontVariant: ['tabular-nums'],

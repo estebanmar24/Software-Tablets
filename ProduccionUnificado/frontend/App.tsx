@@ -46,8 +46,8 @@ export default function App() {
           // Tablet / Desktop -> Force Landscape
           await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
         } else {
-          // Phone -> Allow Rotation
-          await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.DEFAULT);
+          // Phone -> Allow free rotation (portrait and landscape)
+          await ScreenOrientation.unlockAsync();
         }
       } catch (e) {
         console.warn('Orientation lock failed:', e);
@@ -230,8 +230,14 @@ export default function App() {
       setMaquinas(mappedMaquinas);
 
       setOrdenes(ordenesData);
-    } catch (error) {
-      console.log('API no disponible (catálogos), usando datos de demostración');
+    } catch (error: any) {
+      const errorMsg = error?.message || 'Error desconocido';
+      console.error('Error al cargar catálogos:', error);
+      console.error('URL de API:', process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api');
+      Alert.alert(
+        'Error de Conexión',
+        `No se pudo conectar al servidor.\n\nError: ${errorMsg}\n\nUsando datos de demostración.`
+      );
       // Datos de demostración
       setActividades([
         { id: 1, codigo: '01', nombre: 'Puesta a Punto', esProductiva: false, observaciones: 'Preparación inicial de la máquina' },
@@ -325,9 +331,11 @@ export default function App() {
     }
 
     // Validar OP para Producción (02) y Puesta a Punto (01)
+    // Acepta selectedOrden (de lista) O opSearchText (texto libre)
     const requiresOP = selectedActividad?.codigo === '01' || selectedActividad?.codigo === '02';
-    if (requiresOP && !selectedOrden) {
-      showAlert('OP Requerida', 'Debe seleccionar una Orden de Producción (OP) antes de iniciar Producción o Puesta a Punto.');
+    const hasOP = selectedOrden || opSearchText.trim().length > 0;
+    if (requiresOP && !hasOP) {
+      showAlert('OP Requerida', 'Debe ingresar una Orden de Producción (OP) antes de iniciar Producción o Puesta a Punto.');
       return;
     }
 

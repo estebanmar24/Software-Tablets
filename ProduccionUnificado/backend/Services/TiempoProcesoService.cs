@@ -417,19 +417,29 @@ public class TiempoProcesoService : ITiempoProcesoService
 
         if (diario.HorasOperativas > 0)
         {
-            // Rendimiento se calcula sobre HorasOperativas (solo tiempo de producción efectiva)
-            diario.RendimientoFinal = diario.TirosDiarios / diario.HorasOperativas;
-            diario.PromedioHoraProductiva = diario.RendimientoFinal;
+            // RendimientoFinal = TirosDiarios (valor bruto ingresado, R.Final)
+            diario.RendimientoFinal = diario.TirosDiarios;
+            // PromedioHoraProductiva = Tiros / Horas (promedio por hora)
+            diario.PromedioHoraProductiva = diario.TirosDiarios / diario.HorasOperativas;
+        }
+        else
+        {
+            diario.RendimientoFinal = diario.TirosDiarios;
+            diario.PromedioHoraProductiva = 0;
         }
 
         var maquina = tiempos.First().Maquina;
         if (maquina != null)
         {
             diario.ValorTiroSnapshot = maquina.ValorPorTiro;
-            // ValorAPagar total (indicadores) - incluye todos los tiros
-            diario.ValorAPagar = (diario.TirosDiarios - diario.Desperdicio) * diario.ValorTiroSnapshot;
-            // ValorAPagarBonificable - solo tiros dentro del horario laboral
-            diario.ValorAPagarBonificable = (diario.TirosBonificables - diario.DesperdicioBonificable) * diario.ValorTiroSnapshot;
+            // ValorAPagar total - considera tiros por encima de la meta
+            var tirosNetosTotales = diario.TirosDiarios - diario.Desperdicio;
+            var tirosExtraTotales = Math.Max(0, tirosNetosTotales - (decimal)maquina.MetaRendimiento);
+            diario.ValorAPagar = tirosExtraTotales * diario.ValorTiroSnapshot;
+            // ValorAPagarBonificable - solo tiros extra dentro del horario laboral
+            var tirosNetosBonif = diario.TirosBonificables - diario.DesperdicioBonificable;
+            var tirosExtraBonif = Math.Max(0, tirosNetosBonif - (decimal)maquina.MetaRendimiento);
+            diario.ValorAPagarBonificable = tirosExtraBonif * diario.ValorTiroSnapshot;
         }
         
         // Marcar si hay tiros bonificables

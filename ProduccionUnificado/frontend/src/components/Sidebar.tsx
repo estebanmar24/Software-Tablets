@@ -265,9 +265,9 @@ const styles = StyleSheet.create({
         marginBottom: 20,
     },
     label: {
-        fontSize: 12,
-        fontWeight: '700',
-        color: '#A0AEC0', // Color más suave para etiquetas (uppercase like)
+        fontSize: 13,
+        fontWeight: '800',
+        color: '#2D3748', // Color oscuro y negrita para mejor visibilidad
         marginBottom: 6,
         marginTop: 12,
         textTransform: 'uppercase',
@@ -294,7 +294,7 @@ const styles = StyleSheet.create({
         borderBottomRightRadius: 0,
     },
     dropdownButtonText: {
-        fontSize: 14,
+        fontSize: 16,
         color: '#2D3748',
         fontWeight: '500',
     },
@@ -337,8 +337,9 @@ const styles = StyleSheet.create({
         borderColor: '#E2E8F0',
         height: 50,
         justifyContent: 'center',
-        paddingHorizontal: 10, // Added padding for TextInput
+        paddingHorizontal: 12,
         color: '#2D3748',
+        fontSize: 16, // Tamaño de fuente más grande para mejor legibilidad
     },
     observationsContainer: {
         marginBottom: 10,
