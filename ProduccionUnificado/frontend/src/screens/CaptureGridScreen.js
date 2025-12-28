@@ -904,7 +904,89 @@ export default function CaptureGridScreen({ navigation }) {
                                 </View>
                             );
                         }}
-                        ListFooterComponent={<View style={{ height: 100 }} />}
+                        ListFooterComponent={() => {
+                            // Obtener datos de la máquina seleccionada
+                            const rowMaquina = getMaquinaById(selectedMaquina);
+                            const metaPorDia = rowMaquina?.metaRendimiento || 0;
+                            const valorPorTiro = rowMaquina?.valorPorTiro || 0;
+
+                            // Calcular totales de todas las filas
+                            const totals = gridData.reduce((acc, day) => {
+                                const calcs = calculateRow(day);
+                                const tieneDatos = parseNumberInput(day.rFinal) > 0 || parseNumberInput(day.horasOp) > 0;
+                                return {
+                                    rFinal: acc.rFinal + parseNumberInput(day.rFinal),
+                                    horasOp: acc.horasOp + parseNumberInput(day.horasOp),
+                                    cambios: acc.cambios + parseNumberInput(day.cambios),
+                                    puestaPunto: acc.puestaPunto + parseNumberInput(day.puestaPunto),
+                                    TirosEquivalentes: acc.TirosEquivalentes + (calcs.TirosEquivalentes || 0),
+                                    TotalHorasProd: acc.TotalHorasProd + (calcs.TotalHorasProd || 0),
+                                    TirosBonificables: acc.TirosBonificables + (calcs.TirosBonificables || 0),
+                                    diasConDatos: acc.diasConDatos + (tieneDatos && !day.isDuplicate ? 1 : 0),
+                                    mantenimiento: acc.mantenimiento + parseNumberInput(day.mantenimiento),
+                                    descansos: acc.descansos + parseNumberInput(day.descansos),
+                                    otrosAux: acc.otrosAux + parseNumberInput(day.otrosAux),
+                                    TotalAux: acc.TotalAux + (calcs.TotalAux || 0),
+                                    faltaTrabajo: acc.faltaTrabajo + parseNumberInput(day.faltaTrabajo),
+                                    reparacion: acc.reparacion + parseNumberInput(day.reparacion),
+                                    otroMuerto: acc.otroMuerto + parseNumberInput(day.otroMuerto),
+                                    TotalMuertos: acc.TotalMuertos + (calcs.TotalMuertos || 0),
+                                    TotalHoras: acc.TotalHoras + (calcs.TotalHoras || 0),
+                                    desperdicio: acc.desperdicio + parseNumberInput(day.desperdicio),
+                                };
+                            }, {
+                                rFinal: 0, horasOp: 0, cambios: 0, puestaPunto: 0,
+                                TirosEquivalentes: 0, TotalHorasProd: 0, TirosBonificables: 0,
+                                diasConDatos: 0,
+                                mantenimiento: 0, descansos: 0, otrosAux: 0, TotalAux: 0,
+                                faltaTrabajo: 0, reparacion: 0, otroMuerto: 0, TotalMuertos: 0,
+                                TotalHoras: 0, desperdicio: 0
+                            });
+
+                            // Cálculo sobre el total del mes
+                            const metaTotal = totals.diasConDatos * metaPorDia;
+                            const tirosExtraTotal = Math.max(0, totals.TirosEquivalentes - metaTotal);
+                            const tirosExtraBonif = Math.max(0, totals.TirosBonificables - metaTotal);
+                            const vrPagarTotal = tirosExtraTotal * valorPorTiro;
+                            const vrPagarBonif = tirosExtraBonif * valorPorTiro;
+
+                            return (
+                                <View>
+                                    {/* Fila de TOTALES */}
+                                    <View style={[styles.row, { backgroundColor: '#E0E0E0' }]}>
+                                        <Text style={[styles.cell, { width: 30, color: 'black', fontWeight: 'bold' }]}>TOT</Text>
+                                        <Text style={[styles.pickerCell, { color: 'black', fontWeight: 'bold', textAlign: 'center' }]}>TOTALES</Text>
+                                        <Text style={[styles.cell, styles.timeCell, { color: 'black' }]}>--</Text>
+                                        <Text style={[styles.cell, styles.timeCell, { color: 'black' }]}>--</Text>
+                                        <Text style={[styles.cell, { color: 'black', fontWeight: 'bold' }]}>{formatNumber(totals.rFinal.toFixed(0))}</Text>
+                                        <Text style={[styles.cell, { color: 'black' }]}>{totals.horasOp.toFixed(2)}</Text>
+                                        <Text style={[styles.cell, { color: 'black' }]}>{totals.cambios}</Text>
+                                        <Text style={[styles.cell, { color: 'black' }]}>{totals.puestaPunto.toFixed(2)}</Text>
+                                        <Text style={[styles.cell, styles.calc, { color: 'black', fontWeight: 'bold' }]}>{formatNumber(totals.TirosEquivalentes.toFixed(0))}</Text>
+                                        <Text style={[styles.cell, styles.calc, { color: 'black' }]}>{totals.TotalHorasProd.toFixed(2)}</Text>
+                                        <Text style={[styles.cell, styles.calc, { color: 'black' }]}>--</Text>
+                                        <Text style={[styles.cell, styles.bonif, { color: 'black', fontWeight: 'bold' }]}>{formatNumber(totals.TirosBonificables.toFixed(0))}</Text>
+                                        <Text style={[styles.cell, styles.bonif, { color: 'black' }]}>{formatNumber(tirosExtraBonif.toFixed(0))}</Text>
+                                        <Text style={[styles.cell, styles.bonif, { color: 'black', fontWeight: 'bold' }]}>{formatNumber(vrPagarBonif.toFixed(0))}</Text>
+                                        <Text style={[styles.cell, styles.calc, { color: 'black' }]}>{formatNumber(tirosExtraTotal.toFixed(0))}</Text>
+                                        <Text style={[styles.cell, styles.calc, { color: 'black', fontWeight: 'bold' }]}>{formatNumber(vrPagarTotal.toFixed(0))}</Text>
+                                        <Text style={[styles.cell, { color: 'black' }]}>{totals.mantenimiento.toFixed(2)}</Text>
+                                        <Text style={[styles.cell, { color: 'black' }]}>{totals.descansos.toFixed(2)}</Text>
+                                        <Text style={[styles.cell, { color: 'black' }]}>{totals.otrosAux.toFixed(2)}</Text>
+                                        <Text style={[styles.cell, styles.calc, { color: 'black' }]}>{totals.TotalAux.toFixed(2)}</Text>
+                                        <Text style={[styles.cell, { color: 'black' }]}>{totals.faltaTrabajo.toFixed(2)}</Text>
+                                        <Text style={[styles.cell, { color: 'black' }]}>{totals.reparacion.toFixed(2)}</Text>
+                                        <Text style={[styles.cell, { color: 'black' }]}>{totals.otroMuerto.toFixed(2)}</Text>
+                                        <Text style={[styles.cell, styles.calc, { color: 'black' }]}>{totals.TotalMuertos.toFixed(2)}</Text>
+                                        <Text style={[styles.cell, styles.total, { color: 'black', fontWeight: 'bold' }]}>{totals.TotalHoras.toFixed(2)}</Text>
+                                        <Text style={[styles.cell, { color: 'black' }]}>{formatNumber(totals.desperdicio.toFixed(0))}</Text>
+                                        <Text style={[styles.cell, { width: 100, color: 'black' }]}>--</Text>
+                                        <Text style={[styles.cell, { width: 100, color: 'black' }]}>--</Text>
+                                    </View>
+                                    <View style={{ height: 100 }} />
+                                </View>
+                            );
+                        }}
                     />
                 </View>
             </ScrollView>
