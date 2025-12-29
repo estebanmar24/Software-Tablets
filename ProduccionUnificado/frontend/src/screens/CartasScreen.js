@@ -300,7 +300,7 @@ export default function CartasScreen({ navigation }) {
                 finalY += 7;
                 const colorRendimiento = rendimientoPromedio >= 100 ? [40, 167, 69] : rendimientoPromedio >= 75 ? [255, 193, 7] : [220, 53, 69];
                 doc.setTextColor(...colorRendimiento);
-                doc.text(`Rendimiento Promedio del Mes: ${rendimientoPromedio.toFixed(1)}%`, 20, finalY);
+                doc.text(`Rendimiento Promedio del Mes: ${rendimientoPromedio.toFixed(2)}%`, 20, finalY);
                 doc.setTextColor(0, 0, 0);
 
                 if (totalValorPagar > 0) {
@@ -353,7 +353,7 @@ export default function CartasScreen({ navigation }) {
                     doc.setLineDash([]);
                     doc.setFontSize(6);
                     doc.setTextColor(0, 51, 102);
-                    doc.text(`Prom: ${rendimientoPromedio.toFixed(0)}%`, chartStartX + chartWidth + 2, yPromedio + 1, { align: 'left' });
+                    doc.text(`Prom: ${rendimientoPromedio.toFixed(2)}%`, chartStartX + chartWidth + 2, yPromedio + 1, { align: 'left' });
 
                     // Dibujar barras
                     sortedMaquinas.forEach((maq, index) => {
@@ -376,7 +376,7 @@ export default function CartasScreen({ navigation }) {
                         // Valor encima de la barra
                         doc.setFontSize(6);
                         doc.setTextColor(0, 0, 0);
-                        doc.text(`${(maq.porcentajeRendimiento100 || 0).toFixed(0)}%`, x + (barWidth - 2) / 2, y - 2, { align: 'center' });
+                        doc.text(`${(maq.porcentajeRendimiento100 || 0).toFixed(2)}%`, x + (barWidth - 2) / 2, y - 2, { align: 'center' });
 
                         // Nombre de la máquina debajo (abreviado)
                         doc.setFontSize(5);
@@ -389,8 +389,10 @@ export default function CartasScreen({ navigation }) {
 
                 // ========== GRÁFICA DE TENDENCIA HISTÓRICA DEL OPERARIO ==========
                 try {
-                    // Primero guardar el rendimiento del mes actual (pasamos el valor ya calculado)
-                    await api.post(`/rendimientooperario/guardar-directo?usuarioId=${opData.usuarioId}&mes=${mes}&anio=${anio}&rendimiento=${rendimientoPromedio.toFixed(2)}&totalTiros=${totalTirosGlobal}&totalMaquinas=${sortedMaquinas.length}`);
+                    // Solo guardar el rendimiento si el operario tiene datos reales de producción
+                    if (totalTirosGlobal > 0) {
+                        await api.post(`/rendimientooperario/guardar-directo?usuarioId=${opData.usuarioId}&mes=${mes}&anio=${anio}&rendimiento=${rendimientoPromedio.toFixed(2)}&totalTiros=${totalTirosGlobal}&totalMaquinas=${sortedMaquinas.length}`);
+                    }
 
                     // Obtener historial del operario
                     const historialRes = await api.get(`/rendimientooperario/historial/${opData.usuarioId}?limit=6`);
@@ -465,7 +467,7 @@ export default function CartasScreen({ navigation }) {
                             // Valor encima
                             doc.setFontSize(7);
                             doc.setTextColor(0, 0, 0);
-                            doc.text(`${(reg.rendimientoPromedio || 0).toFixed(0)}%`, x + trendBarWidth / 2, y - 2, { align: 'center' });
+                            doc.text(`${(reg.rendimientoPromedio || 0).toFixed(2)}%`, x + trendBarWidth / 2, y - 2, { align: 'center' });
 
                             // Etiqueta del mes
                             doc.setFontSize(6);

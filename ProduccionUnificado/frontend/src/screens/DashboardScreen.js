@@ -1310,12 +1310,12 @@ export default function DashboardScreen({ navigation }) {
                                             <Text style={{ fontSize: 10, color: colors.subText, marginBottom: 3 }}>Meta 75%</Text>
                                             <View style={{
                                                 width: 60, height: 40, borderRadius: 8,
-                                                backgroundColor: getColor(item.semaforoColor),
+                                                backgroundColor: getColor((item.porcentajeRendimiento75 || 0) >= 100 ? 'Verde' : 'Rojo'),
                                                 justifyContent: 'center', alignItems: 'center',
                                                 borderWidth: 2, borderColor: '#333'
                                             }}>
                                                 <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 14 }}>
-                                                    {(item.porcentajeRendimiento75 || 0).toFixed(0)}%
+                                                    {Math.floor(item.porcentajeRendimiento75 || 0)}%
                                                 </Text>
                                             </View>
                                         </View>
@@ -1325,12 +1325,12 @@ export default function DashboardScreen({ navigation }) {
                                             <Text style={{ fontSize: 10, color: colors.subText, marginBottom: 3 }}>Meta 100%</Text>
                                             <View style={{
                                                 width: 60, height: 40, borderRadius: 8,
-                                                backgroundColor: getColor(item.semaforoColor100),
+                                                backgroundColor: getColor((item.porcentajeRendimiento100 || 0) >= 100 ? 'Verde' : (item.porcentajeRendimiento100 || 0) >= 75 ? 'Amarillo' : 'Rojo'),
                                                 justifyContent: 'center', alignItems: 'center',
                                                 borderWidth: 2, borderColor: '#333'
                                             }}>
                                                 <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 14 }}>
-                                                    {(item.porcentajeRendimiento100 || 0).toFixed(0)}%
+                                                    {Math.floor(item.porcentajeRendimiento100 || 0)}%
                                                 </Text>
                                             </View>
                                         </View>
@@ -1347,8 +1347,8 @@ export default function DashboardScreen({ navigation }) {
                                 <View key={index} style={[styles.card, { backgroundColor: getColor(item.semaforoColor), borderColor: 'black', borderWidth: 2 }]}>
                                     <Text style={[styles.cardTitle, { color: '#000' }]}>{item.maquina}</Text>
                                     <Text style={{ color: '#000' }}>Tiros Totales: {item.tirosTotales}</Text>
-                                    <Text style={{ color: '#000' }}>Rendimiento Esp: {item.rendimientoEsperado?.toFixed(0)}</Text>
-                                    <Text style={{ color: '#000' }}>Eficiencia: {(item.porcentajeRendimiento * 100)?.toFixed(1)}%</Text>
+                                    <Text style={{ color: '#000' }}>Rendimiento Esp: {item.meta100Porciento?.toFixed(0)}</Text>
+                                    <Text style={{ color: '#000' }}>Eficiencia: {(item.porcentajeRendimiento100)?.toFixed(1)}%</Text>
                                 </View>
                             ))
                         )}

@@ -913,7 +913,8 @@ export default function CaptureGridScreen({ navigation }) {
                             // Calcular totales de todas las filas
                             const totals = gridData.reduce((acc, day) => {
                                 const calcs = calculateRow(day);
-                                const tieneDatos = parseNumberInput(day.rFinal) > 0 || parseNumberInput(day.horasOp) > 0;
+                                // Contar día si tiene producción O si fue cargado de BD (tiene operarioId)
+                                const tieneDatos = day.operarioId || parseNumberInput(day.rFinal) > 0 || parseNumberInput(day.horasOp) > 0;
                                 return {
                                     rFinal: acc.rFinal + parseNumberInput(day.rFinal),
                                     horasOp: acc.horasOp + parseNumberInput(day.horasOp),

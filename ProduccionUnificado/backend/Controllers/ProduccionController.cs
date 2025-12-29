@@ -60,6 +60,10 @@ public class ProduccionController : ControllerBase
                 existente.Novedades = registro.Novedades;
                 existente.Desperdicio = registro.Desperdicio;
                 existente.DiaLaborado = registro.DiaLaborado;
+                // Campos bonificables
+                existente.TirosBonificables = registro.TirosBonificables;
+                existente.DesperdicioBonificable = registro.DesperdicioBonificable;
+                existente.ValorAPagarBonificable = registro.ValorAPagarBonificable;
             }
             else
             {
@@ -91,19 +95,32 @@ public class ProduccionController : ControllerBase
     {
         try
         {
-            var operariosConDatos = await _context.ProduccionDiaria
+            // Obtener datos y agrupar en memoria para contar días distintos
+            var datos = await _context.ProduccionDiaria
                 .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio)
                 .Include(p => p.Usuario)
                 .Include(p => p.Maquina)
-                .GroupBy(p => new { p.UsuarioId, UsuarioNombre = p.Usuario!.Nombre, p.MaquinaId, MaquinaNombre = p.Maquina!.Nombre })
+                .Select(p => new { 
+                    p.UsuarioId, 
+                    UsuarioNombre = p.Usuario!.Nombre, 
+                    p.MaquinaId, 
+                    MaquinaNombre = p.Maquina!.Nombre,
+                    Fecha = p.Fecha.Date
+                })
+                .ToListAsync();
+            
+            var operariosConDatos = datos
+                .GroupBy(p => new { p.UsuarioId, p.UsuarioNombre, p.MaquinaId, p.MaquinaNombre })
                 .Select(g => new {
                     UsuarioId = g.Key.UsuarioId,
                     UsuarioNombre = g.Key.UsuarioNombre,
                     MaquinaId = g.Key.MaquinaId,
                     MaquinaNombre = g.Key.MaquinaNombre,
-                    DiasRegistrados = g.Count()
+                    // Contar días distintos, no registros
+                    DiasRegistrados = g.Select(x => x.Fecha).Distinct().Count()
                 })
-                .ToListAsync();
+                .ToList();
+                
             return Ok(operariosConDatos);
         }
         catch (Exception ex)
@@ -144,17 +161,28 @@ public class ProduccionController : ControllerBase
     [HttpGet("maquinas-con-datos")]
     public async Task<ActionResult> GetMaquinasConDatos(int mes, int anio)
     {
-        var maquinasConDatos = await _context.ProduccionDiaria
+        // Obtener datos y agrupar en memoria para contar días distintos
+        var datos = await _context.ProduccionDiaria
             .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio)
             .Include(p => p.Maquina)
-            .GroupBy(p => new { p.MaquinaId, MaquinaNombre = p.Maquina!.Nombre })
+            .Select(p => new { 
+                p.MaquinaId, 
+                MaquinaNombre = p.Maquina!.Nombre,
+                Fecha = p.Fecha.Date,
+                p.UsuarioId
+            })
+            .ToListAsync();
+        
+        var maquinasConDatos = datos
+            .GroupBy(p => new { p.MaquinaId, p.MaquinaNombre })
             .Select(g => new {
                 MaquinaId = g.Key.MaquinaId,
                 MaquinaNombre = g.Key.MaquinaNombre,
-                DiasRegistrados = g.Count(),
+                // Contar días distintos, no registros
+                DiasRegistrados = g.Select(x => x.Fecha).Distinct().Count(),
                 OperariosDistintos = g.Select(x => x.UsuarioId).Distinct().Count()
             })
-            .ToListAsync();
+            .ToList();
 
         return Ok(maquinasConDatos);
     }
@@ -259,10 +287,9 @@ public class ProduccionController : ControllerBase
             decimal horasParaPromedio = totalHorasProd > 0 ? totalHorasProd : totalHorasOp;
             decimal promedio = horasParaPromedio > 0 ? (totalTiros / horasParaPromedio) : 0;
             
-            var diasTrabajados = grupo.Sum(x => x.DiaLaborado);
-            var diasNaturales = grupo.Count();
-            
-            if (diasTrabajados == 0) diasTrabajados = diasNaturales;
+            // Contar días ÚNICOS del operario (si tiene 2 registros el mismo día, cuenta como 1)
+            var diasTrabajados = grupo.Select(x => x.Fecha.Date).Distinct().Count();
+            var diasNaturales = diasTrabajados;
 
             decimal metaEsperada = 0;
             decimal eficiencia = 0;
@@ -278,7 +305,7 @@ public class ProduccionController : ControllerBase
                 metaEsperada = diasTrabajados * maqu.MetaRendimiento;
                 metaBonif = metaEsperada; // Meta 75%
                 meta100 = diasTrabajados * maqu.Meta100Porciento; // Meta 100%
-                eficiencia = metaEsperada > 0 ? (totalTiros / metaEsperada) : 0;
+                eficiencia = meta100 > 0 ? (totalTiros / meta100) : 0;
                 
                 // Calcular porcentajes
                 porcentaje75 = metaBonif > 0 ? (totalTiros / metaBonif) * 100 : 0;
@@ -295,14 +322,30 @@ public class ProduccionController : ControllerBase
                 else color100 = "Rojo";
             }
 
-            // Calcular bonificación correctamente: (TirosExtra = Tiros - Meta) × ValorPorTiro
-            decimal tirosExtra = Math.Max(0, totalTiros - metaEsperada);
+            // Calcular TirosBonificables (solo días laborales, excluye domingos y festivos)
+            var tirosBonif = grupo.Sum(x => x.TirosBonificables);
+            
+            // FALLBACK: Si TirosBonificables es 0 (datos antiguos sin este campo), usar totalTiros
+            if (tirosBonif == 0 && totalTiros > 0) {
+                tirosBonif = (int)totalTiros;
+            }
+            
+            // Calcular meta basada en días LABORALES (no domingos ni festivos)
+            // La meta ya está calculada arriba como metaEsperada = diasTrabajados * MetaRendimiento
+            
+            // Calcular bonificación SOLO sobre TirosBonificables (excluye domingos/festivos)
+            decimal tirosExtraBonif = Math.Max(0, tirosBonif - metaEsperada);
             decimal valorPorTiro = maqu?.ValorPorTiro ?? 0;
-            decimal valorCalculado = tirosExtra * valorPorTiro;
+            decimal valorCalculadoBonif = tirosExtraBonif * valorPorTiro;
+            
+            // Calcular valor total (incluye todos los días, para referencia)
+            decimal tirosExtraTotal = Math.Max(0, totalTiros - metaEsperada);
+            decimal valorCalculadoTotal = tirosExtraTotal * valorPorTiro;
             
             // Solo pagar si supera la meta (eficiencia >= 1.0)
-            decimal valorAPagar = eficiencia >= 1.0m ? valorCalculado : 0;
-            decimal valorAPagarBonificable = eficiencia >= 1.0m ? valorCalculado : 0;
+            decimal valorAPagar = eficiencia >= 1.0m ? valorCalculadoTotal : 0;
+            // Bonificación SOLO de días laborales (L-V, Sáb mañana, NO domingos/festivos)
+            decimal valorAPagarBonificable = eficiencia >= 1.0m ? valorCalculadoBonif : 0;
 
             resultado.ResumenOperarios.Add(new ResumenOperarioDto
             {
