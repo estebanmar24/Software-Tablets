@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Modal, Image, FlatList, Platform } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
+import axios from 'axios';
 import { getMaquinas, getUsuarios, saveProduccion, getProduccionDetalles, getOperariosConDatos, getMaquinasConDatos, getProduccionPorMaquina, API_URL } from '../services/productionApi';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -516,8 +517,13 @@ export default function CaptureGridScreen({ navigation }) {
         const TotalHorasProd = HorasOp + PuestaPunto;
         const Promedio = TotalHorasProd > 0 ? (TirosEquivalentes / TotalHorasProd) : 0;
         const MetaRendimiento = rowMaquina.metaRendimiento || 0;
+        // Sólo mostrar diferencia positiva para pago, o permitir negativo para visualización?
+        // El usuario se quejó de que afecta la SUMA. Entonces para pago debe ser >= 0.
+        // Pero Meta75Diff visualmente quizá deba mostrar cuánto falta.
+        // Voy a ajustar VrPagar para que sea el que no sea negativo.
         const Meta75Diff = TirosEquivalentes - MetaRendimiento;
-        const VrTiro = (Meta75Diff * (rowMaquina.valorPorTiro || 0));
+        // VrPagar no puede ser negativo
+        const VrTiro = Math.max(0, Meta75Diff * (rowMaquina.valorPorTiro || 0));
         const VrPagar = VrTiro;
 
         const TotalAux = MantAseo + Descansos + OtrosAux;
@@ -529,7 +535,8 @@ export default function CaptureGridScreen({ navigation }) {
         const TirosBonificables = Math.round(TirosEquivalentes * porcentajeBonif);
         const DesperdicioBonif = Desperdicio * porcentajeBonif;
         const Meta75DiffBonif = TirosBonificables - MetaRendimiento;
-        const VrPagarBonif = Meta75DiffBonif * (rowMaquina.valorPorTiro || 0);
+        // VrPagarBonif no puede ser negativo
+        const VrPagarBonif = Math.max(0, Meta75DiffBonif * (rowMaquina.valorPorTiro || 0));
 
         return {
             TirosEquivalentes, TotalHorasProd, Promedio, Meta75Diff, VrPagar,
@@ -593,32 +600,52 @@ export default function CaptureGridScreen({ navigation }) {
         }
 
         if (dataToSave.length === 0) {
-            Alert.alert("Aviso", "No hay días con datos para guardar.");
+            // Si no hay datos, significa que el usuario quiere borrar todo lo de este mes/máquina
+            Alert.alert(
+                "Borrar todo",
+                "No hay datos en la tabla. ¿Desea eliminar toda la información de este mes para la máquina seleccionada?",
+                [
+                    { text: "Cancelar", style: "cancel" },
+                    {
+                        text: "Eliminar Todo",
+                        style: "destructive",
+                        onPress: async () => {
+                            try {
+                                setLoading(true);
+                                await axios.delete(`${API_URL}/produccion/borrar?mes=${mes}&anio=${anio}&maquinaId=${selectedMaquina}`);
+                                setLoading(false);
+                                Alert.alert("Éxito", "Se han eliminado todos los registros del mes.");
+                                resetGrid();
+                            } catch (error) {
+                                setLoading(false);
+                                console.error(error);
+                                Alert.alert("Error", "Error al borrar registros.");
+                            }
+                        }
+                    }
+                ]
+            );
             return;
         }
 
         try {
             setLoading(true);
-            let errors = 0;
-            for (const item of dataToSave) {
-                try {
-                    await saveProduccion(item);
-                } catch (e) {
-                    console.error("Error saving day", item.Fecha, e);
-                    errors++;
-                }
-            }
+
+            // Enviar todos los datos juntos para reemplazo total (sincronización)
+            // Esto asegura que si se borraron días en el grid, se borren en BD
+            await axios.post(`${API_URL}/produccion/mensual`, dataToSave);
+
             setLoading(false);
-            if (errors === 0) {
-                Alert.alert("Éxito", "Toda la información ha sido guardada.");
-                resetGrid();
-            } else {
-                Alert.alert("Advertencia", `Hubo ${errors} errores al guardar.`);
-            }
+            Alert.alert("Éxito", "Toda la información ha sido guardada y sincronizada.");
+
+            // Opcional: Recargar datos para verificar (pero resetGrid limpia todo)
+            resetGrid();
+
         } catch (error) {
             setLoading(false);
             console.error(error);
-            Alert.alert("Error", "Fallo crítico al conectar con el servidor.");
+            const msg = error.response?.data?.message || error.message || "Error desconocido";
+            Alert.alert("Error", `Fallo al guardar mes: ${msg}`);
         }
     };
 
@@ -923,6 +950,10 @@ export default function CaptureGridScreen({ navigation }) {
                                     TirosEquivalentes: acc.TirosEquivalentes + (calcs.TirosEquivalentes || 0),
                                     TotalHorasProd: acc.TotalHorasProd + (calcs.TotalHorasProd || 0),
                                     TirosBonificables: acc.TirosBonificables + (calcs.TirosBonificables || 0),
+                                    VrPagar: acc.VrPagar + (calcs.VrPagar || 0),
+                                    VrPagarBonif: acc.VrPagarBonif + (calcs.VrPagarBonif || 0),
+                                    Meta75DiffBonif: acc.Meta75DiffBonif + (calcs.Meta75DiffBonif > 0 ? calcs.Meta75DiffBonif : 0), // Sumar solo positivos para mostrar bonificación real? O sumar diferencias? Mejor sumar lo que se pagó.
+                                    Meta75Diff: acc.Meta75Diff + (calcs.Meta75Diff > 0 ? calcs.Meta75Diff : 0),
                                     diasConDatos: acc.diasConDatos + (tieneDatos && !day.isDuplicate ? 1 : 0),
                                     mantenimiento: acc.mantenimiento + parseNumberInput(day.mantenimiento),
                                     descansos: acc.descansos + parseNumberInput(day.descansos),
@@ -938,18 +969,19 @@ export default function CaptureGridScreen({ navigation }) {
                             }, {
                                 rFinal: 0, horasOp: 0, cambios: 0, puestaPunto: 0,
                                 TirosEquivalentes: 0, TotalHorasProd: 0, TirosBonificables: 0,
+                                VrPagar: 0, VrPagarBonif: 0, Meta75DiffBonif: 0, Meta75Diff: 0,
                                 diasConDatos: 0,
                                 mantenimiento: 0, descansos: 0, otrosAux: 0, TotalAux: 0,
                                 faltaTrabajo: 0, reparacion: 0, otroMuerto: 0, TotalMuertos: 0,
                                 TotalHoras: 0, desperdicio: 0
                             });
 
-                            // Cálculo sobre el total del mes
-                            const metaTotal = totals.diasConDatos * metaPorDia;
-                            const tirosExtraTotal = Math.max(0, totals.TirosEquivalentes - metaTotal);
-                            const tirosExtraBonif = Math.max(0, totals.TirosBonificables - metaTotal);
-                            const vrPagarTotal = tirosExtraTotal * valorPorTiro;
-                            const vrPagarBonif = tirosExtraBonif * valorPorTiro;
+                            // Mostrar sumas directas de las columnas
+                            const vrPagarTotal = totals.VrPagar;
+                            const vrPagarBonif = totals.VrPagarBonif;
+                            // Para mostrar "tiros equivalentes" pagados, podemos revertir el cálculo: valor / valorPorTiro
+                            const tirosExtraTotal = valorPorTiro > 0 ? vrPagarTotal / valorPorTiro : 0;
+                            const tirosExtraBonif = valorPorTiro > 0 ? vrPagarBonif / valorPorTiro : 0;
 
                             return (
                                 <View>

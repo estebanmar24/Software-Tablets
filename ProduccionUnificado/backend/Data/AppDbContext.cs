@@ -17,6 +17,8 @@ public class AppDbContext : DbContext
     public DbSet<ProduccionDiaria> ProduccionDiaria { get; set; }
     public DbSet<CalificacionMensual> CalificacionesMensuales { get; set; }
     public DbSet<RendimientoOperarioMensual> RendimientoOperariosMensual { get; set; }
+    public DbSet<EncuestaCalidad> EncuestasCalidad { get; set; }
+    public DbSet<EncuestaNovedad> EncuestaNovedades { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -31,6 +33,8 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ProduccionDiaria>().ToTable("ProduccionDiaria");
         modelBuilder.Entity<CalificacionMensual>().ToTable("CalificacionesMensuales");
         modelBuilder.Entity<RendimientoOperarioMensual>().ToTable("RendimientoOperariosMensual");
+        modelBuilder.Entity<EncuestaCalidad>().ToTable("EncuestasCalidad");
+        modelBuilder.Entity<EncuestaNovedad>().ToTable("EncuestaNovedades");
 
         // Configurar relaciones para TiempoProceso
         modelBuilder.Entity<TiempoProceso>()
@@ -69,6 +73,31 @@ public class AppDbContext : DbContext
             .WithMany()
             .HasForeignKey(p => p.MaquinaId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // Configurar relaciones para EncuestaCalidad
+        modelBuilder.Entity<EncuestaCalidad>()
+            .HasOne(e => e.Operario)
+            .WithMany()
+            .HasForeignKey(e => e.OperarioId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<EncuestaCalidad>()
+            .HasOne(e => e.Auxiliar)
+            .WithMany()
+            .HasForeignKey(e => e.AuxiliarId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<EncuestaCalidad>()
+            .HasOne(e => e.Maquina)
+            .WithMany()
+            .HasForeignKey(e => e.MaquinaId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<EncuestaCalidad>()
+            .HasMany(e => e.Novedades)
+            .WithOne(n => n.Encuesta)
+            .HasForeignKey(n => n.EncuestaId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         // NOTA: Los datos semilla se cargan directamente con init_db.sql
         // No usar HasData() para evitar conflictos con BD en la nube

@@ -24,6 +24,7 @@ import * as api from './src/services/api';
 
 import { AdminLogin } from './src/components/AdminLogin';
 import { AdminDashboard } from './src/components/AdminDashboard';
+import CalidadScreen from './src/screens/CalidadScreen';
 
 export default function App() {
   // Persistence
@@ -56,16 +57,19 @@ export default function App() {
     changeOrientation();
   }, [isPhone]);
 
-  // Estado de vista: 'timer' | 'login' | 'admin'
-  const [currentView, setCurrentView] = useState<'timer' | 'login' | 'admin'>('timer');
+  // Estado de vista: 'timer' | 'login' | 'admin' | 'calidad'
+  const [currentView, setCurrentView] = useState<'timer' | 'login' | 'admin' | 'calidad'>('timer');
 
-  // Persistence for currentView
+  // Persistence for currentView - solo persiste 'admin', siempre inicia en 'timer'
   useEffect(() => {
     async function loadView() {
       try {
         const savedView = await AsyncStorage.getItem('lastView');
-        if (savedView === 'admin' || savedView === 'timer') {
-          setCurrentView(savedView as any);
+        // Solo restaurar si era 'admin' - calidad siempre empieza fresh
+        if (savedView === 'admin') {
+          setCurrentView('admin');
+        } else {
+          setCurrentView('timer');
         }
       } catch (e) {
         console.log('Failed to load view state');
@@ -75,7 +79,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    AsyncStorage.setItem('lastView', currentView);
+    // Solo guardar si es 'admin' - no guardar 'calidad' ni 'login'
+    if (currentView === 'admin') {
+      AsyncStorage.setItem('lastView', currentView);
+    } else {
+      AsyncStorage.setItem('lastView', 'timer');
+    }
   }, [currentView]);
 
 
@@ -476,7 +485,13 @@ export default function App() {
   if (currentView === 'login') {
     return (
       <AdminLogin
-        onLoginSuccess={() => setCurrentView('admin')}
+        onLoginSuccess={(loginType) => {
+          if (loginType === 'admin') {
+            setCurrentView('admin');
+          } else if (loginType === 'calidad') {
+            setCurrentView('calidad');
+          }
+        }}
         onBack={() => setCurrentView('timer')}
       />
     );
@@ -486,6 +501,21 @@ export default function App() {
     return (
       <AdminDashboard
         onBack={() => setCurrentView('timer')}
+      />
+    );
+  }
+
+  if (currentView === 'calidad') {
+    return (
+      <CalidadScreen
+        navigation={{
+          goBack: () => setCurrentView('timer'),
+          navigate: (screen: string, params?: any) => {
+            // Simple navigation handler for quality screens
+            console.log('Navigate to:', screen, params);
+          },
+          addListener: () => () => { }
+        }}
       />
     );
   }

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image } from 'react-native';
 
 interface AdminLoginProps {
-    onLoginSuccess: () => void;
+    onLoginSuccess: (loginType: 'admin' | 'calidad') => void;
     onBack: () => void;
 }
 
@@ -12,7 +12,9 @@ export function AdminLogin({ onLoginSuccess, onBack }: AdminLoginProps) {
 
     const handleLogin = () => {
         if (password === 'admin123') {
-            onLoginSuccess();
+            onLoginSuccess('admin');
+        } else if (password === 'calidad123') {
+            onLoginSuccess('calidad');
         } else {
             setError('Contraseña incorrecta');
         }

@@ -9,6 +9,7 @@ import HistoryScreen from '../screens/HistoryScreen';
 import MachineParamsScreen from '../screens/MachineParamsScreen';
 import ListsScreen from '../screens/ListsScreen';
 import CartasScreen from '../screens/CartasScreen';
+import QualityView from './QualityView';
 
 // Theme Provider
 import { ThemeProvider, useTheme } from '../contexts/ThemeContext';
@@ -17,7 +18,7 @@ interface AdminDashboardProps {
     onBack: () => void;
 }
 
-type TabName = 'captura' | 'tablero' | 'historial' | 'maquinas' | 'operarios' | 'cartas';
+type TabName = 'captura' | 'tablero' | 'historial' | 'maquinas' | 'operarios' | 'cartas' | 'calidad';
 
 const tabs: { key: TabName; label: string; icon: string }[] = [
     { key: 'captura', label: 'Captura Mensual', icon: '📝' },
@@ -25,6 +26,7 @@ const tabs: { key: TabName; label: string; icon: string }[] = [
     { key: 'historial', label: 'Historial', icon: '📋' },
     { key: 'maquinas', label: 'Config Máquinas', icon: '⚙️' },
     { key: 'operarios', label: 'Operarios', icon: '👥' },
+    { key: 'calidad', label: 'Calidad', icon: '✅' },
     { key: 'cartas', label: 'Cartas', icon: '📄' },
 ];
 
@@ -34,8 +36,14 @@ function AdminDashboardContent({ onBack }: AdminDashboardProps) {
     useEffect(() => {
         async function loadTab() {
             try {
-                const savedTab = await AsyncStorage.getItem('adminActiveTab');
-                if (savedTab) {
+                // Use localStorage for web, AsyncStorage for mobile
+                let savedTab: string | null = null;
+                if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+                    savedTab = window.localStorage.getItem('adminActiveTab');
+                } else {
+                    savedTab = await AsyncStorage.getItem('adminActiveTab');
+                }
+                if (savedTab && ['captura', 'tablero', 'historial', 'maquinas', 'operarios', 'cartas', 'calidad'].includes(savedTab)) {
                     setActiveTab(savedTab as TabName);
                 }
             } catch (e) { console.log(e); }
@@ -44,7 +52,12 @@ function AdminDashboardContent({ onBack }: AdminDashboardProps) {
     }, []);
 
     useEffect(() => {
-        AsyncStorage.setItem('adminActiveTab', activeTab);
+        // Save to localStorage on web, AsyncStorage on mobile
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+            window.localStorage.setItem('adminActiveTab', activeTab);
+        } else {
+            AsyncStorage.setItem('adminActiveTab', activeTab);
+        }
     }, [activeTab]);
 
     // Mock navigation object for screens that expect navigation prop
@@ -56,6 +69,7 @@ function AdminDashboardContent({ onBack }: AdminDashboardProps) {
                 'Captura Mensual': 'captura',
                 'Tablero Semáforos': 'tablero',
                 'Historial': 'historial',
+                'Calidad': 'calidad',
                 'Config Máquinas': 'maquinas',
                 'Listas (Operarios)': 'operarios',
                 'Cartas': 'cartas',
@@ -83,6 +97,8 @@ function AdminDashboardContent({ onBack }: AdminDashboardProps) {
                 return <MachineParamsScreen navigation={mockNavigation} />;
             case 'operarios':
                 return <ListsScreen navigation={mockNavigation} />;
+            case 'calidad':
+                return <QualityView />;
             case 'cartas':
                 return <CartasScreen navigation={mockNavigation} />;
             default:

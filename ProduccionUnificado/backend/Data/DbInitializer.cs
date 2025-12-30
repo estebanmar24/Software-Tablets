@@ -308,5 +308,73 @@ public static class DbInitializer
             Console.WriteLine("[DB INIT] CalificacionesMensuales checked/created.");
         }
         catch (Exception ex) { Console.WriteLine($"[DB ERROR] CalificacionesMensuales: {ex.Message}"); }
+
+        // ENCUESTAS DE CALIDAD
+        try
+        {
+            context.Database.ExecuteSqlRaw(@"
+                IF OBJECT_ID('dbo.EncuestasCalidad', 'U') IS NULL
+                BEGIN
+                    CREATE TABLE [EncuestasCalidad] (
+                        [Id] int NOT NULL IDENTITY,
+                        [OperarioId] int NOT NULL,
+                        [AuxiliarId] int NULL,
+                        [OrdenProduccion] nvarchar(50) NOT NULL,
+                        [CantidadProducir] decimal(18, 2) NOT NULL,
+                        [MaquinaId] int NOT NULL,
+                        [Proceso] nvarchar(100) NOT NULL,
+                        [CantidadEvaluada] decimal(18, 2) NOT NULL,
+                        [EstadoProceso] nvarchar(50) NOT NULL,
+                        [TieneFichaTecnica] bit NOT NULL,
+                        [CorrectoRegistroFormatos] bit NOT NULL,
+                        [AprobacionArranque] bit NOT NULL,
+                        [Observacion] nvarchar(max) NULL,
+                        [FechaCreacion] datetime2 NOT NULL DEFAULT GETDATE(),
+                        [CreadoPor] nvarchar(100) NULL,
+                        CONSTRAINT [PK_EncuestasCalidad] PRIMARY KEY ([Id]),
+                        CONSTRAINT [FK_EncuestasCalidad_Operario] FOREIGN KEY ([OperarioId]) REFERENCES [Usuarios]([Id]),
+                        CONSTRAINT [FK_EncuestasCalidad_Auxiliar] FOREIGN KEY ([AuxiliarId]) REFERENCES [Usuarios]([Id]),
+                        CONSTRAINT [FK_EncuestasCalidad_Maquina] FOREIGN KEY ([MaquinaId]) REFERENCES [Maquinas]([Id])
+                    );
+                    CREATE INDEX [IX_EncuestasCalidad_FechaCreacion] ON [EncuestasCalidad] ([FechaCreacion] DESC);
+                    PRINT 'Tabla EncuestasCalidad creada.';
+                END
+            ");
+            Console.WriteLine("[DB INIT] EncuestasCalidad checked/created.");
+        }
+        catch (Exception ex) { Console.WriteLine($"[DB ERROR] EncuestasCalidad: {ex.Message}"); }
+
+        // ENCUESTA NOVEDADES
+        try
+        {
+            context.Database.ExecuteSqlRaw(@"
+                IF OBJECT_ID('dbo.EncuestaNovedades', 'U') IS NULL
+                BEGIN
+                    CREATE TABLE [EncuestaNovedades] (
+                        [Id] int NOT NULL IDENTITY,
+                        [EncuestaId] int NOT NULL,
+                        [TipoNovedad] nvarchar(100) NOT NULL,
+                        [FotoPath] nvarchar(500) NULL,
+                        [Descripcion] nvarchar(max) NULL,
+                        [CantidadDefectuosa] int NOT NULL DEFAULT 0,
+                        CONSTRAINT [PK_EncuestaNovedades] PRIMARY KEY ([Id]),
+                        CONSTRAINT [FK_EncuestaNovedades_Encuesta] FOREIGN KEY ([EncuestaId]) REFERENCES [EncuestasCalidad]([Id]) ON DELETE CASCADE
+                    );
+                    CREATE INDEX [IX_EncuestaNovedades_EncuestaId] ON [EncuestaNovedades] ([EncuestaId]);
+                    PRINT 'Tabla EncuestaNovedades creada.';
+                END
+                ELSE
+                BEGIN
+                    -- Agregar columna si no existe
+                    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'EncuestaNovedades' AND COLUMN_NAME = 'CantidadDefectuosa')
+                    BEGIN
+                        ALTER TABLE [EncuestaNovedades] ADD [CantidadDefectuosa] int NOT NULL DEFAULT 0;
+                        PRINT 'Columna CantidadDefectuosa agregada.';
+                    END
+                END
+            ");
+            Console.WriteLine("[DB INIT] EncuestaNovedades checked/created.");
+        }
+        catch (Exception ex) { Console.WriteLine($"[DB ERROR] EncuestaNovedades: {ex.Message}"); }
     }
 }

@@ -17,6 +17,58 @@ public class ProduccionController : ControllerBase
         _context = context;
     }
 
+    [HttpPost("mensual")]
+    public async Task<IActionResult> GuardarMensual([FromBody] List<ProduccionDiaria> registros)
+    {
+        if (registros == null || !registros.Any()) 
+            return BadRequest(new { message = "No hay datos para guardar" });
+
+        using var transaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            // Tomamos referencia del primer registro para saber Mes, Año y Máquina
+            var first = registros.First();
+            var mes = first.Fecha.Month;
+            var anio = first.Fecha.Year;
+            var maquinaId = first.MaquinaId;
+
+            // 1. Eliminar TODOS los registros DE ESA MÁQUINA en ESE MES
+            //    Esto asegura que si el usuario borró un día en el grid, se borre de la BD.
+            var existentes = await _context.ProduccionDiaria
+                .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio && p.MaquinaId == maquinaId)
+                .ToListAsync();
+
+            if (existentes.Any())
+            {
+                _context.ProduccionDiaria.RemoveRange(existentes);
+                await _context.SaveChangesAsync();
+            }
+
+            // 2. Insertar los nuevos registros
+            foreach (var reg in registros)
+            {
+                // Calcular totales auxiliares por si acaso
+                reg.TotalHorasAuxiliares = reg.HorasMantenimiento + reg.HorasDescanso + reg.HorasOtrosAux;
+                reg.TotalTiemposMuertos = reg.TiempoFaltaTrabajo + reg.TiempoReparacion + reg.TiempoOtroMuerto;
+                reg.TotalHoras = reg.TotalHorasProductivas + reg.TotalHorasAuxiliares + reg.TotalTiemposMuertos;
+                
+                // Asegurar ID es 0 para que sea insert
+                reg.Id = 0; 
+                _context.ProduccionDiaria.Add(reg);
+            }
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            return Ok(new { message = $"Se guardaron {registros.Count} registros correctamente." });
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            return StatusCode(500, new { error = ex.Message, inner = ex.InnerException?.Message });
+        }
+    }
+
     [HttpPost]
     public async Task<IActionResult> RegistrarDia([FromBody] ProduccionDiaria registro)
     {
@@ -330,22 +382,34 @@ public class ProduccionController : ControllerBase
                 tirosBonif = (int)totalTiros;
             }
             
-            // Calcular meta basada en días LABORALES (no domingos ni festivos)
-            // La meta ya está calculada arriba como metaEsperada = diasTrabajados * MetaRendimiento
-            
-            // Calcular bonificación SOLO sobre TirosBonificables (excluye domingos/festivos)
-            decimal tirosExtraBonif = Math.Max(0, tirosBonif - metaEsperada);
+            // Calcular Bonificación Diaria Real (Sumando día a día, no globalmente)
+            decimal bonificacionReal = 0;
             decimal valorPorTiro = maqu?.ValorPorTiro ?? 0;
-            decimal valorCalculadoBonif = tirosExtraBonif * valorPorTiro;
             
-            // Calcular valor total (incluye todos los días, para referencia)
-            decimal tirosExtraTotal = Math.Max(0, totalTiros - metaEsperada);
-            decimal valorCalculadoTotal = tirosExtraTotal * valorPorTiro;
+            foreach(var dia in grupo)
+            {
+                // La bonificación se paga si supera la meta diaria
+                var metaDiaria = maqu?.MetaRendimiento ?? 0;
+                var tirosBonificablesDia = dia.TirosBonificables; // Este campo ya debe estar correcto en BD
+                
+                // Fallback para datos viejos
+                if (tirosBonificablesDia == 0 && dia.TirosConEquivalencia > 0)
+                     tirosBonificablesDia = dia.TirosConEquivalencia;
+
+                var bonoDia = Math.Max(0, tirosBonificablesDia - metaDiaria);
+                bonificacionReal += (bonoDia * valorPorTiro);
+            }
+
+            // Usar el ValorAPagar que viene de la base de datos (calculado por el frontend)
+            // Esto asegura consistencia total entre lo que ve el admin al guardar y el reporte
+            decimal valorAPagarReal = grupo.Sum(x => x.ValorAPagar);
             
-            // Solo pagar si supera la meta (eficiencia >= 1.0)
-            decimal valorAPagar = eficiencia >= 1.0m ? valorCalculadoTotal : 0;
-            // Bonificación SOLO de días laborales (L-V, Sáb mañana, NO domingos/festivos)
-            decimal valorAPagarBonificable = eficiencia >= 1.0m ? valorCalculadoBonif : 0;
+            // Si por alguna razón es 0 (datos viejos), usar cálculo aproximado
+            if (valorAPagarReal == 0 && totalTiros > 0)
+            {
+                // Fallback a lógica anterior pero diaria
+                valorAPagarReal = grupo.Sum(d => Math.Max(0, d.TirosConEquivalencia - (maqu?.MetaRendimiento ?? 0)) * valorPorTiro);
+            }
 
             resultado.ResumenOperarios.Add(new ResumenOperarioDto
             {
@@ -355,9 +419,9 @@ public class ProduccionController : ControllerBase
                 Maquina = grupo.Key.MaquinaNombre ?? "Desc",
                 TotalTiros = totalTiros,
                 TotalHorasProductivas = totalHorasProd > 0 ? totalHorasProd : totalHorasOp,
-                ValorAPagar = valorAPagar,
+                ValorAPagar = valorAPagarReal,
                 TirosBonificables = grupo.Sum(x => x.TirosBonificables),
-                ValorAPagarBonificable = valorAPagarBonificable,
+                ValorAPagarBonificable = bonificacionReal,
                 PromedioHoraProductiva = promedio,
                 TotalHoras = grupo.Sum(x => x.TotalHoras),
                 SemaforoColor = color,

@@ -40,6 +40,9 @@ app.UseCors("AllowAll");
 
 app.UseHttpsRedirection();
 
+// Servir archivos estáticos (fotos de calidad)
+app.UseStaticFiles();
+
 app.UseAuthorization();
 
 app.MapControllers();
