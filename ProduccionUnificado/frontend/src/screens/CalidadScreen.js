@@ -758,10 +758,10 @@ const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F3F4F6' },
     scrollView: { flex: 1 },
 
-    header: { backgroundColor: '#1E40AF', paddingTop: 40, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4, elevation: 5 },
-    headerBackBtn: { marginRight: 15, backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-    headerBackText: { color: 'white', fontSize: 14, fontWeight: '600' },
-    headerTitle: { color: 'white', fontSize: 18, fontWeight: 'bold', flex: 1 },
+    header: { backgroundColor: '#96BDF0', paddingTop: 40, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4, elevation: 5 },
+    headerBackBtn: { marginRight: 15, backgroundColor: 'rgba(0,0,0,0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+    headerBackText: { color: '#1F2937', fontSize: 14, fontWeight: '600' },
+    headerTitle: { color: '#1F2937', fontSize: 18, fontWeight: 'bold', flex: 1 },
 
     newBtn: { backgroundColor: '#10B981', margin: 16, padding: 16, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', shadowColor: '#10B981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 6 },
     newBtnIcon: { color: 'white', fontSize: 24, fontWeight: 'bold', marginRight: 8 },
@@ -778,10 +778,10 @@ const styles = StyleSheet.create({
     listContent: { paddingHorizontal: 16, paddingBottom: 20 },
 
     historyCard: { backgroundColor: 'white', borderRadius: 16, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 3, overflow: 'hidden' },
-    historyHeader: { backgroundColor: '#1E40AF', padding: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    historyHeader: { backgroundColor: '#96BDF0', padding: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     historyOP: { flexDirection: 'row', alignItems: 'center' },
-    historyOPLabel: { backgroundColor: 'rgba(255,255,255,0.3)', color: 'white', fontSize: 10, fontWeight: 'bold', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginRight: 8 },
-    historyOPValue: { color: 'white', fontSize: 16, fontWeight: 'bold' },
+    historyOPLabel: { backgroundColor: 'rgba(0,0,0,0.1)', color: '#1F2937', fontSize: 10, fontWeight: 'bold', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginRight: 8 },
+    historyOPValue: { color: '#1F2937', fontSize: 16, fontWeight: 'bold' },
     estadoPill: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 },
     estadoPillText: { color: 'white', fontSize: 12, fontWeight: 'bold' },
     historyBody: { padding: 14 },
