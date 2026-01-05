@@ -19,6 +19,7 @@ public class AppDbContext : DbContext
     public DbSet<RendimientoOperarioMensual> RendimientoOperariosMensual { get; set; }
     public DbSet<EncuestaCalidad> EncuestasCalidad { get; set; }
     public DbSet<EncuestaNovedad> EncuestaNovedades { get; set; }
+    public DbSet<AdminUsuario> AdminUsuarios { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -35,6 +36,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<RendimientoOperarioMensual>().ToTable("RendimientoOperariosMensual");
         modelBuilder.Entity<EncuestaCalidad>().ToTable("EncuestasCalidad");
         modelBuilder.Entity<EncuestaNovedad>().ToTable("EncuestaNovedades");
+        modelBuilder.Entity<AdminUsuario>().ToTable("AdminUsuarios");
 
         // Configurar relaciones para TiempoProceso
         modelBuilder.Entity<TiempoProceso>()

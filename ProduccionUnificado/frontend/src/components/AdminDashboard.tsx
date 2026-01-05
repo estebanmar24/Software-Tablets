@@ -16,18 +16,20 @@ import { ThemeProvider, useTheme } from '../contexts/ThemeContext';
 
 interface AdminDashboardProps {
     onBack: () => void;
+    role?: string;
+    displayName?: string;
 }
 
 type TabName = 'captura' | 'tablero' | 'historial' | 'maquinas' | 'operarios' | 'cartas' | 'calidad';
 
-const tabs: { key: TabName; label: string; icon: string }[] = [
-    { key: 'captura', label: 'Captura Mensual', icon: '📝' },
-    { key: 'tablero', label: 'Tablero Semáforos', icon: '🚦' },
-    { key: 'historial', label: 'Historial', icon: '📋' },
-    { key: 'maquinas', label: 'Config Máquinas', icon: '⚙️' },
-    { key: 'operarios', label: 'Operarios', icon: '👥' },
-    { key: 'calidad', label: 'Calidad', icon: '✅' },
-    { key: 'cartas', label: 'Cartas', icon: '📄' },
+const allTabs: { key: TabName; label: string; icon: string; roles: string[] }[] = [
+    { key: 'captura', label: 'Captura Mensual', icon: '📝', roles: ['admin', 'produccion'] },
+    { key: 'tablero', label: 'Tablero Semáforos', icon: '🚦', roles: ['admin', 'produccion'] },
+    { key: 'historial', label: 'Historial', icon: '📋', roles: ['admin'] },
+    { key: 'maquinas', label: 'Config Máquinas', icon: '⚙️', roles: ['admin', 'talleres'] },
+    { key: 'operarios', label: 'Operarios', icon: '👥', roles: ['admin', 'gh'] },
+    { key: 'calidad', label: 'Calidad', icon: '✅', roles: ['admin', 'calidad'] },
+    { key: 'cartas', label: 'Cartas', icon: '📄', roles: ['admin'] },
 ];
 
 /**
@@ -39,28 +41,41 @@ interface DashboardCardProps {
     icon: string;
     onPress: () => void;
     color?: string;
+    disabled?: boolean;
 }
 
-function DashboardCard({ title, description, icon, onPress, color = '#E6FFFA' }: DashboardCardProps) {
+function DashboardCard({ title, description, icon, onPress, color = '#E6FFFA', disabled }: DashboardCardProps) {
     return (
-        <View style={[styles.cardContainer, { backgroundColor: color }]}>
+        <View style={[styles.cardContainer, { backgroundColor: disabled ? '#E0E0E0' : color }, disabled && { opacity: 0.7 }]}>
             <View style={styles.cardIconContainer}>
-                <Text style={styles.cardIcon}>{icon}</Text>
+                <Text style={[styles.cardIcon, disabled && { opacity: 0.5 }]}>{icon}</Text>
             </View>
-            <Text style={styles.cardTitle}>{title}</Text>
-            <Text style={styles.cardDescription}>{description}</Text>
-            <TouchableOpacity style={styles.cardButton} onPress={onPress}>
-                <Text style={styles.cardButtonText}>Abrir</Text>
+            <Text style={[styles.cardTitle, disabled && { color: '#757575' }]}>{title}</Text>
+            <Text style={[styles.cardDescription, disabled && { color: '#9E9E9E' }]}>{description}</Text>
+            <TouchableOpacity
+                style={[styles.cardButton, disabled && { backgroundColor: '#BDBDBD' }]}
+                onPress={onPress}
+                disabled={disabled}
+            >
+                <Text style={styles.cardButtonText}>{disabled ? 'Bloqueado' : 'Abrir'}</Text>
             </TouchableOpacity>
         </View>
     );
 }
 
-function AdminDashboardContent({ onBack }: AdminDashboardProps) {
+function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDashboardProps) {
     // Mode: 'MENU' (Grid de tarjetas) | 'CONTENT' (Tabs existentes)
     const [mode, setMode] = useState<'MENU' | 'CONTENT'>('MENU');
     const [activeTab, setActiveTab] = useState<TabName>('captura');
     const { width } = useWindowDimensions();
+
+    const tabs = allTabs.filter(t => t.roles.includes(role));
+
+    useEffect(() => {
+        if (tabs.length > 0 && !tabs.find(t => t.key === activeTab)) {
+            setActiveTab(tabs[0].key);
+        }
+    }, [tabs, activeTab]);
 
     useEffect(() => {
         async function loadTab() {
@@ -72,13 +87,18 @@ function AdminDashboardContent({ onBack }: AdminDashboardProps) {
                 } else {
                     savedTab = await AsyncStorage.getItem('adminActiveTab');
                 }
-                if (savedTab && ['captura', 'tablero', 'historial', 'maquinas', 'operarios', 'cartas', 'calidad'].includes(savedTab)) {
-                    setActiveTab(savedTab as TabName);
+                const validKeys = allTabs.map(t => t.key) as string[];
+                if (savedTab && validKeys.includes(savedTab)) {
+                    // Check if role has access
+                    const tabInfo = allTabs.find(t => t.key === savedTab);
+                    if (tabInfo && tabInfo.roles.includes(role)) {
+                        setActiveTab(savedTab as TabName);
+                    }
                 }
             } catch (e) { console.log(e); }
         }
         loadTab();
-    }, []);
+    }, [role]);
 
     useEffect(() => {
         // Save to localStorage on web, AsyncStorage on mobile
@@ -179,6 +199,24 @@ function AdminDashboardContent({ onBack }: AdminDashboardProps) {
         Alert.alert('Próximamente', `El módulo "${moduleName}" estará disponible pronto.`);
     };
 
+    const isMasterEnabled = role === 'admin'; // Solo admin ve el cuadro master completo
+    const isCalidadEnabled = role === 'admin' || role === 'calidad';
+    const isProduccionEnabled = role === 'admin' || role === 'produccion';
+    const isTalleresEnabled = role === 'admin' || role === 'talleres';
+    const isPresupuestoEnabled = role === 'admin' || role === 'presupuesto';
+    const isGHEnabled = role === 'admin' || role === 'gh';
+    const isSSTEnabled = role === 'admin' || role === 'sst';
+
+    const roleDisplayNames: Record<string, string> = {
+        'admin': 'Administrador',
+        'sst': 'Seguridad y Salud en el Trabajo',
+        'gh': 'Gestión Humana',
+        'produccion': 'Producción',
+        'talleres': 'Talleres y Despachos',
+        'presupuesto': 'Presupuesto General',
+        'calidad': 'Calidad'
+    };
+
     return (
         <View style={styles.menuContainer}>
             <View style={styles.panelContainer}>
@@ -188,7 +226,9 @@ function AdminDashboardContent({ onBack }: AdminDashboardProps) {
                     </TouchableOpacity>
                     <View>
                         <Text style={styles.menuTitle}>Panel del Administrador</Text>
-                        <Text style={styles.menuSubtitle}>Selecciona un módulo para administrar la información de la organización.</Text>
+                        <Text style={styles.menuSubtitle}>
+                            Usuario: {displayName || roleDisplayNames[role] || role.toUpperCase()}
+                        </Text>
                     </View>
                 </View>
 
@@ -196,38 +236,44 @@ function AdminDashboardContent({ onBack }: AdminDashboardProps) {
                     <DashboardCard
                         title="Cuadro Master"
                         description="Indicadores generales de gestión"
-                        icon="📊" // Chart
-                        onPress={() => setMode('CONTENT')}
+                        icon="📊"
+                        onPress={() => { setActiveTab('captura'); setMode('CONTENT'); }}
+                        disabled={!isMasterEnabled}
                     />
                     <DashboardCard
                         title="Cuadro Presupuestos Producción"
                         description="Control de presupuestos de producción"
-                        icon="🏭" // Factory
-                        onPress={() => handlePlaceholderPress('Cuadro Presupuestos Producción')}
+                        icon="🏭"
+                        onPress={() => handlePlaceholderPress('Presupuestos Producción')}
+                        disabled={!isProduccionEnabled}
                     />
                     <DashboardCard
-                        title="Cuadros Presupuesto Talleres y Despachos"
+                        title="Cuadro Presupuesto Talleres y Despachos"
                         description="Costos de talleres y despachos"
-                        icon="🚚" // Truck
-                        onPress={() => handlePlaceholderPress('Cuadros Presupuesto Talleres y Despachos')}
+                        icon="🔧"
+                        onPress={() => handlePlaceholderPress('Talleres y Despachos')}
+                        disabled={!isTalleresEnabled}
                     />
                     <DashboardCard
                         title="Presupuesto"
                         description="Gestión global de presupuestos"
-                        icon="💰" // Money bag
+                        icon="💰"
                         onPress={() => handlePlaceholderPress('Presupuesto')}
+                        disabled={!isPresupuestoEnabled}
                     />
                     <DashboardCard
                         title="Gestión Humana"
                         description="Información de personal y equipos"
-                        icon="👥" // Users
+                        icon="👥"
                         onPress={() => handlePlaceholderPress('Gestión Humana')}
+                        disabled={!isGHEnabled}
                     />
                     <DashboardCard
                         title="Presupuestos SST"
                         description="Seguimiento de presupuestos SST"
-                        icon="📋" // Clipboard
-                        onPress={() => handlePlaceholderPress('Presupuestos SST')}
+                        icon="📋"
+                        onPress={() => handlePlaceholderPress('SST')}
+                        disabled={!isSSTEnabled}
                     />
                 </ScrollView>
             </View>
@@ -235,10 +281,10 @@ function AdminDashboardContent({ onBack }: AdminDashboardProps) {
     );
 }
 
-export function AdminDashboard({ onBack }: AdminDashboardProps) {
+export function AdminDashboard({ onBack, role, displayName }: AdminDashboardProps) {
     return (
         <ThemeProvider>
-            <AdminDashboardContent onBack={onBack} />
+            <AdminDashboardContent onBack={onBack} role={role} displayName={displayName} />
         </ThemeProvider>
     );
 }

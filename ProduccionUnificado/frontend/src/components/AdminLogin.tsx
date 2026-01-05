@@ -1,22 +1,34 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image } from 'react-native';
+import { adminLogin } from '../services/api';
 
 interface AdminLoginProps {
-    onLoginSuccess: (loginType: 'admin' | 'calidad') => void;
+    onLoginSuccess: (role: string, nombreMostrar: string) => void;
     onBack: () => void;
 }
 
 export function AdminLogin({ onLoginSuccess, onBack }: AdminLoginProps) {
+    const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
 
-    const handleLogin = () => {
-        if (password === 'admin123') {
-            onLoginSuccess('admin');
-        } else if (password === 'calidad123') {
-            onLoginSuccess('calidad');
-        } else {
-            setError('Contraseña incorrecta');
+    const handleLogin = async () => {
+        if (!username || !password) {
+            setError('Ingrese usuario y contraseña');
+            return;
+        }
+
+        setLoading(true);
+        setError('');
+
+        try {
+            const data = await adminLogin(username, password);
+            onLoginSuccess(data.role, data.nombreMostrar);
+        } catch (err: any) {
+            setError(err.message || 'Error de autenticación');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -30,6 +42,17 @@ export function AdminLogin({ onLoginSuccess, onBack }: AdminLoginProps) {
                 />
 
                 <Text style={styles.title}>Acceso Administrativo</Text>
+
+                <View style={styles.inputContainer}>
+                    <Text style={styles.label}>Usuario</Text>
+                    <TextInput
+                        style={styles.input}
+                        value={username}
+                        onChangeText={setUsername}
+                        placeholder="Ingrese usuario"
+                        autoCapitalize="none"
+                    />
+                </View>
 
                 <View style={styles.inputContainer}>
                     <Text style={styles.label}>Contraseña</Text>
@@ -46,8 +69,12 @@ export function AdminLogin({ onLoginSuccess, onBack }: AdminLoginProps) {
                     {error ? <Text style={styles.errorText}>{error}</Text> : null}
                 </View>
 
-                <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
-                    <Text style={styles.loginButtonText}>Ingresar</Text>
+                <TouchableOpacity
+                    style={[styles.loginButton, loading && { backgroundColor: '#A0AEC0' }]}
+                    onPress={handleLogin}
+                    disabled={loading}
+                >
+                    <Text style={styles.loginButtonText}>{loading ? 'Ingresando...' : 'Ingresar'}</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.backButton} onPress={onBack}>

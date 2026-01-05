@@ -180,6 +180,7 @@ public class CalidadController : ControllerBase
             {
                 try
                 {
+                    var fileName = $"{Guid.NewGuid()}.jpg";
                     var filePath = Path.Combine(fotosDir, fileName);
                     
                     // Remover prefijo data:image/...;base64, si existe

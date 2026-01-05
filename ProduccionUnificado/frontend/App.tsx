@@ -25,6 +25,7 @@ import * as api from './src/services/api';
 import { AdminLogin } from './src/components/AdminLogin';
 import { AdminDashboard } from './src/components/AdminDashboard';
 import CalidadScreen from './src/screens/CalidadScreen';
+import UserManagementScreen from './src/screens/UserManagementScreen';
 
 export default function App() {
   // Persistence
@@ -57,17 +58,28 @@ export default function App() {
     changeOrientation();
   }, [isPhone]);
 
-  // Estado de vista: 'timer' | 'login' | 'admin' | 'calidad'
-  const [currentView, setCurrentView] = useState<'timer' | 'login' | 'admin' | 'calidad'>('timer');
+  // Estado de vista
+  const [currentView, setCurrentView] = useState<'timer' | 'login' | 'admin' | 'calidad' | 'develop'>('timer');
+  const [adminRole, setAdminRole] = useState<string>('admin');
+  const [adminName, setAdminName] = useState<string>('');
 
   // Persistence for currentView - solo persiste 'admin', siempre inicia en 'timer'
   useEffect(() => {
     async function loadView() {
       try {
         const savedView = await AsyncStorage.getItem('lastView');
-        // Solo restaurar si era 'admin' - calidad siempre empieza fresh
-        if (savedView === 'admin') {
+        const savedRole = await AsyncStorage.getItem('adminRole');
+        const savedName = await AsyncStorage.getItem('adminName');
+
+        if (savedRole) setAdminRole(savedRole);
+        if (savedName) setAdminName(savedName);
+
+        if (savedRole === 'calidad') {
+          setCurrentView('calidad');
+        } else if (savedView === 'admin') {
           setCurrentView('admin');
+        } else if (savedView === 'calidad') {
+          setCurrentView('calidad');
         } else {
           setCurrentView('timer');
         }
@@ -79,14 +91,28 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Solo guardar si es 'admin' - no guardar 'calidad' ni 'login'
-    if (currentView === 'admin') {
+    // Persistir estado de vista para admin y calidad
+    if (currentView === 'admin' || currentView === 'calidad') {
       AsyncStorage.setItem('lastView', currentView);
+      AsyncStorage.setItem('adminRole', adminRole);
+      AsyncStorage.setItem('adminName', adminName);
     } else {
       AsyncStorage.setItem('lastView', 'timer');
     }
-  }, [currentView]);
+  }, [currentView, adminRole, adminName]);
 
+  const handleLoginSuccess = (role: string, nombreMostrar: string) => {
+    const normalizedRole = role.toLowerCase();
+    setAdminRole(normalizedRole);
+    setAdminName(nombreMostrar);
+    if (normalizedRole === 'calidad') {
+      setCurrentView('calidad');
+    } else if (normalizedRole === 'develop') {
+      setCurrentView('develop');
+    } else {
+      setCurrentView('admin');
+    }
+  };
 
   // Estados para datos del servidor
   const [actividades, setActividades] = useState<Actividad[]>([]);
@@ -485,12 +511,9 @@ export default function App() {
   if (currentView === 'login') {
     return (
       <AdminLogin
-        onLoginSuccess={(loginType) => {
-          if (loginType === 'admin') {
-            setCurrentView('admin');
-          } else if (loginType === 'calidad') {
-            setCurrentView('calidad');
-          }
+        onLoginSuccess={(role) => {
+          setAdminRole(role);
+          setCurrentView('admin');
         }}
         onBack={() => setCurrentView('timer')}
       />
@@ -498,9 +521,37 @@ export default function App() {
   }
 
   if (currentView === 'admin') {
+    // FAIL-SAFE: Si el rol es calidad, NUNCA mostrar el dashboard admin
+    if (adminRole === 'calidad') {
+      return (
+        <CalidadScreen
+          navigation={{
+            goBack: () => setCurrentView('timer'),
+            navigate: (screen: string, params?: any) => { console.log('Navigate:', screen); },
+            addListener: () => () => { }
+          }}
+        />
+      );
+    }
+
+    // FAIL-SAFE: Si el rol es develop, NUNCA mostrar el dashboard admin
+    if (adminRole === 'develop') {
+      return (
+        <UserManagementScreen onBack={() => {
+          setAdminRole('');
+          setAdminName('');
+          setCurrentView('timer');
+          AsyncStorage.removeItem('adminRole');
+          AsyncStorage.removeItem('lastView');
+        }} />
+      );
+    }
+
     return (
       <AdminDashboard
+        role={adminRole}
         onBack={() => setCurrentView('timer')}
+        displayName={adminName}
       />
     );
   }
@@ -517,6 +568,19 @@ export default function App() {
           addListener: () => () => { }
         }}
       />
+    );
+  }
+
+  if (currentView === 'develop') {
+    return (
+      <UserManagementScreen onBack={() => {
+        setAdminRole('');
+        setAdminName('');
+        setCurrentView('timer');
+        AsyncStorage.removeItem('adminRole');
+        // No removemos adminName aqui por si acaso, pero borramos persistencia de vista
+        AsyncStorage.removeItem('lastView');
+      }} />
     );
   }
 

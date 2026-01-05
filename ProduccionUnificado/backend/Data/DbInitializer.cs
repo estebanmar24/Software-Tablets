@@ -376,5 +376,72 @@ public static class DbInitializer
             Console.WriteLine("[DB INIT] EncuestaNovedades checked/created.");
         }
         catch (Exception ex) { Console.WriteLine($"[DB ERROR] EncuestaNovedades: {ex.Message}"); }
+
+        // ADMIN USUARIOS (Auth Profesional)
+        try
+        {
+            context.Database.ExecuteSqlRaw(@"
+                IF OBJECT_ID('dbo.AdminUsuarios', 'U') IS NULL
+                BEGIN
+                    CREATE TABLE [AdminUsuarios] (
+                        [Id] int NOT NULL IDENTITY,
+                        [Username] nvarchar(100) NOT NULL,
+                        [PasswordHash] nvarchar(max) NOT NULL,
+                        [Role] nvarchar(50) NOT NULL,
+                        [NombreMostrar] nvarchar(200) NOT NULL,
+                        CONSTRAINT [PK_AdminUsuarios] PRIMARY KEY ([Id]),
+                        CONSTRAINT [UQ_AdminUsuarios_Username] UNIQUE ([Username])
+                    );
+                    PRINT 'Tabla AdminUsuarios creada.';
+                END
+            ");
+            Console.WriteLine("[DB INIT] AdminUsuarios checked/created.");
+
+            // Seeding users logic managed by EF Core directly to use BCrypt easily
+            // Seeding users logic managed by EF Core directly to use BCrypt easily
+            // 1. Ensure initial seeding if empty
+            if (!context.AdminUsuarios.Any())
+            {
+                var users = new List<TiempoProcesos.API.Models.AdminUsuario>
+                {
+                    new() { Username = "admin", Role = "admin", NombreMostrar = "Administrador Master", PasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123") },
+                    new() { Username = "produccion", Role = "produccion", NombreMostrar = "Gerente Producción", PasswordHash = BCrypt.Net.BCrypt.HashPassword("prod2025") },
+                    new() { Username = "sst", Role = "sst", NombreMostrar = "Seguridad y Salud", PasswordHash = BCrypt.Net.BCrypt.HashPassword("sst2025") },
+                    new() { Username = "gh", Role = "gh", NombreMostrar = "Gestión Humana", PasswordHash = BCrypt.Net.BCrypt.HashPassword("gh2025") },
+                    new() { Username = "talleres", Role = "talleres", NombreMostrar = "Talleres y Despacho", PasswordHash = BCrypt.Net.BCrypt.HashPassword("taller2025") },
+                    new() { Username = "presupuesto", Role = "presupuesto", NombreMostrar = "Presupuesto General", PasswordHash = BCrypt.Net.BCrypt.HashPassword("presup2025") },
+                    new() { Username = "calidad", Role = "calidad", NombreMostrar = "Control Calidad", PasswordHash = BCrypt.Net.BCrypt.HashPassword("calidad123") },
+                    new() { Username = "develop", Role = "develop", NombreMostrar = "Desarrollador", PasswordHash = BCrypt.Net.BCrypt.HashPassword("@L3ph2026") }
+                };
+
+                context.AdminUsuarios.AddRange(users);
+                context.SaveChanges();
+                Console.WriteLine("[DB INIT] Admin Users Seeded.");
+            }
+            else 
+            {
+                // 2. Ensure 'develop' exists specifically (upsert)
+                var devUser = context.AdminUsuarios.FirstOrDefault(u => u.Username == "develop");
+                if (devUser == null)
+                {
+                    context.AdminUsuarios.Add(new TiempoProcesos.API.Models.AdminUsuario 
+                    { 
+                        Username = "develop", 
+                        Role = "develop", 
+                        NombreMostrar = "Desarrollador", 
+                        PasswordHash = BCrypt.Net.BCrypt.HashPassword("@L3ph2026") 
+                    });
+                    Console.WriteLine("[DB INIT] Develop User Added.");
+                }
+                else 
+                {
+                    devUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword("@L3ph2026");
+                    devUser.Role = "develop"; // Ensure role is correct
+                    Console.WriteLine("[DB INIT] Develop User Updated.");
+                }
+                context.SaveChanges();
+            }
+        }
+        catch (Exception ex) { Console.WriteLine($"[DB ERROR] AdminUsuarios: {ex.Message}"); }
     }
 }

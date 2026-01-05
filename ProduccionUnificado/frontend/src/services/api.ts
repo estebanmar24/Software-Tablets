@@ -90,3 +90,47 @@ export async function limpiarDatos(
     });
     await handleResponse<{ message: string }>(response);
 }
+
+// Login
+export async function adminLogin(username: string, password: string): Promise<{ token: string; role: string; username: string; nombreMostrar: string }> {
+    const response = await fetch(`${BASE_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+    });
+    return handleResponse(response);
+}
+
+// === GESTIÓN DE USUARIOS (CRUD) ===
+
+export async function getUsers(): Promise<any[]> {
+    const response = await fetch(`${BASE_URL}/adminusuarios`);
+    return handleResponse<any[]>(response);
+}
+
+export async function createUser(user: any): Promise<any> {
+    const response = await fetch(`${BASE_URL}/adminusuarios`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(user),
+    });
+    return handleResponse<any>(response);
+}
+
+export async function updateUser(id: number, user: any): Promise<void> {
+    const response = await fetch(`${BASE_URL}/adminusuarios/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(user),
+    });
+    if (response.status === 204) return;
+    return handleResponse<void>(response);
+}
+
+export async function deleteUser(id: number): Promise<void> {
+    const response = await fetch(`${BASE_URL}/adminusuarios/${id}`, {
+        method: 'DELETE',
+    });
+    if (response.status === 204) return;
+    return handleResponse<void>(response);
+}
