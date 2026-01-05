@@ -1,0 +1,83 @@
+// Script C# para migrar datos de SQL Server a PostgreSQL
+// Compile y ejecute: dotnet run
+
+using Microsoft.EntityFrameworkCore;
+using Npgsql;
+using System.Data.SqlClient;
+
+Console.WriteLine("==============================================");
+Console.WriteLine("MIGRACIÓN DE DATOS: SQL Server → PostgreSQL");
+Console.WriteLine("==============================================\n");
+
+var sqlServerConn = "Server=localhost\\SQLEXPRESS;Database=TiemposProcesos;User Id=Esteban;Password=@L3PH2025%;TrustServerCertificate=True";
+var postgresConn = "Host=localhost;Port=5432;Database=TiemposProcesos;Username=postgres;Password=@L3ph2026";
+
+// Orden de tablas respetando foreign keys
+var tables = new[] {
+    "Usuarios", "Maquinas", "Actividades", "OrdenesProduccion", 
+    "AdminUsuarios", "TiempoProcesos", "ProduccionDiaria",
+    "CalificacionesMensuales", "RendimientoOperariosMensual",
+    "EncuestasCalidad", "EncuestaNovedades"
+};
+
+int totalMigrated = 0;
+
+using (var sqlConn = new SqlConnection(sqlServerConn))
+using (var pgConn = new NpgsqlConnection(postgresConn))
+{
+    await sqlConn.OpenAsync();
+    await pgConn.OpenAsync();
+    
+    foreach (var table in tables)
+    {
+        Console.WriteLine($"\n[{table}]");
+        
+        // Contar registros en SQL Server
+        var countCmd = new SqlCommand($"SELECT COUNT(*) FROM {table}", sqlConn);
+        var count = (int)await countCmd.ExecuteScalarAsync();
+        
+        if (count == 0)
+        {
+            Console.WriteLine($"  → Tabla vacía, omitida");
+            continue;
+        }
+        
+        Console.WriteLine($"  → Encontrados {count} registros");
+        
+        // Leer datos de SQL Server
+        var selectCmd = new SqlCommand($"SELECT * FROM {table}", sqlConn);
+        using var reader = await selectCmd.ExecuteReaderAsync();
+        
+        // Obtener nombres de columnas
+        var columns = new List<string>();
+        for (int i = 0; i <  reader.FieldCount; i++)
+        {
+            columns.Add(reader.GetName(i));
+        }
+        
+        int rowCount = 0;
+        while (await reader.ReadAsync())
+        {
+            var values = new List<string>();
+            for (int i = 0; i < reader.FieldCount; i++)
+            {
+                var val = reader.GetValue(i);
+                values.Add(val == DBNull.Value ? "NULL" : $"'{val.ToString().Replace("'", "''")}'");
+            }
+            
+            var insertSql = $"INSERT INTO \"{table}\" ({string.Join(", ", columns.Select(c => $"\"{c}\""))}) VALUES ({string.Join(", ", values)})";
+            
+            using var insertCmd = new NpgsqlCommand(insertSql, pgConn);
+            await insertCmd.ExecuteNonQueryAsync();
+            rowCount++;
+        }
+        
+        Console.WriteLine($"  ✓ Migrados {rowCount} registros");
+        totalMigrated += rowCount;
+    }
+}
+
+Console.WriteLine($"\n==============================================");
+Console.WriteLine($"✓ MIGRACIÓN COMPLETADA");
+Console.WriteLine($"==============================================");
+Console.WriteLine($"Total de registros migrados: {totalMigrated}\n");

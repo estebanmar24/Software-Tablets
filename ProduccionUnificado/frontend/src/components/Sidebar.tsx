@@ -163,7 +163,20 @@ export function Sidebar({
                         <View style={styles.selectorsContainer}>
                             <CustomDropdown
                                 label="Máquina"
-                                items={maquinas}
+                                items={[...maquinas].sort((a, b) => {
+                                    // Natural Sort Order: Extract leading numbers
+                                    const regex = /^(\d+)/;
+                                    const matchA = a.nombre.match(regex);
+                                    const matchB = b.nombre.match(regex);
+
+                                    const numA = matchA ? parseInt(matchA[0], 10) : Number.MAX_VALUE;
+                                    const numB = matchB ? parseInt(matchB[0], 10) : Number.MAX_VALUE;
+
+                                    if (numA !== numB) {
+                                        return numA - numB;
+                                    }
+                                    return a.nombre.localeCompare(b.nombre);
+                                })}
                                 selectedValue={selectedMaquina}
                                 onValueChange={onMaquinaChange}
                                 placeholder="Seleccionar máquina"

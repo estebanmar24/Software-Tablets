@@ -1,90 +1,104 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Text.RegularExpressions;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
 
-namespace TiempoProcesos.API.Controllers;
-
-[ApiController]
-[Route("api/[controller]")]
-public class MaquinasController : ControllerBase
+namespace TiempoProcesos.API.Controllers
 {
-    private readonly AppDbContext _context;
-
-    public MaquinasController(AppDbContext context)
+    [ApiController]
+    [Route("api/[controller]")]
+    public class MaquinasController : ControllerBase
     {
-        _context = context;
-    }
+        private readonly AppDbContext _context;
 
-    [HttpGet]
-    public async Task<ActionResult<IEnumerable<Maquina>>> GetMaquinas()
-    {
-        return await _context.Maquinas.ToListAsync();
-    }
-
-    [HttpGet("{id}")]
-    public async Task<ActionResult<Maquina>> GetMaquina(int id)
-    {
-        var maquina = await _context.Maquinas.FindAsync(id);
-
-        if (maquina == null)
+        public MaquinasController(AppDbContext context)
         {
-            return NotFound();
+            _context = context;
         }
 
-        return maquina;
-    }
-
-    [HttpPost]
-    public async Task<ActionResult<Maquina>> PostMaquina(Maquina maquina)
-    {
-        _context.Maquinas.Add(maquina);
-        await _context.SaveChangesAsync();
-
-        return CreatedAtAction("GetMaquina", new { id = maquina.Id }, maquina);
-    }
-
-    [HttpPut("{id}")]
-    public async Task<IActionResult> PutMaquina(int id, Maquina maquina)
-    {
-        if (id != maquina.Id)
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<Maquina>>> GetMaquinas()
         {
-            return BadRequest();
+            var maquinas = await _context.Maquinas.ToListAsync();
+
+            // Implementar Natural Sort Order (2A < 10A)
+            var resultado = maquinas
+                .OrderBy(m => 
+                {
+                    var match = Regex.Match(m.Nombre, @"^\d+");
+                    return match.Success ? int.Parse(match.Value) : int.MaxValue;
+                })
+                .ThenBy(m => m.Nombre)
+                .ToList();
+
+            return resultado;
         }
 
-        _context.Entry(maquina).State = EntityState.Modified;
+        [HttpGet("{id}")]
+        public async Task<ActionResult<Maquina>> GetMaquina(int id)
+        {
+            var maquina = await _context.Maquinas.FindAsync(id);
 
-        try
-        {
-            await _context.SaveChangesAsync();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            if (!_context.Maquinas.Any(e => e.Id == id))
+            if (maquina == null)
             {
                 return NotFound();
             }
-            else
-            {
-                throw;
-            }
+
+            return maquina;
         }
 
-        return NoContent();
-    }
-
-    [HttpDelete("{id}")]
-    public async Task<IActionResult> DeleteMaquina(int id)
-    {
-        var maquina = await _context.Maquinas.FindAsync(id);
-        if (maquina == null)
+        [HttpPost]
+        public async Task<ActionResult<Maquina>> PostMaquina(Maquina maquina)
         {
-            return NotFound();
+            _context.Maquinas.Add(maquina);
+            await _context.SaveChangesAsync();
+
+            return CreatedAtAction("GetMaquina", new { id = maquina.Id }, maquina);
         }
 
-        _context.Maquinas.Remove(maquina);
-        await _context.SaveChangesAsync();
+        [HttpPut("{id}")]
+        public async Task<IActionResult> PutMaquina(int id, Maquina maquina)
+        {
+            if (id != maquina.Id)
+            {
+                return BadRequest();
+            }
 
-        return NoContent();
+            _context.Entry(maquina).State = EntityState.Modified;
+
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                if (!_context.Maquinas.Any(e => e.Id == id))
+                {
+                    return NotFound();
+                }
+                else
+                {
+                    throw;
+                }
+            }
+
+            return NoContent();
+        }
+
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteMaquina(int id)
+        {
+            var maquina = await _context.Maquinas.FindAsync(id);
+            if (maquina == null)
+            {
+                return NotFound();
+            }
+
+            _context.Maquinas.Remove(maquina);
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
     }
 }

@@ -1,0 +1,71 @@
+using System;
+using System.Data;
+using System.Data.SqlClient;
+using Npgsql;
+
+class DataMigrator
+{
+    static string sqlConn = "Server=localhost\\SQLEXPRESS;Database=TiemposProcesos;User Id=Esteban;Password=@L3PH2025%;TrustServerCertificate=True";
+    static string pgConn = "Host=localhost;Port=5432;Database=TiemposProcesos;Username=postgres;Password=@L3ph2026";
+    
+    static string[] tables = new[] {
+        "Maquinas", "Actividades", "OrdenesProduccion", "AdminUsuarios",
+        "TiempoProcesos", "ProduccionDiaria", "CalificacionesMensuales",
+        "RendimientoOperariosMensual", "EncuestasCalidad", "EncuestaNovedades"
+    };
+    
+    static void Main()
+    {
+        Console.WriteLine("=== MIGRACIÓN AUTOMÁTICA SQL Server → PostgreSQL ===\n");
+        int total = 0;
+        
+        using var sqlConnection = new SqlConnection(sqlConn);
+        using var pgConnection = new NpgsqlConnection(pgConn);
+        
+        sqlConnection.Open();
+        pgConnection.Open();
+        
+        foreach (var table in tables)
+        {
+            Console.Write($"[{table}] ");
+            
+            var countCmd = new SqlCommand($"SELECT COUNT(*) FROM {table}", sqlConnection);
+            int count = (int)countCmd.ExecuteScalar();
+            
+            if (count == 0) { Console.WriteLine("vacía"); continue; }
+            Console.Write($"{count} registros... ");
+            
+            var selectCmd = new SqlCommand($"SELECT * FROM {table}", sqlConnection);
+            using var reader = selectCmd.ExecuteReader();
+            
+            var cols = new string[reader.FieldCount];
+            for (int i = 0; i < reader.FieldCount; i++) cols[i] = reader.GetName(i);
+            
+            int inserted = 0;
+            while (reader.Read())
+            {
+                var values = new object[reader.FieldCount];
+                reader.GetValues(values);
+                
+                var parameters = new NpgsqlParameter[reader.FieldCount];
+                for (int i = 0; i < values.Length; i++)
+                    parameters[i] = new NpgsqlParameter($"@p{i}", values[i] == DBNull.Value ? (object)DBNull.Value : values[i]);
+                
+                var colNames = string.Join(", ", Array.ConvertAll(cols, c => $"\"{c}\""));
+                var paramNames = string.Join(", ", Array.ConvertAll(parameters, (p, i) => $"@p{i}"));
+                var sql = $"INSERT INTO \"{table}\" ({colNames}) VALUES ({paramNames})";
+                
+                var insertCmd = new NpgsqlCommand(sql, pgConnection);
+                insertCmd.Parameters.AddRange(parameters);
+                
+                try { insertCmd.ExecuteNonQuery(); inserted++; }
+                catch (Exception ex) { Console.WriteLine($"\nError: {ex.Message}"); }
+            }
+            
+            Console.WriteLine($"✓ {inserted} migrados");
+            total += inserted;
+        }
+        
+        Console.WriteLine($"\n=== COMPLETADO: {total} registros migrados ===");
+    }
+}
