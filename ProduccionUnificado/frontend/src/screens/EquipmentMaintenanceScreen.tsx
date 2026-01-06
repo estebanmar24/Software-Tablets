@@ -1,0 +1,1508 @@
+import React, { useState, useEffect } from 'react';
+import { MaterialIcons } from '@expo/vector-icons';
+import {
+    View, Text, StyleSheet, FlatList, TouchableOpacity, Modal,
+    TextInput, Alert, ScrollView, ActivityIndicator, Platform
+} from 'react-native';
+
+const API_BASE = 'http://localhost:5144/api';
+
+interface Equipo {
+    id: number;
+    nombre: string;
+    fechaInspeccion?: string;
+    area?: string;
+    usuarioAsignado?: string;
+    correoUsuario?: string;
+    contrasenaEquipo?: string;
+    ubicacion?: string;
+    estado: string;
+    // PC
+    pcMarca?: string;
+    pcModelo?: string;
+    pcSerie?: string;
+    pcInventario?: string;
+    pcCondicionesFisicas?: string;
+    pcEnciende: boolean;
+    pcTieneDiscoFlexible: boolean;
+    pcTieneCdDvd: boolean;
+    pcBotonesCompletos: boolean;
+    procesador?: string;
+    memoriaRam?: string;
+    discoDuro?: string;
+    // Monitor
+    monitorMarca?: string;
+    monitorModelo?: string;
+    monitorSerie?: string;
+    monitorCondicionesFisicas?: string;
+    monitorEnciende: boolean;
+    monitorColoresCorrectos: boolean;
+    monitorBotonesCompletos: boolean;
+    // Teclado
+    tecladoMarca?: string;
+    tecladoModelo?: string;
+    tecladoSerie?: string;
+    tecladoCondicionesFisicas?: string;
+    tecladoFuncionaCorrectamente: boolean;
+    tecladoBotonesCompletos: boolean;
+    tecladoSeReemplazo: boolean;
+    // Mouse
+    mouseMarca?: string;
+    mouseModelo?: string;
+    mouseSerie?: string;
+    mouseCondicionesFisicas?: string;
+    mouseFuncionaCorrectamente: boolean;
+    mouseBotonesCompletos: boolean;
+    // Otros
+    impresoraMarca?: string;
+    impresoraModelo?: string;
+    impresoraSerie?: string;
+    escanerMarca?: string;
+    escanerModelo?: string;
+    escanerSerie?: string;
+    otrosDispositivos?: string;
+    // Software
+    sistemaOperativo?: string;
+    versionOffice?: string;
+    otroSoftware?: string;
+    // Fechas
+    ultimoMantenimiento?: string;
+    proximoMantenimiento?: string;
+    // Mantenimiento
+    mantenimientoRequerido?: string;
+    observaciones?: string;
+    prioridad?: string;
+}
+
+interface Stats {
+    totalEquipos: number;
+    disponibles: number;
+    asignados: number;
+    enMantenimiento: number;
+    fueraDeServicio: number;
+    mantenimientosEsteMes: number;
+    porcentajeOperativos: number;
+}
+
+interface Mantenimiento {
+    id: number;
+    tipo: string;
+    trabajoRealizado?: string;
+    tecnico?: string;
+    costo: number;
+    fecha: string;
+    proximoProgramado?: string;
+    observaciones?: string;
+}
+
+interface ProximoMantenimiento {
+    id: number;
+    nombre: string;
+    ubicacion?: string;
+    area?: string;
+    proximoMantenimiento: string;
+    diasRestantes: number;
+}
+
+export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => void }) {
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'equipos'>(() => {
+        if (Platform.OS === 'web') {
+            return (localStorage.getItem('equipmentTab') as 'dashboard' | 'equipos') || 'dashboard';
+        }
+        return 'dashboard';
+    });
+    const [equipos, setEquipos] = useState<Equipo[]>([]);
+    const [stats, setStats] = useState<Stats | null>(null);
+    const [proximos, setProximos] = useState<ProximoMantenimiento[]>([]);
+    const [loading, setLoading] = useState(false);
+
+    // Filtros
+    const [filtroEstado, setFiltroEstado] = useState<string>('');
+    const [filtroArea, setFiltroArea] = useState<string>('');
+    const [busqueda, setBusqueda] = useState('');
+    const [areas, setAreas] = useState<string[]>([]);
+
+    // Modales
+    const [modalEquipo, setModalEquipo] = useState(false);
+    const [modalDetalle, setModalDetalle] = useState(false);
+    const [modalHistorial, setModalHistorial] = useState(false);
+    const [modalMantenimiento, setModalMantenimiento] = useState(false);
+    const [modalTipoEquipo, setModalTipoEquipo] = useState(false);
+    const [tipoEquipoSeleccionado, setTipoEquipoSeleccionado] = useState<string>('');
+    const [showDatePicker, setShowDatePicker] = useState(false);
+
+    const [equipoSeleccionado, setEquipoSeleccionado] = useState<Equipo | null>(null);
+    const [historial, setHistorial] = useState<Mantenimiento[]>([]);
+    const [isEditing, setIsEditing] = useState(false);
+
+    // Tipos de equipo disponibles
+    const TIPOS_EQUIPO = [
+        { id: 'computador', nombre: '💻 Equipo de Cómputo', descripcion: 'PC + Monitor + Teclado + Mouse (obligatorio)', icono: '💻' },
+        { id: 'monitor', nombre: '🖥️ Monitor', descripcion: 'Solo pantalla/monitor', icono: '🖥️' },
+        { id: 'mouse', nombre: '🖱️ Mouse', descripcion: 'Solo mouse', icono: '🖱️' },
+        { id: 'teclado', nombre: '⌨️ Teclado', descripcion: 'Solo teclado', icono: '⌨️' },
+        { id: 'impresora', nombre: '🖨️ Impresora', descripcion: 'Impresora o multifuncional', icono: '🖨️' },
+        { id: 'otro', nombre: '📦 Otro Dispositivo', descripcion: 'Especificar cuál es', icono: '📦' },
+    ];
+
+    // Form state
+    const [formData, setFormData] = useState<Partial<Equipo>>({});
+    const [mantenimientoData, setMantenimientoData] = useState({
+        tipo: 'Preventivo',
+        trabajoRealizado: '',
+        tecnico: '',
+        costo: 0,
+        observaciones: '',
+        proximoProgramado: ''
+    });
+
+    useEffect(() => {
+        loadData();
+    }, []);
+
+    useEffect(() => {
+        if (activeTab === 'equipos') {
+            loadEquipos();
+        }
+    }, [activeTab, filtroEstado, filtroArea]);
+
+    const loadData = async () => {
+        setLoading(true);
+        try {
+            const [statsRes, proximosRes, areasRes] = await Promise.all([
+                fetch(`${API_BASE}/equipos/stats`),
+                fetch(`${API_BASE}/equipos/proximos-mantenimientos`),
+                fetch(`${API_BASE}/equipos/areas`)
+            ]);
+
+            if (statsRes.ok) setStats(await statsRes.json());
+            if (proximosRes.ok) {
+                const data = await proximosRes.json();
+                setProximos(data.proximos || []);
+            }
+            if (areasRes.ok) setAreas(await areasRes.json());
+        } catch (error) {
+            console.error('Error loading data:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const loadEquipos = async () => {
+        setLoading(true);
+        try {
+            let url = `${API_BASE}/equipos?`;
+            if (filtroEstado) url += `estado=${filtroEstado}&`;
+            if (filtroArea) url += `area=${encodeURIComponent(filtroArea)}&`;
+            if (busqueda) url += `buscar=${encodeURIComponent(busqueda)}`;
+
+            const res = await fetch(url);
+            if (res.ok) setEquipos(await res.json());
+        } catch (error) {
+            console.error('Error loading equipos:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSearch = () => {
+        loadEquipos();
+    };
+
+    const openNewEquipo = () => {
+        setTipoEquipoSeleccionado('');
+        setModalTipoEquipo(true);
+    };
+
+    const confirmarTipoEquipo = (tipo: string) => {
+        setTipoEquipoSeleccionado(tipo);
+        setModalTipoEquipo(false);
+        setFormData({
+            estado: 'Disponible',
+            pcEnciende: true,
+            pcBotonesCompletos: true,
+            monitorEnciende: true,
+            monitorColoresCorrectos: true,
+            monitorBotonesCompletos: true,
+            tecladoFuncionaCorrectamente: true,
+            tecladoBotonesCompletos: true,
+            mouseFuncionaCorrectamente: true,
+            mouseBotonesCompletos: true
+        });
+        setIsEditing(false);
+        setModalEquipo(true);
+    };
+
+    const openEditEquipo = (equipo: Equipo) => {
+        setFormData(equipo);
+        setIsEditing(true);
+        setModalEquipo(true);
+    };
+
+    const openDetalle = async (equipo: Equipo) => {
+        setEquipoSeleccionado(equipo);
+        setModalDetalle(true);
+    };
+
+    const openHistorial = async (equipo: Equipo) => {
+        setEquipoSeleccionado(equipo);
+        try {
+            const res = await fetch(`${API_BASE}/equipos/${equipo.id}/mantenimientos`);
+            if (res.ok) {
+                const data = await res.json();
+                setHistorial(data.mantenimientos || []);
+            }
+        } catch (error) {
+            console.error('Error loading historial:', error);
+        }
+        setModalHistorial(true);
+    };
+
+    const openNuevoMantenimiento = (equipo: Equipo) => {
+        setEquipoSeleccionado(equipo);
+        setMantenimientoData({
+            tipo: 'Preventivo',
+            trabajoRealizado: '',
+            tecnico: '',
+            costo: 0,
+            observaciones: '',
+            proximoProgramado: ''
+        });
+        setModalMantenimiento(true);
+    };
+
+    const handleSaveEquipo = async () => {
+        if (!formData.nombre) {
+            Alert.alert('Error', 'El nombre del equipo es obligatorio');
+            return;
+        }
+        try {
+            const method = isEditing ? 'PUT' : 'POST';
+            const url = isEditing ? `${API_BASE}/equipos/${formData.id}` : `${API_BASE}/equipos`;
+
+            const res = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            });
+
+            if (res.ok) {
+                Alert.alert('Éxito', isEditing ? 'Equipo actualizado' : 'Equipo creado');
+                setModalEquipo(false);
+                loadEquipos();
+                loadData();
+            } else {
+                const err = await res.json();
+                Alert.alert('Error', err.message || 'No se pudo guardar');
+            }
+        } catch (error) {
+            Alert.alert('Error', 'Error de conexión');
+        }
+    };
+
+    const handleCambiarEstado = async (equipo: Equipo, nuevoEstado: string) => {
+        try {
+            const res = await fetch(`${API_BASE}/equipos/${equipo.id}/estado`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ estado: nuevoEstado })
+            });
+            if (res.ok) {
+                loadEquipos();
+                loadData();
+            }
+        } catch (error) {
+            Alert.alert('Error', 'No se pudo cambiar el estado');
+        }
+    };
+
+    const handleDeleteEquipo = async (id: number) => {
+        Alert.alert('Confirmar', '¿Eliminar este equipo?', [
+            { text: 'Cancelar', style: 'cancel' },
+            {
+                text: 'Eliminar', style: 'destructive', onPress: async () => {
+                    try {
+                        const res = await fetch(`${API_BASE}/equipos/${id}`, { method: 'DELETE' });
+                        if (res.ok) {
+                            loadEquipos();
+                            loadData();
+                        }
+                    } catch (error) {
+                        Alert.alert('Error', 'No se pudo eliminar');
+                    }
+                }
+            }
+        ]);
+    };
+
+    const handleSaveMantenimiento = async () => {
+        if (!equipoSeleccionado) return;
+        try {
+            const res = await fetch(`${API_BASE}/equipos/${equipoSeleccionado.id}/mantenimientos`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(mantenimientoData)
+            });
+            if (res.ok) {
+                Alert.alert('Éxito', 'Mantenimiento registrado');
+                setModalMantenimiento(false);
+                loadEquipos();
+                loadData();
+            }
+        } catch (error) {
+            Alert.alert('Error', 'No se pudo registrar');
+        }
+    };
+
+    const formatDate = (dateStr?: string) => {
+        if (!dateStr) return 'N/A';
+        return new Date(dateStr).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
+    };
+
+    const getEstadoColor = (estado: string) => {
+        switch (estado) {
+            case 'Disponible': return '#28a745';
+            case 'Asignado': return '#007bff';
+            case 'EnMantenimiento': return '#ffc107';
+            case 'FueraDeServicio': return '#dc3545';
+            default: return '#6c757d';
+        }
+    };
+
+    const getEstadoLabel = (estado: string) => {
+        switch (estado) {
+            case 'EnMantenimiento': return 'En Mantenimiento';
+            case 'FueraDeServicio': return 'Fuera de Servicio';
+            default: return estado;
+        }
+    };
+
+    const getPrioridadColor = (prioridad?: string) => {
+        switch (prioridad) {
+            case 'Alta': return '#dc3545'; // Rojo
+            case 'Media': return '#ffc107'; // Amarillo
+            case 'Baja': return '#28a745'; // Verde
+            default: return '#e0e0e0'; // Gris
+        }
+    };
+
+    // ==================== RENDER ====================
+
+    const renderDashboard = () => (
+        <ScrollView style={styles.dashboardContainer}>
+            {/* Stats Cards */}
+            <View style={styles.statsRow}>
+                <View style={[styles.statCard, { borderLeftColor: '#4A90D9' }]}>
+                    <Text style={styles.statTitle}>Total de PCs</Text>
+                    <Text style={styles.statValue}>{stats?.totalEquipos || 0}</Text>
+                    <Text style={styles.statSubtitle}>Equipos registrados</Text>
+                </View>
+                <View style={[styles.statCard, { borderLeftColor: '#28a745' }]}>
+                    <Text style={styles.statTitle}>Operativos</Text>
+                    <Text style={[styles.statValue, { color: '#28a745' }]}>
+                        {(stats?.disponibles || 0) + (stats?.asignados || 0)}
+                    </Text>
+                    <Text style={styles.statSubtitle}>{stats?.porcentajeOperativos || 0}% del total</Text>
+                </View>
+                <View style={[styles.statCard, { borderLeftColor: '#ffc107' }]}>
+                    <Text style={styles.statTitle}>En Mantenimiento</Text>
+                    <Text style={[styles.statValue, { color: '#ffc107' }]}>{stats?.enMantenimiento || 0}</Text>
+                    <Text style={styles.statSubtitle}>En reparación</Text>
+                </View>
+                <View style={[styles.statCard, { borderLeftColor: '#dc3545' }]}>
+                    <Text style={styles.statTitle}>Fuera de Servicio</Text>
+                    <Text style={[styles.statValue, { color: '#dc3545' }]}>{stats?.fueraDeServicio || 0}</Text>
+                    <Text style={styles.statSubtitle}>No operativos</Text>
+                </View>
+            </View>
+
+            {/* Próximos Mantenimientos */}
+            <View style={styles.proximosSection}>
+                <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>Próximos Mantenimientos (30 días)</Text>
+                    <View style={styles.badge}>
+                        <Text style={styles.badgeText}>{proximos.length} pendientes</Text>
+                    </View>
+                </View>
+                {proximos.length === 0 ? (
+                    <Text style={styles.emptyText}>No hay mantenimientos programados</Text>
+                ) : (
+                    proximos.map(item => (
+                        <View key={item.id} style={styles.proximoCard}>
+                            <View style={styles.proximoIcon}>
+                                <Text style={{ fontSize: 20 }}>💻</Text>
+                            </View>
+                            <View style={styles.proximoInfo}>
+                                <Text style={styles.proximoNombre}>{item.nombre}</Text>
+                                <Text style={styles.proximoUbicacion}>{item.ubicacion} - {item.area}</Text>
+                            </View>
+                            <View style={styles.proximoFecha}>
+                                <Text style={styles.proximoFechaText}>{formatDate(item.proximoMantenimiento)}</Text>
+                                <View style={[styles.diasBadge, { backgroundColor: item.diasRestantes <= 7 ? '#ffc107' : '#e3f2fd' }]}>
+                                    <Text style={styles.diasBadgeText}>{item.diasRestantes} días</Text>
+                                </View>
+                            </View>
+                        </View>
+                    ))
+                )}
+            </View>
+        </ScrollView>
+    );
+
+    const renderEquipos = () => (
+        <View style={styles.equiposContainer}>
+            {/* Search and Filters */}
+            <View style={styles.filterRow}>
+                <TextInput
+                    style={styles.searchInput}
+                    placeholder="Buscar por nombre, marca, modelo..."
+                    value={busqueda}
+                    onChangeText={setBusqueda}
+                    onSubmitEditing={handleSearch}
+                />
+                <TouchableOpacity style={styles.addButton} onPress={openNewEquipo}>
+                    <Text style={styles.addButtonText}>+ Agregar Equipo</Text>
+                </TouchableOpacity>
+            </View>
+
+            <View style={styles.filterRow}>
+                <TouchableOpacity
+                    style={[styles.filterChip, !filtroEstado && styles.filterChipActive]}
+                    onPress={() => setFiltroEstado('')}
+                >
+                    <Text style={!filtroEstado ? styles.filterChipTextActive : styles.filterChipText}>Todos</Text>
+                </TouchableOpacity>
+                {['Disponible', 'Asignado', 'EnMantenimiento', 'FueraDeServicio'].map(est => (
+                    <TouchableOpacity
+                        key={est}
+                        style={[styles.filterChip, filtroEstado === est && styles.filterChipActive]}
+                        onPress={() => setFiltroEstado(filtroEstado === est ? '' : est)}
+                    >
+                        <Text style={filtroEstado === est ? styles.filterChipTextActive : styles.filterChipText}>
+                            {getEstadoLabel(est)}
+                        </Text>
+                    </TouchableOpacity>
+                ))}
+            </View>
+
+            {/* Equipment Grid */}
+            {loading ? (
+                <ActivityIndicator size="large" color="#4A90D9" style={{ marginTop: 40 }} />
+            ) : (
+                <FlatList
+                    data={equipos}
+                    keyExtractor={item => item.id.toString()}
+                    numColumns={3}
+                    columnWrapperStyle={styles.equiposRow}
+                    renderItem={({ item }) => (
+                        <View style={styles.equipoCard}>
+                            <View style={styles.equipoHeader}>
+                                <Text style={styles.equipoNombre}>{item.nombre}</Text>
+                                <View style={[styles.estadoBadge, { backgroundColor: getEstadoColor(item.estado) }]}>
+                                    <Text style={styles.estadoBadgeText}>{getEstadoLabel(item.estado)}</Text>
+                                </View>
+                                {item.prioridad && (
+                                    <View style={[styles.estadoBadge, { backgroundColor: getPrioridadColor(item.prioridad), marginLeft: 4 }]}>
+                                        <Text style={styles.estadoBadgeText}>{item.prioridad}</Text>
+                                    </View>
+                                )}
+                            </View>
+                            <Text style={styles.equipoMarca}>{item.pcMarca} {item.pcModelo}</Text>
+                            <Text style={styles.equipoUbicacion}>📍 {item.ubicacion || 'Sin ubicación'}</Text>
+                            <Text style={styles.equipoArea}>● {item.area || 'Sin área'}</Text>
+
+                            <View style={styles.equipoFechas}>
+                                <Text style={styles.fechaLabel}>Inspección: {formatDate(item.fechaInspeccion)}</Text>
+                                <Text style={styles.fechaLabel}>Mantenimiento: {formatDate(item.ultimoMantenimiento)}</Text>
+                            </View>
+
+                            <View style={styles.equipoActions}>
+                                <TouchableOpacity style={styles.actionBtn} onPress={() => openDetalle(item)}>
+                                    <Text style={styles.actionBtnText}>Hoja de Vida</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={styles.actionBtn} onPress={() => openHistorial(item)}>
+                                    <Text style={styles.actionBtnText}>Historial</Text>
+                                </TouchableOpacity>
+                            </View>
+                            <TouchableOpacity
+                                style={styles.mantenimientoBtn}
+                                onPress={() => openNuevoMantenimiento(item)}
+                            >
+                                <Text style={styles.mantenimientoBtnText}>+ Mantenimiento</Text>
+                            </TouchableOpacity>
+
+                            {/* Quick actions */}
+                            <View style={styles.quickActions}>
+                                <TouchableOpacity onPress={() => openEditEquipo(item)}>
+                                    <Text style={styles.quickActionText}>✏️ Editar</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={() => handleDeleteEquipo(item.id)}>
+                                    <Text style={[styles.quickActionText, { color: '#dc3545' }]}>🗑️</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    )}
+                    ListEmptyComponent={
+                        <Text style={styles.emptyText}>No hay equipos registrados</Text>
+                    }
+                />
+            )}
+        </View>
+    );
+
+    return (
+        <View style={styles.container}>
+            {/* Header */}
+            <View style={styles.header}>
+                <TouchableOpacity onPress={onBack} style={styles.backButton}>
+                    <Text style={styles.backButtonText}>← Volver</Text>
+                </TouchableOpacity>
+                <View style={styles.headerTitleContainer}>
+                    <Text style={styles.headerIcon}>💻</Text>
+                    <View>
+                        <Text style={styles.headerTitle}>Control de Mantenimiento de Equipos</Text>
+                        <Text style={styles.headerSubtitle}>Gestión integral de equipos de cómputo</Text>
+                    </View>
+                </View>
+            </View>
+
+            {/* Tabs */}
+            <View style={styles.tabs}>
+                <TouchableOpacity
+                    style={[styles.tab, activeTab === 'dashboard' && styles.tabActive]}
+                    onPress={() => {
+                        setActiveTab('dashboard');
+                        if (Platform.OS === 'web') localStorage.setItem('equipmentTab', 'dashboard');
+                        loadData();
+                    }}
+                >
+                    <Text style={[styles.tabText, activeTab === 'dashboard' && styles.tabTextActive]}>
+                        📊 Panel de Control
+                    </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.tab, activeTab === 'equipos' && styles.tabActive]}
+                    onPress={() => {
+                        setActiveTab('equipos');
+                        if (Platform.OS === 'web') localStorage.setItem('equipmentTab', 'equipos');
+                    }}
+                >
+                    <Text style={[styles.tabText, activeTab === 'equipos' && styles.tabTextActive]}>
+                        🖥️ Equipos ({stats?.totalEquipos || 0})
+                    </Text>
+                </TouchableOpacity>
+            </View>
+
+            {/* Content */}
+            {activeTab === 'dashboard' ? renderDashboard() : renderEquipos()}
+
+            {/* Modal: Agregar/Editar Equipo */}
+            <Modal visible={modalEquipo} animationType="slide" transparent>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <ScrollView>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, marginBottom: 20 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    {!isEditing && (
+                                        <TouchableOpacity
+                                            onPress={() => {
+                                                setModalEquipo(false);
+                                                setModalTipoEquipo(true);
+                                            }}
+                                            style={{ marginRight: 10, padding: 5 }}
+                                        >
+                                            <MaterialIcons name="arrow-back" size={24} color="#333" />
+                                        </TouchableOpacity>
+                                    )}
+                                    <Text style={[styles.modalTitle, { marginBottom: 0 }]}>
+                                        {isEditing ? 'Editar Equipo' : 'Agregar Nuevo Equipo'}
+                                    </Text>
+                                </View>
+                                <TouchableOpacity onPress={() => setModalEquipo(false)} style={{ padding: 5 }}>
+                                    <Text style={{ fontSize: 24, paddingHorizontal: 10 }}>✕</Text>
+                                </TouchableOpacity>
+                            </View>
+
+                            {!isEditing && tipoEquipoSeleccionado && (
+                                <View style={[styles.badge, { alignSelf: 'flex-start', marginBottom: 12, backgroundColor: '#4A90D9' }]}>
+                                    <Text style={[styles.badgeText, { color: '#fff' }]}>
+                                        {TIPOS_EQUIPO.find(t => t.id === tipoEquipoSeleccionado)?.nombre || tipoEquipoSeleccionado}
+                                    </Text>
+                                </View>
+                            )}
+
+                            {/* Información Básica */}
+                            <Text style={styles.sectionLabel}>Datos del Cliente</Text>
+                            <View style={styles.row}>
+                                <View style={{ flex: 1, marginRight: 8 }}>
+                                    <Text style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Nombre del Equipo *</Text>
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="Ej: PC-001"
+                                        value={formData.nombre || ''}
+                                        onChangeText={v => setFormData({ ...formData, nombre: v })}
+                                    />
+                                </View>
+                                {Platform.OS === 'web' ? (
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>F. Inspección</Text>
+                                        <input
+                                            type="date"
+                                            value={formData.fechaInspeccion ? formData.fechaInspeccion.split('T')[0] : ''}
+                                            onChange={(e: any) => setFormData({ ...formData, fechaInspeccion: e.target.value })}
+                                            style={{
+                                                padding: '12px 30px 12px 12px',
+                                                borderRadius: 8,
+                                                border: '1px solid #e0e0e0',
+                                                backgroundColor: '#f5f7fa',
+                                                width: '100%',
+                                                boxSizing: 'border-box' as const,
+                                                fontSize: 14,
+                                                fontFamily: 'System',
+                                                cursor: 'pointer'
+                                            }}
+                                            placeholder="Fecha Inspección"
+                                        />
+                                    </View>
+                                ) : (
+                                    <TextInput
+                                        style={[styles.input, { flex: 1 }]}
+                                        placeholder="Fecha Inspección (YYYY-MM-DD)"
+                                        value={formData.fechaInspeccion ? formData.fechaInspeccion.split('T')[0] : ''}
+                                        onChangeText={v => setFormData({ ...formData, fechaInspeccion: v })}
+                                    />
+                                )}
+                            </View>
+                            <View style={styles.row}>
+                                <TextInput
+                                    style={[styles.input, { flex: 1, marginRight: 8 }]}
+                                    placeholder="Área/Departamento"
+                                    value={formData.area || ''}
+                                    onChangeText={v => setFormData({ ...formData, area: v })}
+                                />
+                                <TextInput
+                                    style={[styles.input, { flex: 1 }]}
+                                    placeholder="Ubicación Física"
+                                    value={formData.ubicacion || ''}
+                                    onChangeText={v => setFormData({ ...formData, ubicacion: v })}
+                                />
+                            </View>
+                            <View style={styles.row}>
+                                <TextInput
+                                    style={[styles.input, { flex: 1, marginRight: 8 }]}
+                                    placeholder="Usuario Asignado"
+                                    value={formData.usuarioAsignado || ''}
+                                    onChangeText={v => setFormData({ ...formData, usuarioAsignado: v })}
+                                />
+                                <TextInput
+                                    style={[styles.input, { flex: 1 }]}
+                                    placeholder="Correo"
+                                    value={formData.correoUsuario || ''}
+                                    onChangeText={v => setFormData({ ...formData, correoUsuario: v })}
+                                />
+                            </View>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Contraseña del Equipo"
+                                value={formData.contrasenaEquipo || ''}
+                                onChangeText={v => setFormData({ ...formData, contrasenaEquipo: v })}
+                            />
+
+                            <Text style={styles.sectionLabel}>Prioridad de Atención</Text>
+                            <View style={{ flexDirection: 'row', marginBottom: 16 }}>
+                                {['Alta', 'Media', 'Baja'].map(p => (
+                                    <TouchableOpacity
+                                        key={p}
+                                        style={{
+                                            paddingVertical: 8,
+                                            paddingHorizontal: 16,
+                                            borderRadius: 20,
+                                            backgroundColor: formData.prioridad === p ? getPrioridadColor(p) : '#f0f0f0',
+                                            marginRight: 8,
+                                            borderWidth: 1,
+                                            borderColor: formData.prioridad === p ? getPrioridadColor(p) : '#e0e0e0'
+                                        }}
+                                        onPress={() => setFormData({ ...formData, prioridad: p })}
+                                    >
+                                        <Text style={{
+                                            color: formData.prioridad === p ? '#fff' : '#333',
+                                            fontWeight: 'bold'
+                                        }}>
+                                            {p}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
+                            {/* PC - Solo para Equipo de Cómputo */}
+                            {(isEditing || tipoEquipoSeleccionado === 'computador') && (
+                                <>
+                                    <Text style={styles.sectionLabel}>💻 PC</Text>
+                                    <View style={styles.row}>
+                                        <TextInput
+                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
+                                            placeholder="Marca"
+                                            value={formData.pcMarca || ''}
+                                            onChangeText={v => setFormData({ ...formData, pcMarca: v })}
+                                        />
+                                        <TextInput
+                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
+                                            placeholder="Modelo"
+                                            value={formData.pcModelo || ''}
+                                            onChangeText={v => setFormData({ ...formData, pcModelo: v })}
+                                        />
+                                        <TextInput
+                                            style={[styles.input, { flex: 1 }]}
+                                            placeholder="Serie"
+                                            value={formData.pcSerie || ''}
+                                            onChangeText={v => setFormData({ ...formData, pcSerie: v })}
+                                        />
+                                    </View>
+                                    <View style={styles.row}>
+                                        <TextInput
+                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
+                                            placeholder="Inventario"
+                                            value={formData.pcInventario || ''}
+                                            onChangeText={v => setFormData({ ...formData, pcInventario: v })}
+                                        />
+                                        <TextInput
+                                            style={[styles.input, { flex: 1 }]}
+                                            placeholder="Condiciones Físicas"
+                                            value={formData.pcCondicionesFisicas || ''}
+                                            onChangeText={v => setFormData({ ...formData, pcCondicionesFisicas: v })}
+                                        />
+                                    </View>
+                                    <View style={styles.row}>
+                                        <TextInput
+                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
+                                            placeholder="Procesador"
+                                            value={formData.procesador || ''}
+                                            onChangeText={v => setFormData({ ...formData, procesador: v })}
+                                        />
+                                        <TextInput
+                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
+                                            placeholder="Memoria RAM"
+                                            value={formData.memoriaRam || ''}
+                                            onChangeText={v => setFormData({ ...formData, memoriaRam: v })}
+                                        />
+                                        <TextInput
+                                            style={[styles.input, { flex: 1 }]}
+                                            placeholder="Disco Duro"
+                                            value={formData.discoDuro || ''}
+                                            onChangeText={v => setFormData({ ...formData, discoDuro: v })}
+                                        />
+                                    </View>
+                                    <View style={styles.checkboxRow}>
+                                        <TouchableOpacity style={styles.checkbox} onPress={() => setFormData({ ...formData, pcEnciende: !formData.pcEnciende })}>
+                                            <Text style={styles.checkboxIcon}>{formData.pcEnciende ? '☑' : '☐'}</Text>
+                                            <Text style={styles.checkboxLabel}>Enciende</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity style={styles.checkbox} onPress={() => setFormData({ ...formData, pcBotonesCompletos: !formData.pcBotonesCompletos })}>
+                                            <Text style={styles.checkboxIcon}>{formData.pcBotonesCompletos ? '☑' : '☐'}</Text>
+                                            <Text style={styles.checkboxLabel}>Botones Completos</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity style={styles.checkbox} onPress={() => setFormData({ ...formData, pcTieneDiscoFlexible: !formData.pcTieneDiscoFlexible })}>
+                                            <Text style={styles.checkboxIcon}>{formData.pcTieneDiscoFlexible ? '☑' : '☐'}</Text>
+                                            <Text style={styles.checkboxLabel}>Disco Flexible</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity style={styles.checkbox} onPress={() => setFormData({ ...formData, pcTieneCdDvd: !formData.pcTieneCdDvd })}>
+                                            <Text style={styles.checkboxIcon}>{formData.pcTieneCdDvd ? '☑' : '☐'}</Text>
+                                            <Text style={styles.checkboxLabel}>CD/DVD</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </>
+                            )}
+
+                            {/* Monitor */}
+                            {(isEditing || tipoEquipoSeleccionado === 'computador' || tipoEquipoSeleccionado === 'monitor') && (
+                                <>
+                                    <Text style={styles.sectionLabel}>🖥️ Monitor</Text>
+                                    <View style={styles.row}>
+                                        <TextInput
+                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
+                                            placeholder="Marca"
+                                            value={formData.monitorMarca || ''}
+                                            onChangeText={v => setFormData({ ...formData, monitorMarca: v })}
+                                        />
+                                        <TextInput
+                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
+                                            placeholder="Modelo"
+                                            value={formData.monitorModelo || ''}
+                                            onChangeText={v => setFormData({ ...formData, monitorModelo: v })}
+                                        />
+                                        <TextInput
+                                            style={[styles.input, { flex: 1 }]}
+                                            placeholder="Serie"
+                                            value={formData.monitorSerie || ''}
+                                            onChangeText={v => setFormData({ ...formData, monitorSerie: v })}
+                                        />
+                                    </View>
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="Condiciones Físicas"
+                                        value={formData.monitorCondicionesFisicas || ''}
+                                        onChangeText={v => setFormData({ ...formData, monitorCondicionesFisicas: v })}
+                                    />
+                                    <View style={styles.checkboxRow}>
+                                        <TouchableOpacity style={styles.checkbox} onPress={() => setFormData({ ...formData, monitorEnciende: !formData.monitorEnciende })}>
+                                            <Text style={styles.checkboxIcon}>{formData.monitorEnciende ? '☑' : '☐'}</Text>
+                                            <Text style={styles.checkboxLabel}>Enciende</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity style={styles.checkbox} onPress={() => setFormData({ ...formData, monitorColoresCorrectos: !formData.monitorColoresCorrectos })}>
+                                            <Text style={styles.checkboxIcon}>{formData.monitorColoresCorrectos ? '☑' : '☐'}</Text>
+                                            <Text style={styles.checkboxLabel}>Colores Correctos</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity style={styles.checkbox} onPress={() => setFormData({ ...formData, monitorBotonesCompletos: !formData.monitorBotonesCompletos })}>
+                                            <Text style={styles.checkboxIcon}>{formData.monitorBotonesCompletos ? '☑' : '☐'}</Text>
+                                            <Text style={styles.checkboxLabel}>Botones Completos</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </>
+                            )}
+
+                            {/* Teclado */}
+                            {(isEditing || tipoEquipoSeleccionado === 'computador' || tipoEquipoSeleccionado === 'teclado') && (
+                                <>
+                                    <Text style={styles.sectionLabel}>⌨️ Teclado</Text>
+                                    <View style={styles.row}>
+                                        <TextInput
+                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
+                                            placeholder="Marca"
+                                            value={formData.tecladoMarca || ''}
+                                            onChangeText={v => setFormData({ ...formData, tecladoMarca: v })}
+                                        />
+                                        <TextInput
+                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
+                                            placeholder="Modelo"
+                                            value={formData.tecladoModelo || ''}
+                                            onChangeText={v => setFormData({ ...formData, tecladoModelo: v })}
+                                        />
+                                        <TextInput
+                                            style={[styles.input, { flex: 1 }]}
+                                            placeholder="Serie"
+                                            value={formData.tecladoSerie || ''}
+                                            onChangeText={v => setFormData({ ...formData, tecladoSerie: v })}
+                                        />
+                                    </View>
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="Condiciones Físicas"
+                                        value={formData.tecladoCondicionesFisicas || ''}
+                                        onChangeText={v => setFormData({ ...formData, tecladoCondicionesFisicas: v })}
+                                    />
+                                    <View style={styles.checkboxRow}>
+                                        <TouchableOpacity style={styles.checkbox} onPress={() => setFormData({ ...formData, tecladoFuncionaCorrectamente: !formData.tecladoFuncionaCorrectamente })}>
+                                            <Text style={styles.checkboxIcon}>{formData.tecladoFuncionaCorrectamente ? '☑' : '☐'}</Text>
+                                            <Text style={styles.checkboxLabel}>Funciona Correctamente</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity style={styles.checkbox} onPress={() => setFormData({ ...formData, tecladoBotonesCompletos: !formData.tecladoBotonesCompletos })}>
+                                            <Text style={styles.checkboxIcon}>{formData.tecladoBotonesCompletos ? '☑' : '☐'}</Text>
+                                            <Text style={styles.checkboxLabel}>Botones Completos</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity style={styles.checkbox} onPress={() => setFormData({ ...formData, tecladoSeReemplazo: !formData.tecladoSeReemplazo })}>
+                                            <Text style={styles.checkboxIcon}>{formData.tecladoSeReemplazo ? '☑' : '☐'}</Text>
+                                            <Text style={styles.checkboxLabel}>Se Reemplazó</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </>
+                            )}
+
+                            {/* Mouse */}
+                            {(isEditing || tipoEquipoSeleccionado === 'computador' || tipoEquipoSeleccionado === 'mouse') && (
+                                <>
+                                    <Text style={styles.sectionLabel}>🖱️ Mouse</Text>
+                                    <View style={styles.row}>
+                                        <TextInput
+                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
+                                            placeholder="Marca"
+                                            value={formData.mouseMarca || ''}
+                                            onChangeText={v => setFormData({ ...formData, mouseMarca: v })}
+                                        />
+                                        <TextInput
+                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
+                                            placeholder="Modelo"
+                                            value={formData.mouseModelo || ''}
+                                            onChangeText={v => setFormData({ ...formData, mouseModelo: v })}
+                                        />
+                                        <TextInput
+                                            style={[styles.input, { flex: 1 }]}
+                                            placeholder="Serie"
+                                            value={formData.mouseSerie || ''}
+                                            onChangeText={v => setFormData({ ...formData, mouseSerie: v })}
+                                        />
+                                    </View>
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="Condiciones Físicas"
+                                        value={formData.mouseCondicionesFisicas || ''}
+                                        onChangeText={v => setFormData({ ...formData, mouseCondicionesFisicas: v })}
+                                    />
+                                    <View style={styles.checkboxRow}>
+                                        <TouchableOpacity style={styles.checkbox} onPress={() => setFormData({ ...formData, mouseFuncionaCorrectamente: !formData.mouseFuncionaCorrectamente })}>
+                                            <Text style={styles.checkboxIcon}>{formData.mouseFuncionaCorrectamente ? '☑' : '☐'}</Text>
+                                            <Text style={styles.checkboxLabel}>Funciona Correctamente</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity style={styles.checkbox} onPress={() => setFormData({ ...formData, mouseBotonesCompletos: !formData.mouseBotonesCompletos })}>
+                                            <Text style={styles.checkboxIcon}>{formData.mouseBotonesCompletos ? '☑' : '☐'}</Text>
+                                            <Text style={styles.checkboxLabel}>Botones Completos</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </>
+                            )}
+
+                            {/* Impresora, Escáner */}
+                            {(isEditing || tipoEquipoSeleccionado === 'impresora') && (
+                                <>
+                                    <Text style={styles.sectionLabel}>🖨️ Impresora / Escáner</Text>
+                                    <View style={styles.row}>
+                                        <TextInput
+                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
+                                            placeholder="Marca (Impresora)"
+                                            value={formData.impresoraMarca || ''}
+                                            onChangeText={v => setFormData({ ...formData, impresoraMarca: v })}
+                                        />
+                                        <TextInput
+                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
+                                            placeholder="Modelo"
+                                            value={formData.impresoraModelo || ''}
+                                            onChangeText={v => setFormData({ ...formData, impresoraModelo: v })}
+                                        />
+                                        <TextInput
+                                            style={[styles.input, { flex: 1 }]}
+                                            placeholder="Serie"
+                                            value={formData.impresoraSerie || ''}
+                                            onChangeText={v => setFormData({ ...formData, impresoraSerie: v })}
+                                        />
+                                    </View>
+                                    <View style={styles.row}>
+                                        <TextInput
+                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
+                                            placeholder="Marca (Escáner)"
+                                            value={formData.escanerMarca || ''}
+                                            onChangeText={v => setFormData({ ...formData, escanerMarca: v })}
+                                        />
+                                        <TextInput
+                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
+                                            placeholder="Modelo"
+                                            value={formData.escanerModelo || ''}
+                                            onChangeText={v => setFormData({ ...formData, escanerModelo: v })}
+                                        />
+                                        <TextInput
+                                            style={[styles.input, { flex: 1 }]}
+                                            placeholder="Serie"
+                                            value={formData.escanerSerie || ''}
+                                            onChangeText={v => setFormData({ ...formData, escanerSerie: v })}
+                                        />
+                                    </View>
+                                </>
+                            )}
+
+                            {/* Otros Dispositivos */}
+                            {(isEditing || tipoEquipoSeleccionado === 'otro') && (
+                                <>
+                                    <Text style={styles.sectionLabel}>📦 Otros Dispositivos</Text>
+                                    <TextInput
+                                        style={[styles.input, { height: 60 }]}
+                                        placeholder="Otros dispositivos (UPS, parlantes, cámara, etc.)"
+                                        multiline
+                                        value={formData.otrosDispositivos || ''}
+                                        onChangeText={v => setFormData({ ...formData, otrosDispositivos: v })}
+                                    />
+                                </>
+                            )}
+
+                            {/* Software */}
+                            {(isEditing || tipoEquipoSeleccionado === 'computador') && (
+                                <>
+                                    <Text style={styles.sectionLabel}>💿 Software</Text>
+                                    <View style={styles.row}>
+                                        <TextInput
+                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
+                                            placeholder="Sistema Operativo"
+                                            value={formData.sistemaOperativo || ''}
+                                            onChangeText={v => setFormData({ ...formData, sistemaOperativo: v })}
+                                        />
+                                        <TextInput
+                                            style={[styles.input, { flex: 1 }]}
+                                            placeholder="Office"
+                                            value={formData.versionOffice || ''}
+                                            onChangeText={v => setFormData({ ...formData, versionOffice: v })}
+                                        />
+                                    </View>
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="Otro Software Instalado"
+                                        value={formData.otroSoftware || ''}
+                                        onChangeText={v => setFormData({ ...formData, otroSoftware: v })}
+                                    />
+                                </>
+                            )}
+
+                            {/* Mantenimiento Requerido */}
+                            <Text style={styles.sectionLabel}>🔧 Mantenimiento Requerido</Text>
+                            {Platform.OS === 'web' ? (
+                                <View style={{ marginBottom: 12 }}>
+                                    <Text style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>F. Próx. Mantenimiento</Text>
+                                    <input
+                                        type="date"
+                                        value={formData.proximoMantenimiento ? formData.proximoMantenimiento.split('T')[0] : ''}
+                                        onChange={(e: any) => setFormData({ ...formData, proximoMantenimiento: e.target.value })}
+                                        style={{
+                                            padding: '12px 30px 12px 12px',
+                                            borderRadius: 8,
+                                            border: '1px solid #e0e0e0',
+                                            backgroundColor: '#f5f7fa',
+                                            width: '100%',
+                                            boxSizing: 'border-box' as const,
+                                            fontSize: 14,
+                                            fontFamily: 'System',
+                                            cursor: 'pointer'
+                                        }}
+                                    />
+                                </View>
+                            ) : (
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="Fecha próximo mantenimiento (YYYY-MM-DD)"
+                                    value={formData.proximoMantenimiento ? formData.proximoMantenimiento.split('T')[0] : ''}
+                                    onChangeText={v => setFormData({ ...formData, proximoMantenimiento: v })}
+                                />
+                            )}
+                            <TextInput
+                                style={[styles.input, { height: 80 }]}
+                                placeholder="Descripción del mantenimiento que se debe realizar"
+                                multiline
+                                value={formData.mantenimientoRequerido || ''}
+                                onChangeText={v => setFormData({ ...formData, mantenimientoRequerido: v })}
+                            />
+                            <TextInput
+                                style={[styles.input, { height: 80 }]}
+                                placeholder="Observaciones generales del equipo"
+                                multiline
+                                value={formData.observaciones || ''}
+                                onChangeText={v => setFormData({ ...formData, observaciones: v })}
+                            />
+
+                            {/* Estado */}
+                            <Text style={styles.sectionLabel}>Estado del Equipo</Text>
+                            <View style={styles.estadoSelector}>
+                                {['Disponible', 'Asignado', 'EnMantenimiento', 'FueraDeServicio'].map(est => (
+                                    <TouchableOpacity
+                                        key={est}
+                                        style={[
+                                            styles.estadoOption,
+                                            formData.estado === est && { backgroundColor: getEstadoColor(est) }
+                                        ]}
+                                        onPress={() => setFormData({ ...formData, estado: est })}
+                                    >
+                                        <Text style={[
+                                            styles.estadoOptionText,
+                                            formData.estado === est && { color: '#fff' }
+                                        ]}>
+                                            {getEstadoLabel(est)}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
+                            {/* Buttons */}
+                            <View style={styles.modalButtons}>
+                                <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalEquipo(false)}>
+                                    <Text style={styles.cancelBtnText}>Cancelar</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={styles.saveBtn} onPress={handleSaveEquipo}>
+                                    <Text style={styles.saveBtnText}>Guardar</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </ScrollView>
+                    </View>
+                </View >
+            </Modal >
+
+            {/* Modal: Hoja de Vida (Detalle) */}
+            < Modal visible={modalDetalle} animationType="slide" transparent >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <ScrollView>
+                            <View style={styles.modalHeader}>
+                                <Text style={styles.modalTitle}>📄 Hoja de Vida del Equipo</Text>
+                                <TouchableOpacity onPress={() => setModalDetalle(false)}>
+                                    <Text style={{ fontSize: 24 }}>✕</Text>
+                                </TouchableOpacity>
+                            </View>
+                            <Text style={styles.modalSubtitle}>Información completa del equipo {equipoSeleccionado?.nombre}</Text>
+
+                            {equipoSeleccionado && (
+                                <>
+                                    <View style={styles.detalleSection}>
+                                        <Text style={styles.detalleSectionTitle}>💻 Información Básica</Text>
+                                        <View style={styles.detalleRow}>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Nombre del Equipo</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.nombre}</Text>
+                                            </View>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Ubicación</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.ubicacion || 'N/A'}</Text>
+                                            </View>
+                                        </View>
+                                        <View style={styles.detalleRow}>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Marca y Modelo</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.pcMarca} {equipoSeleccionado.pcModelo}</Text>
+                                            </View>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Departamento</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.area || 'N/A'}</Text>
+                                            </View>
+                                        </View>
+                                        <View style={styles.detalleRow}>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Número de Serie</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.pcSerie || 'N/A'}</Text>
+                                            </View>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Usuario Asignado</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.usuarioAsignado || 'N/A'}</Text>
+                                            </View>
+                                        </View>
+                                        <View style={styles.detalleRow}>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Estado Actual</Text>
+                                                <View style={[styles.estadoBadge, { backgroundColor: getEstadoColor(equipoSeleccionado.estado) }]}>
+                                                    <Text style={styles.estadoBadgeText}>{getEstadoLabel(equipoSeleccionado.estado)}</Text>
+                                                </View>
+                                            </View>
+                                        </View>
+                                    </View>
+
+                                    <View style={styles.detalleSection}>
+                                        <Text style={styles.detalleSectionTitle}>⚙️ Especificaciones</Text>
+                                        <View style={styles.detalleRow}>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Procesador</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.procesador || 'N/A'}</Text>
+                                            </View>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Memoria RAM</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.memoriaRam || 'N/A'}</Text>
+                                            </View>
+                                        </View>
+                                        <View style={styles.detalleRow}>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Disco Duro</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.discoDuro || 'N/A'}</Text>
+                                            </View>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Sistema Operativo</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.sistemaOperativo || 'N/A'}</Text>
+                                            </View>
+                                        </View>
+                                    </View>
+
+                                    <View style={styles.detalleSection}>
+                                        <Text style={styles.detalleSectionTitle}>🖥️ Periféricos</Text>
+                                        <View style={styles.detalleRow}>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Monitor</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.monitorMarca} {equipoSeleccionado.monitorModelo || 'N/A'}</Text>
+                                            </View>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Teclado</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.tecladoMarca || 'N/A'}</Text>
+                                            </View>
+                                        </View>
+                                    </View>
+                                </>
+                            )}
+                        </ScrollView>
+                    </View>
+                </View>
+            </Modal >
+
+            {/* Modal: Historial de Mantenimientos */}
+            < Modal visible={modalHistorial} animationType="slide" transparent >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>🔧 Historial de Mantenimiento</Text>
+                            <TouchableOpacity onPress={() => setModalHistorial(false)}>
+                                <Text style={{ fontSize: 24 }}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
+                        <Text style={styles.modalSubtitle}>
+                            {equipoSeleccionado?.nombre} • {historial.length} registros
+                        </Text>
+
+                        <ScrollView>
+                            {historial.length === 0 ? (
+                                <Text style={styles.emptyText}>No hay mantenimientos registrados</Text>
+                            ) : (
+                                historial.map((m, index) => (
+                                    <View key={m.id} style={styles.historialCard}>
+                                        <View style={styles.historialHeader}>
+                                            <View style={[styles.tipoBadge, { backgroundColor: m.tipo === 'Preventivo' ? '#17a2b8' : '#dc3545' }]}>
+                                                <Text style={styles.tipoBadgeText}>{m.tipo}</Text>
+                                            </View>
+                                            {index === 0 && (
+                                                <View style={styles.recienteBadge}>
+                                                    <Text style={styles.recienteBadgeText}>Más reciente</Text>
+                                                </View>
+                                            )}
+                                            <Text style={styles.historialFecha}>{formatDate(m.fecha)}</Text>
+                                        </View>
+                                        <Text style={styles.historialDescripcion}>{m.trabajoRealizado || 'Sin descripción'}</Text>
+                                        <View style={styles.historialFooter}>
+                                            <Text style={styles.historialTecnico}>👤 {m.tecnico || 'N/A'}</Text>
+                                            <Text style={styles.historialCosto}>💵 ${m.costo.toFixed(2)}</Text>
+                                        </View>
+                                    </View>
+                                ))
+                            )}
+                        </ScrollView>
+                    </View>
+                </View>
+            </Modal >
+
+            {/* Modal: Registrar Mantenimiento */}
+            < Modal visible={modalMantenimiento} animationType="slide" transparent >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>+ Registrar Mantenimiento</Text>
+                        <Text style={styles.modalSubtitle}>{equipoSeleccionado?.nombre}</Text>
+
+                        <Text style={styles.sectionLabel}>Tipo de Mantenimiento</Text>
+                        <View style={styles.tipoSelector}>
+                            {['Preventivo', 'Correctivo'].map(tipo => (
+                                <TouchableOpacity
+                                    key={tipo}
+                                    style={[
+                                        styles.tipoOption,
+                                        mantenimientoData.tipo === tipo && styles.tipoOptionActive
+                                    ]}
+                                    onPress={() => setMantenimientoData({ ...mantenimientoData, tipo })}
+                                >
+                                    <Text style={mantenimientoData.tipo === tipo ? styles.tipoOptionTextActive : styles.tipoOptionText}>
+                                        {tipo}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+
+                        <TextInput
+                            style={[styles.input, { height: 80 }]}
+                            placeholder="Trabajo Realizado"
+                            multiline
+                            value={mantenimientoData.trabajoRealizado}
+                            onChangeText={v => setMantenimientoData({ ...mantenimientoData, trabajoRealizado: v })}
+                        />
+
+                        <View style={styles.row}>
+                            <TextInput
+                                style={[styles.input, { flex: 1, marginRight: 8 }]}
+                                placeholder="Técnico"
+                                value={mantenimientoData.tecnico}
+                                onChangeText={v => setMantenimientoData({ ...mantenimientoData, tecnico: v })}
+                            />
+                            <TextInput
+                                style={[styles.input, { flex: 1 }]}
+                                placeholder="Costo ($)"
+                                keyboardType="numeric"
+                                value={mantenimientoData.costo.toString()}
+                                onChangeText={v => setMantenimientoData({ ...mantenimientoData, costo: parseFloat(v) || 0 })}
+                            />
+                        </View>
+
+                        <TextInput
+                            style={styles.input}
+                            placeholder="Observaciones"
+                            value={mantenimientoData.observaciones}
+                            onChangeText={v => setMantenimientoData({ ...mantenimientoData, observaciones: v })}
+                        />
+
+                        <View style={styles.modalButtons}>
+                            <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalMantenimiento(false)}>
+                                <Text style={styles.cancelBtnText}>Cancelar</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.saveBtn} onPress={handleSaveMantenimiento}>
+                                <Text style={styles.saveBtnText}>Registrar</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal >
+
+            {/* Modal: Seleccionar Tipo de Equipo */}
+            < Modal visible={modalTipoEquipo} animationType="fade" transparent >
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { maxWidth: 600 }]}>
+                        <Text style={styles.modalTitle}>Seleccionar Tipo de Equipo</Text>
+                        <Text style={styles.modalSubtitle}>¿Qué tipo de equipo deseas agregar?</Text>
+
+                        <View style={styles.tipoEquipoGrid}>
+                            {TIPOS_EQUIPO.map(tipo => (
+                                <TouchableOpacity
+                                    key={tipo.id}
+                                    style={styles.tipoEquipoCard}
+                                    onPress={() => confirmarTipoEquipo(tipo.id)}
+                                >
+                                    <Text style={styles.tipoEquipoIcono}>{tipo.icono}</Text>
+                                    <Text style={styles.tipoEquipoNombre}>{tipo.nombre.replace(tipo.icono + ' ', '')}</Text>
+                                    <Text style={styles.tipoEquipoDescripcion}>{tipo.descripcion}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+
+                        <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalTipoEquipo(false)}>
+                            <Text style={styles.cancelBtnText}>Cancelar</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal >
+        </View >
+    );
+}
+
+const styles = StyleSheet.create({
+    container: { flex: 1, backgroundColor: '#f5f7fa' },
+
+    // Header
+    header: { backgroundColor: '#2c3e50', padding: 16, flexDirection: 'row', alignItems: 'center' },
+    backButton: { marginRight: 16 },
+    backButtonText: { color: '#fff', fontSize: 16 },
+    headerTitleContainer: { flexDirection: 'row', alignItems: 'center' },
+    headerIcon: { fontSize: 32, marginRight: 12, backgroundColor: 'rgba(255,255,255,0.2)', padding: 8, borderRadius: 8 },
+    headerTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
+    headerSubtitle: { color: 'rgba(255,255,255,0.7)', fontSize: 12 },
+
+    // Tabs
+    tabs: { flexDirection: 'row', backgroundColor: '#fff', paddingHorizontal: 16, paddingTop: 8 },
+    tab: { paddingVertical: 12, paddingHorizontal: 24, marginRight: 8, borderRadius: 24, backgroundColor: '#f5f7fa' },
+    tabActive: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#4A90D9' },
+    tabText: { color: '#666', fontSize: 14 },
+    tabTextActive: { color: '#4A90D9', fontWeight: 'bold' },
+
+    // Dashboard
+    dashboardContainer: { flex: 1, padding: 16 },
+    statsRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 24 },
+    statCard: { backgroundColor: '#fff', borderRadius: 12, padding: 16, width: '24%', borderLeftWidth: 4, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+    statTitle: { fontSize: 12, color: '#666', marginBottom: 8 },
+    statValue: { fontSize: 32, fontWeight: 'bold', color: '#333' },
+    statSubtitle: { fontSize: 11, color: '#999', marginTop: 4 },
+
+    // Próximos Mantenimientos
+    proximosSection: { backgroundColor: '#fff', borderRadius: 12, padding: 16 },
+    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+    sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#333' },
+    badge: { backgroundColor: '#e3f2fd', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 },
+    badgeText: { color: '#1976d2', fontSize: 12 },
+    proximoCard: { flexDirection: 'row', alignItems: 'center', padding: 12, backgroundColor: '#fafafa', borderRadius: 8, marginBottom: 8, borderLeftWidth: 3, borderLeftColor: '#4A90D9' },
+    proximoIcon: { width: 40, height: 40, backgroundColor: '#e3f2fd', borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+    proximoInfo: { flex: 1 },
+    proximoNombre: { fontWeight: 'bold', color: '#333' },
+    proximoUbicacion: { fontSize: 12, color: '#666' },
+    proximoFecha: { alignItems: 'flex-end' },
+    proximoFechaText: { fontSize: 12, color: '#666' },
+    diasBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, marginTop: 4 },
+    diasBadgeText: { fontSize: 11, color: '#333' },
+
+    // Equipos
+    equiposContainer: { flex: 1, padding: 16 },
+    filterRow: { flexDirection: 'row', marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' },
+    searchInput: { flex: 1, backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 10, marginRight: 12, borderWidth: 1, borderColor: '#ddd' },
+    addButton: { backgroundColor: '#333', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
+    addButtonText: { color: '#fff', fontWeight: 'bold' },
+    filterChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#fff', marginRight: 8, borderWidth: 1, borderColor: '#ddd' },
+    filterChipActive: { backgroundColor: '#4A90D9', borderColor: '#4A90D9' },
+    filterChipText: { color: '#666' },
+    filterChipTextActive: { color: '#fff' },
+
+    // Equipment Cards
+    equiposRow: { justifyContent: 'flex-start' },
+    equipoCard: { backgroundColor: '#fff', borderRadius: 12, padding: 16, width: '32%', marginRight: '1%', marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+    equipoHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
+    equipoNombre: { fontSize: 16, fontWeight: 'bold', color: '#333' },
+    estadoBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
+    estadoBadgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
+    equipoMarca: { fontSize: 13, color: '#666', marginBottom: 8 },
+    equipoUbicacion: { fontSize: 12, color: '#888', marginBottom: 2 },
+    equipoArea: { fontSize: 12, color: '#4A90D9', marginBottom: 8 },
+    equipoFechas: { borderTopWidth: 1, borderTopColor: '#eee', paddingTop: 8, marginTop: 8, marginBottom: 8 },
+    fechaLabel: { fontSize: 11, color: '#666', marginBottom: 2 },
+    equipoSerie: { fontSize: 11, color: '#999', marginBottom: 12 },
+    equipoActions: { flexDirection: 'row', marginBottom: 8 },
+    actionBtn: { flex: 1, borderWidth: 1, borderColor: '#ddd', paddingVertical: 8, borderRadius: 6, marginRight: 4, alignItems: 'center' },
+    actionBtnText: { fontSize: 11, color: '#333' },
+    mantenimientoBtn: { backgroundColor: '#4A90D9', paddingVertical: 10, borderRadius: 6, alignItems: 'center' },
+    mantenimientoBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 12 },
+    quickActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#eee' },
+    quickActionText: { fontSize: 12, color: '#666' },
+
+    // Modals
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+    modalContent: { backgroundColor: '#fff', borderRadius: 16, padding: 24, width: '80%', maxHeight: '90%' },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+    modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#333' },
+    modalSubtitle: { fontSize: 14, color: '#666', marginBottom: 16 },
+    sectionLabel: { fontSize: 14, fontWeight: 'bold', color: '#333', marginTop: 16, marginBottom: 8 },
+    input: { backgroundColor: '#f5f7fa', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 12, borderWidth: 1, borderColor: '#e0e0e0' },
+    row: { flexDirection: 'row' },
+    checkboxRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 12 },
+    checkbox: { flexDirection: 'row', alignItems: 'center', marginRight: 16, marginBottom: 8 },
+    checkboxIcon: { fontSize: 20, marginRight: 6, color: '#4A90D9' },
+    checkboxLabel: { fontSize: 13, color: '#333' },
+    estadoSelector: { flexDirection: 'row', marginBottom: 16 },
+    estadoOption: { flex: 1, paddingVertical: 10, borderRadius: 8, marginRight: 8, alignItems: 'center', backgroundColor: '#f5f7fa', borderWidth: 1, borderColor: '#ddd' },
+    estadoOptionText: { color: '#666' },
+    modalButtons: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 16 },
+    cancelBtn: { paddingHorizontal: 24, paddingVertical: 12, marginRight: 12 },
+    cancelBtnText: { color: '#666' },
+    saveBtn: { backgroundColor: '#4A90D9', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 },
+    saveBtnText: { color: '#fff', fontWeight: 'bold' },
+
+    // Detalle
+    detalleSection: { backgroundColor: '#fafafa', borderRadius: 12, padding: 16, marginBottom: 16 },
+    detalleSectionTitle: { fontSize: 14, fontWeight: 'bold', color: '#333', marginBottom: 12 },
+    detalleRow: { flexDirection: 'row', marginBottom: 12 },
+    detalleItem: { flex: 1 },
+    detalleLabel: { fontSize: 11, color: '#888', marginBottom: 2 },
+    detalleValue: { fontSize: 14, color: '#333', fontWeight: '500' },
+
+    // Historial
+    historialCard: { backgroundColor: '#fafafa', borderRadius: 12, padding: 16, marginBottom: 12, borderLeftWidth: 4, borderLeftColor: '#17a2b8' },
+    historialHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+    tipoBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4, marginRight: 8 },
+    tipoBadgeText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
+    recienteBadge: { backgroundColor: '#fff3cd', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, marginRight: 8 },
+    recienteBadgeText: { color: '#856404', fontSize: 10 },
+    historialFecha: { fontSize: 12, color: '#666', marginLeft: 'auto' },
+    historialDescripcion: { fontSize: 14, color: '#333', marginBottom: 8, lineHeight: 20 },
+    historialFooter: { flexDirection: 'row', justifyContent: 'space-between' },
+    historialTecnico: { fontSize: 12, color: '#666' },
+    historialCosto: { fontSize: 12, color: '#28a745', fontWeight: 'bold' },
+
+    // Tipo selector
+    tipoSelector: { flexDirection: 'row', marginBottom: 16 },
+    tipoOption: { flex: 1, paddingVertical: 12, borderRadius: 8, marginRight: 8, alignItems: 'center', backgroundColor: '#f5f7fa', borderWidth: 1, borderColor: '#ddd' },
+    tipoOptionActive: { backgroundColor: '#17a2b8', borderColor: '#17a2b8' },
+    tipoOptionText: { color: '#666' },
+    tipoOptionTextActive: { color: '#fff', fontWeight: 'bold' },
+
+    // Tipo Equipo Grid
+    tipoEquipoGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginVertical: 16 },
+    tipoEquipoCard: {
+        width: '48%',
+        backgroundColor: '#f8f9fa',
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 12,
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: '#e0e0e0'
+    },
+    tipoEquipoIcono: { fontSize: 40, marginBottom: 8 },
+    tipoEquipoNombre: { fontSize: 14, fontWeight: 'bold', color: '#333', textAlign: 'center', marginBottom: 4 },
+    tipoEquipoDescripcion: { fontSize: 11, color: '#666', textAlign: 'center' },
+
+    emptyText: { textAlign: 'center', color: '#999', padding: 40, fontSize: 14 }
+});

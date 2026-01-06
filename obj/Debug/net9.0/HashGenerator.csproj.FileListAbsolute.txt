@@ -1,6 +1,0 @@
-C:\Users\Desarrollo3\Desktop\Software-Tablets\obj\Debug\net9.0\HashGenerator.csproj.AssemblyReference.cache
-C:\Users\Desarrollo3\Desktop\Software-Tablets\obj\Debug\net9.0\HashGenerator.GeneratedMSBuildEditorConfig.editorconfig
-C:\Users\Desarrollo3\Desktop\Software-Tablets\obj\Debug\net9.0\HashGenerator.AssemblyInfoInputs.cache
-C:\Users\Desarrollo3\Desktop\Software-Tablets\obj\Debug\net9.0\HashGenerator.AssemblyInfo.cs
-C:\Users\Desarrollo3\Desktop\Software-Tablets\obj\Debug\net9.0\HashGenerator.csproj.CoreCompileInputs.cache
-C:\Users\Desarrollo3\Desktop\Software-Tablets\obj\Debug\net9.0\HashGenerator.sourcelink.json

@@ -105,11 +105,15 @@ export default function App() {
     const normalizedRole = role.toLowerCase();
     setAdminRole(normalizedRole);
     setAdminName(nombreMostrar);
-    if (normalizedRole === 'calidad') {
-      setCurrentView('calidad');
-    } else if (normalizedRole === 'develop') {
+
+    // Priority Routing: Develop > Calidad (Exclusive) > Admin (General)
+    if (normalizedRole.includes('develop')) {
       setCurrentView('develop');
+    } else if (normalizedRole === 'calidad') {
+      // Exclusive view only if specific role is strictly 'calidad' and nothing else
+      setCurrentView('calidad');
     } else {
+      // For 'admin' and mixed roles (e.g. 'produccion,talleres'), use the Dashboard
       setCurrentView('admin');
     }
   };
@@ -535,7 +539,7 @@ export default function App() {
     }
 
     // FAIL-SAFE: Si el rol es develop, NUNCA mostrar el dashboard admin
-    if (adminRole === 'develop') {
+    if (adminRole.includes('develop')) {
       return (
         <UserManagementScreen onBack={() => {
           setAdminRole('');

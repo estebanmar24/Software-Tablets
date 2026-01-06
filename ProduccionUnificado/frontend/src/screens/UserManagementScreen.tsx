@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Modal, TextInput, Alert, ScrollView } from 'react-native';
 import { getUsers, createUser, updateUser, deleteUser } from '../services/api';
-import { Picker } from '@react-native-picker/picker';
 
 interface User {
     id: number;
@@ -20,7 +19,8 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
     const [editingId, setEditingId] = useState<number | null>(null);
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
-    const [role, setRole] = useState('admin');
+    // const [role, setRole] = useState('admin'); // Removed single role
+    const [selectedRoles, setSelectedRoles] = useState<string[]>(['produccion']); // Multi-role state
     const [nombreMostrar, setNombreMostrar] = useState('');
 
     const rolesDisponibles = [
@@ -50,9 +50,17 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
         }
     };
 
+    const toggleRole = (value: string) => {
+        if (selectedRoles.includes(value)) {
+            setSelectedRoles(selectedRoles.filter(r => r !== value));
+        } else {
+            setSelectedRoles([...selectedRoles, value]);
+        }
+    };
+
     const handleSave = async () => {
-        if (!role || !nombreMostrar) {
-            Alert.alert('Error', 'Complete todos los campos obligatorios');
+        if (selectedRoles.length === 0 || !nombreMostrar) {
+            Alert.alert('Error', 'Debe seleccionar al menos un rol y escribir un nombre');
             return;
         }
 
@@ -61,12 +69,14 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
             return;
         }
 
+        const roleString = selectedRoles.join(',');
+
         try {
             if (isEditing && editingId) {
-                await updateUser(editingId, { role, nombreMostrar, password: password || undefined });
+                await updateUser(editingId, { role: roleString, nombreMostrar, password: password || undefined });
                 Alert.alert('Éxito', 'Usuario actualizado');
             } else {
-                await createUser({ username, password, role, nombreMostrar });
+                await createUser({ username, password, role: roleString, nombreMostrar });
                 Alert.alert('Éxito', 'Usuario creado');
             }
             setModalVisible(false);
@@ -103,7 +113,8 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
     const openEdit = (user: User) => {
         setEditingId(user.id);
         setUsername(user.username);
-        setRole(user.role);
+        // Split role string into array, defaulting to empty if null
+        setSelectedRoles(user.role ? user.role.split(',').map(r => r.trim()) : []);
         setNombreMostrar(user.nombreMostrar);
         setPassword(''); // Password blank on edit
         setIsEditing(true);
@@ -120,29 +131,37 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
         setEditingId(null);
         setUsername('');
         setPassword('');
-        setRole('produccion');
+        setSelectedRoles(['produccion']);
         setNombreMostrar('');
     };
 
-    const renderItem = ({ item }: { item: User }) => (
-        <View style={styles.card}>
-            <View style={styles.cardInfo}>
-                <Text style={styles.cardTitle}>{item.nombreMostrar}</Text>
-                <Text style={styles.cardSubtitle}>Usuario: {item.username}</Text>
-                <View style={[styles.badge, { backgroundColor: item.role === 'develop' ? '#000' : '#2196F3' }]}>
-                    <Text style={styles.badgeText}>{item.role}</Text>
+    const renderItem = ({ item }: { item: User }) => {
+        // Split roles for display
+        const userRoles = item.role ? item.role.split(',') : [];
+        return (
+            <View style={styles.card}>
+                <View style={styles.cardInfo}>
+                    <Text style={styles.cardTitle}>{item.nombreMostrar}</Text>
+                    <Text style={styles.cardSubtitle}>Usuario: {item.username}</Text>
+                    <View style={styles.rolesContainer}>
+                        {userRoles.map((r, i) => (
+                            <View key={i} style={[styles.badge, { backgroundColor: r.trim() === 'develop' ? '#000' : '#2196F3', marginRight: 4, marginBottom: 4 }]}>
+                                <Text style={styles.badgeText}>{r.trim()}</Text>
+                            </View>
+                        ))}
+                    </View>
+                </View>
+                <View style={styles.cardActions}>
+                    <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(item)}>
+                        <Text style={styles.btnText}>Editar</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.deleteBtn} onPress={() => confirmDelete(item)}>
+                        <Text style={styles.btnText}>Borrar</Text>
+                    </TouchableOpacity>
                 </View>
             </View>
-            <View style={styles.cardActions}>
-                <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(item)}>
-                    <Text style={styles.btnText}>Editar</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.deleteBtn} onPress={() => confirmDelete(item)}>
-                    <Text style={styles.btnText}>Borrar</Text>
-                </TouchableOpacity>
-            </View>
-        </View>
-    );
+        );
+    };
 
     return (
         <View style={styles.container}>
@@ -187,17 +206,22 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
                                 onChangeText={setNombreMostrar}
                             />
 
-                            <Text style={styles.label}>Rol:</Text>
-                            <View style={styles.pickerContainer}>
-                                <Picker
-                                    selectedValue={role}
-                                    onValueChange={setRole}
-                                    style={styles.picker}
-                                >
-                                    {rolesDisponibles.map(r => (
-                                        <Picker.Item key={r.value} label={r.label} value={r.value} />
-                                    ))}
-                                </Picker>
+                            <Text style={styles.label}>Roles:</Text>
+                            <View style={styles.rolesList}>
+                                {rolesDisponibles.map(r => {
+                                    const isSelected = selectedRoles.includes(r.value);
+                                    return (
+                                        <TouchableOpacity
+                                            key={r.value}
+                                            style={[styles.roleOption, isSelected && styles.roleOptionSelected]}
+                                            onPress={() => toggleRole(r.value)}
+                                        >
+                                            <Text style={[styles.roleOptionText, isSelected && styles.roleOptionTextSelected]}>
+                                                {isSelected ? '☑' : '☐'} {r.label}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    );
+                                })}
                             </View>
 
                             <Text style={styles.label}>Contraseña:</Text>
@@ -233,11 +257,13 @@ const styles = StyleSheet.create({
     backText: { color: 'white', fontSize: 16 },
     addBtn: { backgroundColor: '#4CAF50', padding: 10, borderRadius: 5 },
     addBtnText: { color: 'white', fontWeight: 'bold' },
+    // List styles
     list: { padding: 15 },
     card: { backgroundColor: 'white', borderRadius: 8, padding: 15, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', shadowOpacity: 0.1, elevation: 2 },
     cardInfo: { flex: 1 },
     cardTitle: { fontSize: 16, fontWeight: 'bold' },
     cardSubtitle: { color: '#666', marginVertical: 4 },
+    rolesContainer: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 4 },
     badge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
     badgeText: { color: 'white', fontSize: 12 },
     cardActions: { flexDirection: 'row' },
@@ -251,8 +277,14 @@ const styles = StyleSheet.create({
     label: { fontWeight: 'bold', marginTop: 10, marginBottom: 5 },
     input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 5, padding: 10, backgroundColor: '#fff' },
     disabledInput: { backgroundColor: '#eee', color: '#888' },
-    pickerContainer: { borderWidth: 1, borderColor: '#ccc', borderRadius: 5, marginBottom: 5 },
-    picker: { height: 50 },
+
+    // Multi-select styles
+    rolesList: { borderWidth: 1, borderColor: '#ccc', borderRadius: 5, padding: 5, marginBottom: 15 },
+    roleOption: { padding: 10, borderBottomWidth: 1, borderBottomColor: '#eee', flexDirection: 'row', alignItems: 'center' },
+    roleOptionSelected: { backgroundColor: '#e3f2fd' },
+    roleOptionText: { fontSize: 14, color: '#333' },
+    roleOptionTextSelected: { color: '#1976D2', fontWeight: 'bold' },
+
     modalActions: { flexDirection: 'row', marginTop: 30, justifyContent: 'flex-end', gap: 10 },
     cancelBtn: { padding: 12, borderRadius: 5, backgroundColor: '#eee' },
     cancelText: { fontWeight: 'bold', color: '#333' },

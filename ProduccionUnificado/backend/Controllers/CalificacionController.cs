@@ -63,7 +63,7 @@ public class CalificacionController : ControllerBase
             {
                 // Actualizar existente
                 existente.CalificacionTotal = dto.CalificacionTotal;
-                existente.FechaCalculo = DateTime.Now;
+                existente.FechaCalculo = DateTime.UtcNow;
                 existente.Notas = dto.Notas;
                 existente.DesgloseMaquinas = dto.DesgloseMaquinas;
             }
@@ -75,7 +75,7 @@ public class CalificacionController : ControllerBase
                     Mes = dto.Mes,
                     Anio = dto.Anio,
                     CalificacionTotal = dto.CalificacionTotal,
-                    FechaCalculo = DateTime.Now,
+                    FechaCalculo = DateTime.UtcNow,
                     Notas = dto.Notas,
                     DesgloseMaquinas = dto.DesgloseMaquinas
                 };
@@ -100,14 +100,18 @@ public class CalificacionController : ControllerBase
     {
         try
         {
+            // Crear rango de fechas para el mes
+            var fechaInicio = new DateTime(anio, mes, 1);
+            var fechaFin = fechaInicio.AddMonths(1);
+
             // Obtener datos de producción para calcular la calificación
             var produccion = await _context.ProduccionDiaria
                 .Include(p => p.Maquina)
-                .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio)
+                .Where(p => p.Fecha >= fechaInicio && p.Fecha < fechaFin)
                 .ToListAsync();
 
             if (!produccion.Any())
-                return NotFound(new { message = "No hay datos de producción para este período" });
+                return NotFound(new { message = $"No hay datos de producción para {mes}/{anio}" });
 
             var maquinas = await _context.Maquinas.ToListAsync();
             var desglose = new List<object>();
@@ -119,7 +123,8 @@ public class CalificacionController : ControllerBase
                 
                 if (grupoMaquina.Any())
                 {
-                    var tirosTotales = grupoMaquina.Sum(x => x.TirosConEquivalencia);
+                    // Calcular directamente en lugar de usar la propiedad computada
+                    var tirosTotales = grupoMaquina.Sum(x => (x.Cambios * maquina.TirosReferencia) + x.TirosDiarios);
                     var diasUnicos = grupoMaquina.Select(x => x.Fecha.Date).Distinct().Count();
                     var meta100 = diasUnicos * maquina.Meta100Porciento;
                     
@@ -146,7 +151,7 @@ public class CalificacionController : ControllerBase
             if (existente != null)
             {
                 existente.CalificacionTotal = Math.Round(calificacionTotal, 2);
-                existente.FechaCalculo = DateTime.Now;
+                existente.FechaCalculo = DateTime.UtcNow;
                 existente.DesgloseMaquinas = JsonSerializer.Serialize(desglose);
             }
             else
@@ -156,7 +161,7 @@ public class CalificacionController : ControllerBase
                     Mes = mes,
                     Anio = anio,
                     CalificacionTotal = Math.Round(calificacionTotal, 2),
-                    FechaCalculo = DateTime.Now,
+                    FechaCalculo = DateTime.UtcNow,
                     DesgloseMaquinas = JsonSerializer.Serialize(desglose)
                 };
                 _context.CalificacionesMensuales.Add(existente);
@@ -167,7 +172,11 @@ public class CalificacionController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { error = ex.Message, details = ex.InnerException?.Message });
+            Console.WriteLine($"=== ERROR EN CALIFICACION ===");
+            Console.WriteLine($"Message: {ex.Message}");
+            Console.WriteLine($"Inner: {ex.InnerException?.Message}");
+            Console.WriteLine($"Stack: {ex.StackTrace}");
+            return StatusCode(500, new { error = ex.Message, details = ex.InnerException?.Message, stack = ex.StackTrace });
         }
     }
 }

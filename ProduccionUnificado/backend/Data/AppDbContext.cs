@@ -20,6 +20,8 @@ public class AppDbContext : DbContext
     public DbSet<EncuestaCalidad> EncuestasCalidad { get; set; }
     public DbSet<EncuestaNovedad> EncuestaNovedades { get; set; }
     public DbSet<AdminUsuario> AdminUsuarios { get; set; }
+    public DbSet<Equipo> Equipos { get; set; }
+    public DbSet<HistorialMantenimiento> HistorialMantenimientos { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -99,6 +101,16 @@ public class AppDbContext : DbContext
             .HasMany(e => e.Novedades)
             .WithOne(n => n.Encuesta)
             .HasForeignKey(n => n.EncuestaId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Configurar Equipos y HistorialMantenimientos
+        modelBuilder.Entity<Equipo>().ToTable("Equipos");
+        modelBuilder.Entity<HistorialMantenimiento>().ToTable("HistorialMantenimientos");
+
+        modelBuilder.Entity<HistorialMantenimiento>()
+            .HasOne(h => h.Equipo)
+            .WithMany(e => e.Mantenimientos)
+            .HasForeignKey(h => h.EquipoId)
             .OnDelete(DeleteBehavior.Cascade);
 
         // NOTA: Los datos semilla se cargan directamente con init_db.sql

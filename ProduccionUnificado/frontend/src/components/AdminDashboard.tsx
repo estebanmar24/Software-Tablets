@@ -10,6 +10,7 @@ import MachineParamsScreen from '../screens/MachineParamsScreen';
 import ListsScreen from '../screens/ListsScreen';
 import CartasScreen from '../screens/CartasScreen';
 import QualityView from './QualityView';
+import EquipmentMaintenanceScreen from '../screens/EquipmentMaintenanceScreen';
 
 // Theme Provider
 import { ThemeProvider, useTheme } from '../contexts/ThemeContext';
@@ -64,12 +65,21 @@ function DashboardCard({ title, description, icon, onPress, color = '#E6FFFA', d
 }
 
 function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDashboardProps) {
-    // Mode: 'MENU' (Grid de tarjetas) | 'CONTENT' (Tabs existentes)
-    const [mode, setMode] = useState<'MENU' | 'CONTENT'>('MENU');
+    // Mode: 'MENU' (Grid de tarjetas) | 'CONTENT' (Tabs existentes) | 'EQUIPOS'
+    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS'>(() => {
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+            const savedMode = window.localStorage.getItem('adminDashboardMode');
+            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU') {
+                return savedMode;
+            }
+        }
+        return 'MENU';
+    });
     const [activeTab, setActiveTab] = useState<TabName>('captura');
     const { width } = useWindowDimensions();
 
-    const tabs = allTabs.filter(t => t.roles.includes(role));
+    const userRoles = role.split(',').map(r => r.trim().toLowerCase());
+    const tabs = allTabs.filter(t => t.roles.some(r => userRoles.includes(r)));
 
     useEffect(() => {
         if (tabs.length > 0 && !tabs.find(t => t.key === activeTab)) {
@@ -91,7 +101,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                 if (savedTab && validKeys.includes(savedTab)) {
                     // Check if role has access
                     const tabInfo = allTabs.find(t => t.key === savedTab);
-                    if (tabInfo && tabInfo.roles.includes(role)) {
+                    if (tabInfo && tabInfo.roles.some(r => userRoles.includes(r))) {
                         setActiveTab(savedTab as TabName);
                     }
                 }
@@ -155,13 +165,24 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
         }
     };
 
+    // --- VISTA EQUIPOS (MANTENIMIENTO) ---
+    if (mode === 'EQUIPOS') {
+        return <EquipmentMaintenanceScreen onBack={() => {
+            setMode('MENU');
+            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+        }} />;
+    }
+
     // --- VISTA CONTENT (SISTEMA ACTUAL) ---
     if (mode === 'CONTENT') {
         return (
             <View style={styles.container}>
                 {/* Header */}
                 <View style={styles.header}>
-                    <TouchableOpacity style={styles.backButton} onPress={() => setMode('MENU')}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => {
+                        setMode('MENU');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                    }}>
                         <Text style={styles.backButtonText}>← Volver al Panel</Text>
                     </TouchableOpacity>
                     <Text style={styles.title}>Administración Master</Text>
@@ -199,13 +220,13 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
         Alert.alert('Próximamente', `El módulo "${moduleName}" estará disponible pronto.`);
     };
 
-    const isMasterEnabled = role === 'admin'; // Solo admin ve el cuadro master completo
-    const isCalidadEnabled = role === 'admin' || role === 'calidad';
-    const isProduccionEnabled = role === 'admin' || role === 'produccion';
-    const isTalleresEnabled = role === 'admin' || role === 'talleres';
-    const isPresupuestoEnabled = role === 'admin' || role === 'presupuesto';
-    const isGHEnabled = role === 'admin' || role === 'gh';
-    const isSSTEnabled = role === 'admin' || role === 'sst';
+    const isMasterEnabled = userRoles.includes('admin');
+    const isCalidadEnabled = userRoles.includes('admin') || userRoles.includes('calidad');
+    const isProduccionEnabled = userRoles.includes('admin') || userRoles.includes('produccion');
+    const isTalleresEnabled = userRoles.includes('admin') || userRoles.includes('talleres');
+    const isPresupuestoEnabled = userRoles.includes('admin') || userRoles.includes('presupuesto');
+    const isGHEnabled = userRoles.includes('admin') || userRoles.includes('gh');
+    const isSSTEnabled = userRoles.includes('admin') || userRoles.includes('sst');
 
     const roleDisplayNames: Record<string, string> = {
         'admin': 'Administrador',
@@ -237,7 +258,11 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                         title="Cuadro Master"
                         description="Indicadores generales de gestión"
                         icon="📊"
-                        onPress={() => { setActiveTab('captura'); setMode('CONTENT'); }}
+                        onPress={() => {
+                            setMode('CONTENT');
+                            setActiveTab('captura');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'CONTENT');
+                        }}
                         disabled={!isMasterEnabled}
                     />
                     <DashboardCard
@@ -274,6 +299,16 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                         icon="📋"
                         onPress={() => handlePlaceholderPress('SST')}
                         disabled={!isSSTEnabled}
+                    />
+                    <DashboardCard
+                        title="Mantenimiento Equipos"
+                        description="Control de equipos de cómputo"
+                        icon="💻"
+                        onPress={() => {
+                            setMode('EQUIPOS');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'EQUIPOS');
+                        }}
+                        disabled={false}
                     />
                 </ScrollView>
             </View>

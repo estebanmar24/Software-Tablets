@@ -19,7 +19,7 @@ public class CalificacionMensual
     [Column(TypeName = "decimal(10, 2)")]
     public decimal CalificacionTotal { get; set; }
     
-    public DateTime FechaCalculo { get; set; } = DateTime.Now;
+    public DateTime FechaCalculo { get; set; } = DateTime.UtcNow;
     
     [MaxLength(500)]
     public string? Notas { get; set; }
