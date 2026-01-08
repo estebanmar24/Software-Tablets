@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Modal, TextInput, Alert, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Modal, TextInput, Alert, ScrollView, Platform } from 'react-native';
 import { getUsers, createUser, updateUser, deleteUser } from '../services/api';
 
 interface User {
@@ -31,6 +31,7 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
         { label: 'Gestión Humana', value: 'gh' },
         { label: 'Talleres', value: 'talleres' },
         { label: 'Presupuesto', value: 'presupuesto' },
+        { label: 'Equipos (Mantenimiento)', value: 'equipos' },
         { label: 'Desarrollador', value: 'develop' }
     ];
 
@@ -88,26 +89,29 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
         }
     };
 
-    const confirmDelete = (user: User) => {
-        Alert.alert(
-            'Eliminar Usuario',
-            `¿Está seguro de eliminar a ${user.username}?`,
-            [
-                { text: 'Cancelar', style: 'cancel' },
-                {
-                    text: 'Eliminar',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            await deleteUser(user.id);
-                            loadUsers();
-                        } catch (error) {
-                            Alert.alert('Error', 'No se pudo eliminar');
-                        }
-                    }
-                }
-            ]
-        );
+    const confirmDelete = async (user: User) => {
+        // Alert.alert with buttons doesn't work on web, use window.confirm for web
+        const shouldDelete = typeof window !== 'undefined' && Platform.OS === 'web'
+            ? window.confirm(`¿Está seguro de eliminar a ${user.username}?`)
+            : await new Promise<boolean>(resolve => {
+                Alert.alert(
+                    'Eliminar Usuario',
+                    `¿Está seguro de eliminar a ${user.username}?`,
+                    [
+                        { text: 'Cancelar', style: 'cancel', onPress: () => resolve(false) },
+                        { text: 'Eliminar', style: 'destructive', onPress: () => resolve(true) }
+                    ]
+                );
+            });
+
+        if (shouldDelete) {
+            try {
+                await deleteUser(user.id);
+                loadUsers();
+            } catch (error) {
+                Alert.alert('Error', 'No se pudo eliminar');
+            }
+        }
     };
 
     const openEdit = (user: User) => {

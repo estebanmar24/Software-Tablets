@@ -22,31 +22,38 @@ public class EquiposController : ControllerBase
     [HttpGet("stats")]
     public async Task<ActionResult> GetStats()
     {
-        var equipos = await _context.Equipos.ToListAsync();
-        var totalEquipos = equipos.Count;
-        var disponibles = equipos.Count(e => e.Estado == "Disponible");
-        var asignados = equipos.Count(e => e.Estado == "Asignado");
-        var enMantenimiento = equipos.Count(e => e.Estado == "EnMantenimiento");
-        var fueraDeServicio = equipos.Count(e => e.Estado == "FueraDeServicio");
-
-        // Mantenimientos realizados este mes
-        var inicioMes = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
-        var mantenimientosEsteMes = await _context.HistorialMantenimientos
-            .Where(m => m.Fecha >= inicioMes)
-            .CountAsync();
-
-        return Ok(new
+        try 
         {
-            totalEquipos,
-            disponibles,
-            asignados,
-            enMantenimiento,
-            fueraDeServicio,
-            mantenimientosEsteMes,
-            porcentajeOperativos = totalEquipos > 0 
-                ? Math.Round((decimal)(disponibles + asignados) / totalEquipos * 100, 0) 
-                : 0
-        });
+            var equipos = await _context.Equipos.ToListAsync();
+            var totalEquipos = equipos.Count;
+            var disponibles = equipos.Count(e => e.Estado == "Disponible");
+            var asignados = equipos.Count(e => e.Estado == "Asignado");
+            var enMantenimiento = equipos.Count(e => e.Estado == "EnMantenimiento");
+            var fueraDeServicio = equipos.Count(e => e.Estado == "FueraDeServicio");
+
+            // Mantenimientos realizados este mes
+            var inicioMes = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+            var mantenimientosEsteMes = await _context.HistorialMantenimientos
+                .Where(m => m.Fecha >= inicioMes)
+                .CountAsync();
+
+            return Ok(new
+            {
+                totalEquipos,
+                disponibles,
+                asignados,
+                enMantenimiento,
+                fueraDeServicio,
+                mantenimientosEsteMes,
+                porcentajeOperativos = totalEquipos > 0 
+                    ? Math.Round((decimal)(disponibles + asignados) / totalEquipos * 100, 0) 
+                    : 0
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = ex.Message, inner = ex.InnerException?.Message, stack = ex.StackTrace?.Substring(0, Math.Min(500, ex.StackTrace?.Length ?? 0)) });
+        }
     }
 
     /// <summary>
@@ -143,13 +150,20 @@ public class EquiposController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<Equipo>> CreateEquipo([FromBody] Equipo equipo)
     {
-        equipo.FechaCreacion = DateTime.UtcNow;
-        equipo.FechaActualizacion = DateTime.UtcNow;
+        try 
+        {
+            equipo.FechaCreacion = DateTime.UtcNow;
+            equipo.FechaActualizacion = DateTime.UtcNow;
 
-        _context.Equipos.Add(equipo);
-        await _context.SaveChangesAsync();
+            _context.Equipos.Add(equipo);
+            await _context.SaveChangesAsync();
 
-        return CreatedAtAction(nameof(GetEquipo), new { id = equipo.Id }, equipo);
+            return CreatedAtAction(nameof(GetEquipo), new { id = equipo.Id }, equipo);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = ex.Message, inner = ex.InnerException?.Message });
+        }
     }
 
     /// <summary>
@@ -218,25 +232,44 @@ public class EquiposController : ControllerBase
     [HttpGet("{id}/mantenimientos")]
     public async Task<ActionResult> GetMantenimientos(int id)
     {
-        var equipo = await _context.Equipos.FindAsync(id);
-        if (equipo == null)
-            return NotFound(new { message = "Equipo no encontrado" });
-
-        var mantenimientos = await _context.HistorialMantenimientos
-            .Where(m => m.EquipoId == id)
-            .OrderByDescending(m => m.Fecha)
-            .ToListAsync();
-
-        var costoTotal = mantenimientos.Sum(m => m.Costo);
-
-        return Ok(new
+        try
         {
-            equipoId = id,
-            equipoNombre = equipo.Nombre,
-            totalRegistros = mantenimientos.Count,
-            costoTotal,
-            mantenimientos
-        });
+            var equipo = await _context.Equipos.FindAsync(id);
+            if (equipo == null)
+                return NotFound(new { message = "Equipo no encontrado" });
+
+            // Project to anonymous objects to avoid circular reference with Equipo navigation
+            var mantenimientos = await _context.HistorialMantenimientos
+                .Where(m => m.EquipoId == id)
+                .OrderByDescending(m => m.Fecha)
+                .Select(m => new
+                {
+                    m.Id,
+                    m.Tipo,
+                    m.TrabajoRealizado,
+                    m.Tecnico,
+                    m.Costo,
+                    m.Fecha,
+                    m.ProximoProgramado,
+                    m.Observaciones
+                })
+                .ToListAsync();
+
+            var costoTotal = mantenimientos.Sum(m => m.Costo);
+
+            return Ok(new
+            {
+                equipoId = id,
+                equipoNombre = equipo.Nombre,
+                totalRegistros = mantenimientos.Count,
+                costoTotal,
+                mantenimientos
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = ex.Message, inner = ex.InnerException?.Message });
+        }
     }
 
     /// <summary>
@@ -245,26 +278,33 @@ public class EquiposController : ControllerBase
     [HttpPost("{id}/mantenimientos")]
     public async Task<ActionResult> RegistrarMantenimiento(int id, [FromBody] HistorialMantenimiento mantenimiento)
     {
-        var equipo = await _context.Equipos.FindAsync(id);
-        if (equipo == null)
-            return NotFound(new { message = "Equipo no encontrado" });
-
-        mantenimiento.EquipoId = id;
-        mantenimiento.Fecha = DateTime.UtcNow;
-
-        _context.HistorialMantenimientos.Add(mantenimiento);
-
-        // Actualizar fechas del equipo
-        equipo.UltimoMantenimiento = mantenimiento.Fecha;
-        if (mantenimiento.ProximoProgramado.HasValue)
+        try
         {
-            equipo.ProximoMantenimiento = mantenimiento.ProximoProgramado;
+            var equipo = await _context.Equipos.FindAsync(id);
+            if (equipo == null)
+                return NotFound(new { message = "Equipo no encontrado" });
+
+            mantenimiento.EquipoId = id;
+            mantenimiento.Fecha = DateTime.UtcNow;
+
+            _context.HistorialMantenimientos.Add(mantenimiento);
+
+            // Actualizar fechas del equipo
+            equipo.UltimoMantenimiento = mantenimiento.Fecha;
+            if (mantenimiento.ProximoProgramado.HasValue)
+            {
+                equipo.ProximoMantenimiento = mantenimiento.ProximoProgramado;
+            }
+            equipo.FechaActualizacion = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Mantenimiento registrado", id = mantenimiento.Id });
         }
-        equipo.FechaActualizacion = DateTime.UtcNow;
-
-        await _context.SaveChangesAsync();
-
-        return Ok(new { message = "Mantenimiento registrado", mantenimiento });
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = ex.Message, inner = ex.InnerException?.Message });
+        }
     }
 
     /// <summary>

@@ -186,23 +186,64 @@ public class ProduccionController : ControllerBase
     {
         try
         {
+            // 1. ProduccionDiaria
             var query = _context.ProduccionDiaria.AsQueryable();
             query = query.Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio);
 
-            if (usuarioId.HasValue)
-                query = query.Where(p => p.UsuarioId == usuarioId.Value);
-
-            if (maquinaId.HasValue)
-                query = query.Where(p => p.MaquinaId == maquinaId.Value);
+            if (usuarioId.HasValue) query = query.Where(p => p.UsuarioId == usuarioId.Value);
+            if (maquinaId.HasValue) query = query.Where(p => p.MaquinaId == maquinaId.Value);
 
             var recordsToDelete = await query.ToListAsync();
-            if (!recordsToDelete.Any())
+
+            // 2. TiempoProcesos (Historial Detallado)
+            var queryTP = _context.TiemposProceso.AsQueryable();
+            queryTP = queryTP.Where(t => t.Fecha.Month == mes && t.Fecha.Year == anio);
+
+            if (usuarioId.HasValue) queryTP = queryTP.Where(t => t.UsuarioId == usuarioId.Value);
+            if (maquinaId.HasValue) queryTP = queryTP.Where(t => t.MaquinaId == maquinaId.Value);
+
+            var recordsTPToDelete = await queryTP.ToListAsync();
+
+            if (!recordsToDelete.Any() && !recordsTPToDelete.Any())
                 return NotFound(new { message = "No se encontraron registros para eliminar con los filtros proporcionados." });
 
-            _context.ProduccionDiaria.RemoveRange(recordsToDelete);
+            if (recordsToDelete.Any()) _context.ProduccionDiaria.RemoveRange(recordsToDelete);
+            if (recordsTPToDelete.Any()) _context.TiemposProceso.RemoveRange(recordsTPToDelete);
+
             await _context.SaveChangesAsync();
 
-            return Ok(new { message = $"Se eliminaron {recordsToDelete.Count} registros correctamente." });
+            return Ok(new { message = $"Se eliminaron {recordsToDelete.Count} registros diarios y {recordsTPToDelete.Count} detalles de historial." });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
+    [HttpDelete("borrar-huerfanos")]
+    public async Task<IActionResult> BorrarHuerfanos([FromQuery] int mes, [FromQuery] int anio, [FromQuery] string usuarioNombre, [FromQuery] string maquinaNombre)
+    {
+        try
+        {
+            var query = _context.TiemposProceso
+                .Include(t => t.Usuario)
+                .Include(t => t.Maquina)
+                .Where(t => t.Fecha.Month == mes && t.Fecha.Year == anio);
+
+            if (!string.IsNullOrEmpty(usuarioNombre))
+                query = query.Where(t => t.Usuario!.Nombre.Contains(usuarioNombre));
+            
+            if (!string.IsNullOrEmpty(maquinaNombre))
+                query = query.Where(t => t.Maquina!.Nombre.Contains(maquinaNombre));
+
+            var records = await query.ToListAsync();
+
+            if (!records.Any()) return NotFound(new { message = "No se encontraron registros huérfanos." });
+
+            _context.TiemposProceso.RemoveRange(records);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = $"Eliminados {records.Count} registros huérfanos del Historial." });
         }
         catch (Exception ex)
         {

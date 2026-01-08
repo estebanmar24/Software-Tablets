@@ -151,8 +151,9 @@ export default function App() {
         if (saved.selectedUsuarioId) setSelectedUsuario(saved.selectedUsuarioId);
         if (saved.selectedMaquinaId) setSelectedMaquina(saved.selectedMaquinaId);
         if (saved.selectedActividad) setSelectedActividad(saved.selectedActividad);
-        if (saved.selectedOrden) setSelectedOrden(saved.selectedOrden);
-        if (saved.opSearchText) setOpSearchText(saved.opSearchText);
+        // NOTE: OP is intentionally NOT restored on page reload (user preference)
+        // if (saved.selectedOrden) setSelectedOrden(saved.selectedOrden);
+        // if (saved.opSearchText) setOpSearchText(saved.opSearchText);
         if (saved.observaciones) setObservaciones(saved.observaciones);
         if (saved.tirosAcumulados) setTirosAcumulados(saved.tirosAcumulados);
         if (saved.desperdicioAcumulado) setDesperdicioAcumulado(saved.desperdicioAcumulado);
@@ -193,8 +194,9 @@ export default function App() {
         if (saved.selectedUsuarioId) setSelectedUsuario(saved.selectedUsuarioId);
         if (saved.selectedMaquinaId) setSelectedMaquina(saved.selectedMaquinaId);
         if (saved.selectedActividad) setSelectedActividad(saved.selectedActividad);
-        if (saved.selectedOrden) setSelectedOrden(saved.selectedOrden);
-        if (saved.opSearchText) setOpSearchText(saved.opSearchText);
+        // NOTE: OP is intentionally NOT restored on page reload (user preference)
+        // if (saved.selectedOrden) setSelectedOrden(saved.selectedOrden);
+        // if (saved.opSearchText) setOpSearchText(saved.opSearchText);
         if (saved.observaciones) setObservaciones(saved.observaciones);
         if (saved.tirosAcumulados) setTirosAcumulados(saved.tirosAcumulados);
         if (saved.desperdicioAcumulado) setDesperdicioAcumulado(saved.desperdicioAcumulado);
@@ -398,6 +400,7 @@ export default function App() {
       usuarioId: selectedUsuario!,
       maquinaId: selectedMaquina!,
       ordenProduccionId: selectedOrden || undefined,
+      ordenProduccionNumero: opSearchText || undefined, // Include OP number for display
       actividadId: selectedActividad!.id,
       actividadNombre: selectedActividad!.nombre,
       actividadCodigo: selectedActividad!.codigo,
@@ -703,11 +706,14 @@ const Content = ({ timer, selectedActividad, canStart, handleStart, handleStop, 
           onSelect={handleSelectActividad}
           disabled={timer.isRunning}
         />
-        <ProductionCard
-          onAddTiros={handleAddTiros}
-          onAddDesperdicio={handleAddDesperdicio}
-          disabled={!selectedActividad?.esProductiva || !timer.isRunning}
-        />
+        {/* Only show Tiros/Desperdicio for Producción activity (code 02 or name Producción) */}
+        {(selectedActividad?.codigo === '02' || selectedActividad?.nombre === 'Producción') && (
+          <ProductionCard
+            onAddTiros={handleAddTiros}
+            onAddDesperdicio={handleAddDesperdicio}
+            disabled={!timer.isRunning}
+          />
+        )}
       </View>
 
       {/* Columna derecha - Historial y Totales */}

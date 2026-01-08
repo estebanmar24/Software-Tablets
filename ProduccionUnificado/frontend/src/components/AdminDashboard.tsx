@@ -11,6 +11,8 @@ import ListsScreen from '../screens/ListsScreen';
 import CartasScreen from '../screens/CartasScreen';
 import QualityView from './QualityView';
 import EquipmentMaintenanceScreen from '../screens/EquipmentMaintenanceScreen';
+import SSTPresupuestosScreen from '../screens/SSTPresupuestosScreen';
+import SSTGastosScreen from '../screens/SSTGastosScreen';
 
 // Theme Provider
 import { ThemeProvider, useTheme } from '../contexts/ThemeContext';
@@ -65,11 +67,11 @@ function DashboardCard({ title, description, icon, onPress, color = '#E6FFFA', d
 }
 
 function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDashboardProps) {
-    // Mode: 'MENU' (Grid de tarjetas) | 'CONTENT' (Tabs existentes) | 'EQUIPOS'
-    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS'>(() => {
+    // Mode: 'MENU' (Grid de tarjetas) | 'CONTENT' (Tabs existentes) | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS'
+    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS'>(() => {
         if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
             const savedMode = window.localStorage.getItem('adminDashboardMode');
-            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU') {
+            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS') {
                 return savedMode;
             }
         }
@@ -173,6 +175,44 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
         }} />;
     }
 
+    // --- VISTA SST PRESUPUESTOS (ADMIN) ---
+    if (mode === 'SST_PRESUPUESTO') {
+        return (
+            <View style={styles.container}>
+                <View style={styles.header}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => {
+                        setMode('MENU');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                    }}>
+                        <Text style={styles.backButtonText}>← Volver al Panel</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.title}>Gestión de Presupuestos</Text>
+                    <View style={{ width: 120 }} />
+                </View>
+                <SSTPresupuestosScreen navigation={mockNavigation} />
+            </View>
+        );
+    }
+
+    // --- VISTA SST GASTOS ---
+    if (mode === 'SST_GASTOS') {
+        return (
+            <View style={styles.container}>
+                <View style={styles.header}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => {
+                        setMode('MENU');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                    }}>
+                        <Text style={styles.backButtonText}>← Volver al Panel</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.title}>Captura de Gastos SST</Text>
+                    <View style={{ width: 120 }} />
+                </View>
+                <SSTGastosScreen navigation={mockNavigation} />
+            </View>
+        );
+    }
+
     // --- VISTA CONTENT (SISTEMA ACTUAL) ---
     if (mode === 'CONTENT') {
         return (
@@ -227,6 +267,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
     const isPresupuestoEnabled = userRoles.includes('admin') || userRoles.includes('presupuesto');
     const isGHEnabled = userRoles.includes('admin') || userRoles.includes('gh');
     const isSSTEnabled = userRoles.includes('admin') || userRoles.includes('sst');
+    const isEquiposEnabled = userRoles.includes('admin') || userRoles.includes('equipos');
 
     const roleDisplayNames: Record<string, string> = {
         'admin': 'Administrador',
@@ -235,7 +276,8 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
         'produccion': 'Producción',
         'talleres': 'Talleres y Despachos',
         'presupuesto': 'Presupuesto General',
-        'calidad': 'Calidad'
+        'calidad': 'Calidad',
+        'equipos': 'Mantenimiento Equipos'
     };
 
     return (
@@ -283,8 +325,11 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                         title="Presupuesto"
                         description="Gestión global de presupuestos"
                         icon="💰"
-                        onPress={() => handlePlaceholderPress('Presupuesto')}
-                        disabled={!isPresupuestoEnabled}
+                        onPress={() => {
+                            setMode('SST_PRESUPUESTO');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'SST_PRESUPUESTO');
+                        }}
+                        disabled={!isPresupuestoEnabled && !userRoles.includes('admin')}
                     />
                     <DashboardCard
                         title="Gestión Humana"
@@ -297,7 +342,10 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                         title="Presupuestos SST"
                         description="Seguimiento de presupuestos SST"
                         icon="📋"
-                        onPress={() => handlePlaceholderPress('SST')}
+                        onPress={() => {
+                            setMode('SST_GASTOS');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'SST_GASTOS');
+                        }}
                         disabled={!isSSTEnabled}
                     />
                     <DashboardCard
@@ -308,7 +356,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                             setMode('EQUIPOS');
                             if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'EQUIPOS');
                         }}
-                        disabled={false}
+                        disabled={!isEquiposEnabled}
                     />
                 </ScrollView>
             </View>

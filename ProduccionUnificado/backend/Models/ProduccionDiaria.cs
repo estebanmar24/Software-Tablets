@@ -49,7 +49,7 @@ public class ProduccionDiaria
     [Column(TypeName = "decimal(10, 2)")]
     public decimal ValorTiroSnapshot { get; set; }
     
-    [Column(TypeName = "decimal(10, 2)")]
+    [Column(TypeName = "decimal(18, 2)")]
     public decimal ValorAPagar { get; set; }
     
     // Auxiliares
@@ -114,6 +114,6 @@ public class ProduccionDiaria
     /// <summary>
     /// Valor a pagar calculado solo con tiros bonificables.
     /// </summary>
-    [Column(TypeName = "decimal(10, 2)")]
+    [Column(TypeName = "decimal(18, 2)")]
     public decimal ValorAPagarBonificable { get; set; }
 }

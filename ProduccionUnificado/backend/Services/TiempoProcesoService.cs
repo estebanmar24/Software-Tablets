@@ -15,6 +15,7 @@ public interface ITiempoProcesoService
     Task<ProduccionDiaDto> GetProduccionDiaAsync(DateTime fecha, int? maquinaId, int? usuarioId);
     Task<TiempoProcesoDto> RegistrarTiempoAsync(RegistrarTiempoRequest request);
     Task<bool> LimpiarDatosDelDiaAsync(DateTime fecha, int? maquinaId, int? usuarioId);
+    Task<List<TiempoProcesoDto>> GetHistorialDetalladoAsync(DateTime fechaInicio, DateTime fechaFin, int? maquinaId, int? usuarioId);
 }
 
 public class TiempoProcesoService : ITiempoProcesoService
@@ -130,6 +131,47 @@ public class TiempoProcesoService : ITiempoProcesoService
                 Observaciones = t.Observaciones
             }).ToList()
         };
+    }
+
+    public async Task<List<TiempoProcesoDto>> GetHistorialDetalladoAsync(DateTime fechaInicio, DateTime fechaFin, int? maquinaId, int? usuarioId)
+    {
+        var query = _context.TiemposProceso
+            .Include(t => t.Actividad)
+            .Include(t => t.Usuario)
+            .Include(t => t.Maquina)
+            .Include(t => t.OrdenProduccion)
+            .Where(t => t.Fecha.Date >= fechaInicio.Date && t.Fecha.Date <= fechaFin.Date);
+
+        if (maquinaId.HasValue)
+            query = query.Where(t => t.MaquinaId == maquinaId.Value);
+
+        if (usuarioId.HasValue)
+            query = query.Where(t => t.UsuarioId == usuarioId.Value);
+
+        return await query
+            .OrderByDescending(t => t.Fecha)
+            .ThenByDescending(t => t.HoraInicio)
+            .Select(t => new TiempoProcesoDto
+            {
+                Id = t.Id,
+                Fecha = t.Fecha,
+                HoraInicio = t.HoraInicio.ToString("HH:mm:ss"),
+                HoraFin = t.HoraFin.ToString("HH:mm:ss"),
+                Duracion = TimeSpan.FromTicks(t.Duracion).ToString(@"hh\:mm\:ss"),
+                UsuarioId = t.UsuarioId,
+                UsuarioNombre = t.Usuario == null ? string.Empty : t.Usuario.Nombre,
+                MaquinaId = t.MaquinaId,
+                MaquinaNombre = t.Maquina == null ? string.Empty : t.Maquina.Nombre,
+                OrdenProduccionId = t.OrdenProduccionId,
+                OrdenProduccionNumero = t.OrdenProduccion == null ? string.Empty : t.OrdenProduccion.Numero,
+                ActividadId = t.ActividadId,
+                ActividadNombre = t.Actividad == null ? string.Empty : t.Actividad.Nombre,
+                ActividadCodigo = t.Actividad == null ? string.Empty : t.Actividad.Codigo,
+                Tiros = t.Tiros,
+                Desperdicio = t.Desperdicio,
+                Observaciones = t.Observaciones
+            })
+            .ToListAsync();
     }
 
     public async Task<TiempoProcesoDto> RegistrarTiempoAsync(RegistrarTiempoRequest request)

@@ -2,10 +2,18 @@ using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Services;
 
+// Enable legacy timestamp behavior for Npgsql (fixes "Cannot write DateTime with Kind" error)
+AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        // Use camelCase for JSON property names (frontend expects esProductiva, not EsProductiva)
+        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+    });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 

@@ -50,6 +50,9 @@ export default function CaptureGridScreen({ navigation }) {
     const [deleteOption, setDeleteOption] = useState('maquina');
     const [isDeleting, setIsDeleting] = useState(false);
 
+    // Clean Confirmation Modal
+    const [cleanConfirmVisible, setCleanConfirmVisible] = useState(false);
+
     useEffect(() => {
         loadLists();
     }, []);
@@ -354,9 +357,25 @@ export default function CaptureGridScreen({ navigation }) {
     };
 
     const handleNumericInput = (index, field, value) => {
-        const valWithComma = value.replace(/\./g, ',');
-        const cleaned = valWithComma.replace(/[^0-9,]/g, '');
-        updateDay(index, field, cleaned);
+        // Remove all dots (thousand separators) and non-numeric chars except comma for decimals
+        let cleaned = value.replace(/\./g, '').replace(/[^0-9,]/g, '');
+
+        // Split by comma to handle decimal part separately
+        const parts = cleaned.split(',');
+        let integerPart = parts[0] || '';
+        const decimalPart = parts[1];
+
+        // Add thousand separators to integer part
+        if (integerPart.length > 3) {
+            integerPart = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+        }
+
+        // Reconstruct the value
+        const formatted = decimalPart !== undefined
+            ? `${integerPart},${decimalPart}`
+            : integerPart;
+
+        updateDay(index, field, formatted);
     };
 
     const getDisplayTime = (time24) => {
@@ -365,7 +384,36 @@ export default function CaptureGridScreen({ navigation }) {
         return time24;
     };
 
-    const handleTimeInput = (dayIndex, field, text) => updateDay(dayIndex, field, text);
+    const handleTimeInput = (dayIndex, field, text) => {
+        setGridData(prevData => {
+            const newData = [...prevData];
+            if (newData[dayIndex]) {
+                const updatedRow = { ...newData[dayIndex], [field]: text };
+
+                // Auto-calculation of HorasOp if Start/End are present
+                if (updatedRow.horaInicio && updatedRow.horaFin && updatedRow.horaInicio.length === 5 && updatedRow.horaFin.length === 5) {
+                    const [hI, mI] = updatedRow.horaInicio.split(':').map(Number);
+                    const [hF, mF] = updatedRow.horaFin.split(':').map(Number);
+
+                    if (!isNaN(hI) && !isNaN(hF)) {
+                        let start = hI + (mI / 60);
+                        let end = hF + (mF / 60);
+
+                        // Handle crossing midnight if needed (optional, assuming same day for now)
+                        if (end < start) end += 24;
+
+                        const duration = Math.max(0, end - start);
+                        if (duration > 0) {
+                            // Update horasOp compatible with Spanish format (comma)
+                            updatedRow.horasOp = duration.toFixed(2).replace('.', ',');
+                        }
+                    }
+                }
+                newData[dayIndex] = updatedRow;
+            }
+            return newData;
+        });
+    };
 
     const parseNumberInput = (v) => {
         if (!v && v !== 0) return 0;
@@ -517,14 +565,25 @@ export default function CaptureGridScreen({ navigation }) {
         const TotalHorasProd = HorasOp + PuestaPunto;
         const Promedio = TotalHorasProd > 0 ? (TirosEquivalentes / TotalHorasProd) : 0;
         const MetaRendimiento = rowMaquina.metaRendimiento || 0;
-        // Sólo mostrar diferencia positiva para pago, o permitir negativo para visualización?
-        // El usuario se quejó de que afecta la SUMA. Entonces para pago debe ser >= 0.
-        // Pero Meta75Diff visualmente quizá deba mostrar cuánto falta.
-        // Voy a ajustar VrPagar para que sea el que no sea negativo.
+
+        // Calcular diferencia de meta
         const Meta75Diff = TirosEquivalentes - MetaRendimiento;
-        // VrPagar no puede ser negativo
-        const VrTiro = Math.max(0, Meta75Diff * (rowMaquina.valorPorTiro || 0));
-        const VrPagar = VrTiro;
+
+        // *** NUEVO: Verificar si es festivo o domingo ***
+        const fecha = new Date(anio, mes - 1, day.day);
+        const diaSemana = fecha.getDay();
+        const esFestivo = esFestivoColombia(fecha);
+        const esDomingo = diaSemana === 0;
+        const esNoLaborable = esFestivo || esDomingo;
+
+        // VrPagar = 0 si es festivo o domingo
+        let VrPagar;
+        if (esNoLaborable) {
+            VrPagar = 0;
+        } else {
+            const VrTiro = Math.max(0, Meta75Diff * (rowMaquina.valorPorTiro || 0));
+            VrPagar = VrTiro;
+        }
 
         const TotalAux = MantAseo + Descansos + OtrosAux;
         const TotalMuertos = FaltaTrabajo + Reparacion + OtroMuerto;
@@ -535,8 +594,8 @@ export default function CaptureGridScreen({ navigation }) {
         const TirosBonificables = Math.round(TirosEquivalentes * porcentajeBonif);
         const DesperdicioBonif = Desperdicio * porcentajeBonif;
         const Meta75DiffBonif = TirosBonificables - MetaRendimiento;
-        // VrPagarBonif no puede ser negativo
-        const VrPagarBonif = Math.max(0, Meta75DiffBonif * (rowMaquina.valorPorTiro || 0));
+        // VrPagarBonif = 0 si es festivo o domingo
+        const VrPagarBonif = esNoLaborable ? 0 : Math.max(0, Meta75DiffBonif * (rowMaquina.valorPorTiro || 0));
 
         return {
             TirosEquivalentes, TotalHorasProd, Promedio, Meta75Diff, VrPagar,
@@ -545,7 +604,9 @@ export default function CaptureGridScreen({ navigation }) {
             PorcentajeBonif: porcentajeBonif,
             TirosBonificables,
             Meta75DiffBonif,
-            VrPagarBonif
+            VrPagarBonif,
+            // Flag para indicar día no laborable
+            esNoLaborable
         };
     };
 
@@ -733,20 +794,18 @@ export default function CaptureGridScreen({ navigation }) {
     };
 
     const handleCleanFields = () => {
-        Alert.alert("Confirmar", "Limpiar campos?", [
-            { text: "Cancelar", style: "cancel" },
-            {
-                text: "Limpiar", style: "destructive", onPress: () => {
-                    const cleanedGrid = gridData.map(row => ({
-                        ...row,
-                        horaInicio: '', horaFin: '', rFinal: '', horasOp: '', cambios: '', puestaPunto: '',
-                        mantenimiento: '', descansos: '', otrosAux: '', faltaTrabajo: '', reparacion: '',
-                        otroMuerto: '', desperdicio: '', referenciaOP: '', novedades: '', operarioId: null
-                    }));
-                    setGridData(cleanedGrid);
-                }
-            }
-        ]);
+        setCleanConfirmVisible(true);
+    };
+
+    const confirmClean = () => {
+        const cleanedGrid = gridData.map(row => ({
+            ...row,
+            horaInicio: '', horaFin: '', rFinal: '', horasOp: '', cambios: '', puestaPunto: '',
+            mantenimiento: '', descansos: '', otrosAux: '', faltaTrabajo: '', reparacion: '',
+            otroMuerto: '', desperdicio: '', referenciaOP: '', novedades: '', operarioId: null
+        }));
+        setGridData(cleanedGrid);
+        setCleanConfirmVisible(false);
     };
 
     return (
@@ -1042,7 +1101,7 @@ export default function CaptureGridScreen({ navigation }) {
                             keyExtractor={(item, i) => i.toString()}
                             renderItem={({ item }) => (
                                 <TouchableOpacity style={styles.modalItem} onPress={() => handleSelectFromModal(item)}>
-                                    <Text>{modalTab === 'operario' ? item.usuarioNombre : item.maquinaNombre}</Text>
+                                    <Text>{modalTab === 'operario' ? `${item.usuarioNombre} - ${item.maquinaNombre}` : item.maquinaNombre}</Text>
                                     <Text style={styles.modalItemSub}>{item.diasRegistrados} días</Text>
                                 </TouchableOpacity>
                             )}
@@ -1078,11 +1137,33 @@ export default function CaptureGridScreen({ navigation }) {
                             keyExtractor={(item, i) => i.toString()}
                             renderItem={({ item }) => (
                                 <TouchableOpacity style={[styles.modalItem, { backgroundColor: '#ffe6e6' }]} onPress={() => confirmDelete(deleteOption === 'operario' ? item.usuarioId : item.maquinaId, deleteOption)}>
-                                    <Text style={{ color: 'red' }}>{deleteOption === 'operario' ? item.usuarioNombre : item.maquinaNombre}</Text>
+                                    <Text style={{ color: 'red' }}>
+                                        {deleteOption === 'operario'
+                                            ? `${item.usuarioNombre} - ${item.maquinaNombre}`
+                                            : item.maquinaNombre}
+                                    </Text>
                                 </TouchableOpacity>
                             )}
                         />
                         <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setDeleteModalVisible(false)}><Text style={{ color: 'white' }}>Cerrar</Text></TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Custom Clean Confirmation Modal */}
+            <Modal visible={cleanConfirmVisible} transparent animationType="fade">
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { maxWidth: 300 }]}>
+                        <Text style={styles.modalTitle}>Confirmar Limpieza</Text>
+                        <Text style={{ textAlign: 'center', marginBottom: 20 }}>¿Estás seguro de que deseas limpiar todos los campos visibles?</Text>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                            <TouchableOpacity style={[styles.btnLoad, { backgroundColor: '#ccc', flex: 1, marginRight: 10 }]} onPress={() => setCleanConfirmVisible(false)}>
+                                <Text style={styles.btnText}>Cancelar</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.btnLoad, { backgroundColor: '#f1c40f', flex: 1 }]} onPress={confirmClean}>
+                                <Text style={[styles.btnText, { color: 'black' }]}>Limpiar</Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 </View>
             </Modal>

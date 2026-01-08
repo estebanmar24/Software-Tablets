@@ -38,16 +38,23 @@ const HistoryScreen = ({ navigation }) => { // Recibimos navigation prop
         }
     };
 
-    const handleSearch = async () => {
-        setLoading(true);
+    // Polling for auto-refresh
+    useEffect(() => {
+        // Initial load
+        handleSearch();
+
+        const interval = setInterval(() => {
+            handleSearch(true); // true = silent match
+        }, 15000); // 15 seconds
+
+        return () => clearInterval(interval);
+    }, [mesInicio, anioInicio, mesFin, anioFin, selectedMaquina, selectedOperario]); // Re-run if filters change
+
+    const handleSearch = async (silent = false) => {
+        if (!silent) setLoading(true);
         try {
             // Construct params
-            // Start Date: 1st of mesInicio
             const fechaInicio = `${anioInicio}-${mesInicio.toString().padStart(2, '0')}-01`;
-
-            // End Date: Last day of mesFin
-            // Trick: parameters to new Date(year, month, 0) gives last day of previous month. 
-            // So new Date(anioFin, mesFin, 0) gives last day of mesFin.
             const lastDay = new Date(anioFin, mesFin, 0).getDate();
             const fechaFin = `${anioFin}-${mesFin.toString().padStart(2, '0')}-${lastDay}`;
 
@@ -58,20 +65,22 @@ const HistoryScreen = ({ navigation }) => { // Recibimos navigation prop
                 maquinaId: selectedMaquina || null
             };
 
-            const response = await axios.get(`${API_URL}/produccion/historial`, { params });
+            // Use the new granular history endpoint
+            const response = await axios.get(`${API_URL}/tiempoproceso/historial`, { params });
             setResults(response.data);
 
-            if (response.data.length === 0) {
-                if (Platform.OS === 'web') alert('No se encontraron registros con estos filtros.');
-                else Alert.alert('Sin resultados', 'No se encontraron registros con estos filtros.');
+            if (!silent && response.data.length === 0) {
+                // if (Platform.OS === 'web') alert('No se encontraron registros con estos filtros.');
             }
 
         } catch (error) {
             console.error("Search error", error);
-            if (Platform.OS === 'web') alert('Error al buscar datos.');
-            else Alert.alert('Error', 'Error al buscar datos.');
+            if (!silent) {
+                if (Platform.OS === 'web') alert('Error al buscar datos.');
+                else Alert.alert('Error', 'Error al buscar datos.');
+            }
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     };
 
@@ -85,6 +94,20 @@ const HistoryScreen = ({ navigation }) => { // Recibimos navigation prop
         return `$${(val || 0).toFixed(0)}`;
     };
 
+    const parseDuration = (str) => {
+        if (!str) return 0;
+        const parts = str.split(':');
+        if (parts.length !== 3) return 0;
+        return (+parts[0]) * 3600 + (+parts[1]) * 60 + (+parts[2]);
+    };
+
+    const formatSeconds = (sec) => {
+        const h = Math.floor(sec / 3600).toString().padStart(2, '0');
+        const m = Math.floor((sec % 3600) / 60).toString().padStart(2, '0');
+        const s = Math.floor(sec % 60).toString().padStart(2, '0');
+        return `${h}:${m}:${s}`;
+    };
+
     const logoSource = require('../../assets/LOGO_ALEPH_IMPRESORES.jpg');
 
     return (
@@ -94,10 +117,6 @@ const HistoryScreen = ({ navigation }) => { // Recibimos navigation prop
                 <Image source={logoSource} style={styles.logo} resizeMode="contain" />
                 <Text style={[styles.header, { color: colors.text }]}>Explorador de Producción</Text>
             </View>
-
-            {/* Top Navigation Bar - Consistent with other screens */}
-            {/* Top Navigation Bar - Consistent with other screens */}
-
 
             {/* Filters Section */}
             <View style={[styles.filtersContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -160,9 +179,10 @@ const HistoryScreen = ({ navigation }) => { // Recibimos navigation prop
                     </View>
                 </View>
 
-                <TouchableOpacity style={styles.searchButton} onPress={handleSearch} disabled={loading}>
-                    <Text style={styles.searchButtonText}>{loading ? 'Buscando...' : '🔍 Buscar Registros'}</Text>
+                <TouchableOpacity style={styles.searchButton} onPress={() => handleSearch(false)} disabled={loading}>
+                    <Text style={styles.searchButtonText}>{loading ? 'Buscando...' : '🔍 Actualizar Ahora'}</Text>
                 </TouchableOpacity>
+                <Text style={{ textAlign: 'center', fontSize: 10, color: '#888', marginTop: 5 }}>Actualización automática cada 15s</Text>
             </View>
 
             {/* Results Table */}
@@ -174,8 +194,11 @@ const HistoryScreen = ({ navigation }) => { // Recibimos navigation prop
                     <Text style={[styles.columnHeader, { flex: 0.8 }]}>Fecha</Text>
                     <Text style={[styles.columnHeader, { flex: 1.2 }]}>Operario</Text>
                     <Text style={[styles.columnHeader, { flex: 1.2 }]}>Máquina</Text>
-                    <Text style={[styles.columnHeader, { flex: 0.8, textAlign: 'right' }]}>Tiros</Text>
-                    <Text style={[styles.columnHeader, { flex: 0.8, textAlign: 'right' }]}>Horas</Text>
+                    <Text style={[styles.columnHeader, { flex: 0.8 }]}>OP</Text>
+                    <Text style={[styles.columnHeader, { flex: 1 }]}>Actividad</Text>
+                    <Text style={[styles.columnHeader, { flex: 0.8, textAlign: 'right' }]}>Tiempo</Text>
+                    <Text style={[styles.columnHeader, { flex: 0.7, textAlign: 'right' }]}>Tiros</Text>
+                    <Text style={[styles.columnHeader, { flex: 0.6, textAlign: 'right' }]}>Desp</Text>
                     <Text style={[styles.columnHeader, { flex: 0.8, textAlign: 'right' }]}>Pago</Text>
                 </View>
 
@@ -183,25 +206,34 @@ const HistoryScreen = ({ navigation }) => { // Recibimos navigation prop
                 {results.map((item, index) => (
                     <View key={index} style={[styles.tableRow, { backgroundColor: index % 2 === 0 ? colors.rowEven : colors.rowOdd }]}>
                         <Text style={[styles.cell, { flex: 0.8, color: colors.text }]}>{new Date(item.fecha).toLocaleDateString()}</Text>
-                        <Text style={[styles.cell, { flex: 1.2, color: colors.text }]}>{item.usuario?.nombre}</Text>
-                        <Text style={[styles.cell, { flex: 1.2, color: colors.text }]}>{item.maquina?.nombre}</Text>
-                        <Text style={[styles.cell, { flex: 0.8, textAlign: 'right', color: colors.text }]}>{item.tirosDiarios}</Text>
-                        <Text style={[styles.cell, { flex: 0.8, textAlign: 'right', color: colors.text }]}>{item.totalHorasProductivas?.toFixed(2)}</Text>
-                        <Text style={[styles.cell, { flex: 0.8, textAlign: 'right', fontWeight: 'bold', color: colors.text }]}>{formatCurrency(item.valorAPagar)}</Text>
+                        <Text style={[styles.cell, { flex: 1.2, color: colors.text }]}>{item.usuarioNombre}</Text>
+                        <Text style={[styles.cell, { flex: 1.2, color: colors.text }]}>{item.maquinaNombre}</Text>
+                        <Text style={[styles.cell, { flex: 0.8, color: colors.text, fontSize: 10 }]}>{item.ordenProduccionNumero}</Text>
+                        <Text style={[styles.cell, { flex: 1, fontWeight: 'bold', color: '#0275d8' }]}>{item.actividadNombre}</Text>
+                        <Text style={[styles.cell, { flex: 0.8, textAlign: 'right', fontWeight: 'bold', color: colors.text }]}>{item.duracion}</Text>
+                        <Text style={[styles.cell, { flex: 0.7, textAlign: 'right', color: colors.text }]}>{item.tiros > 0 ? item.tiros : '-'}</Text>
+                        <Text style={[styles.cell, { flex: 0.6, textAlign: 'right', color: '#d9534f' }]}>{item.desperdicio > 0 ? item.desperdicio : '-'}</Text>
+                        <Text style={[styles.cell, { flex: 0.8, textAlign: 'right', fontWeight: 'bold', color: '#28a745' }]}>
+                            {'-'}
+                        </Text>
                     </View>
                 ))}
 
                 {results.length > 0 && (
                     <View style={[styles.totalsRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                        <Text style={[styles.totalCell, { flex: 3.2, color: colors.text }]}>TOTALES</Text>
+                        <Text style={[styles.totalCell, { flex: 4, color: colors.text }]}>TOTALES</Text>
+                        <Text style={[styles.totalCell, { flex: 1, color: colors.text }]}>-</Text>
                         <Text style={[styles.totalCell, { flex: 0.8, textAlign: 'right', color: colors.text }]}>
-                            {results.reduce((sum, item) => sum + item.tirosDiarios, 0)}
+                            {formatSeconds(results.reduce((sum, item) => sum + parseDuration(item.duracion), 0))}
+                        </Text>
+                        <Text style={[styles.totalCell, { flex: 0.7, textAlign: 'right', color: colors.text }]}>
+                            {results.reduce((sum, item) => sum + (item.tiros || 0), 0)}
+                        </Text>
+                        <Text style={[styles.totalCell, { flex: 0.6, textAlign: 'right', color: colors.text }]}>
+                            {results.reduce((sum, item) => sum + (item.desperdicio || 0), 0)}
                         </Text>
                         <Text style={[styles.totalCell, { flex: 0.8, textAlign: 'right', color: colors.text }]}>
-                            {results.reduce((sum, item) => sum + (item.totalHorasProductivas || 0), 0).toFixed(2)}
-                        </Text>
-                        <Text style={[styles.totalCell, { flex: 0.8, textAlign: 'right', color: colors.text }]}>
-                            {formatCurrency(results.reduce((sum, item) => sum + (item.valorAPagar || 0), 0))}
+                            {'-'}
                         </Text>
                     </View>
                 )}

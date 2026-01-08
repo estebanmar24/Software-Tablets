@@ -280,10 +280,19 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
             const method = isEditing ? 'PUT' : 'POST';
             const url = isEditing ? `${API_BASE}/equipos/${formData.id}` : `${API_BASE}/equipos`;
 
+            // Sanitize data: convert empty strings to null for DateTime fields
+            const sanitizedData = { ...formData };
+            const dateFields = ['fechaInspeccion', 'proximoMantenimiento', 'ultimoMantenimiento'];
+            dateFields.forEach(field => {
+                if ((sanitizedData as any)[field] === '') {
+                    (sanitizedData as any)[field] = null;
+                }
+            });
+
             const res = await fetch(url, {
                 method,
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData)
+                body: JSON.stringify(sanitizedData)
             });
 
             if (res.ok) {
@@ -317,37 +326,53 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
     };
 
     const handleDeleteEquipo = async (id: number) => {
-        Alert.alert('Confirmar', '¿Eliminar este equipo?', [
-            { text: 'Cancelar', style: 'cancel' },
-            {
-                text: 'Eliminar', style: 'destructive', onPress: async () => {
-                    try {
-                        const res = await fetch(`${API_BASE}/equipos/${id}`, { method: 'DELETE' });
-                        if (res.ok) {
-                            loadEquipos();
-                            loadData();
-                        }
-                    } catch (error) {
-                        Alert.alert('Error', 'No se pudo eliminar');
-                    }
+        // Alert.alert with buttons doesn't work on web, use window.confirm
+        const shouldDelete = typeof window !== 'undefined' && Platform.OS === 'web'
+            ? window.confirm('¿Eliminar este equipo?')
+            : await new Promise<boolean>(resolve => {
+                Alert.alert('Confirmar', '¿Eliminar este equipo?', [
+                    { text: 'Cancelar', style: 'cancel', onPress: () => resolve(false) },
+                    { text: 'Eliminar', style: 'destructive', onPress: () => resolve(true) }
+                ]);
+            });
+
+        if (shouldDelete) {
+            try {
+                const res = await fetch(`${API_BASE}/equipos/${id}`, { method: 'DELETE' });
+                if (res.ok) {
+                    loadEquipos();
+                    loadData();
+                } else {
+                    Alert.alert('Error', 'No se pudo eliminar el equipo');
                 }
+            } catch (error) {
+                Alert.alert('Error', 'No se pudo eliminar');
             }
-        ]);
+        }
     };
 
     const handleSaveMantenimiento = async () => {
         if (!equipoSeleccionado) return;
         try {
+            // Sanitize data: convert empty strings to null for DateTime fields
+            const sanitizedData = { ...mantenimientoData };
+            if (sanitizedData.proximoProgramado === '') {
+                (sanitizedData as any).proximoProgramado = null;
+            }
+
             const res = await fetch(`${API_BASE}/equipos/${equipoSeleccionado.id}/mantenimientos`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(mantenimientoData)
+                body: JSON.stringify(sanitizedData)
             });
             if (res.ok) {
                 Alert.alert('Éxito', 'Mantenimiento registrado');
                 setModalMantenimiento(false);
                 loadEquipos();
                 loadData();
+            } else {
+                const err = await res.json().catch(() => ({}));
+                Alert.alert('Error', err.message || 'No se pudo registrar');
             }
         } catch (error) {
             Alert.alert('Error', 'No se pudo registrar');

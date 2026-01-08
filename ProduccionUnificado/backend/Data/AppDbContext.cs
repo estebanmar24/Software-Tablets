@@ -23,6 +23,13 @@ public class AppDbContext : DbContext
     public DbSet<Equipo> Equipos { get; set; }
     public DbSet<HistorialMantenimiento> HistorialMantenimientos { get; set; }
 
+    // SST Budget and Expense Management
+    public DbSet<SST_Rubro> SST_Rubros { get; set; }
+    public DbSet<SST_TipoServicio> SST_TiposServicio { get; set; }
+    public DbSet<SST_Proveedor> SST_Proveedores { get; set; }
+    public DbSet<SST_PresupuestoMensual> SST_PresupuestosMensuales { get; set; }
+    public DbSet<SST_GastoMensual> SST_GastosMensuales { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -112,6 +119,55 @@ public class AppDbContext : DbContext
             .WithMany(e => e.Mantenimientos)
             .HasForeignKey(h => h.EquipoId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // SST Tables Configuration
+        modelBuilder.Entity<SST_Rubro>().ToTable("SST_Rubros");
+        modelBuilder.Entity<SST_TipoServicio>().ToTable("SST_TiposServicio");
+        modelBuilder.Entity<SST_Proveedor>().ToTable("SST_Proveedores");
+        modelBuilder.Entity<SST_PresupuestoMensual>().ToTable("SST_PresupuestosMensuales");
+        modelBuilder.Entity<SST_GastoMensual>().ToTable("SST_GastosMensuales");
+
+        // SST Relationships
+        modelBuilder.Entity<SST_TipoServicio>()
+            .HasOne(t => t.Rubro)
+            .WithMany(r => r.TiposServicio)
+            .HasForeignKey(t => t.RubroId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<SST_Proveedor>()
+            .HasOne(p => p.TipoServicio)
+            .WithMany(t => t.Proveedores)
+            .HasForeignKey(p => p.TipoServicioId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<SST_PresupuestoMensual>()
+            .HasOne(p => p.TipoServicio)
+            .WithMany(t => t.PresupuestosMensuales)
+            .HasForeignKey(p => p.TipoServicioId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Unique constraint: One budget per TipoServicio per month/year
+        modelBuilder.Entity<SST_PresupuestoMensual>()
+            .HasIndex(p => new { p.TipoServicioId, p.Anio, p.Mes })
+            .IsUnique();
+
+        modelBuilder.Entity<SST_GastoMensual>()
+            .HasOne(g => g.Rubro)
+            .WithMany()
+            .HasForeignKey(g => g.RubroId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<SST_GastoMensual>()
+            .HasOne(g => g.TipoServicio)
+            .WithMany()
+            .HasForeignKey(g => g.TipoServicioId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<SST_GastoMensual>()
+            .HasOne(g => g.Proveedor)
+            .WithMany()
+            .HasForeignKey(g => g.ProveedorId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         // NOTA: Los datos semilla se cargan directamente con init_db.sql
         // No usar HasData() para evitar conflictos con BD en la nube

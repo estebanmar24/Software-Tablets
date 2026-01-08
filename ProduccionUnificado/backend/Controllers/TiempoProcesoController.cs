@@ -99,6 +99,27 @@ public class TiempoProcesoController : ControllerBase
     }
 
     /// <summary>
+    /// Obtiene el historial detallado de tiempos
+    /// </summary>
+    [HttpGet("historial")]
+    public async Task<ActionResult<List<TiempoProcesoDto>>> GetHistorial(
+        [FromQuery] DateTime fechaInicio,
+        [FromQuery] DateTime fechaFin,
+        [FromQuery] int? maquinaId,
+        [FromQuery] int? usuarioId)
+    {
+        try
+        {
+            var historial = await _service.GetHistorialDetalladoAsync(fechaInicio, fechaFin, maquinaId, usuarioId);
+            return Ok(historial);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Limpia los datos del día (historial y totales)
     /// </summary>
     [HttpDelete("limpiar")]
