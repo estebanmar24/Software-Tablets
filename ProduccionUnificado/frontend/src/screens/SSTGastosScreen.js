@@ -19,6 +19,9 @@ import {
 import { Picker } from '@react-native-picker/picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as sstApi from '../services/sstApi';
+// jsPDF uses dynamic import to avoid Android TextDecoder crash
+import * as FileSystem from 'expo-file-system/legacy';
+import { Asset } from 'expo-asset';
 
 const TABS = [
     { key: 'gastos', label: 'Captura de Gastos', icon: '💰' },
@@ -80,6 +83,7 @@ function GastosTab() {
 
     // Budget info for selected TipoServicio
     const [presupuestoInfo, setPresupuestoInfo] = useState(null);
+    const [presupuestos, setPresupuestos] = useState([]);
 
     // Form state
     const [showModal, setShowModal] = useState(false);
@@ -118,18 +122,36 @@ function GastosTab() {
     const loadGastos = useCallback(async () => {
         try {
             setLoading(true);
-            const [gastosData, resumenData] = await Promise.all([
+            const [gastosData, resumenData, presupuestosData] = await Promise.all([
                 sstApi.getGastos(anio, mes),
-                sstApi.getGastosResumen(anio, mes)
+                sstApi.getGastosResumen(anio, mes),
+                sstApi.getPresupuestos(anio)
             ]);
             setGastos(gastosData);
             setResumen(resumenData);
+            setPresupuestos(presupuestosData);
         } catch (error) {
             console.error('Error loading gastos:', error);
         } finally {
             setLoading(false);
         }
     }, [anio, mes]);
+
+    // Calculate budget info for a specific tipo de servicio
+    const getBudgetInfo = (tipoServicioId) => {
+        const presupuestoMes = presupuestos.find(
+            p => p.tipoServicioId === tipoServicioId && p.mes === mes
+        );
+        const gastadoTipo = gastos
+            .filter(g => g.tipoServicioId === tipoServicioId)
+            .reduce((sum, g) => sum + g.precio, 0);
+        const presupuestoValor = presupuestoMes?.presupuesto || 0;
+        return {
+            presupuesto: presupuestoValor,
+            gastado: gastadoTipo,
+            restante: presupuestoValor - gastadoTipo
+        };
+    };
 
     useEffect(() => {
         loadMasterData();
@@ -492,6 +514,23 @@ function GastosTab() {
                                 {gasto.nota && (
                                     <Text style={styles.gastoNota}>💬 {gasto.nota}</Text>
                                 )}
+                                {/* Budget Info */}
+                                {(() => {
+                                    const budget = getBudgetInfo(gasto.tipoServicioId);
+                                    return (
+                                        <View style={styles.budgetInfoRow}>
+                                            <Text style={styles.budgetInfoLabel}>
+                                                Tipo: Gastado {formatCurrency(budget.gastado)} / Presup. {formatCurrency(budget.presupuesto)}
+                                            </Text>
+                                            <Text style={[
+                                                styles.budgetInfoValue,
+                                                { color: budget.restante >= 0 ? '#059669' : '#DC2626' }
+                                            ]}>
+                                                {budget.restante >= 0 ? 'Disp: ' : 'Exceso: '}{formatCurrency(Math.abs(budget.restante))}
+                                            </Text>
+                                        </View>
+                                    );
+                                })()}
                                 <View style={styles.cardActions}>
                                     {gasto.archivoFactura && (
                                         <TouchableOpacity
@@ -754,7 +793,7 @@ function GastosTab() {
                     </View>
                 </View>
             </Modal>
-        </View>
+        </View >
     );
 }
 
@@ -819,20 +858,32 @@ function RubrosTab() {
     };
 
     const handleDelete = async (id) => {
-        Alert.alert('Confirmar', '¿Eliminar este rubro?', [
-            { text: 'Cancelar', style: 'cancel' },
-            {
-                text: 'Eliminar', style: 'destructive',
-                onPress: async () => {
-                    try {
-                        await sstApi.deleteRubro(id);
-                        loadData();
-                    } catch (error) {
-                        Alert.alert('Error', 'No se pudo eliminar (puede tener datos relacionados)');
-                    }
+        if (Platform.OS === 'web') {
+            if (window.confirm('¿Está seguro de eliminar este rubro?')) {
+                try {
+                    await sstApi.deleteRubro(id);
+                    loadData();
+                    Alert.alert('Éxito', 'Rubro eliminado correctamente');
+                } catch (error) {
+                    Alert.alert('Error', 'No se pudo eliminar (puede tener datos relacionados)');
                 }
             }
-        ]);
+        } else {
+            Alert.alert('Confirmar', '¿Eliminar este rubro?', [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Eliminar', style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            await sstApi.deleteRubro(id);
+                            loadData();
+                        } catch (error) {
+                            Alert.alert('Error', 'No se pudo eliminar (puede tener datos relacionados)');
+                        }
+                    }
+                }
+            ]);
+        }
     };
 
     if (loading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#2563EB" /></View>;
@@ -930,10 +981,31 @@ function ServiciosTab() {
     };
 
     const handleDelete = async (id) => {
-        Alert.alert('Confirmar', '¿Eliminar?', [
-            { text: 'Cancelar', style: 'cancel' },
-            { text: 'Eliminar', style: 'destructive', onPress: async () => { try { await sstApi.deleteTipoServicio(id); loadData(); } catch { Alert.alert('Error', 'No se pudo eliminar'); } } }
-        ]);
+        if (Platform.OS === 'web') {
+            if (window.confirm('¿Está seguro de eliminar este tipo de servicio?')) {
+                try {
+                    await sstApi.deleteTipoServicio(id);
+                    loadData();
+                    Alert.alert('Éxito', 'Tipo de servicio eliminado correctamente');
+                } catch (error) {
+                    Alert.alert('Error', 'No se pudo eliminar (puede tener datos relacionados)');
+                }
+            }
+        } else {
+            Alert.alert('Confirmar', '¿Eliminar este tipo de servicio?', [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Eliminar', style: 'destructive', onPress: async () => {
+                        try {
+                            await sstApi.deleteTipoServicio(id);
+                            loadData();
+                        } catch {
+                            Alert.alert('Error', 'No se pudo eliminar');
+                        }
+                    }
+                }
+            ]);
+        }
     };
 
     if (loading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#2563EB" /></View>;
@@ -1066,10 +1138,31 @@ function ProveedoresTab() {
     };
 
     const handleDelete = async (id) => {
-        Alert.alert('Confirmar', '¿Eliminar?', [
-            { text: 'Cancelar', style: 'cancel' },
-            { text: 'Eliminar', style: 'destructive', onPress: async () => { try { await sstApi.deleteProveedor(id); loadData(); } catch { Alert.alert('Error', 'No se pudo eliminar'); } } }
-        ]);
+        if (Platform.OS === 'web') {
+            if (window.confirm('¿Está seguro de eliminar este proveedor?')) {
+                try {
+                    await sstApi.deleteProveedor(id);
+                    loadData();
+                    Alert.alert('Éxito', 'Proveedor eliminado correctamente');
+                } catch (error) {
+                    Alert.alert('Error', 'No se pudo eliminar el proveedor');
+                }
+            }
+        } else {
+            Alert.alert('Confirmar', '¿Eliminar este proveedor?', [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Eliminar', style: 'destructive', onPress: async () => {
+                        try {
+                            await sstApi.deleteProveedor(id);
+                            loadData();
+                        } catch {
+                            Alert.alert('Error', 'No se pudo eliminar');
+                        }
+                    }
+                }
+            ]);
+        }
     };
 
     if (loading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#2563EB" /></View>;
@@ -1251,158 +1344,233 @@ function GraficasTab() {
         return '#10B981';
     };
 
-    // Generate HTML Report based on CURRENT VIEW
+    // Logo source for PDF
+    const logoSource = require('../../assets/LOGO_ALEPH_IMPRESORES.jpg');
+
+    // Helper: Load Image as Base64 for PDF (matching DashboardScreen pattern)
+    const getBase64FromUrl = async (url) => {
+        if (Platform.OS !== 'web') {
+            try {
+                const base64 = await FileSystem.readAsStringAsync(url, {
+                    encoding: 'base64',
+                });
+                const ext = url.split('.').pop().toLowerCase();
+                const mimeTypes = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif' };
+                const mime = mimeTypes[ext] || 'image/jpeg';
+                return `data:${mime};base64,${base64}`;
+            } catch (err) {
+                console.log('Error reading file with expo-file-system, trying fetch:', err);
+                const tempPath = FileSystem.cacheDirectory + 'temp_logo.' + (url.split('.').pop() || 'jpg');
+                await FileSystem.downloadAsync(url, tempPath);
+                const base64 = await FileSystem.readAsStringAsync(tempPath, {
+                    encoding: 'base64',
+                });
+                return `data:image/jpeg;base64,${base64}`;
+            }
+        }
+        // Web fallback using FileReader
+        const data = await fetch(url);
+        const blob = await data.blob();
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(blob);
+            reader.onloadend = () => {
+                resolve(reader.result);
+            };
+        });
+    };
+
     const generateReport = async () => {
         if (!resumenVisual) return;
+        setLoading(true);
 
-        const reportTitle = `Informe ${resumenVisual.titulo} SST - ${anio}`;
-        const today = new Date().toLocaleDateString('es-CO', {
-            day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit'
-        });
+        try {
+            // Dynamic import of jsPDF (avoids Android TextDecoder crash)
+            let jsPDF, autoTable;
+            if (Platform.OS === 'web') {
+                try {
+                    const jsPDFModule = await import('jspdf');
+                    jsPDF = jsPDFModule.jsPDF;
+                    const autoTableModule = await import('jspdf-autotable');
+                    autoTable = autoTableModule.default;
+                } catch (e) {
+                    console.error("Error loading PDF libs", e);
+                    Alert.alert("Error", "Error cargando librerías de PDF.");
+                    setLoading(false);
+                    return;
+                }
+            } else {
+                try {
+                    const jsPDFModule = await import('jspdf');
+                    jsPDF = jsPDFModule.jsPDF;
+                    const autoTableModule = await import('jspdf-autotable');
+                    autoTable = autoTableModule.default;
+                } catch (e) {
+                    Alert.alert("Info", "Funcionalidad PDF en mantenimiento para móviles. Por favor use la versión Web.");
+                    console.error("PDF mobile load error", e);
+                    setLoading(false);
+                    return;
+                }
+            }
 
-        const html = `
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>${reportTitle}</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 40px; color: #333; }
-        h1 { color: #1E3A5F; border-bottom: 3px solid #1E3A5F; padding-bottom: 10px; }
-        h2 { color: #2563EB; margin-top: 30px; }
-        .kpi-container { display: flex; gap: 20px; margin: 20px 0; flex-wrap: wrap; }
-        .kpi-card { background: #EBF5FF; padding: 20px; border-radius: 12px; text-align: center; flex: 1; min-width: 180px; }
-        .kpi-value { font-size: 28px; font-weight: bold; color: #1E3A5F; }
-        .kpi-label { color: #6B7280; margin-top: 8px; }
-        .success { background: #DCFCE7; }
-        .success .kpi-value { color: #047857; }
-        .warning { background: #FEF2F2; }
-        .warning .kpi-value { color: #DC2626; }
-        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-        th { background: #1E3A5F; color: white; padding: 12px; text-align: left; }
-        td { padding: 10px; border-bottom: 1px solid #E5E7EB; }
-        tr:nth-child(even) { background: #F9FAFB; }
-        .bar-container { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
-        .bar-label { width: 200px; }
-        .bar { height: 20px; background: #3B82F6; border-radius: 4px; }
-        .bar-value { font-weight: bold; }
-        .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #E5E7EB; color: #6B7280; font-size: 12px; }
-        .progress-bar { height: 30px; background: #E5E7EB; border-radius: 15px; overflow: hidden; margin: 10px 0; }
-        .progress-fill { height: 100%; border-radius: 15px; }
-        .progress-text { text-align: center; margin-top: 5px; color: #6B7280; }
-        @media print { body { margin: 20px; } }
-    </style>
-</head>
-<body>
-    <h1>📊 ${reportTitle}</h1>
-    <p><strong>Fecha de generación:</strong> ${today}</p>
+            const doc = new jsPDF();
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const margin = 15;
+            let yPos = 20;
 
-    <h2>Resumen General</h2>
-    <div class="kpi-container">
-        <div class="kpi-card">
-            <div class="kpi-value">${formatCurrency(resumenVisual.totalPresupuesto)}</div>
-            <div class="kpi-label">💰 Presupuesto</div>
-        </div>
-        <div class="kpi-card success">
-            <div class="kpi-value">${formatCurrency(resumenVisual.totalGastado)}</div>
-            <div class="kpi-label">📊 Gastado</div>
-        </div>
-        <div class="kpi-card ${resumenVisual.totalRestante >= 0 ? 'success' : 'warning'}">
-            <div class="kpi-value">${formatCurrency(Math.abs(resumenVisual.totalRestante))}</div>
-            <div class="kpi-label">${resumenVisual.totalRestante >= 0 ? '✅ Restante' : '⚠️ Exceso'}</div>
-        </div>
-        <div class="kpi-card">
-            <div class="kpi-value">${resumenVisual.totalGastos}</div>
-            <div class="kpi-label">📋 Registros</div>
-        </div>
-    </div>
+            // Load Logo
+            try {
+                const asset = Asset.fromModule(logoSource);
+                await asset.downloadAsync();
+                const base64Logo = await getBase64FromUrl(asset.uri);
+                doc.addImage(base64Logo, 'JPEG', margin, 10, 30, 30);
+            } catch (err) {
+                console.log("Error loading logo for PDF", err);
+                // Fallback: print text
+                doc.setFontSize(18);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(30, 58, 95);
+                doc.text('ALEPH', margin, 25);
+            }
 
-    <h2>Ejecución Presupuestal</h2>
-    <div class="progress-bar">
-        <div class="progress-fill" style="width: ${Math.min(resumenVisual.porcentajeUsado, 100)}%; background: ${getProgressColor(resumenVisual.porcentajeUsado)};"></div>
-    </div>
-    <p class="progress-text">${resumenVisual.porcentajeUsado}% ejecutado</p>
+            // Header
+            doc.setFontSize(18);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(30, 58, 95);
+            const title = `INFORME SST - ${resumenVisual.titulo.toUpperCase()}`;
+            doc.text(title, pageWidth / 2, 20, { align: 'center' });
 
-    ${resumenVisual.porRubro.length > 0 ? `
-    <h2>📁 Gastos por Rubro</h2>
-    <table>
-        <tr><th>Rubro</th><th>Monto</th><th>% del Total</th></tr>
-        ${resumenVisual.porRubro.map(([nombre, valor]) => `
-            <tr>
-                <td>${nombre}</td>
-                <td>${formatCurrency(valor)}</td>
-                <td>${((valor / resumenVisual.totalGastado) * 100).toFixed(1)}%</td>
-            </tr>
-        `).join('')}
-    </table>` : '<p>No hay gastos registrados.</p>'}
+            // Subtitle
+            doc.setFontSize(11);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(100);
+            doc.text(`Generado: ${new Date().toLocaleDateString('es-CO')}`, pageWidth / 2, 28, { align: 'center' });
 
-    ${resumenVisual.porTipo.length > 0 ? `
-    <h2>📋 Gastos por Tipo de Servicio</h2>
-    <table>
-        <tr><th>Tipo de Servicio</th><th>Monto</th><th>% del Total</th></tr>
-        ${resumenVisual.porTipo.map(([nombre, valor]) => `
-            <tr>
-                <td>${nombre}</td>
-                <td>${formatCurrency(valor)}</td>
-                <td>${((valor / resumenVisual.totalGastado) * 100).toFixed(1)}%</td>
-            </tr>
-        `).join('')}
-    </table>` : ''}
+            yPos = 45;
 
-    ${resumenVisual.porProveedor.length > 0 ? `
-    <h2>🏢 Gastos por Proveedor</h2>
-    <table>
-        <tr><th>Proveedor</th><th>Monto</th><th>% del Total</th></tr>
-        ${resumenVisual.porProveedor.map(([nombre, valor]) => `
-            <tr>
-                <td>${nombre}</td>
-                <td>${formatCurrency(valor)}</td>
-                <td>${((valor / resumenVisual.totalGastado) * 100).toFixed(1)}%</td>
-            </tr>
-        `).join('')}
-    </table>` : ''}
+            // KPIs Section
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(0);
+            doc.text('RESUMEN PRESUPUESTAL', margin, yPos);
+            yPos += 8;
 
-    ${!mesSeleccionado ? `
-    <h2>📅 Resumen Mensual (Anual)</h2>
-    <table>
-        <tr><th>Mes</th><th>Presupuesto</th><th>Gastado</th><th>Restante</th><th>Ejecución</th></tr>
-        ${gastosTotales.map((mes, idx) => {
-            const presup = mes.totalPresupuesto || 0;
-            const gast = mes.totalGastado || 0;
-            const rest = presup - gast;
-            const ejec = presup > 0 ? ((gast / presup) * 100).toFixed(1) : 0;
-            return `
-            <tr>
-                <td>${sstApi.getMesNombre(idx + 1)}</td>
-                <td>${formatCurrency(presup)}</td>
-                <td>${formatCurrency(gast)}</td>
-                <td style="color: ${rest >= 0 ? '#059669' : '#DC2626'}">${formatCurrency(rest)}</td>
-                <td>${ejec}%</td>
-            </tr>
-        `;
-        }).join('')}
-    </table>` : ''}
+            const kpiColumns = ['Presupuesto', 'Ejecutado', 'Disponible', '% Ejecutado', 'Registros'];
+            const disponibleColor = resumenVisual.totalRestante >= 0 ? 'Verde' : 'Rojo';
+            const kpiData = [[
+                sstApi.formatCurrency(resumenVisual.totalPresupuesto),
+                sstApi.formatCurrency(resumenVisual.totalGastado),
+                `${disponibleColor}|${sstApi.formatCurrency(Math.abs(resumenVisual.totalRestante))}`,
+                `${resumenVisual.porcentajeUsado}%`,
+                resumenVisual.totalGastos.toString()
+            ]];
 
-    <div class="footer">
-        <p>Este informe fue generado automáticamente por el Sistema SST.</p>
-        <p>© ${new Date().getFullYear()} - Aleph SST</p>
-    </div>
-</body>
-</html>`;
+            autoTable(doc, {
+                head: [kpiColumns],
+                body: kpiData,
+                startY: yPos,
+                styles: { fontSize: 10, cellPadding: 4, halign: 'center' },
+                headStyles: { fillColor: [30, 58, 95], textColor: 255, fontStyle: 'bold' },
+                didParseCell: (data) => {
+                    const raw = data.cell.raw?.toString() || '';
+                    if (raw.includes('|')) {
+                        const [color, value] = raw.split('|');
+                        data.cell.text = value;
+                        if (color === 'Verde') data.cell.styles.textColor = [40, 167, 69];
+                        else if (color === 'Rojo') data.cell.styles.textColor = [220, 53, 69];
+                    }
+                }
+            });
 
-        if (Platform.OS === 'web') {
-            const blob = new Blob([html], { type: 'text/html' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `Informe_${anio}_${mesSeleccionado ? 'Mes_' + mesSeleccionado : 'Anual'}.html`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-            Alert.alert('✅ Éxito', 'Informe generado y descargado correctamente');
-        } else {
-            Alert.alert('Info', 'La generación de informes está disponible solo en web');
+            yPos = doc.lastAutoTable.finalY + 15;
+
+            // Detailed Table
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(0);
+            doc.text('DETALLE DE GASTOS POR RUBRO Y SERVICIO', margin, yPos);
+            yPos += 5;
+
+            // Fetch Data
+            const [allRubros] = await Promise.all([
+                sstApi.getRubros()
+            ]);
+
+            let periodData = allGastosRaw;
+            if (mesSeleccionado) periodData = allGastosRaw.filter(g => g.mes === parseInt(mesSeleccionado));
+
+            // Prepare Table Data
+            const tableRows = [];
+
+            const rubrosWithTotal = allRubros.map(r => {
+                const total = periodData.filter(g => g.rubroId === r.id).reduce((s, g) => s + g.precio, 0);
+                return { ...r, total };
+            }).sort((a, b) => b.total - a.total);
+
+            rubrosWithTotal.forEach(rubro => {
+                // Rubro Header Row
+                tableRows.push([
+                    { content: `[RUBRO] ${rubro.nombre.toUpperCase()}`, colSpan: 2, styles: { fillColor: [224, 231, 255], fontStyle: 'bold', textColor: [30, 58, 95] } },
+                    { content: sstApi.formatCurrency(rubro.total), styles: { fillColor: [224, 231, 255], fontStyle: 'bold', halign: 'right', textColor: [30, 58, 95] } }
+                ]);
+
+                const rubroGastos = periodData.filter(g => g.rubroId === rubro.id);
+                const typesMap = {};
+                rubroGastos.forEach(g => {
+                    const tid = g.tipoServicioId;
+                    if (!typesMap[tid]) typesMap[tid] = { name: g.tipoServicioNombre, total: 0, provs: {} };
+                    typesMap[tid].total += g.precio;
+
+                    const pid = g.proveedorId;
+                    if (!typesMap[tid].provs[pid]) typesMap[tid].provs[pid] = { name: g.proveedorNombre, total: 0 };
+                    typesMap[tid].provs[pid].total += g.precio;
+                });
+
+                if (Object.keys(typesMap).length === 0) {
+                    tableRows.push([{ content: 'Sin movimientos', colSpan: 3, styles: { textColor: [150, 150, 150], fontStyle: 'italic' } }]);
+                } else {
+                    Object.values(typesMap).forEach(type => {
+                        tableRows.push([
+                            { content: `   > ${type.name}`, colSpan: 2, styles: { fillColor: [248, 250, 252] } },
+                            { content: sstApi.formatCurrency(type.total), styles: { fillColor: [248, 250, 252], halign: 'right' } }
+                        ]);
+
+                        Object.values(type.provs).forEach(prov => {
+                            tableRows.push([
+                                { content: '' },
+                                { content: `     - ${prov.name}`, styles: { textColor: [80, 80, 80] } },
+                                { content: sstApi.formatCurrency(prov.total), styles: { halign: 'right', textColor: [80, 80, 80] } }
+                            ]);
+                        });
+                    });
+                }
+            });
+
+            autoTable(doc, {
+                startY: yPos,
+                head: [['Concepto', 'Proveedor / Detalle', 'Total']],
+                body: tableRows,
+                theme: 'grid',
+                styles: { fontSize: 9, cellPadding: 3, overflow: 'linebreak' },
+                headStyles: { fillColor: [30, 58, 95], textColor: 255, fontStyle: 'bold' },
+                columnStyles: {
+                    0: { cellWidth: 70 },
+                    1: { cellWidth: 'auto' },
+                    2: { cellWidth: 40, halign: 'right' }
+                }
+            });
+
+            // Save
+            const filename = `Informe_SST_${anio}_${mesSeleccionado ? sstApi.getMesNombre(parseInt(mesSeleccionado)) : 'Anual'}.pdf`;
+            doc.save(filename);
+
+            Alert.alert('✅ Éxito', 'Informe PDF descargado correctamente');
+
+        } catch (error) {
+            console.error('Error generating PDF:', error);
+            Alert.alert('Error', 'No se pudo generar el PDF: ' + error.message);
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -1544,10 +1712,10 @@ function GraficasTab() {
                         <View style={grafStyles.chartSection}>
                             <Text style={grafStyles.sectionTitle}>📅 Resumen Mensual</Text>
                             <View style={grafStyles.tableHeader}>
-                                <Text style={[grafStyles.tableCell, { flex: 2 }]}>Mes</Text>
-                                <Text style={grafStyles.tableCell}>Presupuesto</Text>
-                                <Text style={grafStyles.tableCell}>Gastado</Text>
-                                <Text style={grafStyles.tableCell}>Restante</Text>
+                                <Text style={[grafStyles.tableCell, grafStyles.tableCellHeader, { flex: 2 }]}>Mes</Text>
+                                <Text style={[grafStyles.tableCell, grafStyles.tableCellHeader]}>Presupuesto</Text>
+                                <Text style={[grafStyles.tableCell, grafStyles.tableCellHeader]}>Gastado</Text>
+                                <Text style={[grafStyles.tableCell, grafStyles.tableCellHeader]}>Restante</Text>
                             </View>
                             {gastosTotales.map((mes, idx) => (
                                 <View key={idx} style={[grafStyles.tableRow, idx % 2 === 0 && grafStyles.tableRowAlt]}>
@@ -1678,6 +1846,10 @@ const grafStyles = StyleSheet.create({
         flex: 1,
         fontSize: 12,
         color: '#374151',
+    },
+    tableCellHeader: {
+        color: '#FFFFFF',
+        fontWeight: 'bold',
     },
     reportButton: {
         backgroundColor: '#059669',
@@ -1884,6 +2056,23 @@ const styles = StyleSheet.create({
         color: '#6B7280',
         fontStyle: 'italic',
         marginTop: 10,
+    },
+    budgetInfoRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        backgroundColor: '#F3F4F6',
+        padding: 8,
+        borderRadius: 6,
+        marginTop: 10,
+    },
+    budgetInfoLabel: {
+        fontSize: 12,
+        color: '#4B5563',
+    },
+    budgetInfoValue: {
+        fontSize: 12,
+        fontWeight: 'bold',
     },
     cardActions: {
         flexDirection: 'row',
