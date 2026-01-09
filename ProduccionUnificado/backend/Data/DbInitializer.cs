@@ -443,5 +443,144 @@ public static class DbInitializer
             }
         }
         catch (Exception ex) { Console.WriteLine($"[DB ERROR] AdminUsuarios: {ex.Message}"); }
+
+        // GH TABLES (Gestión Humana) - Create tables with PostgreSQL DDL, then seed with EF Core
+        try
+        {
+            // First, create the tables if they don't exist (PostgreSQL syntax)
+            context.Database.ExecuteSqlRaw(@"
+                CREATE TABLE IF NOT EXISTS ""GH_Rubros"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""Nombre"" VARCHAR(200) NOT NULL,
+                    ""Activo"" BOOLEAN NOT NULL DEFAULT TRUE
+                );
+                
+                CREATE TABLE IF NOT EXISTS ""GH_TiposServicio"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""RubroId"" INTEGER NOT NULL REFERENCES ""GH_Rubros""(""Id""),
+                    ""Nombre"" VARCHAR(200) NOT NULL,
+                    ""PresupuestoMensual"" DECIMAL(18,2) NOT NULL DEFAULT 0,
+                    ""Activo"" BOOLEAN NOT NULL DEFAULT TRUE
+                );
+                
+                CREATE TABLE IF NOT EXISTS ""GH_Proveedores"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""TipoServicioId"" INTEGER NOT NULL REFERENCES ""GH_TiposServicio""(""Id""),
+                    ""Nombre"" VARCHAR(200) NOT NULL,
+                    ""Telefono"" VARCHAR(20),
+                    ""Correo"" VARCHAR(100),
+                    ""Direccion"" VARCHAR(300),
+                    ""NIT"" VARCHAR(20),
+                    ""Activo"" BOOLEAN NOT NULL DEFAULT TRUE
+                );
+                
+                CREATE TABLE IF NOT EXISTS ""GH_Cotizaciones"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""ProveedorId"" INTEGER NOT NULL REFERENCES ""GH_Proveedores""(""Id""),
+                    ""Anio"" INTEGER NOT NULL,
+                    ""Mes"" INTEGER NOT NULL,
+                    ""PrecioCotizado"" DECIMAL(18,2) NOT NULL,
+                    ""FechaCotizacion"" TIMESTAMP NOT NULL,
+                    ""Descripcion"" VARCHAR(500),
+                    ""Activo"" BOOLEAN NOT NULL DEFAULT TRUE
+                );
+                
+                CREATE TABLE IF NOT EXISTS ""GH_GastosMensuales"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""RubroId"" INTEGER NOT NULL REFERENCES ""GH_Rubros""(""Id""),
+                    ""TipoServicioId"" INTEGER NOT NULL REFERENCES ""GH_TiposServicio""(""Id""),
+                    ""ProveedorId"" INTEGER NOT NULL REFERENCES ""GH_Proveedores""(""Id""),
+                    ""CotizacionId"" INTEGER REFERENCES ""GH_Cotizaciones""(""Id""),
+                    ""Anio"" INTEGER NOT NULL,
+                    ""Mes"" INTEGER NOT NULL,
+                    ""NumeroFactura"" VARCHAR(100),
+                    ""Precio"" DECIMAL(18,2) NOT NULL,
+                    ""FechaCompra"" TIMESTAMP NOT NULL,
+                    ""Nota"" TEXT,
+                    ""ArchivoFactura"" TEXT,
+                    ""ArchivoFacturaNombre"" VARCHAR(500)
+                );
+                
+                CREATE TABLE IF NOT EXISTS ""GH_PresupuestosMensuales"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""TipoServicioId"" INTEGER NOT NULL REFERENCES ""GH_TiposServicio""(""Id""),
+                    ""Anio"" INTEGER NOT NULL,
+                    ""Mes"" INTEGER NOT NULL CHECK (""Mes"" >= 1 AND ""Mes"" <= 12),
+                    ""Presupuesto"" DECIMAL(18,2) NOT NULL DEFAULT 0
+                );
+                
+                CREATE UNIQUE INDEX IF NOT EXISTS ""IX_GH_PresupuestosMensuales_Unique"" 
+                ON ""GH_PresupuestosMensuales"" (""TipoServicioId"", ""Anio"", ""Mes"");
+                
+                CREATE TABLE IF NOT EXISTS ""SST_Cotizaciones"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""ProveedorId"" INTEGER NOT NULL,
+                    ""Anio"" INTEGER NOT NULL,
+                    ""Mes"" INTEGER NOT NULL,
+                    ""PrecioCotizado"" DECIMAL(18,2) NOT NULL,
+                    ""FechaCotizacion"" TIMESTAMP NOT NULL,
+                    ""Descripcion"" VARCHAR(500),
+                    ""Activo"" BOOLEAN NOT NULL DEFAULT TRUE
+                );
+            ");
+            Console.WriteLine("[DB INIT] GH & SST Tables created/verified (PostgreSQL).");
+            
+            // Now seed the data if tables are empty
+            if (!context.GH_Rubros.Any())
+            {
+                var rubros = new List<TiempoProcesos.API.Models.GH_Rubro>
+                {
+                    new() { Nombre = "Compradores de Desperdicio", Activo = true },
+                    new() { Nombre = "Servicios Publicos", Activo = true },
+                    new() { Nombre = "Seguridad", Activo = true },
+                    new() { Nombre = "GPS", Activo = true },
+                    new() { Nombre = "Cafeteria", Activo = true },
+                    new() { Nombre = "Papeleria", Activo = true },
+                    new() { Nombre = "Mantenimiento", Activo = true },
+                    new() { Nombre = "Dotacion", Activo = true },
+                    new() { Nombre = "Aseo", Activo = true },
+                    new() { Nombre = "Cable", Activo = true },
+                    new() { Nombre = "Telefonia", Activo = true },
+                    new() { Nombre = "Ayuda Emocional", Activo = true }
+                };
+                context.GH_Rubros.AddRange(rubros);
+                context.SaveChanges();
+                Console.WriteLine("[DB INIT] GH_Rubros seeded with 12 items.");
+
+                // Now seed TiposServicio using the created Rubros
+                var rubroDict = context.GH_Rubros.ToDictionary(r => r.Nombre, r => r.Id);
+                var tiposServicio = new List<TiempoProcesos.API.Models.GH_TipoServicio>
+                {
+                    new() { RubroId = rubroDict["Compradores de Desperdicio"], Nombre = "Desperdicio", PresupuestoMensual = 0, Activo = true },
+                    new() { RubroId = rubroDict["Servicios Publicos"], Nombre = "Agua", PresupuestoMensual = 0, Activo = true },
+                    new() { RubroId = rubroDict["Servicios Publicos"], Nombre = "Luz", PresupuestoMensual = 0, Activo = true },
+                    new() { RubroId = rubroDict["Servicios Publicos"], Nombre = "Alcantarillado", PresupuestoMensual = 0, Activo = true },
+                    new() { RubroId = rubroDict["Servicios Publicos"], Nombre = "Aseo Municipal", PresupuestoMensual = 0, Activo = true },
+                    new() { RubroId = rubroDict["Seguridad"], Nombre = "Vigilancia", PresupuestoMensual = 0, Activo = true },
+                    new() { RubroId = rubroDict["GPS"], Nombre = "GPS Vehiculos", PresupuestoMensual = 0, Activo = true },
+                    new() { RubroId = rubroDict["Cafeteria"], Nombre = "Insumos Cafeteria", PresupuestoMensual = 0, Activo = true },
+                    new() { RubroId = rubroDict["Papeleria"], Nombre = "Insumos Oficina", PresupuestoMensual = 0, Activo = true },
+                    new() { RubroId = rubroDict["Papeleria"], Nombre = "Impresoras", PresupuestoMensual = 0, Activo = true },
+                    new() { RubroId = rubroDict["Mantenimiento"], Nombre = "Aire Acondicionado", PresupuestoMensual = 0, Activo = true },
+                    new() { RubroId = rubroDict["Mantenimiento"], Nombre = "Plomeria", PresupuestoMensual = 0, Activo = true },
+                    new() { RubroId = rubroDict["Mantenimiento"], Nombre = "Redes", PresupuestoMensual = 0, Activo = true },
+                    new() { RubroId = rubroDict["Mantenimiento"], Nombre = "Arreglos Varios", PresupuestoMensual = 0, Activo = true },
+                    new() { RubroId = rubroDict["Dotacion"], Nombre = "Uniforme", PresupuestoMensual = 0, Activo = true },
+                    new() { RubroId = rubroDict["Aseo"], Nombre = "Insumos Aseo", PresupuestoMensual = 0, Activo = true },
+                    new() { RubroId = rubroDict["Cable"], Nombre = "Internet 1", PresupuestoMensual = 0, Activo = true },
+                    new() { RubroId = rubroDict["Cable"], Nombre = "Internet 2", PresupuestoMensual = 0, Activo = true },
+                    new() { RubroId = rubroDict["Telefonia"], Nombre = "Telefonia Fija", PresupuestoMensual = 0, Activo = true },
+                    new() { RubroId = rubroDict["Ayuda Emocional"], Nombre = "Insumos Michi", PresupuestoMensual = 0, Activo = true }
+                };
+                context.GH_TiposServicio.AddRange(tiposServicio);
+                context.SaveChanges();
+                Console.WriteLine("[DB INIT] GH_TiposServicio seeded with 20 items.");
+            }
+            else
+            {
+                Console.WriteLine("[DB INIT] GH_Rubros already has data, skipping seed.");
+            }
+        }
+        catch (Exception ex) { Console.WriteLine($"[DB ERROR] GH Tables: {ex.Message}"); }
     }
 }

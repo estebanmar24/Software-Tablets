@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import * as sstApi from '../services/sstApi';
+import * as ghApi from '../services/ghApi';
 
 const TABS = [
     { key: 'produccion', label: 'Producción', icon: '🏭' },
@@ -39,9 +40,12 @@ export default function SSTPresupuestosScreen({ navigation }) {
     const loadData = useCallback(async () => {
         try {
             setLoading(true);
-            // Only SST tab has data for now
             if (activeTab === 'sst') {
                 const data = await sstApi.getPresupuestosGrid(anio);
+                setGridData(data);
+            } else if (activeTab === 'gh') {
+                // Load GH presupuestos using same structure as SST
+                const data = await ghApi.getPresupuestosGrid(anio);
                 setGridData(data);
             } else {
                 // Placeholder for other tabs
@@ -113,7 +117,13 @@ export default function SSTPresupuestosScreen({ navigation }) {
                 return;
             }
 
-            await sstApi.setPresupuestosBulk(presupuestos);
+            // Use correct API based on active tab
+            if (activeTab === 'gh') {
+                await ghApi.setPresupuestosBulk(presupuestos);
+            } else {
+                await sstApi.setPresupuestosBulk(presupuestos);
+            }
+
             Alert.alert('Éxito', `Se guardaron ${presupuestos.length} presupuestos`);
             setEditedValues({});
             loadData();
@@ -190,7 +200,7 @@ export default function SSTPresupuestosScreen({ navigation }) {
                     <ActivityIndicator size="large" color="#2563EB" />
                     <Text style={styles.loadingText}>Cargando presupuestos...</Text>
                 </View>
-            ) : activeTab !== 'sst' ? (
+            ) : (activeTab !== 'sst' && activeTab !== 'gh') ? (
                 <View style={styles.placeholderContainer}>
                     <Text style={styles.placeholderIcon}>{TABS.find(t => t.key === activeTab)?.icon}</Text>
                     <Text style={styles.placeholderText}>

@@ -1,6 +1,7 @@
 /**
- * SST API Service
- * Handles all API calls for SST Budget and Expense Management
+ * GH (Gestión Humana) API Service
+ * Handles all API calls for GH Budget and Expense Management
+ * Includes Cotizaciones (Quotations) for price comparison
  */
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
@@ -8,13 +9,13 @@ const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:
 // ==================== RUBROS ====================
 
 export async function getRubros() {
-    const response = await fetch(`${API_BASE_URL}/sst/rubros`);
+    const response = await fetch(`${API_BASE_URL}/gh/rubros`);
     if (!response.ok) throw new Error('Error fetching rubros');
     return response.json();
 }
 
 export async function createRubro(rubro) {
-    const response = await fetch(`${API_BASE_URL}/sst/rubros`, {
+    const response = await fetch(`${API_BASE_URL}/gh/rubros`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(rubro)
@@ -24,7 +25,7 @@ export async function createRubro(rubro) {
 }
 
 export async function updateRubro(id, rubro) {
-    const response = await fetch(`${API_BASE_URL}/sst/rubros/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/gh/rubros/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...rubro, id })
@@ -34,7 +35,7 @@ export async function updateRubro(id, rubro) {
 }
 
 export async function deleteRubro(id) {
-    const response = await fetch(`${API_BASE_URL}/sst/rubros/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/gh/rubros/${id}`, {
         method: 'DELETE'
     });
     if (!response.ok) throw new Error('Error deleting rubro');
@@ -44,7 +45,7 @@ export async function deleteRubro(id) {
 // ==================== TIPOS DE SERVICIO ====================
 
 export async function getTiposServicio(rubroId = null) {
-    let url = `${API_BASE_URL}/sst/tipos-servicio`;
+    let url = `${API_BASE_URL}/gh/tipos-servicio`;
     if (rubroId) url += `?rubroId=${rubroId}`;
 
     const response = await fetch(url);
@@ -53,7 +54,7 @@ export async function getTiposServicio(rubroId = null) {
 }
 
 export async function createTipoServicio(tipoServicio) {
-    const response = await fetch(`${API_BASE_URL}/sst/tipos-servicio`, {
+    const response = await fetch(`${API_BASE_URL}/gh/tipos-servicio`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(tipoServicio)
@@ -63,7 +64,7 @@ export async function createTipoServicio(tipoServicio) {
 }
 
 export async function updateTipoServicio(id, tipoServicio) {
-    const response = await fetch(`${API_BASE_URL}/sst/tipos-servicio/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/gh/tipos-servicio/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...tipoServicio, id })
@@ -73,17 +74,51 @@ export async function updateTipoServicio(id, tipoServicio) {
 }
 
 export async function deleteTipoServicio(id) {
-    const response = await fetch(`${API_BASE_URL}/sst/tipos-servicio/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/gh/tipos-servicio/${id}`, {
         method: 'DELETE'
     });
     if (!response.ok) throw new Error('Error deleting tipo servicio');
     return response.ok;
 }
 
-// ==================== PROVEEDORES ====================
+/**
+ * Bulk update presupuestos for multiple TiposServicio
+ * @param {Array} presupuestos - Array of {tipoServicioId, anio, mes, presupuesto}
+ */
+export async function setPresupuestosBulk(presupuestos) {
+    const response = await fetch(`${API_BASE_URL}/gh/tipos-servicio/presupuestos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(presupuestos)
+    });
+    if (!response.ok) throw new Error('Error updating presupuestos');
+    return response.json();
+}
+
+/**
+ * Get flat list of presupuestos for a given year
+ * @param {number} anio 
+ */
+export async function getPresupuestos(anio) {
+    const response = await fetch(`${API_BASE_URL}/gh/presupuestos/list?anio=${anio}`);
+    if (!response.ok) throw new Error('Error fetching presupuestos list');
+    return response.json();
+}
+
+/**
+ * Get presupuestos grid for a given year
+ * @param {number} anio - Year to get presupuestos for
+ */
+export async function getPresupuestosGrid(anio) {
+    const response = await fetch(`${API_BASE_URL}/gh/presupuestos?anio=${anio}`);
+    if (!response.ok) throw new Error('Error fetching presupuestos grid');
+    return response.json();
+}
+
+// ==================== PROVEEDORES (Extended with contact info) ====================
 
 export async function getProveedores(tipoServicioId = null) {
-    let url = `${API_BASE_URL}/sst/proveedores`;
+    let url = `${API_BASE_URL}/gh/proveedores`;
     if (tipoServicioId) url += `?tipoServicioId=${tipoServicioId}`;
 
     const response = await fetch(url);
@@ -92,7 +127,7 @@ export async function getProveedores(tipoServicioId = null) {
 }
 
 export async function createProveedor(proveedor) {
-    const response = await fetch(`${API_BASE_URL}/sst/proveedores`, {
+    const response = await fetch(`${API_BASE_URL}/gh/proveedores`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(proveedor)
@@ -102,7 +137,7 @@ export async function createProveedor(proveedor) {
 }
 
 export async function updateProveedor(id, proveedor) {
-    const response = await fetch(`${API_BASE_URL}/sst/proveedores/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/gh/proveedores/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...proveedor, id })
@@ -112,51 +147,17 @@ export async function updateProveedor(id, proveedor) {
 }
 
 export async function deleteProveedor(id) {
-    const response = await fetch(`${API_BASE_URL}/sst/proveedores/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/gh/proveedores/${id}`, {
         method: 'DELETE'
     });
     if (!response.ok) throw new Error('Error deleting proveedor');
     return response.ok;
 }
 
-// ==================== PRESUPUESTOS ====================
-
-export async function getPresupuestos(anio) {
-    const response = await fetch(`${API_BASE_URL}/sst/presupuestos?anio=${anio}`);
-    if (!response.ok) throw new Error('Error fetching presupuestos');
-    return response.json();
-}
-
-export async function getPresupuestosGrid(anio) {
-    const response = await fetch(`${API_BASE_URL}/sst/presupuestos/grid?anio=${anio}`);
-    if (!response.ok) throw new Error('Error fetching presupuestos grid');
-    return response.json();
-}
-
-export async function setPresupuesto(presupuesto) {
-    const response = await fetch(`${API_BASE_URL}/sst/presupuestos`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(presupuesto)
-    });
-    if (!response.ok) throw new Error('Error setting presupuesto');
-    return response.json();
-}
-
-export async function setPresupuestosBulk(presupuestos) {
-    const response = await fetch(`${API_BASE_URL}/sst/presupuestos/bulk`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(presupuestos)
-    });
-    if (!response.ok) throw new Error('Error setting presupuestos bulk');
-    return response.json();
-}
-
-// ==================== COTIZACIONES ====================
+// ==================== COTIZACIONES (New feature for price comparison) ====================
 
 export async function getCotizaciones(proveedorId = null, anio = null, mes = null) {
-    let url = `${API_BASE_URL}/sst/cotizaciones`;
+    let url = `${API_BASE_URL}/gh/cotizaciones`;
     const params = [];
     if (proveedorId) params.push(`proveedorId=${proveedorId}`);
     if (anio) params.push(`anio=${anio}`);
@@ -169,7 +170,7 @@ export async function getCotizaciones(proveedorId = null, anio = null, mes = nul
 }
 
 export async function createCotizacion(cotizacion) {
-    const response = await fetch(`${API_BASE_URL}/sst/cotizaciones`, {
+    const response = await fetch(`${API_BASE_URL}/gh/cotizaciones`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(cotizacion)
@@ -179,7 +180,7 @@ export async function createCotizacion(cotizacion) {
 }
 
 export async function updateCotizacion(id, cotizacion) {
-    const response = await fetch(`${API_BASE_URL}/sst/cotizaciones/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/gh/cotizaciones/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...cotizacion, id })
@@ -189,7 +190,7 @@ export async function updateCotizacion(id, cotizacion) {
 }
 
 export async function deleteCotizacion(id) {
-    const response = await fetch(`${API_BASE_URL}/sst/cotizaciones/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/gh/cotizaciones/${id}`, {
         method: 'DELETE'
     });
     if (!response.ok) throw new Error('Error deleting cotizacion');
@@ -198,20 +199,26 @@ export async function deleteCotizacion(id) {
 
 // ==================== GASTOS ====================
 
-export async function getGastos(anio, mes) {
-    const response = await fetch(`${API_BASE_URL}/sst/gastos?anio=${anio}&mes=${mes}`);
+export async function getGastos(anio, mes = null) {
+    let url = `${API_BASE_URL}/gh/gastos?anio=${anio}`;
+    if (mes) url += `&mes=${mes}`;
+
+    const response = await fetch(url);
     if (!response.ok) throw new Error('Error fetching gastos');
     return response.json();
 }
 
-export async function getGastosResumen(anio, mes) {
-    const response = await fetch(`${API_BASE_URL}/sst/gastos/resumen?anio=${anio}&mes=${mes}`);
+export async function getGastosResumen(anio, mes = null) {
+    let url = `${API_BASE_URL}/gh/gastos/resumen?anio=${anio}`;
+    if (mes) url += `&mes=${mes}`;
+
+    const response = await fetch(url);
     if (!response.ok) throw new Error('Error fetching gastos resumen');
     return response.json();
 }
 
 export async function createGasto(gasto) {
-    const response = await fetch(`${API_BASE_URL}/sst/gastos`, {
+    const response = await fetch(`${API_BASE_URL}/gh/gastos`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(gasto)
@@ -221,7 +228,7 @@ export async function createGasto(gasto) {
 }
 
 export async function updateGasto(id, gasto) {
-    const response = await fetch(`${API_BASE_URL}/sst/gastos/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/gh/gastos/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...gasto, id })
@@ -231,7 +238,7 @@ export async function updateGasto(id, gasto) {
 }
 
 export async function deleteGasto(id) {
-    const response = await fetch(`${API_BASE_URL}/sst/gastos/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/gh/gastos/${id}`, {
         method: 'DELETE'
     });
     if (!response.ok) throw new Error('Error deleting gasto');

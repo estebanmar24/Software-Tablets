@@ -13,6 +13,7 @@ import QualityView from './QualityView';
 import EquipmentMaintenanceScreen from '../screens/EquipmentMaintenanceScreen';
 import SSTPresupuestosScreen from '../screens/SSTPresupuestosScreen';
 import SSTGastosScreen from '../screens/SSTGastosScreen';
+import GHGastosScreen from '../screens/GHGastosScreen';
 
 // Theme Provider
 import { ThemeProvider, useTheme } from '../contexts/ThemeContext';
@@ -67,11 +68,11 @@ function DashboardCard({ title, description, icon, onPress, color = '#E6FFFA', d
 }
 
 function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDashboardProps) {
-    // Mode: 'MENU' (Grid de tarjetas) | 'CONTENT' (Tabs existentes) | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS'
-    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS'>(() => {
+    // Mode: 'MENU' (Grid de tarjetas) | 'CONTENT' (Tabs existentes) | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS'
+    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS'>(() => {
         if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
             const savedMode = window.localStorage.getItem('adminDashboardMode');
-            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS') {
+            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS') {
                 return savedMode;
             }
         }
@@ -213,6 +214,25 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
         );
     }
 
+    // --- VISTA GH (GESTIÓN HUMANA) GASTOS ---
+    if (mode === 'GH_GASTOS') {
+        return (
+            <View style={styles.container}>
+                <View style={styles.header}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => {
+                        setMode('MENU');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                    }}>
+                        <Text style={styles.backButtonText}>← Volver al Panel</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.title}>Gestión Humana - Gastos</Text>
+                    <View style={{ width: 120 }} />
+                </View>
+                <GHGastosScreen navigation={mockNavigation} />
+            </View>
+        );
+    }
+
     // --- VISTA CONTENT (SISTEMA ACTUAL) ---
     if (mode === 'CONTENT') {
         return (
@@ -333,9 +353,12 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                     />
                     <DashboardCard
                         title="Gestión Humana"
-                        description="Información de personal y equipos"
+                        description="Gastos, Cotizaciones y Proveedores GH"
                         icon="👥"
-                        onPress={() => handlePlaceholderPress('Gestión Humana')}
+                        onPress={() => {
+                            setMode('GH_GASTOS');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'GH_GASTOS');
+                        }}
                         disabled={!isGHEnabled}
                     />
                     <DashboardCard

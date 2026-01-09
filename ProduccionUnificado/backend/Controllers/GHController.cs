@@ -6,69 +6,55 @@ using TiempoProcesos.API.Models;
 namespace TiempoProcesos.API.Controllers;
 
 /// <summary>
-/// Controller for SST (Salud y Seguridad en el Trabajo) Budget and Expense Management.
-/// Handles Rubros, TiposServicio, Proveedores, Presupuestos, and Gastos.
+/// Controller for GH (Gestión Humana) Budget and Expense Management.
+/// Handles Rubros, TiposServicio, Proveedores, Cotizaciones, and Gastos.
 /// </summary>
 [ApiController]
-[Route("api/sst")]
-public class SSTController : ControllerBase
+[Route("api/gh")]
+public class GHController : ControllerBase
 {
     private readonly AppDbContext _context;
 
-    public SSTController(AppDbContext context)
+    public GHController(AppDbContext context)
     {
         _context = context;
     }
 
     #region Rubros
 
-    /// <summary>
-    /// Get all rubros
-    /// </summary>
     [HttpGet("rubros")]
-    public async Task<ActionResult<List<SST_Rubro>>> GetRubros()
+    public async Task<ActionResult<List<GH_Rubro>>> GetRubros()
     {
-        var rubros = await _context.SST_Rubros
+        var rubros = await _context.GH_Rubros
             .Where(r => r.Activo)
             .OrderBy(r => r.Nombre)
             .ToListAsync();
         return Ok(rubros);
     }
 
-    /// <summary>
-    /// Create a new rubro
-    /// </summary>
     [HttpPost("rubros")]
-    public async Task<ActionResult<SST_Rubro>> CreateRubro([FromBody] SST_Rubro rubro)
+    public async Task<ActionResult<GH_Rubro>> CreateRubro([FromBody] GH_Rubro rubro)
     {
         rubro.Activo = true;
-        _context.SST_Rubros.Add(rubro);
+        _context.GH_Rubros.Add(rubro);
         await _context.SaveChangesAsync();
         return CreatedAtAction(nameof(GetRubros), new { id = rubro.Id }, rubro);
     }
 
-    /// <summary>
-    /// Update a rubro
-    /// </summary>
     [HttpPut("rubros/{id}")]
-    public async Task<IActionResult> UpdateRubro(int id, [FromBody] SST_Rubro rubro)
+    public async Task<IActionResult> UpdateRubro(int id, [FromBody] GH_Rubro rubro)
     {
         if (id != rubro.Id) return BadRequest();
-        
         _context.Entry(rubro).State = EntityState.Modified;
         await _context.SaveChangesAsync();
         return NoContent();
     }
 
-    /// <summary>
-    /// Delete (deactivate) a rubro
-    /// </summary>
     [HttpDelete("rubros/{id}")]
     public async Task<IActionResult> DeleteRubro(int id)
     {
-        var rubro = await _context.SST_Rubros.FindAsync(id);
+        var rubro = await _context.GH_Rubros.FindAsync(id);
         if (rubro == null) return NotFound();
-        
         rubro.Activo = false;
         await _context.SaveChangesAsync();
         return NoContent();
@@ -78,13 +64,10 @@ public class SSTController : ControllerBase
 
     #region TiposServicio
 
-    /// <summary>
-    /// Get all tipos de servicio, optionally filtered by rubro
-    /// </summary>
     [HttpGet("tipos-servicio")]
     public async Task<ActionResult<List<object>>> GetTiposServicio([FromQuery] int? rubroId)
     {
-        var query = _context.SST_TiposServicio
+        var query = _context.GH_TiposServicio
             .Include(t => t.Rubro)
             .Where(t => t.Activo);
 
@@ -99,6 +82,7 @@ public class SSTController : ControllerBase
                 t.Nombre,
                 t.RubroId,
                 RubroNombre = t.Rubro!.Nombre,
+                t.PresupuestoMensual,
                 t.Activo
             })
             .ToListAsync();
@@ -106,56 +90,148 @@ public class SSTController : ControllerBase
         return Ok(tipos);
     }
 
-    /// <summary>
-    /// Create a new tipo de servicio
-    /// </summary>
     [HttpPost("tipos-servicio")]
-    public async Task<ActionResult<SST_TipoServicio>> CreateTipoServicio([FromBody] SST_TipoServicio tipo)
+    public async Task<ActionResult<GH_TipoServicio>> CreateTipoServicio([FromBody] GH_TipoServicio tipo)
     {
         tipo.Activo = true;
-        _context.SST_TiposServicio.Add(tipo);
+        _context.GH_TiposServicio.Add(tipo);
         await _context.SaveChangesAsync();
         return CreatedAtAction(nameof(GetTiposServicio), new { id = tipo.Id }, tipo);
     }
 
-    /// <summary>
-    /// Update a tipo de servicio
-    /// </summary>
     [HttpPut("tipos-servicio/{id}")]
-    public async Task<IActionResult> UpdateTipoServicio(int id, [FromBody] SST_TipoServicio tipo)
+    public async Task<IActionResult> UpdateTipoServicio(int id, [FromBody] GH_TipoServicio tipo)
     {
         if (id != tipo.Id) return BadRequest();
-        
         _context.Entry(tipo).State = EntityState.Modified;
         await _context.SaveChangesAsync();
         return NoContent();
     }
 
-    /// <summary>
-    /// Delete (deactivate) a tipo de servicio
-    /// </summary>
     [HttpDelete("tipos-servicio/{id}")]
     public async Task<IActionResult> DeleteTipoServicio(int id)
     {
-        var tipo = await _context.SST_TiposServicio.FindAsync(id);
+        var tipo = await _context.GH_TiposServicio.FindAsync(id);
         if (tipo == null) return NotFound();
-        
         tipo.Activo = false;
         await _context.SaveChangesAsync();
         return NoContent();
+    }
+
+    /// <summary>
+    /// Get presupuestos grid for a given year - returns all TiposServicio with their monthly budgets.
+    /// Similar to SST presupuestos grid endpoint.
+    /// </summary>
+    [HttpGet("presupuestos")]
+    public async Task<ActionResult<object>> GetPresupuestosGrid([FromQuery] int anio)
+    {
+        var tiposServicio = await _context.GH_TiposServicio
+            .Where(t => t.Activo)
+            .OrderBy(t => t.Nombre)
+            .Select(t => new { t.Id, t.Nombre, t.RubroId })
+            .ToListAsync();
+
+        var presupuestos = await _context.GH_PresupuestosMensuales
+            .Where(p => p.Anio == anio)
+            .ToListAsync();
+
+        var result = tiposServicio.Select(tipo => new
+        {
+            TipoServicioId = tipo.Id,
+            TipoServicioNombre = tipo.Nombre,
+            tipo.RubroId,
+            Meses = Enumerable.Range(1, 12).Select(mes =>
+            {
+                var pres = presupuestos.FirstOrDefault(p => p.TipoServicioId == tipo.Id && p.Mes == mes);
+                return new { Mes = mes, Presupuesto = pres?.Presupuesto ?? 0m };
+            }).ToList(),
+            TotalAnual = presupuestos.Where(p => p.TipoServicioId == tipo.Id).Sum(p => p.Presupuesto)
+        }).ToList();
+
+        // Calculate monthly totals
+        var totalesMensuales = Enumerable.Range(1, 12)
+            .Select(mes => presupuestos.Where(p => p.Mes == mes).Sum(p => p.Presupuesto))
+            .ToList();
+
+        return Ok(new
+        {
+            TiposServicio = result,
+            TotalesMensuales = totalesMensuales,
+            TotalAnual = presupuestos.Sum(p => p.Presupuesto)
+        });
+    }
+
+    /// <summary>
+    /// Get flat list of presupuestos for a given year.
+    /// Useful for finding specific monthly budgets in frontend forms.
+    /// </summary>
+    [HttpGet("presupuestos/list")]
+    public async Task<ActionResult<List<object>>> GetPresupuestosList([FromQuery] int anio)
+    {
+        var presupuestos = await _context.GH_PresupuestosMensuales
+            .Where(p => p.Anio == anio)
+            .Select(p => new
+            {
+                p.TipoServicioId,
+                p.Mes,
+                p.Presupuesto
+            })
+            .ToListAsync();
+
+        return Ok(presupuestos);
+    }
+
+    /// <summary>
+    /// Bulk update presupuestos for multiple TiposServicio.
+    /// Uses GH_PresupuestosMensuales table with upsert logic.
+    /// </summary>
+    [HttpPost("tipos-servicio/presupuestos")]
+    public async Task<IActionResult> SetPresupuestosBulk([FromBody] List<GHPresupuestoDto> presupuestos)
+    {
+        if (presupuestos == null || !presupuestos.Any())
+            return BadRequest("No presupuestos provided");
+
+        int updated = 0;
+        int created = 0;
+
+        foreach (var dto in presupuestos)
+        {
+            var existing = await _context.GH_PresupuestosMensuales
+                .FirstOrDefaultAsync(p => 
+                    p.TipoServicioId == dto.TipoServicioId && 
+                    p.Anio == dto.Anio && 
+                    p.Mes == dto.Mes);
+
+            if (existing != null)
+            {
+                existing.Presupuesto = dto.Presupuesto;
+                updated++;
+            }
+            else
+            {
+                _context.GH_PresupuestosMensuales.Add(new GH_PresupuestoMensual
+                {
+                    TipoServicioId = dto.TipoServicioId,
+                    Anio = dto.Anio,
+                    Mes = dto.Mes,
+                    Presupuesto = dto.Presupuesto
+                });
+                created++;
+            }
+        }
+
+        await _context.SaveChangesAsync();
+        return Ok(new { Updated = updated, Created = created });
     }
 
     #endregion
 
     #region Proveedores
 
-    /// <summary>
-    /// Get all proveedores, optionally filtered by tipo de servicio
-    /// </summary>
     [HttpGet("proveedores")]
     public async Task<ActionResult<List<object>>> GetProveedores([FromQuery] int? tipoServicioId)
     {
-        var query = _context.SST_Proveedores
+        var query = _context.GH_Proveedores
             .Include(p => p.TipoServicio)
             .Where(p => p.Activo);
 
@@ -170,6 +246,10 @@ public class SSTController : ControllerBase
                 p.Nombre,
                 p.TipoServicioId,
                 TipoServicioNombre = p.TipoServicio!.Nombre,
+                p.Telefono,
+                p.Correo,
+                p.Direccion,
+                p.NIT,
                 p.Activo
             })
             .ToListAsync();
@@ -177,174 +257,32 @@ public class SSTController : ControllerBase
         return Ok(proveedores);
     }
 
-    /// <summary>
-    /// Create a new proveedor
-    /// </summary>
     [HttpPost("proveedores")]
-    public async Task<ActionResult<SST_Proveedor>> CreateProveedor([FromBody] SST_Proveedor proveedor)
+    public async Task<ActionResult<GH_Proveedor>> CreateProveedor([FromBody] GH_Proveedor proveedor)
     {
         proveedor.Activo = true;
-        _context.SST_Proveedores.Add(proveedor);
+        _context.GH_Proveedores.Add(proveedor);
         await _context.SaveChangesAsync();
         return CreatedAtAction(nameof(GetProveedores), new { id = proveedor.Id }, proveedor);
     }
 
-    /// <summary>
-    /// Update a proveedor
-    /// </summary>
     [HttpPut("proveedores/{id}")]
-    public async Task<IActionResult> UpdateProveedor(int id, [FromBody] SST_Proveedor proveedor)
+    public async Task<IActionResult> UpdateProveedor(int id, [FromBody] GH_Proveedor proveedor)
     {
         if (id != proveedor.Id) return BadRequest();
-        
         _context.Entry(proveedor).State = EntityState.Modified;
         await _context.SaveChangesAsync();
         return NoContent();
     }
 
-    /// <summary>
-    /// Delete (deactivate) a proveedor
-    /// </summary>
     [HttpDelete("proveedores/{id}")]
     public async Task<IActionResult> DeleteProveedor(int id)
     {
-        var proveedor = await _context.SST_Proveedores.FindAsync(id);
+        var proveedor = await _context.GH_Proveedores.FindAsync(id);
         if (proveedor == null) return NotFound();
-        
         proveedor.Activo = false;
         await _context.SaveChangesAsync();
         return NoContent();
-    }
-
-    #endregion
-
-    #region Presupuestos Mensuales
-
-    /// <summary>
-    /// Get all presupuestos for a specific year
-    /// </summary>
-    [HttpGet("presupuestos")]
-    public async Task<ActionResult<List<object>>> GetPresupuestos([FromQuery] int anio)
-    {
-        var presupuestos = await _context.SST_PresupuestosMensuales
-            .Include(p => p.TipoServicio)
-            .Where(p => p.Anio == anio)
-            .OrderBy(p => p.TipoServicio!.Nombre)
-            .ThenBy(p => p.Mes)
-            .Select(p => new
-            {
-                p.Id,
-                p.TipoServicioId,
-                TipoServicioNombre = p.TipoServicio!.Nombre,
-                p.Anio,
-                p.Mes,
-                p.Presupuesto
-            })
-            .ToListAsync();
-
-        return Ok(presupuestos);
-    }
-
-    /// <summary>
-    /// Get presupuesto grid data for a year (TipoServicio rows x 12 months columns)
-    /// </summary>
-    [HttpGet("presupuestos/grid")]
-    public async Task<ActionResult<object>> GetPresupuestosGrid([FromQuery] int anio)
-    {
-        // Get all tipos de servicio
-        var tiposServicio = await _context.SST_TiposServicio
-            .Where(t => t.Activo)
-            .OrderBy(t => t.Nombre)
-            .ToListAsync();
-
-        // Get all presupuestos for the year
-        var presupuestos = await _context.SST_PresupuestosMensuales
-            .Where(p => p.Anio == anio)
-            .ToListAsync();
-
-        // Build grid data
-        var gridData = tiposServicio.Select(tipo => new
-        {
-            TipoServicioId = tipo.Id,
-            TipoServicioNombre = tipo.Nombre,
-            Meses = Enumerable.Range(1, 12).Select(mes =>
-            {
-                var presupuesto = presupuestos.FirstOrDefault(p => p.TipoServicioId == tipo.Id && p.Mes == mes);
-                return new
-                {
-                    Mes = mes,
-                    PresupuestoId = presupuesto?.Id,
-                    Presupuesto = presupuesto?.Presupuesto ?? 0
-                };
-            }).ToList()
-        }).ToList();
-
-        // Calculate totals per month
-        var totalesMensuales = Enumerable.Range(1, 12).Select(mes =>
-            presupuestos.Where(p => p.Mes == mes).Sum(p => p.Presupuesto)
-        ).ToList();
-
-        return Ok(new
-        {
-            Anio = anio,
-            TiposServicio = gridData,
-            TotalesMensuales = totalesMensuales,
-            TotalAnual = presupuestos.Sum(p => p.Presupuesto)
-        });
-    }
-
-    /// <summary>
-    /// Set or update a presupuesto for a specific TipoServicio/month/year
-    /// </summary>
-    [HttpPost("presupuestos")]
-    public async Task<ActionResult<SST_PresupuestoMensual>> SetPresupuesto([FromBody] SST_PresupuestoMensual presupuesto)
-    {
-        // Check if exists
-        var existing = await _context.SST_PresupuestosMensuales
-            .FirstOrDefaultAsync(p => 
-                p.TipoServicioId == presupuesto.TipoServicioId && 
-                p.Anio == presupuesto.Anio && 
-                p.Mes == presupuesto.Mes);
-
-        if (existing != null)
-        {
-            existing.Presupuesto = presupuesto.Presupuesto;
-        }
-        else
-        {
-            _context.SST_PresupuestosMensuales.Add(presupuesto);
-        }
-
-        await _context.SaveChangesAsync();
-        return Ok(presupuesto);
-    }
-
-    /// <summary>
-    /// Bulk update presupuestos
-    /// </summary>
-    [HttpPost("presupuestos/bulk")]
-    public async Task<IActionResult> SetPresupuestosBulk([FromBody] List<SST_PresupuestoMensual> presupuestos)
-    {
-        foreach (var presupuesto in presupuestos)
-        {
-            var existing = await _context.SST_PresupuestosMensuales
-                .FirstOrDefaultAsync(p =>
-                    p.TipoServicioId == presupuesto.TipoServicioId &&
-                    p.Anio == presupuesto.Anio &&
-                    p.Mes == presupuesto.Mes);
-
-            if (existing != null)
-            {
-                existing.Presupuesto = presupuesto.Presupuesto;
-            }
-            else
-            {
-                _context.SST_PresupuestosMensuales.Add(presupuesto);
-            }
-        }
-
-        await _context.SaveChangesAsync();
-        return Ok(new { message = $"Updated {presupuestos.Count} presupuestos" });
     }
 
     #endregion
@@ -354,10 +292,10 @@ public class SSTController : ControllerBase
     [HttpGet("cotizaciones")]
     public async Task<ActionResult<List<object>>> GetCotizaciones([FromQuery] int? proveedorId, [FromQuery] int? anio, [FromQuery] int? mes)
     {
-        var query = _context.SST_Cotizaciones
+        var query = _context.GH_Cotizaciones
             .Include(c => c.Proveedor)
-            .ThenInclude(p => p.TipoServicio)
-            .ThenInclude(t => t.Rubro)
+                .ThenInclude(p => p!.TipoServicio)
+                    .ThenInclude(t => t!.Rubro)
             .Where(c => c.Activo);
 
         if (proveedorId.HasValue)
@@ -391,16 +329,16 @@ public class SSTController : ControllerBase
     }
 
     [HttpPost("cotizaciones")]
-    public async Task<ActionResult<SST_Cotizacion>> CreateCotizacion([FromBody] SST_Cotizacion cotizacion)
+    public async Task<ActionResult<GH_Cotizacion>> CreateCotizacion([FromBody] GH_Cotizacion cotizacion)
     {
         cotizacion.Activo = true;
-        _context.SST_Cotizaciones.Add(cotizacion);
+        _context.GH_Cotizaciones.Add(cotizacion);
         await _context.SaveChangesAsync();
         return CreatedAtAction(nameof(GetCotizaciones), new { id = cotizacion.Id }, cotizacion);
     }
 
     [HttpPut("cotizaciones/{id}")]
-    public async Task<IActionResult> UpdateCotizacion(int id, [FromBody] SST_Cotizacion cotizacion)
+    public async Task<IActionResult> UpdateCotizacion(int id, [FromBody] GH_Cotizacion cotizacion)
     {
         if (id != cotizacion.Id) return BadRequest();
         _context.Entry(cotizacion).State = EntityState.Modified;
@@ -411,7 +349,7 @@ public class SSTController : ControllerBase
     [HttpDelete("cotizaciones/{id}")]
     public async Task<IActionResult> DeleteCotizacion(int id)
     {
-        var cotizacion = await _context.SST_Cotizaciones.FindAsync(id);
+        var cotizacion = await _context.GH_Cotizaciones.FindAsync(id);
         if (cotizacion == null) return NotFound();
         cotizacion.Activo = false;
         await _context.SaveChangesAsync();
@@ -420,18 +358,16 @@ public class SSTController : ControllerBase
 
     #endregion
 
-    #region Gastos Mensuales
+    #region GastosMensuales
 
-    /// <summary>
-    /// Get gastos for a specific month/year
-    /// </summary>
     [HttpGet("gastos")]
     public async Task<ActionResult<List<object>>> GetGastos([FromQuery] int anio, [FromQuery] int? mes)
     {
-        var query = _context.SST_GastosMensuales
+        var query = _context.GH_GastosMensuales
             .Include(g => g.Rubro)
             .Include(g => g.TipoServicio)
             .Include(g => g.Proveedor)
+            .Include(g => g.Cotizacion)
             .Where(g => g.Anio == anio);
 
         if (mes.HasValue)
@@ -448,6 +384,8 @@ public class SSTController : ControllerBase
                 TipoServicioNombre = g.TipoServicio!.Nombre,
                 g.ProveedorId,
                 ProveedorNombre = g.Proveedor!.Nombre,
+                g.CotizacionId,
+                PrecioCotizado = g.Cotizacion != null ? g.Cotizacion.PrecioCotizado : (decimal?)null,
                 g.Anio,
                 g.Mes,
                 g.NumeroFactura,
@@ -462,41 +400,40 @@ public class SSTController : ControllerBase
         return Ok(gastos);
     }
 
-    /// <summary>
-    /// Get gastos summary with presupuesto comparison
-    /// </summary>
     [HttpGet("gastos/resumen")]
-    public async Task<ActionResult<object>> GetGastosResumen([FromQuery] int anio, [FromQuery] int? mes)
+    public async Task<ActionResult<object>> GetResumenGastos([FromQuery] int anio, [FromQuery] int? mes)
     {
         // 1. Get Expenses
-        var queryGastos = _context.SST_GastosMensuales
+        var queryGastos = _context.GH_GastosMensuales
+            .Include(g => g.TipoServicio)
             .Where(g => g.Anio == anio);
-        
+
         if (mes.HasValue)
             queryGastos = queryGastos.Where(g => g.Mes == mes.Value);
 
         var gastos = await queryGastos.ToListAsync();
 
         // 2. Get Budgets
-        var queryPresupuestos = _context.SST_PresupuestosMensuales
+        var queryPresupuestos = _context.GH_PresupuestosMensuales
             .Where(p => p.Anio == anio);
-            
+        
         if (mes.HasValue)
             queryPresupuestos = queryPresupuestos.Where(p => p.Mes == mes.Value);
 
         var presupuestos = await queryPresupuestos.ToListAsync();
 
-        // 3. Totals
-        var totalPresupuesto = presupuestos.Sum(p => p.Presupuesto);
+        // 3. Calculate Totals
         var totalGastado = gastos.Sum(g => g.Precio);
+        var totalPresupuesto = presupuestos.Sum(p => p.Presupuesto);
 
         // 4. Group by TipoServicio
+        // We need all Tipos that have either generic budget OR expenses
         var tipoIds = gastos.Select(g => g.TipoServicioId)
             .Union(presupuestos.Select(p => p.TipoServicioId))
             .Distinct()
             .ToList();
 
-        var tiposInfo = await _context.SST_TiposServicio
+        var tiposInfo = await _context.GH_TiposServicio
             .Where(t => tipoIds.Contains(t.Id))
             .ToDictionaryAsync(t => t.Id, t => t.Nombre);
 
@@ -508,8 +445,8 @@ public class SSTController : ControllerBase
             Gastado = gastos.Where(g => g.TipoServicioId == id).Sum(g => g.Precio),
             CantidadGastos = gastos.Count(g => g.TipoServicioId == id)
         }).ToList();
-        
-        // 5. Monthly Breakdown
+
+        // 5. Monthly Breakdown (Expenses only)
         var resumenMensual = gastos
             .GroupBy(g => g.Mes)
             .Select(grupo => new
@@ -532,40 +469,29 @@ public class SSTController : ControllerBase
         });
     }
 
-    /// <summary>
-    /// Create a new gasto
-    /// </summary>
     [HttpPost("gastos")]
-    public async Task<ActionResult<SST_GastoMensual>> CreateGasto([FromBody] SST_GastoMensual gasto)
+    public async Task<ActionResult<GH_GastoMensual>> CreateGasto([FromBody] GH_GastoMensual gasto)
     {
-        _context.SST_GastosMensuales.Add(gasto);
+        _context.GH_GastosMensuales.Add(gasto);
         await _context.SaveChangesAsync();
         return CreatedAtAction(nameof(GetGastos), new { id = gasto.Id }, gasto);
     }
 
-    /// <summary>
-    /// Update a gasto
-    /// </summary>
     [HttpPut("gastos/{id}")]
-    public async Task<IActionResult> UpdateGasto(int id, [FromBody] SST_GastoMensual gasto)
+    public async Task<IActionResult> UpdateGasto(int id, [FromBody] GH_GastoMensual gasto)
     {
         if (id != gasto.Id) return BadRequest();
-
         _context.Entry(gasto).State = EntityState.Modified;
         await _context.SaveChangesAsync();
         return NoContent();
     }
 
-    /// <summary>
-    /// Delete a gasto
-    /// </summary>
     [HttpDelete("gastos/{id}")]
     public async Task<IActionResult> DeleteGasto(int id)
     {
-        var gasto = await _context.SST_GastosMensuales.FindAsync(id);
+        var gasto = await _context.GH_GastosMensuales.FindAsync(id);
         if (gasto == null) return NotFound();
-
-        _context.SST_GastosMensuales.Remove(gasto);
+        _context.GH_GastosMensuales.Remove(gasto);
         await _context.SaveChangesAsync();
         return NoContent();
     }

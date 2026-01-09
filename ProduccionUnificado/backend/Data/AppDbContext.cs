@@ -30,6 +30,15 @@ public class AppDbContext : DbContext
     public DbSet<SST_PresupuestoMensual> SST_PresupuestosMensuales { get; set; }
     public DbSet<SST_GastoMensual> SST_GastosMensuales { get; set; }
 
+    // GH (Gestión Humana) Management
+    public DbSet<GH_Rubro> GH_Rubros { get; set; }
+    public DbSet<GH_TipoServicio> GH_TiposServicio { get; set; }
+    public DbSet<GH_Proveedor> GH_Proveedores { get; set; }
+    public DbSet<GH_Cotizacion> GH_Cotizaciones { get; set; }
+    public DbSet<SST_Cotizacion> SST_Cotizaciones { get; set; }
+    public DbSet<GH_GastoMensual> GH_GastosMensuales { get; set; }
+    public DbSet<GH_PresupuestoMensual> GH_PresupuestosMensuales { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -168,6 +177,57 @@ public class AppDbContext : DbContext
             .WithMany()
             .HasForeignKey(g => g.ProveedorId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // GH Tables Configuration
+        modelBuilder.Entity<GH_Rubro>().ToTable("GH_Rubros");
+        modelBuilder.Entity<GH_TipoServicio>().ToTable("GH_TiposServicio");
+        modelBuilder.Entity<GH_Proveedor>().ToTable("GH_Proveedores");
+        modelBuilder.Entity<GH_Cotizacion>().ToTable("GH_Cotizaciones");
+        modelBuilder.Entity<GH_GastoMensual>().ToTable("GH_GastosMensuales");
+        modelBuilder.Entity<GH_PresupuestoMensual>().ToTable("GH_PresupuestosMensuales");
+
+        // GH Relationships
+        modelBuilder.Entity<GH_TipoServicio>()
+            .HasOne(t => t.Rubro)
+            .WithMany(r => r.TiposServicio)
+            .HasForeignKey(t => t.RubroId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<GH_Proveedor>()
+            .HasOne(p => p.TipoServicio)
+            .WithMany(t => t.Proveedores)
+            .HasForeignKey(p => p.TipoServicioId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<GH_Cotizacion>()
+            .HasOne(c => c.Proveedor)
+            .WithMany(p => p.Cotizaciones)
+            .HasForeignKey(c => c.ProveedorId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<GH_GastoMensual>()
+            .HasOne(g => g.Rubro)
+            .WithMany()
+            .HasForeignKey(g => g.RubroId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<GH_GastoMensual>()
+            .HasOne(g => g.TipoServicio)
+            .WithMany()
+            .HasForeignKey(g => g.TipoServicioId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<GH_GastoMensual>()
+            .HasOne(g => g.Proveedor)
+            .WithMany()
+            .HasForeignKey(g => g.ProveedorId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<GH_GastoMensual>()
+            .HasOne(g => g.Cotizacion)
+            .WithMany()
+            .HasForeignKey(g => g.CotizacionId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         // NOTA: Los datos semilla se cargan directamente con init_db.sql
         // No usar HasData() para evitar conflictos con BD en la nube

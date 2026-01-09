@@ -1,6 +1,7 @@
 /**
- * SST Gastos Screen
- * SST personnel screen for recording monthly expenses and managing master data
+ * GH (Gestión Humana) Gastos Screen
+ * HR personnel screen for recording monthly expenses and managing master data
+ * Includes Cotizaciones (Quotations) feature for price comparison
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -18,7 +19,7 @@ import {
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import * as DocumentPicker from 'expo-document-picker';
-import * as sstApi from '../services/sstApi';
+import * as ghApi from '../services/ghApi';
 // jsPDF uses dynamic import to avoid Android TextDecoder crash
 import * as FileSystem from 'expo-file-system/legacy';
 import { Asset } from 'expo-asset';
@@ -32,7 +33,7 @@ const TABS = [
     { key: 'proveedores', label: 'Proveedores', icon: '🏢' }
 ];
 
-export default function SSTGastosScreen({ navigation }) {
+export default function GHGastosScreen({ navigation }) {
     const [activeTab, setActiveTab] = useState('gastos');
 
     return (
@@ -110,9 +111,9 @@ function GastosTab() {
     const loadMasterData = useCallback(async () => {
         try {
             const [rubrosData, tiposData, proveedoresData] = await Promise.all([
-                sstApi.getRubros(),
-                sstApi.getTiposServicio(),
-                sstApi.getProveedores()
+                ghApi.getRubros(),
+                ghApi.getTiposServicio(),
+                ghApi.getProveedores()
             ]);
             setRubros(rubrosData);
             setTiposServicio(tiposData);
@@ -123,29 +124,20 @@ function GastosTab() {
     }, []);
 
     const loadGastos = useCallback(async () => {
-        setLoading(true);
         try {
-            // Fetch data independently to prevent one failure (e.g., missing new endpoint) from blocking everything
-            let gastosData = [], resumenData = null, presupuestosData = [], cotizacionesData = [];
-
-            try { gastosData = await sstApi.getGastos(anio, mes); } catch (e) { console.error('Error loading gastos:', e); }
-            try { resumenData = await sstApi.getGastosResumen(anio, mes); } catch (e) { console.error('Error loading resumen:', e); }
-            try { presupuestosData = await sstApi.getPresupuestos(anio); } catch (e) { console.error('Error loading presupuestos:', e); }
-            try { cotizacionesData = await sstApi.getCotizaciones(null, anio, mes); } catch (e) { console.error('Error loading cotizaciones:', e); }
-
-            setGastos(gastosData || []);
-
-            // Validate resumen structure matches new backend (has totalGastado)
-            if (resumenData && typeof resumenData.totalGastado !== 'undefined') {
-                setResumen(resumenData);
-            } else {
-                setResumen(null); // Hide summary keys if backend is outdated
-            }
-
-            setPresupuestos(presupuestosData || []);
-            setCotizaciones(cotizacionesData || []);
-        } catch (globalError) {
-            console.error('Critical error loading SST module:', globalError);
+            setLoading(true);
+            const [gastosData, resumenData, presupuestosData, cotizacionesData] = await Promise.all([
+                ghApi.getGastos(anio, mes),
+                ghApi.getGastosResumen(anio, mes),
+                ghApi.getPresupuestos(anio),
+                ghApi.getCotizaciones(null, anio, mes)
+            ]);
+            setGastos(gastosData);
+            setResumen(resumenData);
+            setPresupuestos(presupuestosData);
+            setCotizaciones(cotizacionesData);
+        } catch (error) {
+            console.error('Error loading gastos:', error);
         } finally {
             setLoading(false);
         }
@@ -201,24 +193,21 @@ function GastosTab() {
         }
     }, [formData.tipoServicioId, proveedores]);
 
-    // Autofill Price from Quotation
+    // Autofill Price from Cotizaciones when Proveedor is selected
     useEffect(() => {
         if (formData.proveedorId) {
-            const cotizacion = cotizaciones.find(c =>
-                c.proveedorId === parseInt(formData.proveedorId) &&
-                c.anio === anio &&
-                c.mes === mes
-            );
-            if (cotizacion) {
-                const precio = cotizacion.precioCotizado.toString();
+            const cotizacion = cotizaciones.find(c => c.proveedorId === parseInt(formData.proveedorId));
+            if (cotizacion && cotizacion.precioCotizado) {
+                const numericValue = cotizacion.precioCotizado.toString();
+                const formatted = formatCurrencyInput(numericValue);
                 setFormData(prev => ({
                     ...prev,
-                    precio: precio,
-                    precioDisplay: new Intl.NumberFormat('es-CO').format(parseInt(precio))
+                    precio: numericValue,
+                    precioDisplay: formatted
                 }));
             }
         }
-    }, [formData.proveedorId, cotizaciones, anio, mes]);
+    }, [formData.proveedorId, cotizaciones]);
 
     // Load budget info when TipoServicio is selected
     useEffect(() => {
@@ -226,7 +215,7 @@ function GastosTab() {
             if (formData.tipoServicioId) {
                 try {
                     // Get presupuesto for this TipoServicio in current month/year
-                    const presupuestos = await sstApi.getPresupuestos(anio);
+                    const presupuestos = await ghApi.getPresupuestos(anio);
 
                     // Annual Budget for this Tipo
                     const presupuestoAnual = presupuestos
@@ -404,10 +393,10 @@ function GastosTab() {
             };
 
             if (editItem) {
-                await sstApi.updateGasto(editItem.id, gastoData);
+                await ghApi.updateGasto(editItem.id, gastoData);
                 Alert.alert('Éxito', 'Gasto actualizado correctamente');
             } else {
-                await sstApi.createGasto(gastoData);
+                await ghApi.createGasto(gastoData);
                 Alert.alert('Éxito', 'Gasto registrado correctamente');
             }
             setShowModal(false);
@@ -425,7 +414,7 @@ function GastosTab() {
         if (Platform.OS === 'web') {
             if (window.confirm('¿Está seguro de eliminar este gasto?')) {
                 try {
-                    await sstApi.deleteGasto(id);
+                    await ghApi.deleteGasto(id);
                     loadGastos();
                     Alert.alert('Éxito', 'Gasto eliminado correctamente');
                 } catch (error) {
@@ -443,7 +432,7 @@ function GastosTab() {
                         style: 'destructive',
                         onPress: async () => {
                             try {
-                                await sstApi.deleteGasto(id);
+                                await ghApi.deleteGasto(id);
                                 loadGastos();
                             } catch (error) {
                                 Alert.alert('Error', 'No se pudo eliminar el gasto');
@@ -476,7 +465,7 @@ function GastosTab() {
         <View style={styles.contentContainer}>
             {/* Header */}
             <View style={styles.header}>
-                <Text style={styles.title}>📋 Gastos SST</Text>
+                <Text style={styles.title}>📋 Gastos GH</Text>
                 <View style={styles.filters}>
                     <Picker
                         selectedValue={anio}
@@ -492,7 +481,7 @@ function GastosTab() {
                         onValueChange={setMes}
                         style={styles.picker}
                     >
-                        {sstApi.MESES.map(m => (
+                        {ghApi.MESES.map(m => (
                             <Picker.Item key={m.value} label={m.label} value={m.value} />
                         ))}
                     </Picker>
@@ -844,8 +833,8 @@ function RubrosTab() {
         try {
             setLoading(true);
             const [rubrosData, tiposData] = await Promise.all([
-                sstApi.getRubros(),
-                sstApi.getTiposServicio()
+                ghApi.getRubros(),
+                ghApi.getTiposServicio()
             ]);
             setItems(rubrosData);
             setTipos(tiposData);
@@ -881,9 +870,9 @@ function RubrosTab() {
         try {
             setSaving(true);
             if (editItem) {
-                await sstApi.updateRubro(editItem.id, { nombre });
+                await ghApi.updateRubro(editItem.id, { nombre });
             } else {
-                await sstApi.createRubro({ nombre });
+                await ghApi.createRubro({ nombre });
             }
             setShowModal(false);
             loadData();
@@ -899,7 +888,7 @@ function RubrosTab() {
         if (Platform.OS === 'web') {
             if (window.confirm('¿Está seguro de eliminar este rubro?')) {
                 try {
-                    await sstApi.deleteRubro(id);
+                    await ghApi.deleteRubro(id);
                     loadData();
                     Alert.alert('Éxito', 'Rubro eliminado correctamente');
                 } catch (error) {
@@ -913,7 +902,7 @@ function RubrosTab() {
                     text: 'Eliminar', style: 'destructive',
                     onPress: async () => {
                         try {
-                            await sstApi.deleteRubro(id);
+                            await ghApi.deleteRubro(id);
                             loadData();
                         } catch (error) {
                             Alert.alert('Error', 'No se pudo eliminar (puede tener datos relacionados)');
@@ -993,8 +982,8 @@ function ServiciosTab() {
         try {
             setLoading(true);
             const [tiposData, rubrosData] = await Promise.all([
-                sstApi.getTiposServicio(),
-                sstApi.getRubros()
+                ghApi.getTiposServicio(),
+                ghApi.getRubros()
             ]);
             setItems(tiposData);
             setRubros(rubrosData);
@@ -1019,9 +1008,9 @@ function ServiciosTab() {
         try {
             setSaving(true);
             if (editItem) {
-                await sstApi.updateTipoServicio(editItem.id, { nombre, rubroId: parseInt(rubroId) });
+                await ghApi.updateTipoServicio(editItem.id, { nombre, rubroId: parseInt(rubroId) });
             } else {
-                await sstApi.createTipoServicio({ nombre, rubroId: parseInt(rubroId) });
+                await ghApi.createTipoServicio({ nombre, rubroId: parseInt(rubroId) });
             }
             setShowModal(false);
             loadData();
@@ -1033,7 +1022,7 @@ function ServiciosTab() {
         if (Platform.OS === 'web') {
             if (window.confirm('¿Está seguro de eliminar este tipo de servicio?')) {
                 try {
-                    await sstApi.deleteTipoServicio(id);
+                    await ghApi.deleteTipoServicio(id);
                     loadData();
                     Alert.alert('Éxito', 'Tipo de servicio eliminado correctamente');
                 } catch (error) {
@@ -1046,7 +1035,7 @@ function ServiciosTab() {
                 {
                     text: 'Eliminar', style: 'destructive', onPress: async () => {
                         try {
-                            await sstApi.deleteTipoServicio(id);
+                            await ghApi.deleteTipoServicio(id);
                             loadData();
                         } catch {
                             Alert.alert('Error', 'No se pudo eliminar');
@@ -1127,15 +1116,20 @@ function ProveedoresTab() {
     const [editItem, setEditItem] = useState(null);
     const [nombre, setNombre] = useState('');
     const [tipoServicioId, setTipoServicioId] = useState('');
+    const [rubroIdModal, setRubroIdModal] = useState('');  // For filtering tipos in modal
+    const [telefono, setTelefono] = useState('');
+    const [correo, setCorreo] = useState('');
+    const [direccion, setDireccion] = useState('');
+    const [nit, setNit] = useState('');
     const [saving, setSaving] = useState(false);
 
     const loadData = async () => {
         try {
             setLoading(true);
             const [provData, tiposData, rubrosData] = await Promise.all([
-                sstApi.getProveedores(),
-                sstApi.getTiposServicio(),
-                sstApi.getRubros()
+                ghApi.getProveedores(),
+                ghApi.getTiposServicio(),
+                ghApi.getRubros()
             ]);
             setItems(provData);
             setTiposServicio(tiposData);
@@ -1168,17 +1162,52 @@ function ProveedoresTab() {
         setFilterTipoId('');
     }, [filterRubroId]);
 
-    const handleAdd = () => { setEditItem(null); setNombre(''); setTipoServicioId(''); setShowModal(true); };
-    const handleEdit = (item) => { setEditItem(item); setNombre(item.nombre); setTipoServicioId(item.tipoServicioId?.toString() || ''); setShowModal(true); };
+    const resetForm = () => {
+        setNombre('');
+        setTipoServicioId('');
+        setRubroIdModal('');
+        setTelefono('');
+        setCorreo('');
+        setDireccion('');
+        setNit('');
+    };
+
+    // Filter tipos in modal by selected rubro
+    const tiposInModal = rubroIdModal
+        ? tiposServicio.filter(t => t.rubroId === parseInt(rubroIdModal))
+        : tiposServicio;
+
+    const handleAdd = () => { setEditItem(null); resetForm(); setShowModal(true); };
+    const handleEdit = (item) => {
+        setEditItem(item);
+        setNombre(item.nombre || '');
+        setTipoServicioId(item.tipoServicioId?.toString() || '');
+        // Find the rubro for the tipo
+        const tipo = tiposServicio.find(t => t.id === item.tipoServicioId);
+        setRubroIdModal(tipo?.rubroId?.toString() || '');
+        setTelefono(item.telefono || '');
+        setCorreo(item.correo || '');
+        setDireccion(item.direccion || '');
+        setNit(item.nit || '');
+        setShowModal(true);
+    };
 
     const handleSave = async () => {
-        if (!nombre.trim() || !tipoServicioId) { Alert.alert('Error', 'Complete todos los campos'); return; }
+        if (!nombre.trim() || !tipoServicioId) { Alert.alert('Error', 'Nombre y Tipo de Servicio son obligatorios'); return; }
         try {
             setSaving(true);
+            const data = {
+                nombre: nombre.trim(),
+                tipoServicioId: parseInt(tipoServicioId),
+                telefono: telefono.trim() || null,
+                correo: correo.trim() || null,
+                direccion: direccion.trim() || null,
+                nit: nit.trim() || null
+            };
             if (editItem) {
-                await sstApi.updateProveedor(editItem.id, { nombre, tipoServicioId: parseInt(tipoServicioId) });
+                await ghApi.updateProveedor(editItem.id, data);
             } else {
-                await sstApi.createProveedor({ nombre, tipoServicioId: parseInt(tipoServicioId) });
+                await ghApi.createProveedor(data);
             }
             setShowModal(false);
             loadData();
@@ -1190,7 +1219,7 @@ function ProveedoresTab() {
         if (Platform.OS === 'web') {
             if (window.confirm('¿Está seguro de eliminar este proveedor?')) {
                 try {
-                    await sstApi.deleteProveedor(id);
+                    await ghApi.deleteProveedor(id);
                     loadData();
                     Alert.alert('Éxito', 'Proveedor eliminado correctamente');
                 } catch (error) {
@@ -1203,7 +1232,7 @@ function ProveedoresTab() {
                 {
                     text: 'Eliminar', style: 'destructive', onPress: async () => {
                         try {
-                            await sstApi.deleteProveedor(id);
+                            await ghApi.deleteProveedor(id);
                             loadData();
                         } catch {
                             Alert.alert('Error', 'No se pudo eliminar');
@@ -1245,6 +1274,10 @@ function ProveedoresTab() {
                         <View style={styles.itemInfo}>
                             <Text style={styles.itemName}>{item.nombre}</Text>
                             <Text style={styles.itemParent}>Tipo: {item.tipoServicioNombre}</Text>
+                            {item.nit && <Text style={styles.itemDetail}>📋 NIT: {item.nit}</Text>}
+                            {item.telefono && <Text style={styles.itemDetail}>📞 {item.telefono}</Text>}
+                            {item.correo && <Text style={styles.itemDetail}>✉️ {item.correo}</Text>}
+                            {item.direccion && <Text style={styles.itemDetail}>📍 {item.direccion}</Text>}
                         </View>
                         <View style={styles.itemActions}>
                             <TouchableOpacity onPress={() => handleEdit(item)}><Text style={styles.editButton}>✏️</Text></TouchableOpacity>
@@ -1255,310 +1288,37 @@ function ProveedoresTab() {
             </ScrollView>
             <Modal visible={showModal} transparent animationType="slide" onRequestClose={() => setShowModal(false)}>
                 <View style={styles.modalOverlay}>
-                    <View style={styles.modalContentSmall}>
-                        <Text style={styles.modalTitle}>{editItem ? 'Editar' : 'Agregar'} Proveedor</Text>
-                        <Text style={styles.label}>Tipo de Servicio *</Text>
-                        <View style={styles.pickerContainer}>
-                            <Picker selectedValue={tipoServicioId} onValueChange={setTipoServicioId}>
-                                <Picker.Item label="Seleccione..." value="" />
-                                {tiposServicio.map(t => <Picker.Item key={t.id} label={t.nombre} value={t.id.toString()} />)}
-                            </Picker>
-                        </View>
-                        <Text style={styles.label}>Nombre *</Text>
-                        <TextInput style={styles.input} value={nombre} onChangeText={setNombre} placeholder="Nombre" />
-                        <View style={styles.modalActions}>
-                            <TouchableOpacity style={styles.cancelButton} onPress={() => setShowModal(false)}><Text style={styles.cancelButtonText}>Cancelar</Text></TouchableOpacity>
-                            <TouchableOpacity style={[styles.submitButton, saving && styles.submitButtonDisabled]} onPress={handleSave} disabled={saving}>
-                                {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>Guardar</Text>}
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                </View>
-            </Modal>
-        </View>
-    );
-}
-
-// ===================== COTIZACIONES TAB =====================
-function CotizacionesTab() {
-    const [loading, setLoading] = useState(true);
-    const [cotizaciones, setCotizaciones] = useState([]);
-    const [rubros, setRubros] = useState([]);
-    const [tiposServicio, setTiposServicio] = useState([]);
-    const [proveedores, setProveedores] = useState([]);
-    const [filteredTipos, setFilteredTipos] = useState([]);
-    const [filteredProveedores, setFilteredProveedores] = useState([]);
-    const [anio, setAnio] = useState(new Date().getFullYear());
-    const [mes, setMes] = useState(new Date().getMonth() + 1);
-
-    const [showModal, setShowModal] = useState(false);
-    const [editItem, setEditItem] = useState(null);
-    const [formData, setFormData] = useState({
-        rubroId: '',
-        tipoServicioId: '',
-        proveedorId: '',
-        precioCotizado: '',
-        precioCotizadoDisplay: '',
-        descripcion: ''
-    });
-    const [saving, setSaving] = useState(false);
-
-    const loadData = useCallback(async () => {
-        setLoading(true);
-        try {
-            // Master Data (Should always work)
-            try {
-                const rubrosData = await sstApi.getRubros();
-                setRubros(rubrosData);
-            } catch (e) { console.error('Error loading rubros:', e); }
-
-            try {
-                const tiposData = await sstApi.getTiposServicio();
-                setTiposServicio(tiposData);
-            } catch (e) { console.error('Error loading tipos:', e); }
-
-            try {
-                const proveedoresData = await sstApi.getProveedores();
-                setProveedores(proveedoresData);
-            } catch (e) { console.error('Error loading proveedores:', e); }
-
-            // Cotizaciones (Might fail if backend outdated)
-            try {
-                const cotizacionesData = await sstApi.getCotizaciones(null, anio, mes);
-                setCotizaciones(cotizacionesData);
-            } catch (e) {
-                console.error('Error loading cotizaciones (Backend restart required?):', e);
-                setCotizaciones([]);
-            }
-        } finally {
-            setLoading(false);
-        }
-    }, [anio, mes]);
-
-    useEffect(() => { loadData(); }, [loadData]);
-
-    useEffect(() => {
-        if (formData.rubroId) {
-            const filtered = tiposServicio.filter(t => t.rubroId === parseInt(formData.rubroId));
-            setFilteredTipos(filtered);
-            if (!filtered.find(t => t.id === parseInt(formData.tipoServicioId))) {
-                setFormData(prev => ({ ...prev, tipoServicioId: '', proveedorId: '' }));
-            }
-        } else {
-            setFilteredTipos([]);
-        }
-    }, [formData.rubroId, tiposServicio]);
-
-    useEffect(() => {
-        if (formData.tipoServicioId) {
-            const filtered = proveedores.filter(p => p.tipoServicioId === parseInt(formData.tipoServicioId));
-            setFilteredProveedores(filtered);
-            if (!filtered.find(p => p.id === parseInt(formData.proveedorId))) {
-                setFormData(prev => ({ ...prev, proveedorId: '' }));
-            }
-        } else {
-            setFilteredProveedores([]);
-        }
-    }, [formData.tipoServicioId, proveedores]);
-
-    const formatCurrencyInput = (value) => {
-        const numericValue = value.replace(/[^0-9]/g, '');
-        if (!numericValue) return '';
-        return new Intl.NumberFormat('es-CO').format(parseInt(numericValue));
-    };
-
-    const handlePriceChange = (value) => {
-        const numericValue = value.replace(/[^0-9]/g, '');
-        const formatted = formatCurrencyInput(value);
-        setFormData(prev => ({ ...prev, precioCotizado: numericValue, precioCotizadoDisplay: formatted }));
-    };
-
-    const resetForm = () => {
-        setEditItem(null);
-        setFormData({
-            rubroId: '',
-            tipoServicioId: '',
-            proveedorId: '',
-            precioCotizado: '',
-            precioCotizadoDisplay: '',
-            descripcion: ''
-        });
-    };
-
-    const handleSubmit = async () => {
-        if (!formData.proveedorId || !formData.precioCotizado) {
-            Alert.alert('Error', 'Proveedor y precio son obligatorios');
-            return;
-        }
-        try {
-            setSaving(true);
-            const data = {
-                proveedorId: parseInt(formData.proveedorId),
-                anio,
-                mes,
-                precioCotizado: parseFloat(formData.precioCotizado),
-                fechaCotizacion: new Date().toISOString(),
-                descripcion: formData.descripcion
-            };
-            if (editItem) {
-                await sstApi.updateCotizacion(editItem.id, data);
-            } else {
-                await sstApi.createCotizacion(data);
-            }
-            setShowModal(false);
-            resetForm();
-            loadData();
-            Alert.alert('Éxito', editItem ? 'Cotización actualizada' : 'Cotización creada');
-        } catch (error) {
-            Alert.alert('Error', 'No se pudo guardar');
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    const handleDelete = async (id) => {
-        if (Platform.OS === 'web') {
-            if (window.confirm('¿Eliminar esta cotización?')) {
-                try {
-                    await sstApi.deleteCotizacion(id);
-                    loadData();
-                } catch (error) {
-                    Alert.alert('Error', 'No se pudo eliminar');
-                }
-            }
-        } else {
-            Alert.alert('Confirmar', '¿Eliminar esta cotización?', [
-                { text: 'Cancelar', style: 'cancel' },
-                {
-                    text: 'Eliminar', style: 'destructive', onPress: async () => {
-                        try { await sstApi.deleteCotizacion(id); loadData(); } catch (e) { }
-                    }
-                }
-            ]);
-        }
-    };
-
-    const formatCurrency = (value) => new Intl.NumberFormat('es-CO', {
-        style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0
-    }).format(value);
-
-    // Filter available years (current - 2 to + 2)
-    const anios = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
-
-    return (
-        <View style={styles.contentContainer}>
-            <View style={styles.header}>
-                <Text style={styles.title}>📋 Cotizaciones SST</Text>
-                <View style={styles.filters}>
-                    <Picker selectedValue={anio} onValueChange={setAnio} style={styles.picker}>
-                        {anios.map(a => <Picker.Item key={a} label={a.toString()} value={a} />)}
-                    </Picker>
-                    <Picker selectedValue={mes} onValueChange={setMes} style={styles.picker}>
-                        {sstApi.MESES.map(m => <Picker.Item key={m.value} label={m.label} value={m.value} />)}
-                    </Picker>
-                </View>
-            </View>
-
-            <TouchableOpacity style={styles.addButtonSmall} onPress={() => setShowModal(true)}>
-                <Text style={styles.addButtonText}>+ Nueva Cotización</Text>
-            </TouchableOpacity>
-
-            {loading ? (
-                <ActivityIndicator size="large" color="#2563EB" style={styles.loading} />
-            ) : (
-                <ScrollView style={styles.listContainer}>
-                    {cotizaciones.length === 0 ? (
-                        <View style={styles.emptyState}>
-                            <Text style={styles.emptyText}>No hay cotizaciones para este período</Text>
-                        </View>
-                    ) : (
-                        cotizaciones.map(cot => (
-                            <View key={cot.id} style={styles.gastoCard}>
-                                <View style={styles.gastoHeader}>
-                                    <Text style={styles.gastoTipo}>{cot.proveedorNombre}</Text>
-                                    <Text style={styles.gastoPrecio}>{formatCurrency(cot.precioCotizado)}</Text>
-                                </View>
-                                <Text style={styles.gastoRubro}>{cot.rubroNombre} → {cot.tipoServicioNombre}</Text>
-                                <Text style={styles.gastoDetail}>📅 {new Date(cot.fechaCotizacion).toLocaleDateString('es-CO')}</Text>
-                                {cot.descripcion && <Text style={styles.gastoNota}>💬 {cot.descripcion}</Text>}
-                                <View style={styles.cardActions}>
-                                    <TouchableOpacity style={styles.editCardButton} onPress={() => {
-                                        setEditItem(cot);
-                                        setFormData({
-                                            rubroId: cot.rubroId?.toString() || '',
-                                            tipoServicioId: cot.tipoServicioId?.toString() || '',
-                                            proveedorId: cot.proveedorId?.toString() || '',
-                                            precioCotizado: cot.precioCotizado?.toString() || '',
-                                            precioCotizadoDisplay: formatCurrencyInput(cot.precioCotizado?.toString() || ''),
-                                            descripcion: cot.descripcion || ''
-                                        });
-                                        setShowModal(true);
-                                    }}>
-                                        <Text style={styles.editCardButtonText}>✏️ Editar</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(cot.id)}>
-                                        <Text style={styles.deleteButtonText}>🗑️ Eliminar</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-                        ))
-                    )}
-                </ScrollView>
-            )}
-
-            <Modal visible={showModal} animationType="slide" transparent={true} onRequestClose={() => setShowModal(false)}>
-                <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>{editItem ? 'Editar Cotización' : 'Nueva Cotización'}</Text>
+                        <Text style={styles.modalTitle}>{editItem ? 'Editar' : 'Agregar'} Proveedor</Text>
                         <ScrollView style={styles.formContainer}>
-                            <Text style={styles.label}>Rubro *</Text>
+                            <Text style={styles.label}>Rubro (para filtrar tipos)</Text>
                             <View style={styles.pickerContainer}>
-                                <Picker selectedValue={formData.rubroId} onValueChange={(v) => setFormData(p => ({ ...p, rubroId: v }))}>
-                                    <Picker.Item label="Seleccione..." value="" />
+                                <Picker selectedValue={rubroIdModal} onValueChange={(val) => { setRubroIdModal(val); setTipoServicioId(''); }}>
+                                    <Picker.Item label="Todos los rubros" value="" />
                                     {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
                                 </Picker>
                             </View>
-
                             <Text style={styles.label}>Tipo de Servicio *</Text>
                             <View style={styles.pickerContainer}>
-                                <Picker selectedValue={formData.tipoServicioId} onValueChange={(v) => setFormData(p => ({ ...p, tipoServicioId: v }))} enabled={filteredTipos.length > 0}>
+                                <Picker selectedValue={tipoServicioId} onValueChange={setTipoServicioId}>
                                     <Picker.Item label="Seleccione..." value="" />
-                                    {filteredTipos.map(t => <Picker.Item key={t.id} label={t.nombre} value={t.id.toString()} />)}
+                                    {tiposInModal.map(t => <Picker.Item key={t.id} label={t.nombre} value={t.id.toString()} />)}
                                 </Picker>
                             </View>
-
-                            <Text style={styles.label}>Proveedor *</Text>
-                            <View style={styles.pickerContainer}>
-                                <Picker selectedValue={formData.proveedorId} onValueChange={(v) => setFormData(p => ({ ...p, proveedorId: v }))} enabled={filteredProveedores.length > 0}>
-                                    <Picker.Item label="Seleccione..." value="" />
-                                    {filteredProveedores.map(p => <Picker.Item key={p.id} label={p.nombre} value={p.id.toString()} />)}
-                                </Picker>
-                            </View>
-
-                            <Text style={styles.label}>Precio Cotizado *</Text>
-                            <TextInput
-                                style={styles.input}
-                                keyboardType="numeric"
-                                value={formData.precioCotizadoDisplay}
-                                onChangeText={handlePriceChange}
-                                placeholder="$ 0"
-                            />
-
-                            <Text style={styles.label}>Descripción</Text>
-                            <TextInput
-                                style={[styles.input, styles.textArea]}
-                                value={formData.descripcion}
-                                onChangeText={(v) => setFormData(p => ({ ...p, descripcion: v }))}
-                                placeholder="Detalles de la cotización..."
-                                multiline
-                                numberOfLines={3}
-                            />
+                            <Text style={styles.label}>Nombre *</Text>
+                            <TextInput style={styles.input} value={nombre} onChangeText={setNombre} placeholder="Nombre del proveedor" />
+                            <Text style={styles.label}>NIT (opcional)</Text>
+                            <TextInput style={styles.input} value={nit} onChangeText={setNit} placeholder="Ej: 900123456-7" />
+                            <Text style={styles.label}>Teléfono (opcional)</Text>
+                            <TextInput style={styles.input} value={telefono} onChangeText={setTelefono} placeholder="Ej: 3001234567" keyboardType="phone-pad" />
+                            <Text style={styles.label}>Correo (opcional)</Text>
+                            <TextInput style={styles.input} value={correo} onChangeText={setCorreo} placeholder="Ej: proveedor@email.com" keyboardType="email-address" autoCapitalize="none" />
+                            <Text style={styles.label}>Dirección (opcional)</Text>
+                            <TextInput style={styles.input} value={direccion} onChangeText={setDireccion} placeholder="Ej: Calle 123 #45-67" />
                         </ScrollView>
                         <View style={styles.modalActions}>
-                            <TouchableOpacity style={styles.cancelButton} onPress={() => { setShowModal(false); resetForm(); }}>
-                                <Text style={styles.cancelButtonText}>Cancelar</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={[styles.submitButton, saving && styles.submitButtonDisabled]} onPress={handleSubmit} disabled={saving}>
+                            <TouchableOpacity style={styles.cancelButton} onPress={() => setShowModal(false)}><Text style={styles.cancelButtonText}>Cancelar</Text></TouchableOpacity>
+                            <TouchableOpacity style={[styles.submitButton, saving && styles.submitButtonDisabled]} onPress={handleSave} disabled={saving}>
                                 {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>Guardar</Text>}
                             </TouchableOpacity>
                         </View>
@@ -1589,7 +1349,7 @@ function GraficasTab() {
             setLoading(true);
             // 1. Load Monthly Summaries (for the bottom table and annual totals)
             const gastosPromises = Array.from({ length: 12 }, (_, i) =>
-                sstApi.getGastosResumen(anio, i + 1)
+                ghApi.getGastosResumen(anio, i + 1)
             );
             const resumenMeses = await Promise.all(gastosPromises);
             setGastosTotales(resumenMeses);
@@ -1598,7 +1358,7 @@ function GraficasTab() {
             const allGastos = [];
             for (let mes = 1; mes <= 12; mes++) {
                 try {
-                    const gastosMes = await sstApi.getGastos(anio, mes);
+                    const gastosMes = await ghApi.getGastos(anio, mes);
                     // Inject 'mes' into each record if not present, though usually it is
                     gastosMes.forEach(g => g.mes = mes);
                     allGastos.push(...gastosMes);
@@ -1654,7 +1414,7 @@ function GraficasTab() {
         });
 
         setResumenVisual({
-            titulo: mesSeleccionado ? `Mensual - ${sstApi.getMesNombre(mesSeleccionado)}` : 'Anual Completo',
+            titulo: mesSeleccionado ? `Mensual - ${ghApi.getMesNombre(mesSeleccionado)}` : 'Anual Completo',
             totalPresupuesto,
             totalGastado,
             totalRestante: totalPresupuesto - totalGastado,
@@ -1776,7 +1536,7 @@ function GraficasTab() {
             doc.setFontSize(18);
             doc.setFont('helvetica', 'bold');
             doc.setTextColor(30, 58, 95);
-            const title = `INFORME SST - ${resumenVisual.titulo.toUpperCase()}`;
+            const title = `INFORME GH - ${resumenVisual.titulo.toUpperCase()}`;
             doc.text(title, pageWidth / 2, 20, { align: 'center' });
 
             // Subtitle
@@ -1797,9 +1557,9 @@ function GraficasTab() {
             const kpiColumns = ['Presupuesto', 'Ejecutado', 'Disponible', '% Ejecutado', 'Registros'];
             const disponibleColor = resumenVisual.totalRestante >= 0 ? 'Verde' : 'Rojo';
             const kpiData = [[
-                sstApi.formatCurrency(resumenVisual.totalPresupuesto),
-                sstApi.formatCurrency(resumenVisual.totalGastado),
-                `${disponibleColor}|${sstApi.formatCurrency(Math.abs(resumenVisual.totalRestante))}`,
+                ghApi.formatCurrency(resumenVisual.totalPresupuesto),
+                ghApi.formatCurrency(resumenVisual.totalGastado),
+                `${disponibleColor}|${ghApi.formatCurrency(Math.abs(resumenVisual.totalRestante))}`,
                 `${resumenVisual.porcentajeUsado}%`,
                 resumenVisual.totalGastos.toString()
             ]];
@@ -1832,7 +1592,7 @@ function GraficasTab() {
 
             // Fetch Data
             const [allRubros] = await Promise.all([
-                sstApi.getRubros()
+                ghApi.getRubros()
             ]);
 
             let periodData = allGastosRaw;
@@ -1850,7 +1610,7 @@ function GraficasTab() {
                 // Rubro Header Row
                 tableRows.push([
                     { content: `[RUBRO] ${rubro.nombre.toUpperCase()}`, colSpan: 2, styles: { fillColor: [224, 231, 255], fontStyle: 'bold', textColor: [30, 58, 95] } },
-                    { content: sstApi.formatCurrency(rubro.total), styles: { fillColor: [224, 231, 255], fontStyle: 'bold', halign: 'right', textColor: [30, 58, 95] } }
+                    { content: ghApi.formatCurrency(rubro.total), styles: { fillColor: [224, 231, 255], fontStyle: 'bold', halign: 'right', textColor: [30, 58, 95] } }
                 ]);
 
                 const rubroGastos = periodData.filter(g => g.rubroId === rubro.id);
@@ -1871,14 +1631,14 @@ function GraficasTab() {
                     Object.values(typesMap).forEach(type => {
                         tableRows.push([
                             { content: `   > ${type.name}`, colSpan: 2, styles: { fillColor: [248, 250, 252] } },
-                            { content: sstApi.formatCurrency(type.total), styles: { fillColor: [248, 250, 252], halign: 'right' } }
+                            { content: ghApi.formatCurrency(type.total), styles: { fillColor: [248, 250, 252], halign: 'right' } }
                         ]);
 
                         Object.values(type.provs).forEach(prov => {
                             tableRows.push([
                                 { content: '' },
                                 { content: `     - ${prov.name}`, styles: { textColor: [80, 80, 80] } },
-                                { content: sstApi.formatCurrency(prov.total), styles: { halign: 'right', textColor: [80, 80, 80] } }
+                                { content: ghApi.formatCurrency(prov.total), styles: { halign: 'right', textColor: [80, 80, 80] } }
                             ]);
                         });
                     });
@@ -1900,7 +1660,7 @@ function GraficasTab() {
             });
 
             // Save
-            const filename = `Informe_SST_${anio}_${mesSeleccionado ? sstApi.getMesNombre(parseInt(mesSeleccionado)) : 'Anual'}.pdf`;
+            const filename = `Informe_GH_${anio}_${mesSeleccionado ? ghApi.getMesNombre(parseInt(mesSeleccionado)) : 'Anual'}.pdf`;
             doc.save(filename);
 
             Alert.alert('✅ Éxito', 'Informe PDF descargado correctamente');
@@ -1936,7 +1696,7 @@ function GraficasTab() {
                     <View style={styles.yearSelector}>
                         <Picker selectedValue={mesSeleccionado} onValueChange={setMesSeleccionado} style={{ width: 130, height: 40, marginRight: 8 }}>
                             <Picker.Item label="Todo el Año" value="" />
-                            {Array.from({ length: 12 }, (_, i) => <Picker.Item key={i + 1} label={sstApi.getMesNombre(i + 1)} value={(i + 1).toString()} />)}
+                            {Array.from({ length: 12 }, (_, i) => <Picker.Item key={i + 1} label={ghApi.getMesNombre(i + 1)} value={(i + 1).toString()} />)}
                         </Picker>
                         <Picker selectedValue={anio} onValueChange={setAnio} style={{ width: 100, height: 40 }}>
                             {anios.map(a => <Picker.Item key={a} label={a.toString()} value={a} />)}
@@ -1981,7 +1741,7 @@ function GraficasTab() {
                                 }
                             ]} />
                         </View>
-                        <Text style={grafStyles.progressText}>
+                        <Text style={grafStyles.progreGHext}>
                             {resumenVisual.porcentajeUsado}% ejecutado
                         </Text>
                     </View>
@@ -2058,7 +1818,7 @@ function GraficasTab() {
                             </View>
                             {gastosTotales.map((mes, idx) => (
                                 <View key={idx} style={[grafStyles.tableRow, idx % 2 === 0 && grafStyles.tableRowAlt]}>
-                                    <Text style={[grafStyles.tableCell, { flex: 2 }]}>{sstApi.getMesNombre(idx + 1)}</Text>
+                                    <Text style={[grafStyles.tableCell, { flex: 2 }]}>{ghApi.getMesNombre(idx + 1)}</Text>
                                     <Text style={grafStyles.tableCell}>{formatCurrency(mes.totalPresupuesto || 0)}</Text>
                                     <Text style={grafStyles.tableCell}>{formatCurrency(mes.totalGastado || 0)}</Text>
                                     <Text style={[
@@ -2125,7 +1885,7 @@ const grafStyles = StyleSheet.create({
         height: '100%',
         borderRadius: 12,
     },
-    progressText: {
+    progreGHext: {
         marginTop: 8,
         textAlign: 'center',
         color: '#6B7280',
@@ -2209,6 +1969,283 @@ const grafStyles = StyleSheet.create({
         borderColor: '#E5E7EB',
     },
 });
+
+// ===================== COTIZACIONES TAB =====================
+function CotizacionesTab() {
+    const [loading, setLoading] = useState(true);
+    const [cotizaciones, setCotizaciones] = useState([]);
+    const [rubros, setRubros] = useState([]);
+    const [tiposServicio, setTiposServicio] = useState([]);
+    const [proveedores, setProveedores] = useState([]);
+    const [filteredTipos, setFilteredTipos] = useState([]);
+    const [filteredProveedores, setFilteredProveedores] = useState([]);
+    const [anio, setAnio] = useState(new Date().getFullYear());
+    const [mes, setMes] = useState(new Date().getMonth() + 1);
+
+    const [showModal, setShowModal] = useState(false);
+    const [editItem, setEditItem] = useState(null);
+    const [formData, setFormData] = useState({
+        rubroId: '',
+        tipoServicioId: '',
+        proveedorId: '',
+        precioCotizado: '',
+        precioCotizadoDisplay: '',
+        descripcion: ''
+    });
+    const [saving, setSaving] = useState(false);
+
+    const loadData = useCallback(async () => {
+        try {
+            setLoading(true);
+            const [cotizacionesData, rubrosData, tiposData, proveedoresData] = await Promise.all([
+                ghApi.getCotizaciones(null, anio, mes),
+                ghApi.getRubros(),
+                ghApi.getTiposServicio(),
+                ghApi.getProveedores()
+            ]);
+            setCotizaciones(cotizacionesData);
+            setRubros(rubrosData);
+            setTiposServicio(tiposData);
+            setProveedores(proveedoresData);
+        } catch (error) {
+            console.error('Error loading cotizaciones:', error);
+        } finally {
+            setLoading(false);
+        }
+    }, [anio, mes]);
+
+    useEffect(() => { loadData(); }, [loadData]);
+
+    useEffect(() => {
+        if (formData.rubroId) {
+            const filtered = tiposServicio.filter(t => t.rubroId === parseInt(formData.rubroId));
+            setFilteredTipos(filtered);
+            if (!filtered.find(t => t.id === parseInt(formData.tipoServicioId))) {
+                setFormData(prev => ({ ...prev, tipoServicioId: '', proveedorId: '' }));
+            }
+        } else {
+            setFilteredTipos([]);
+        }
+    }, [formData.rubroId, tiposServicio]);
+
+    useEffect(() => {
+        if (formData.tipoServicioId) {
+            const filtered = proveedores.filter(p => p.tipoServicioId === parseInt(formData.tipoServicioId));
+            setFilteredProveedores(filtered);
+            if (!filtered.find(p => p.id === parseInt(formData.proveedorId))) {
+                setFormData(prev => ({ ...prev, proveedorId: '' }));
+            }
+        } else {
+            setFilteredProveedores([]);
+        }
+    }, [formData.tipoServicioId, proveedores]);
+
+    const formatCurrencyInput = (value) => {
+        const numericValue = value.replace(/[^0-9]/g, '');
+        if (!numericValue) return '';
+        return new Intl.NumberFormat('es-CO').format(parseInt(numericValue));
+    };
+
+    const handlePriceChange = (value) => {
+        const numericValue = value.replace(/[^0-9]/g, '');
+        const formatted = formatCurrencyInput(value);
+        setFormData(prev => ({ ...prev, precioCotizado: numericValue, precioCotizadoDisplay: formatted }));
+    };
+
+    const resetForm = () => {
+        setEditItem(null);
+        setFormData({
+            rubroId: '',
+            tipoServicioId: '',
+            proveedorId: '',
+            precioCotizado: '',
+            precioCotizadoDisplay: '',
+            descripcion: ''
+        });
+    };
+
+    const handleSubmit = async () => {
+        if (!formData.proveedorId || !formData.precioCotizado) {
+            Alert.alert('Error', 'Proveedor y precio son obligatorios');
+            return;
+        }
+        try {
+            setSaving(true);
+            const data = {
+                proveedorId: parseInt(formData.proveedorId),
+                anio,
+                mes,
+                precioCotizado: parseFloat(formData.precioCotizado),
+                fechaCotizacion: new Date().toISOString(),
+                descripcion: formData.descripcion
+            };
+            if (editItem) {
+                await ghApi.updateCotizacion(editItem.id, data);
+            } else {
+                await ghApi.createCotizacion(data);
+            }
+            setShowModal(false);
+            resetForm();
+            loadData();
+            Alert.alert('Éxito', editItem ? 'Cotización actualizada' : 'Cotización creada');
+        } catch (error) {
+            Alert.alert('Error', 'No se pudo guardar');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleDelete = async (id) => {
+        if (Platform.OS === 'web') {
+            if (window.confirm('¿Eliminar esta cotización?')) {
+                try {
+                    await ghApi.deleteCotizacion(id);
+                    loadData();
+                } catch (error) {
+                    Alert.alert('Error', 'No se pudo eliminar');
+                }
+            }
+        } else {
+            Alert.alert('Confirmar', '¿Eliminar esta cotización?', [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Eliminar', style: 'destructive', onPress: async () => {
+                        try { await ghApi.deleteCotizacion(id); loadData(); } catch (e) { }
+                    }
+                }
+            ]);
+        }
+    };
+
+    const formatCurrency = (value) => new Intl.NumberFormat('es-CO', {
+        style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0
+    }).format(value);
+
+    const anios = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
+
+    return (
+        <View style={styles.contentContainer}>
+            <View style={styles.header}>
+                <Text style={styles.title}>📋 Cotizaciones GH</Text>
+                <View style={styles.filters}>
+                    <Picker selectedValue={anio} onValueChange={setAnio} style={styles.picker}>
+                        {anios.map(a => <Picker.Item key={a} label={a.toString()} value={a} />)}
+                    </Picker>
+                    <Picker selectedValue={mes} onValueChange={setMes} style={styles.picker}>
+                        {ghApi.MESES.map(m => <Picker.Item key={m.value} label={m.label} value={m.value} />)}
+                    </Picker>
+                </View>
+            </View>
+
+            <TouchableOpacity style={styles.addButton} onPress={() => setShowModal(true)}>
+                <Text style={styles.addButtonText}>+ Nueva Cotización</Text>
+            </TouchableOpacity>
+
+            {loading ? (
+                <ActivityIndicator size="large" color="#2563EB" style={styles.loading} />
+            ) : (
+                <ScrollView style={styles.listContainer}>
+                    {cotizaciones.length === 0 ? (
+                        <View style={styles.emptyState}>
+                            <Text style={styles.emptyText}>No hay cotizaciones para este período</Text>
+                        </View>
+                    ) : (
+                        cotizaciones.map(cot => (
+                            <View key={cot.id} style={styles.gastoCard}>
+                                <View style={styles.gastoHeader}>
+                                    <Text style={styles.gastoTipo}>{cot.proveedorNombre}</Text>
+                                    <Text style={styles.gastoPrecio}>{formatCurrency(cot.precioCotizado)}</Text>
+                                </View>
+                                <Text style={styles.gastoRubro}>{cot.rubroNombre} → {cot.tipoServicioNombre}</Text>
+                                <Text style={styles.gastoDetail}>📅 {new Date(cot.fechaCotizacion).toLocaleDateString('es-CO')}</Text>
+                                {cot.descripcion && <Text style={styles.gastoNota}>💬 {cot.descripcion}</Text>}
+                                <View style={styles.cardActions}>
+                                    <TouchableOpacity style={styles.editCardButton} onPress={() => {
+                                        setEditItem(cot);
+                                        setFormData({
+                                            rubroId: cot.rubroId?.toString() || '',
+                                            tipoServicioId: cot.tipoServicioId?.toString() || '',
+                                            proveedorId: cot.proveedorId?.toString() || '',
+                                            precioCotizado: cot.precioCotizado?.toString() || '',
+                                            precioCotizadoDisplay: formatCurrencyInput(cot.precioCotizado?.toString() || ''),
+                                            descripcion: cot.descripcion || ''
+                                        });
+                                        setShowModal(true);
+                                    }}>
+                                        <Text style={styles.editCardButtonText}>✏️ Editar</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(cot.id)}>
+                                        <Text style={styles.deleteButtonText}>🗑️ Eliminar</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                        ))
+                    )}
+                </ScrollView>
+            )}
+
+            <Modal visible={showModal} animationType="slide" transparent={true} onRequestClose={() => setShowModal(false)}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>{editItem ? 'Editar Cotización' : 'Nueva Cotización'}</Text>
+                        <ScrollView style={styles.formContainer}>
+                            <Text style={styles.label}>Rubro *</Text>
+                            <View style={styles.pickerContainer}>
+                                <Picker selectedValue={formData.rubroId} onValueChange={(v) => setFormData(p => ({ ...p, rubroId: v }))}>
+                                    <Picker.Item label="Seleccione..." value="" />
+                                    {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
+                                </Picker>
+                            </View>
+
+                            <Text style={styles.label}>Tipo de Servicio *</Text>
+                            <View style={styles.pickerContainer}>
+                                <Picker selectedValue={formData.tipoServicioId} onValueChange={(v) => setFormData(p => ({ ...p, tipoServicioId: v }))} enabled={filteredTipos.length > 0}>
+                                    <Picker.Item label="Seleccione..." value="" />
+                                    {filteredTipos.map(t => <Picker.Item key={t.id} label={t.nombre} value={t.id.toString()} />)}
+                                </Picker>
+                            </View>
+
+                            <Text style={styles.label}>Proveedor *</Text>
+                            <View style={styles.pickerContainer}>
+                                <Picker selectedValue={formData.proveedorId} onValueChange={(v) => setFormData(p => ({ ...p, proveedorId: v }))} enabled={filteredProveedores.length > 0}>
+                                    <Picker.Item label="Seleccione..." value="" />
+                                    {filteredProveedores.map(p => <Picker.Item key={p.id} label={p.nombre} value={p.id.toString()} />)}
+                                </Picker>
+                            </View>
+
+                            <Text style={styles.label}>Precio Cotizado *</Text>
+                            <TextInput
+                                style={styles.input}
+                                keyboardType="numeric"
+                                value={formData.precioCotizadoDisplay}
+                                onChangeText={handlePriceChange}
+                                placeholder="$ 0"
+                            />
+
+                            <Text style={styles.label}>Descripción</Text>
+                            <TextInput
+                                style={[styles.input, styles.textArea]}
+                                value={formData.descripcion}
+                                onChangeText={(v) => setFormData(p => ({ ...p, descripcion: v }))}
+                                placeholder="Detalles de la cotización..."
+                                multiline
+                                numberOfLines={3}
+                            />
+                        </ScrollView>
+                        <View style={styles.modalActions}>
+                            <TouchableOpacity style={styles.cancelButton} onPress={() => { setShowModal(false); resetForm(); }}>
+                                <Text style={styles.cancelButtonText}>Cancelar</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.submitButton, saving && styles.submitButtonDisabled]} onPress={handleSubmit} disabled={saving}>
+                                {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>Guardar</Text>}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+        </View>
+    );
+}
 
 const styles = StyleSheet.create({
     container: {
