@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Modal, Image, FlatList, Platform } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import axios from 'axios';
-import { getMaquinas, getUsuarios, saveProduccion, getProduccionDetalles, getOperariosConDatos, getMaquinasConDatos, getProduccionPorMaquina, API_URL } from '../services/productionApi';
+import { getMaquinasActivas, getUsuarios, saveProduccion, getProduccionDetalles, getOperariosConDatos, getMaquinasConDatos, getProduccionPorMaquina, API_URL } from '../services/productionApi';
 import { useTheme } from '../contexts/ThemeContext';
 
 const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
@@ -67,9 +67,9 @@ export default function CaptureGridScreen({ navigation }) {
 
     const reloadMachines = async () => {
         try {
-            const res = await getMaquinas();
+            const res = await getMaquinasActivas();
             setMaquinas(res.data);
-            console.log('Máquinas actualizadas:', res.data.length);
+            console.log('Máquinas activas actualizadas:', res.data.length);
         } catch (e) {
             console.error('Error recargando máquinas:', e);
         }
@@ -83,7 +83,7 @@ export default function CaptureGridScreen({ navigation }) {
 
     const loadLists = async () => {
         try {
-            const [m, u] = await Promise.all([getMaquinas(), getUsuarios()]);
+            const [m, u] = await Promise.all([getMaquinasActivas(), getUsuarios()]);
             setMaquinas(m.data);
             setUsuarios(u.data);
             setSelectedMaquina(null);

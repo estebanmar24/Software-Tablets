@@ -211,27 +211,46 @@ public class CalidadController : ControllerBase
     [HttpDelete("encuestas/{id}")]
     public async Task<IActionResult> EliminarEncuesta(int id)
     {
-        var encuesta = await _context.EncuestasCalidad
-            .Include(e => e.Novedades)
-            .FirstOrDefaultAsync(e => e.Id == id);
-
-        if (encuesta == null)
-            return NotFound();
-
-        // Eliminar fotos del disco
-        foreach (var novedad in encuesta.Novedades)
+        try
         {
-            if (!string.IsNullOrEmpty(novedad.FotoPath) && System.IO.File.Exists(novedad.FotoPath))
+            var encuesta = await _context.EncuestasCalidad
+                .Include(e => e.Novedades)
+                .FirstOrDefaultAsync(e => e.Id == id);
+
+            if (encuesta == null)
+                return NotFound(new { message = $"Encuesta con ID {id} no encontrada" });
+
+            // Eliminar fotos del disco
+            foreach (var novedad in encuesta.Novedades)
             {
-                try { System.IO.File.Delete(novedad.FotoPath); }
-                catch { /* Ignorar errores de eliminación */ }
+                if (!string.IsNullOrEmpty(novedad.FotoPath) && System.IO.File.Exists(novedad.FotoPath))
+                {
+                    try 
+                    { 
+                        System.IO.File.Delete(novedad.FotoPath);
+                        Console.WriteLine($"Foto eliminada: {novedad.FotoPath}");
+                    }
+                    catch (Exception ex)
+                    {
+                        // Log el error pero continúa con la eliminación
+                        Console.WriteLine($"Error eliminando foto {novedad.FotoPath}: {ex.Message}");
+                    }
+                }
             }
+
+            // Eliminar la encuesta (las novedades se eliminarán en cascada)
+            _context.EncuestasCalidad.Remove(encuesta);
+            await _context.SaveChangesAsync();
+
+            Console.WriteLine($"Encuesta {id} eliminada exitosamente");
+            return NoContent();
         }
-
-        _context.EncuestasCalidad.Remove(encuesta);
-        await _context.SaveChangesAsync();
-
-        return NoContent();
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error eliminando encuesta {id}: {ex.Message}");
+            Console.WriteLine($"StackTrace: {ex.StackTrace}");
+            return StatusCode(500, new { message = "Error al eliminar la encuesta", error = ex.Message });
+        }
     }
 
     [HttpGet("foto/{fileName}")]

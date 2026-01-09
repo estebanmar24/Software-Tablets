@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Button, Modal, TextInput, ScrollView, Alert, Image, Switch } from 'react-native';
-import { getMaquinas, updateMaquina, createMaquina } from '../services/productionApi';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Button, Modal, TextInput, ScrollView, Alert, Image, Switch, Platform } from 'react-native';
+import { getMaquinas, updateMaquina, createMaquina, deleteMaquina } from '../services/productionApi';
 
 export default function MachineParamsScreen({ navigation }) {
     const [maquinas, setMaquinas] = useState([]);
@@ -17,7 +17,7 @@ export default function MachineParamsScreen({ navigation }) {
         valorPorTiro: '',
         tirosReferencia: '',
         importancia: '',
-        activa: true
+        activo: true
     });
 
     const loadMaquinas = async () => {
@@ -58,7 +58,7 @@ export default function MachineParamsScreen({ navigation }) {
             valorPorTiro: maquina.valorPorTiro?.toString() || '0',
             tirosReferencia: maquina.tirosReferencia?.toString() || '0',
             importancia: maquina.importancia?.toString() || '1',
-            activa: maquina.activa !== false
+            activo: maquina.activo !== false
         });
         setModalVisible(true);
     };
@@ -73,7 +73,7 @@ export default function MachineParamsScreen({ navigation }) {
             valorPorTiro: '0',
             tirosReferencia: '0',
             importancia: '0',
-            activa: true
+            activo: true
         });
         setModalVisible(true);
     };
@@ -81,14 +81,14 @@ export default function MachineParamsScreen({ navigation }) {
     // Calculate total importancia percentage (excluding current editing machine)
     const calcularTotalImportancia = () => {
         const total = maquinas
-            .filter(m => m.activa !== false && (!editingMachine || m.id !== editingMachine.id))
+            .filter(m => m.activo !== false && (!editingMachine || m.id !== editingMachine.id))
             .reduce((sum, m) => sum + (parseFloat(m.importancia) || 0), 0);
         return Math.round(total * 100) / 100; // Redondear a 2 decimales
     };
 
     const totalImportanciaOthers = calcularTotalImportancia();
     const totalImportanciaAll = Math.round(maquinas
-        .filter(m => m.activa !== false)
+        .filter(m => m.activo !== false)
         .reduce((sum, m) => sum + (parseFloat(m.importancia) || 0), 0) * 100) / 100;
 
     const handleSave = async () => {
@@ -104,7 +104,7 @@ export default function MachineParamsScreen({ navigation }) {
             semaforoMin: 0,
             semaforoNormal: 0,
             semaforoMax: 0,
-            activa: form.activa
+            activo: form.activo
         };
 
         try {
@@ -119,6 +119,45 @@ export default function MachineParamsScreen({ navigation }) {
         } catch (error) {
             console.log(error);
             Alert.alert("Error", "No se pudo guardar");
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!editingMachine) return;
+
+        const confirmDelete = async () => {
+            try {
+                await deleteMaquina(editingMachine.id);
+                setModalVisible(false);
+                loadMaquinas();
+                if (Platform.OS === 'web') {
+                    alert('✅ Máquina eliminada correctamente');
+                } else {
+                    Alert.alert("Éxito", "Máquina eliminada correctamente");
+                }
+            } catch (error) {
+                console.log(error);
+                if (Platform.OS === 'web') {
+                    alert('❌ No se pudo eliminar la máquina. Puede tener datos de producción asociados.');
+                } else {
+                    Alert.alert("Error", "No se pudo eliminar la máquina. Puede tener datos de producción asociados.");
+                }
+            }
+        };
+
+        if (Platform.OS === 'web') {
+            if (window.confirm(`¿Está seguro que desea ELIMINAR la máquina "${editingMachine.nombre}"? Esta acción no se puede deshacer.`)) {
+                await confirmDelete();
+            }
+        } else {
+            Alert.alert(
+                "🗑️ Eliminar Máquina",
+                `¿Está seguro que desea ELIMINAR la máquina "${editingMachine.nombre}"? Esta acción no se puede deshacer.`,
+                [
+                    { text: 'Cancelar', style: 'cancel' },
+                    { text: 'Eliminar', style: 'destructive', onPress: confirmDelete }
+                ]
+            );
         }
     };
 
@@ -147,13 +186,13 @@ export default function MachineParamsScreen({ navigation }) {
                 keyExtractor={(item) => item.id.toString()}
                 renderItem={({ item }) => (
                     <TouchableOpacity
-                        style={[styles.card, !item.activa && styles.cardInactive]}
+                        style={[styles.card, !item.activo && styles.cardInactive]}
                         onPress={() => openEdit(item)}
                     >
                         <View style={styles.cardHeader}>
                             <Text style={styles.cardTitle}>{item.nombre}</Text>
-                            <Text style={[styles.badge, item.activa ? styles.badgeActive : styles.badgeInactive]}>
-                                {item.activa !== false ? 'Activa' : 'Inactiva'}
+                            <Text style={[styles.badge, item.activo ? styles.badgeActive : styles.badgeInactive]}>
+                                {item.activo !== false ? 'Activa' : 'Inactiva'}
                             </Text>
                         </View>
                         <Text>Meta 100%: {item.meta100Porciento || '-'} | Meta 75%: {item.metaRendimiento}</Text>
@@ -170,13 +209,13 @@ export default function MachineParamsScreen({ navigation }) {
                     <View style={styles.switchRow}>
                         <Text style={styles.label}>Máquina Activa:</Text>
                         <Switch
-                            value={form.activa}
-                            onValueChange={(value) => setForm({ ...form, activa: value })}
+                            value={form.activo}
+                            onValueChange={(value) => setForm({ ...form, activo: value })}
                             trackColor={{ false: '#ccc', true: '#4CAF50' }}
-                            thumbColor={form.activa ? '#fff' : '#f4f3f4'}
+                            thumbColor={form.activo ? '#fff' : '#f4f3f4'}
                         />
-                        <Text style={[styles.switchLabel, { color: form.activa ? '#4CAF50' : '#999' }]}>
-                            {form.activa ? 'Sí' : 'No'}
+                        <Text style={[styles.switchLabel, { color: form.activo ? '#4CAF50' : '#999' }]}>
+                            {form.activo ? 'Sí' : 'No'}
                         </Text>
                     </View>
 
@@ -225,8 +264,13 @@ export default function MachineParamsScreen({ navigation }) {
                     <View style={styles.buttonRow}>
                         <Button title="Guardar" onPress={handleSave} />
                         <View style={{ width: 10 }} />
-                        <Button title="Cancelar" color="red" onPress={() => setModalVisible(false)} />
+                        <Button title="Cancelar" color="#888" onPress={() => setModalVisible(false)} />
                     </View>
+                    {editingMachine && (
+                        <View style={styles.deleteSection}>
+                            <Button title="🗑️ Eliminar Máquina" color="#DC2626" onPress={handleDelete} />
+                        </View>
+                    )}
                 </ScrollView>
             </Modal>
         </View>
@@ -258,6 +302,7 @@ const styles = StyleSheet.create({
     importanciaRow: { flexDirection: 'row', alignItems: 'center' },
     percentSign: { fontSize: 18, fontWeight: 'bold', marginLeft: 8, color: '#666' },
     hintText: { fontSize: 12, color: '#666', marginBottom: 15, marginTop: -10 },
-    hintWarning: { color: '#E65100', fontWeight: '600' }
+    hintWarning: { color: '#E65100', fontWeight: '600' },
+    deleteSection: { marginTop: 30, paddingTop: 20, borderTopWidth: 1, borderTopColor: '#eee' }
 });
 

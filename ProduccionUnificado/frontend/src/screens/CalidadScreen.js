@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, RefreshControl, ScrollView, TextInput, Image, ActivityIndicator, Keyboard, Modal, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, RefreshControl, ScrollView, TextInput, Image, ActivityIndicator, Keyboard, Modal, Dimensions, Platform } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
 import axios from 'axios';
@@ -163,6 +163,52 @@ export default function CalidadScreen({ navigation }) {
         cargarEncuestas();
     }, [cargarEncuestas]);
 
+    // Mapeo máquina -> proceso basado en el nombre de la máquina
+    const getProcesoForMaquina = (maquinaId) => {
+        if (!maquinaId) return '';
+        // Usar == para manejar tipos mixtos (string vs number)
+        const maquina = maquinas.find(m => String(m.id) === String(maquinaId));
+        if (!maquina) {
+            console.log('No se encontró máquina con id:', maquinaId, 'Lista:', maquinas.map(m => m.id));
+            return '';
+        }
+        // Soportar tanto 'nombre' como 'Nombre' (por si el backend cambia)
+        const nombreRaw = maquina.nombre || maquina.Nombre || '';
+        const nombre = nombreRaw.toLowerCase();
+        console.log('Buscando proceso para:', nombre);
+
+        // Mapeo basado en patrones del nombre de la máquina
+        if (nombre.includes('convertidora')) return 'Conversión';
+        if (nombre.includes('speedmaster')) return 'Impresión';
+        if (nombre.includes('sord') || nombre.includes('zrtidora')) return 'Impresión';
+        if (nombre.includes('guillotina') || nombre.includes('polar')) return 'Guillotina';
+        if (nombre.includes('troqueladora')) return 'Troquelado';
+        if (nombre.includes('estampadora')) return 'Estampado';
+        if (nombre.includes('laminadora')) return 'Laminado';
+        if (nombre.includes('colaminadora')) return 'Colaminadora';
+        if (nombre.includes('corrugadora')) return 'Corrugadora';
+        if (nombre.includes('pegadora')) return 'Pegadora';
+        if (nombre.includes('barnizadora')) return 'Screen';
+        if (nombre.includes('cordon') || nombre.includes('cordón')) return 'Conversión';
+        if (nombre.includes('cortadora')) return 'Conversión';
+
+        console.log('Sin proceso asignado para:', nombre);
+        return '';
+    };
+
+    const handleMaquinaChange = (newMaquinaId) => {
+        console.log('handleMaquinaChange llamado con:', newMaquinaId);
+        setMaquinaId(newMaquinaId);
+        // Auto-seleccionar el proceso basado en la máquina
+        const procesoSugerido = getProcesoForMaquina(newMaquinaId);
+        console.log('Proceso sugerido:', procesoSugerido);
+        if (procesoSugerido) {
+            setProceso(procesoSugerido);
+        } else {
+            setProceso('');
+        }
+    };
+
     const resetForm = () => {
         setEditingId(null);
         setOperarioId(null);
@@ -237,7 +283,37 @@ export default function CalidadScreen({ navigation }) {
 
     const getEstadoColor = (estado) => estado === 'Terminado' ? '#10B981' : '#F59E0B';
 
-    const eliminarEncuesta = (id, ordenProduccion) => {
+    const eliminarEncuesta = async (id, ordenProduccion) => {
+        // For web, use window.confirm since Alert.alert callbacks don't work
+        if (Platform.OS === 'web') {
+            const confirmed = window.confirm(`¿Está seguro que desea eliminar la encuesta OP: ${ordenProduccion}?`);
+            if (!confirmed) return;
+
+            const url = `${API_BASE_URL}/calidad/encuestas/${id}`;
+            try {
+                const response = await fetch(url, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }
+                });
+
+                if (response.status === 204 || response.status === 200 || response.ok) {
+                    setEncuestas(prev => prev.filter(e => e.id !== id));
+                    alert('✅ Encuesta eliminada correctamente');
+                    cargarEncuestas();
+                } else if (response.status === 404) {
+                    setEncuestas(prev => prev.filter(e => e.id !== id));
+                    alert('⚠️ La encuesta ya fue eliminada o no existe.');
+                } else {
+                    alert(`❌ Error ${response.status}: No se pudo eliminar la encuesta`);
+                }
+            } catch (error) {
+                console.error('Error eliminando encuesta:', error);
+                alert('❌ Error de conexión. Verifique que el servidor esté funcionando.');
+            }
+            return;
+        }
+
+        // For mobile, use Alert.alert
         Alert.alert(
             '🗑️ Eliminar Encuesta',
             `¿Está seguro que desea eliminar la encuesta OP: ${ordenProduccion}?`,
@@ -247,13 +323,27 @@ export default function CalidadScreen({ navigation }) {
                     text: 'Eliminar',
                     style: 'destructive',
                     onPress: async () => {
+                        const url = `${API_BASE_URL}/calidad/encuestas/${id}`;
                         try {
-                            await axios.delete(`${API_BASE_URL}/calidad/encuestas/${id}`);
-                            Alert.alert('✅ Eliminada', 'La encuesta fue eliminada correctamente');
-                            cargarEncuestas();
+                            const response = await fetch(url, {
+                                method: 'DELETE',
+                                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }
+                            });
+
+                            if (response.status === 204 || response.status === 200 || response.ok) {
+                                setEncuestas(prev => prev.filter(e => e.id !== id));
+                                Alert.alert('✅ Eliminada', 'La encuesta fue eliminada correctamente', [
+                                    { text: 'OK', onPress: () => cargarEncuestas() }
+                                ]);
+                            } else if (response.status === 404) {
+                                setEncuestas(prev => prev.filter(e => e.id !== id));
+                                Alert.alert('⚠️ No encontrada', 'La encuesta ya fue eliminada o no existe.');
+                            } else {
+                                Alert.alert('❌ Error', `Error ${response.status}: No se pudo eliminar la encuesta`);
+                            }
                         } catch (error) {
-                            console.error('Error eliminando:', error);
-                            Alert.alert('Error', 'No se pudo eliminar la encuesta');
+                            console.error('Error eliminando encuesta:', error);
+                            Alert.alert('❌ Error', 'Error de conexión. Verifique que el servidor esté funcionando.');
                         }
                     }
                 }
@@ -319,8 +409,27 @@ export default function CalidadScreen({ navigation }) {
         }
     };
 
-    const confirmarBorrarFoto = (index) => {
+    const confirmarBorrarFoto = async (index) => {
         const novedad = novedades[index];
+
+        // For web, use window.confirm
+        if (Platform.OS === 'web') {
+            const confirmed = window.confirm('¿Está seguro que desea eliminar esta imagen?');
+            if (!confirmed) return;
+
+            if (novedad.id && novedad.fotoUri && novedad.fotoUri.startsWith('http')) {
+                try {
+                    await axios.delete(`${API_BASE_URL}/calidad/novedades/${novedad.id}/foto`);
+                } catch (error) {
+                    console.error('Error eliminando foto del servidor:', error);
+                }
+            }
+            actualizarNovedad(index, 'fotoBase64', null);
+            actualizarNovedad(index, 'fotoUri', null);
+            return;
+        }
+
+        // For mobile, use Alert.alert
         Alert.alert(
             '🗑️ Eliminar Imagen',
             '¿Está seguro que desea eliminar esta imagen?',
@@ -330,17 +439,13 @@ export default function CalidadScreen({ navigation }) {
                     text: 'Eliminar',
                     style: 'destructive',
                     onPress: async () => {
-                        // Si la novedad tiene ID y tiene una foto del servidor, eliminar del servidor
                         if (novedad.id && novedad.fotoUri && novedad.fotoUri.startsWith('http')) {
                             try {
                                 await axios.delete(`${API_BASE_URL}/calidad/novedades/${novedad.id}/foto`);
-                                console.log('Foto eliminada del servidor');
                             } catch (error) {
                                 console.error('Error eliminando foto del servidor:', error);
-                                // Continuar aunque falle - la foto se quitará del formulario
                             }
                         }
-                        // Limpiar del estado local
                         actualizarNovedad(index, 'fotoBase64', null);
                         actualizarNovedad(index, 'fotoUri', null);
                     }
@@ -581,7 +686,7 @@ export default function CalidadScreen({ navigation }) {
                             <View style={styles.pickerWrapper}>
                                 <Picker mode="dropdown"
                                     selectedValue={maquinaId}
-                                    onValueChange={setMaquinaId}
+                                    onValueChange={handleMaquinaChange}
                                     style={styles.picker}
                                     dropdownIconColor="#1E40AF"
                                 >
@@ -591,15 +696,21 @@ export default function CalidadScreen({ navigation }) {
                             </View>
                         </FormField>
                         <FormField label="Proceso" required>
-                            <View style={styles.pickerWrapper}>
+                            <View style={[styles.pickerWrapper, !maquinaId && styles.pickerDisabled]}>
                                 <Picker mode="dropdown"
                                     selectedValue={proceso}
                                     onValueChange={setProceso}
                                     style={styles.picker}
                                     dropdownIconColor="#1E40AF"
+                                    enabled={!!maquinaId}
                                 >
-                                    <Picker.Item label="-- Seleccionar --" value="" color="#444444" />
-                                    {procesos.map(p => <Picker.Item key={p} label={p} value={p} color="#000000" />)}
+                                    {!maquinaId ? (
+                                        <Picker.Item label="-- Seleccione primero una máquina --" value="" color="#999" />
+                                    ) : proceso ? (
+                                        <Picker.Item label={proceso} value={proceso} color="#000000" />
+                                    ) : (
+                                        <Picker.Item label="-- Sin proceso asignado --" value="" color="#999" />
+                                    )}
                                 </Picker>
                             </View>
                         </FormField>
@@ -663,6 +774,21 @@ export default function CalidadScreen({ navigation }) {
                                                 returnKeyType="done"
                                             />
                                         </View>
+
+                                        {/* Porcentaje de defectos */}
+                                        {cantidadEvaluada && parseInt(cantidadEvaluada) > 0 && novedad.cantidadDefectuosa && parseInt(novedad.cantidadDefectuosa) > 0 && (
+                                            <View style={styles.porcentajeDefectoContainer}>
+                                                <Text style={styles.porcentajeDefectoLabel}>📊 Porcentaje de defecto:</Text>
+                                                <Text style={[
+                                                    styles.porcentajeDefectoValue,
+                                                    ((parseInt(novedad.cantidadDefectuosa) / parseInt(cantidadEvaluada)) * 100) <= 5
+                                                        ? styles.porcentajeGood
+                                                        : styles.porcentajeBad
+                                                ]}>
+                                                    {((parseInt(novedad.cantidadDefectuosa) / parseInt(cantidadEvaluada)) * 100).toFixed(2)}%
+                                                </Text>
+                                            </View>
+                                        )}
 
                                         <View style={styles.fotoActions}>
                                             <Text style={styles.fotoLabel}>📷 Adjuntar evidencia:</Text>
@@ -810,6 +936,7 @@ const styles = StyleSheet.create({
     fieldLabel: { fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 8 },
     required: { color: '#EF4444' },
     pickerWrapper: { backgroundColor: '#F9FAFB', borderRadius: 12, borderWidth: 1.5, borderColor: '#D1D5DB', overflow: 'hidden' },
+    pickerDisabled: { backgroundColor: '#E5E7EB', opacity: 0.7 },
     picker: { height: 50, color: '#1F2937' },
     input: { backgroundColor: '#F9FAFB', borderRadius: 12, borderWidth: 1.5, borderColor: '#D1D5DB', padding: 14, fontSize: 16, color: '#1F2937' },
     textArea: { height: 100, textAlignVertical: 'top' },
@@ -832,6 +959,12 @@ const styles = StyleSheet.create({
     cantidadDefectuosaContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 12, backgroundColor: 'white', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#FCD34D' },
     cantidadDefectuosaLabel: { fontSize: 13, color: '#92400E', fontWeight: '600', flex: 1 },
     cantidadDefectuosaInput: { width: 80, backgroundColor: '#FEF3C7', borderRadius: 8, borderWidth: 1, borderColor: '#FCD34D', padding: 8, fontSize: 16, textAlign: 'center', color: '#1F2937' },
+
+    porcentajeDefectoContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 8, backgroundColor: '#F3F4F6', padding: 10, borderRadius: 8 },
+    porcentajeDefectoLabel: { fontSize: 13, color: '#6B7280', fontWeight: '600', flex: 1 },
+    porcentajeDefectoValue: { fontSize: 18, fontWeight: 'bold', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 6 },
+    porcentajeGood: { backgroundColor: '#D1FAE5', color: '#065F46' },
+    porcentajeBad: { backgroundColor: '#FEE2E2', color: '#991B1B' },
 
     fotoActions: { marginTop: 12 },
     fotoLabel: { fontSize: 13, color: '#92400E', marginBottom: 8, fontWeight: '600' },

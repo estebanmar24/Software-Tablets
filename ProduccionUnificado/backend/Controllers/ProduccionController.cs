@@ -254,10 +254,11 @@ public class ProduccionController : ControllerBase
     [HttpGet("maquinas-con-datos")]
     public async Task<ActionResult> GetMaquinasConDatos(int mes, int anio)
     {
-        // Obtener datos y agrupar en memoria para contar días distintos
+        // Obtener datos y agrupar en memoria para contar días distintos (solo máquinas activas)
         var datos = await _context.ProduccionDiaria
             .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio)
             .Include(p => p.Maquina)
+            .Where(p => p.Maquina != null && p.Maquina.Activo) // Exclude inactive machines
             .Select(p => new { 
                 p.MaquinaId, 
                 MaquinaNombre = p.Maquina!.Nombre,
@@ -344,7 +345,8 @@ public class ProduccionController : ControllerBase
         var query = _context.ProduccionDiaria
             .Include(p => p.Usuario)
             .Include(p => p.Maquina)
-            .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio);
+            .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio)
+            .Where(p => p.Maquina != null && p.Maquina.Activo); // Exclude inactive machines
 
         if (diaInicio.HasValue)
             query = query.Where(p => p.Fecha.Day >= diaInicio.Value);
@@ -476,8 +478,11 @@ public class ProduccionController : ControllerBase
             });
         }
 
-        // 2. Resumen por Máquina
-        var todasLasMaquinas = await _context.Maquinas.OrderBy(m => m.Nombre).ToListAsync();
+        // 2. Resumen por Máquina (solo activas)
+        var todasLasMaquinas = await _context.Maquinas
+            .Where(m => m.Activo)
+            .OrderBy(m => m.Nombre)
+            .ToListAsync();
         
         foreach (var maquina in todasLasMaquinas)
         {

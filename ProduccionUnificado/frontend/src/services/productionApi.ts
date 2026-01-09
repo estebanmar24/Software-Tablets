@@ -18,6 +18,7 @@ export const API_URL = API_BASE_URL;
 
 // Máquinas
 export const getMaquinas = () => axiosWrapper<any[]>(`${API_BASE_URL}/maquinas`);
+export const getMaquinasActivas = () => axiosWrapper<any[]>(`${API_BASE_URL}/maquinas?soloActivas=true`);
 export const createMaquina = (data: any) => axiosWrapper<any>(`${API_BASE_URL}/maquinas`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -27,6 +28,9 @@ export const updateMaquina = (id: number, data: any) => axiosWrapper<any>(`${API
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
+});
+export const deleteMaquina = (id: number) => axiosWrapper<any>(`${API_BASE_URL}/maquinas/${id}`, {
+    method: 'DELETE'
 });
 
 // Usuarios
@@ -104,9 +108,11 @@ export const post = (url: string, data?: any) => {
 
 export default {
     getMaquinas,
+    getMaquinasActivas,
     getUsuarios,
     createMaquina,
     updateMaquina,
+    deleteMaquina,
     createUsuario,
     saveProduccion,
     getResumen,

@@ -18,9 +18,17 @@ namespace TiempoProcesos.API.Controllers
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Maquina>>> GetMaquinas()
+        public async Task<ActionResult<IEnumerable<Maquina>>> GetMaquinas([FromQuery] bool? soloActivas = null)
         {
-            var maquinas = await _context.Maquinas.ToListAsync();
+            var query = _context.Maquinas.AsQueryable();
+            
+            // Filter by active status if requested
+            if (soloActivas == true)
+            {
+                query = query.Where(m => m.Activo);
+            }
+            
+            var maquinas = await query.ToListAsync();
 
             // Implementar Natural Sort Order (2A < 10A)
             var resultado = maquinas
