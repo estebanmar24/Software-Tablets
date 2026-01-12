@@ -19,6 +19,7 @@ import {
 import { Picker } from '@react-native-picker/picker';
 import * as sstApi from '../services/sstApi';
 import * as ghApi from '../services/ghApi';
+import { produccionApi } from '../services/produccionApi';
 
 const TABS = [
     { key: 'produccion', label: 'Producción', icon: '🏭' },
@@ -46,6 +47,10 @@ export default function SSTPresupuestosScreen({ navigation }) {
             } else if (activeTab === 'gh') {
                 // Load GH presupuestos using same structure as SST
                 const data = await ghApi.getPresupuestosGrid(anio);
+                setGridData(data);
+            } else if (activeTab === 'produccion') {
+                // Load Production presupuestos (by Rubro)
+                const data = await produccionApi.getPresupuestosGrid(anio);
                 setGridData(data);
             } else {
                 // Placeholder for other tabs
@@ -120,6 +125,15 @@ export default function SSTPresupuestosScreen({ navigation }) {
             // Use correct API based on active tab
             if (activeTab === 'gh') {
                 await ghApi.setPresupuestosBulk(presupuestos);
+            } else if (activeTab === 'produccion') {
+                // For production, map tipoServicioId to rubroId
+                const prodPresupuestos = presupuestos.map(p => ({
+                    rubroId: p.tipoServicioId,
+                    anio: p.anio,
+                    mes: p.mes,
+                    presupuesto: p.presupuesto
+                }));
+                await produccionApi.setPresupuestosBulk(prodPresupuestos);
             } else {
                 await sstApi.setPresupuestosBulk(presupuestos);
             }
@@ -200,7 +214,7 @@ export default function SSTPresupuestosScreen({ navigation }) {
                     <ActivityIndicator size="large" color="#2563EB" />
                     <Text style={styles.loadingText}>Cargando presupuestos...</Text>
                 </View>
-            ) : (activeTab !== 'sst' && activeTab !== 'gh') ? (
+            ) : (activeTab !== 'sst' && activeTab !== 'gh' && activeTab !== 'produccion') ? (
                 <View style={styles.placeholderContainer}>
                     <Text style={styles.placeholderIcon}>{TABS.find(t => t.key === activeTab)?.icon}</Text>
                     <Text style={styles.placeholderText}>

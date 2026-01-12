@@ -39,6 +39,13 @@ public class AppDbContext : DbContext
     public DbSet<GH_GastoMensual> GH_GastosMensuales { get; set; }
     public DbSet<GH_PresupuestoMensual> GH_PresupuestosMensuales { get; set; }
 
+    // Produccion (Control Gastos)
+    public DbSet<Produccion_Rubro> Produccion_Rubros { get; set; }
+    public DbSet<Produccion_Proveedor> Produccion_Proveedores { get; set; }
+    public DbSet<Produccion_TipoHora> Produccion_TiposHora { get; set; }
+    public DbSet<Produccion_Gasto> Produccion_Gastos { get; set; }
+    public DbSet<Produccion_PresupuestoMensual> Produccion_PresupuestosMensuales { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -231,5 +238,25 @@ public class AppDbContext : DbContext
 
         // NOTA: Los datos semilla se cargan directamente con init_db.sql
         // No usar HasData() para evitar conflictos con BD en la nube
+
+        // Produccion Tables Configuration
+        modelBuilder.Entity<Produccion_Rubro>().ToTable("Produccion_Rubros");
+        modelBuilder.Entity<Produccion_Proveedor>().ToTable("Produccion_Proveedores");
+        modelBuilder.Entity<Produccion_TipoHora>().ToTable("Produccion_TiposHora");
+        modelBuilder.Entity<Produccion_Gasto>().ToTable("Produccion_Gastos");
+        modelBuilder.Entity<Produccion_PresupuestoMensual>().ToTable("Produccion_PresupuestosMensuales");
+
+        // Produccion Budget Relationship
+        modelBuilder.Entity<Produccion_PresupuestoMensual>()
+            .HasOne(p => p.Rubro)
+            .WithMany()
+            .HasForeignKey(p => p.RubroId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Unique constraint: One budget per Rubro per month/year
+        modelBuilder.Entity<Produccion_PresupuestoMensual>()
+            .HasIndex(p => new { p.RubroId, p.Anio, p.Mes })
+            .IsUnique();
+
     }
 }

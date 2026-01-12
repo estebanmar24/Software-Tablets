@@ -14,6 +14,7 @@ import EquipmentMaintenanceScreen from '../screens/EquipmentMaintenanceScreen';
 import SSTPresupuestosScreen from '../screens/SSTPresupuestosScreen';
 import SSTGastosScreen from '../screens/SSTGastosScreen';
 import GHGastosScreen from '../screens/GHGastosScreen';
+import ProduccionGastosScreen from '../screens/ProduccionGastosScreen';
 
 // Theme Provider
 import { ThemeProvider, useTheme } from '../contexts/ThemeContext';
@@ -68,11 +69,11 @@ function DashboardCard({ title, description, icon, onPress, color = '#E6FFFA', d
 }
 
 function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDashboardProps) {
-    // Mode: 'MENU' (Grid de tarjetas) | 'CONTENT' (Tabs existentes) | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS'
-    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS'>(() => {
+    // Mode: 'MENU' (Grid de tarjetas) | 'CONTENT' (Tabs existentes) | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS'
+    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS'>(() => {
         if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
             const savedMode = window.localStorage.getItem('adminDashboardMode');
-            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS') {
+            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS' || savedMode === 'PRODUCCION_GASTOS') {
                 return savedMode;
             }
         }
@@ -233,6 +234,25 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
         );
     }
 
+    // --- VISTA PRODUCCION GASTOS ---
+    if (mode === 'PRODUCCION_GASTOS') {
+        return (
+            <View style={styles.container}>
+                <View style={styles.header}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => {
+                        setMode('MENU');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                    }}>
+                        <Text style={styles.backButtonText}>← Volver al Panel</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.title}>Gastos de Producción</Text>
+                    <View style={{ width: 120 }} />
+                </View>
+                <ProduccionGastosScreen />
+            </View>
+        );
+    }
+
     // --- VISTA CONTENT (SISTEMA ACTUAL) ---
     if (mode === 'CONTENT') {
         return (
@@ -327,11 +347,15 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                         }}
                         disabled={!isMasterEnabled}
                     />
+
                     <DashboardCard
-                        title="Cuadro Presupuestos Producción"
-                        description="Control de presupuestos de producción"
-                        icon="🏭"
-                        onPress={() => handlePlaceholderPress('Presupuestos Producción')}
+                        title="Gastos Producción"
+                        description="Extras, Mantenimiento y Refrigerios"
+                        icon="🛠️"
+                        onPress={() => {
+                            setMode('PRODUCCION_GASTOS');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'PRODUCCION_GASTOS');
+                        }}
                         disabled={!isProduccionEnabled}
                     />
                     <DashboardCard
