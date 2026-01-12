@@ -545,17 +545,52 @@ function GraficasTab() {
 
                 {/* Ejecución Anual Completo - Progress Bar */}
                 <View style={grafStyles.chartSection}>
-                    <Text style={grafStyles.sectionTitle}>Ejecución Anual Completo</Text>
+                    <Text style={grafStyles.sectionTitle}>{mesSeleccionado ? `Ejecución ${MESES.find(m => m.value === mesSeleccionado)?.label}` : 'Ejecución Anual'} Completo</Text>
                     <View style={grafStyles.progressBarContainer}>
                         <View style={[grafStyles.progressBar, {
-                            width: `${Math.min(100, ((data.totalGastado || 0) / Math.max(1, data.resumenMensual?.reduce((sum, m) => sum + (m.totalPresupuesto || 0), 0) || 1)) * 100)}%`,
-                            backgroundColor: '#10B981'
+                            width: `${Math.min(100, ((data.totalGastado || 0) / Math.max(1, data.totalPresupuesto || 1)) * 100)}%`,
+                            backgroundColor: ((data.totalGastado || 0) > (data.totalPresupuesto || 0)) ? '#DC2626' : '#10B981'
                         }]} />
                     </View>
                     <Text style={grafStyles.progressText}>
-                        {Math.round(((data.totalGastado || 0) / Math.max(1, data.resumenMensual?.reduce((sum, m) => sum + (m.totalPresupuesto || 0), 0) || 1)) * 100)}% ejecutado
+                        {Math.round(((data.totalGastado || 0) / Math.max(1, data.totalPresupuesto || 1)) * 100)}% ejecutado ({formatCurrency(data.totalGastado)} / {formatCurrency(data.totalPresupuesto)})
                     </Text>
                 </View>
+
+                {/* Gastos por Rubro (Mensual/Anual) vs Presupuesto - Progress Bars */}
+                {data.desempenoRubro?.length > 0 && (
+                    <View style={grafStyles.chartSection}>
+                        <Text style={grafStyles.sectionTitle}>📁 Desempeño por Rubro ({mesSeleccionado ? 'Mensual' : 'Anual'})</Text>
+                        {data.desempenoRubro.map((item, idx) => {
+                            const rubroPorcentaje = (item.presupuesto > 0) ? Math.round((item.gastado / item.presupuesto) * 100) : (item.gastado > 0 ? 101 : 0);
+                            const isExceeded = item.gastado > item.presupuesto && item.presupuesto > 0;
+                            const isZeroBudgetWithGasto = item.presupuesto === 0 && item.gastado > 0;
+
+                            return (
+                                <View key={idx} style={grafStyles.rubroReportRow}>
+                                    <View style={grafStyles.rubroReportHeader}>
+                                        <Text style={grafStyles.rubroReportName}>{item.nombre}</Text>
+                                        <Text style={[grafStyles.rubroReportStatus, (isExceeded || isZeroBudgetWithGasto) ? { color: '#DC2626' } : { color: '#059669' }]}>
+                                            {formatCurrency(item.gastado)} / {formatCurrency(item.presupuesto)}
+                                        </Text>
+                                    </View>
+                                    <View style={grafStyles.rubroProgressBarContainer}>
+                                        <View style={[
+                                            grafStyles.rubroProgressBar,
+                                            {
+                                                width: `${Math.min(100, rubroPorcentaje)}%`,
+                                                backgroundColor: (isExceeded || isZeroBudgetWithGasto) ? '#DC2626' : '#3B82F6'
+                                            }
+                                        ]} />
+                                    </View>
+                                    {(isExceeded || isZeroBudgetWithGasto) && (
+                                        <Text style={grafStyles.rubroWarningText}>⚠️ Superó presupuesto por {formatCurrency(item.gastado - item.presupuesto)}</Text>
+                                    )}
+                                </View>
+                            );
+                        })}
+                    </View>
+                )}
 
                 {/* Chart: Gastos por Rubro */}
                 {data.porRubro?.length > 0 && (
@@ -1719,4 +1754,12 @@ const grafStyles = StyleSheet.create({
         fontSize: 14,
         color: '#6B7280',
     },
+    // Detailed Rubro Report Styles
+    rubroReportRow: { marginBottom: 16 },
+    rubroReportHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+    rubroReportName: { fontSize: 14, fontWeight: 'bold', color: '#374151' },
+    rubroReportStatus: { fontSize: 12, fontWeight: '500' },
+    rubroProgressBarContainer: { height: 12, backgroundColor: '#E5E7EB', borderRadius: 6, overflow: 'hidden' },
+    rubroProgressBar: { height: '100%', borderRadius: 6 },
+    rubroWarningText: { fontSize: 11, color: '#DC2626', marginTop: 4, fontWeight: '500' },
 });

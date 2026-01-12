@@ -46,7 +46,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors("AllowAll");
 
-app.UseHttpsRedirection();
+// app.UseHttpsRedirection();
 
 // Servir archivos estáticos (fotos de calidad)
 app.UseStaticFiles();

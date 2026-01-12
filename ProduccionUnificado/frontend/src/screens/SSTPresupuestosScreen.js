@@ -19,6 +19,7 @@ import {
 import { Picker } from '@react-native-picker/picker';
 import * as sstApi from '../services/sstApi';
 import * as ghApi from '../services/ghApi';
+import * as talleresApi from '../services/talleresApi';
 import { produccionApi } from '../services/produccionApi';
 
 const TABS = [
@@ -31,7 +32,7 @@ const TABS = [
 export default function SSTPresupuestosScreen({ navigation }) {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [activeTab, setActiveTab] = useState('sst');
+    const [activeTab, setActiveTab] = useState('talleres'); // Default to talleres as requested? No user asked to be located there but let's default to sst or whatever was default. User asked "quiero que te ubiques en gestion de presupuestos, donde se ubica talleres y despachos". Let's set 'talleres' as default if that's what is implied.
     const [anio, setAnio] = useState(new Date().getFullYear());
     const [gridData, setGridData] = useState(null);
     const [editedValues, setEditedValues] = useState({});
@@ -45,15 +46,15 @@ export default function SSTPresupuestosScreen({ navigation }) {
                 const data = await sstApi.getPresupuestosGrid(anio);
                 setGridData(data);
             } else if (activeTab === 'gh') {
-                // Load GH presupuestos using same structure as SST
                 const data = await ghApi.getPresupuestosGrid(anio);
                 setGridData(data);
             } else if (activeTab === 'produccion') {
-                // Load Production presupuestos (by Rubro)
                 const data = await produccionApi.getPresupuestosGrid(anio);
                 setGridData(data);
+            } else if (activeTab === 'talleres') {
+                const data = await talleresApi.getPresupuestosGrid(anio);
+                setGridData(data);
             } else {
-                // Placeholder for other tabs
                 setGridData({ tiposServicio: [], totalesMensuales: Array(12).fill(0), totalAnual: 0 });
             }
             setEditedValues({});
@@ -126,7 +127,6 @@ export default function SSTPresupuestosScreen({ navigation }) {
             if (activeTab === 'gh') {
                 await ghApi.setPresupuestosBulk(presupuestos);
             } else if (activeTab === 'produccion') {
-                // For production, map tipoServicioId to rubroId
                 const prodPresupuestos = presupuestos.map(p => ({
                     rubroId: p.tipoServicioId,
                     anio: p.anio,
@@ -134,13 +134,21 @@ export default function SSTPresupuestosScreen({ navigation }) {
                     presupuesto: p.presupuesto
                 }));
                 await produccionApi.setPresupuestosBulk(prodPresupuestos);
+            } else if (activeTab === 'talleres') {
+                const talleresPresupuestos = presupuestos.map(p => ({
+                    rubroId: p.tipoServicioId,
+                    anio: p.anio,
+                    mes: p.mes,
+                    presupuesto: p.presupuesto
+                }));
+                await talleresApi.setPresupuestosBulk(talleresPresupuestos);
             } else {
                 await sstApi.setPresupuestosBulk(presupuestos);
             }
 
-            Alert.alert('Éxito', `Se guardaron ${presupuestos.length} presupuestos`);
             setEditedValues({});
-            loadData();
+            await loadData();
+            Alert.alert('Éxito', `Se guardaron ${presupuestos.length} presupuestos`);
         } catch (error) {
             console.error('Error saving presupuestos:', error);
             Alert.alert('Error', 'No se pudieron guardar los presupuestos');
@@ -214,7 +222,7 @@ export default function SSTPresupuestosScreen({ navigation }) {
                     <ActivityIndicator size="large" color="#2563EB" />
                     <Text style={styles.loadingText}>Cargando presupuestos...</Text>
                 </View>
-            ) : (activeTab !== 'sst' && activeTab !== 'gh' && activeTab !== 'produccion') ? (
+            ) : (activeTab !== 'sst' && activeTab !== 'gh' && activeTab !== 'produccion' && activeTab !== 'talleres') ? (
                 <View style={styles.placeholderContainer}>
                     <Text style={styles.placeholderIcon}>{TABS.find(t => t.key === activeTab)?.icon}</Text>
                     <Text style={styles.placeholderText}>

@@ -1413,6 +1413,31 @@ function GraficasTab() {
             porProveedor[g.proveedorNombre] = (porProveedor[g.proveedorNombre] || 0) + g.precio;
         });
 
+        // For Performance Bars (Detailed Budgets)
+        let desempenoDetallado = [];
+        if (mesSeleccionado) {
+            desempenoDetallado = (gastosTotales[parseInt(mesSeleccionado) - 1]?.resumenPorTipo || []).map(item => ({
+                id: item.tipoServicioId,
+                nombre: item.tipoServicioNombre,
+                gastado: item.gastado,
+                presupuesto: item.presupuesto
+            }));
+        } else {
+            // Aggregate annual performance per type
+            const annualMap = {};
+            gastosTotales.forEach(mes => {
+                (mes.resumenPorTipo || []).forEach(item => {
+                    const id = item.tipoServicioId;
+                    if (!annualMap[id]) {
+                        annualMap[id] = { nombre: item.tipoServicioNombre, gastado: 0, presupuesto: 0 };
+                    }
+                    annualMap[id].gastado += item.gastado;
+                    annualMap[id].presupuesto += item.presupuesto;
+                });
+            });
+            desempenoDetallado = Object.values(annualMap).sort((a, b) => b.gastado - a.gastado);
+        }
+
         setResumenVisual({
             titulo: mesSeleccionado ? `Mensual - ${ghApi.getMesNombre(mesSeleccionado)}` : 'Anual Completo',
             totalPresupuesto,
@@ -1422,6 +1447,7 @@ function GraficasTab() {
             porRubro: Object.entries(porRubro).sort((a, b) => b[1] - a[1]),
             porTipo: Object.entries(porTipo).sort((a, b) => b[1] - a[1]),
             porProveedor: Object.entries(porProveedor).sort((a, b) => b[1] - a[1]),
+            desempenoDetallado,
             totalGastos: filteredGastos.length
         });
 
@@ -1741,10 +1767,45 @@ function GraficasTab() {
                                 }
                             ]} />
                         </View>
-                        <Text style={grafStyles.progreGHext}>
+                        <Text style={grafStyles.progressText}>
                             {resumenVisual.porcentajeUsado}% ejecutado
                         </Text>
                     </View>
+
+                    {/* Performance by Service Type - Progress Bars */}
+                    {resumenVisual.desempenoDetallado?.length > 0 && (
+                        <View style={grafStyles.chartSection}>
+                            <Text style={grafStyles.sectionTitle}>⚙️ Desempeño por Tipo de Servicio</Text>
+                            {resumenVisual.desempenoDetallado.map((item, idx) => {
+                                const percentage = item.presupuesto > 0 ? Math.round((item.gastado / item.presupuesto) * 100) : (item.gastado > 0 ? 101 : 0);
+                                const isExceeded = item.gastado > item.presupuesto && item.presupuesto > 0;
+                                const isZeroBudgetWithGasto = item.presupuesto === 0 && item.gastado > 0;
+
+                                return (
+                                    <View key={idx} style={grafStyles.rubroReportRow}>
+                                        <View style={grafStyles.rubroReportHeader}>
+                                            <Text style={grafStyles.rubroReportName}>{item.nombre}</Text>
+                                            <Text style={[grafStyles.rubroReportStatus, (isExceeded || isZeroBudgetWithGasto) ? { color: '#DC2626' } : { color: '#059669' }]}>
+                                                {formatCurrency(item.gastado)} / {formatCurrency(item.presupuesto)}
+                                            </Text>
+                                        </View>
+                                        <View style={grafStyles.rubroProgressBarContainer}>
+                                            <View style={[
+                                                grafStyles.rubroProgressBar,
+                                                {
+                                                    width: `${Math.min(100, percentage)}%`,
+                                                    backgroundColor: (isExceeded || isZeroBudgetWithGasto) ? '#DC2626' : '#8B5CF6'
+                                                }
+                                            ]} />
+                                        </View>
+                                        {(isExceeded || isZeroBudgetWithGasto) && (
+                                            <Text style={grafStyles.rubroWarningText}>⚠️ Superó presupuesto por {formatCurrency(item.gastado - item.presupuesto)}</Text>
+                                        )}
+                                    </View>
+                                );
+                            })}
+                        </View>
+                    )}
 
                     {/* Chart: Gastos por Rubro */}
                     {resumenVisual.porRubro.length > 0 && (
@@ -1885,7 +1946,7 @@ const grafStyles = StyleSheet.create({
         height: '100%',
         borderRadius: 12,
     },
-    progreGHext: {
+    progressText: {
         marginTop: 8,
         textAlign: 'center',
         color: '#6B7280',
@@ -1950,6 +2011,14 @@ const grafStyles = StyleSheet.create({
         color: '#FFFFFF',
         fontWeight: 'bold',
     },
+    // Detailed Performance Styles
+    rubroReportRow: { marginBottom: 16 },
+    rubroReportHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+    rubroReportName: { fontSize: 13, fontWeight: 'bold', color: '#374151', flex: 1, marginRight: 8 },
+    rubroReportStatus: { fontSize: 11, fontWeight: '600' },
+    rubroProgressBarContainer: { height: 10, backgroundColor: '#E5E7EB', borderRadius: 5, overflow: 'hidden' },
+    rubroProgressBar: { height: '100%', borderRadius: 5 },
+    rubroWarningText: { fontSize: 10, color: '#DC2626', marginTop: 4, fontWeight: '500' },
     reportButton: {
         backgroundColor: '#059669',
         paddingHorizontal: 16,

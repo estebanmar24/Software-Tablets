@@ -15,6 +15,7 @@ import SSTPresupuestosScreen from '../screens/SSTPresupuestosScreen';
 import SSTGastosScreen from '../screens/SSTGastosScreen';
 import GHGastosScreen from '../screens/GHGastosScreen';
 import ProduccionGastosScreen from '../screens/ProduccionGastosScreen';
+import TalleresGastosScreen from '../screens/TalleresGastosScreen';
 
 // Theme Provider
 import { ThemeProvider, useTheme } from '../contexts/ThemeContext';
@@ -69,11 +70,11 @@ function DashboardCard({ title, description, icon, onPress, color = '#E6FFFA', d
 }
 
 function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDashboardProps) {
-    // Mode: 'MENU' (Grid de tarjetas) | 'CONTENT' (Tabs existentes) | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS'
-    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS'>(() => {
+    // Mode: 'MENU' (Grid de tarjetas) | 'CONTENT' (Tabs existentes) | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS'
+    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS'>(() => {
         if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
             const savedMode = window.localStorage.getItem('adminDashboardMode');
-            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS' || savedMode === 'PRODUCCION_GASTOS') {
+            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS' || savedMode === 'PRODUCCION_GASTOS' || savedMode === 'TALLERES_GASTOS') {
                 return savedMode;
             }
         }
@@ -253,6 +254,25 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
         );
     }
 
+    // --- VISTA TALLERES Y DESPACHOS GASTOS ---
+    if (mode === 'TALLERES_GASTOS') {
+        return (
+            <View style={styles.container}>
+                <View style={styles.header}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => {
+                        setMode('MENU');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                    }}>
+                        <Text style={styles.backButtonText}>← Volver al Panel</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.title}>Gastos de Talleres y Despachos</Text>
+                    <View style={{ width: 120 }} />
+                </View>
+                <TalleresGastosScreen navigation={mockNavigation} />
+            </View>
+        );
+    }
+
     // --- VISTA CONTENT (SISTEMA ACTUAL) ---
     if (mode === 'CONTENT') {
         return (
@@ -362,7 +382,10 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                         title="Cuadro Presupuesto Talleres y Despachos"
                         description="Costos de talleres y despachos"
                         icon="🔧"
-                        onPress={() => handlePlaceholderPress('Talleres y Despachos')}
+                        onPress={() => {
+                            setMode('TALLERES_GASTOS');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'TALLERES_GASTOS');
+                        }}
                         disabled={!isTalleresEnabled}
                     />
                     <DashboardCard

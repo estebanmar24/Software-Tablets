@@ -7,19 +7,26 @@ public static class DbInitializer
 {
     public static void Initialize(AppDbContext context)
     {
-        Log("Starting initialization...");
-        try 
+        try
         {
-            context.Database.EnsureCreated();
-            Log("EnsureCreated passed.");
+            Console.WriteLine("[DB INIT] Starting initialization...");
+            try 
+            {
+                context.Database.EnsureCreated();
+                Log("EnsureCreated passed.");
+            }
+            catch (Exception ex)
+            {
+                Log($"EnsureCreated Warning: {ex.Message}");
+            }
+
+            CreateTables(context);
+            Log("Initialization finished.");
         }
         catch (Exception ex)
         {
-            Log($"EnsureCreated Warning: {ex.Message}");
+            Log($"[CRITICAL DB ERROR] Initialization failed completely: {ex.Message}");
         }
-
-        CreateTables(context);
-        Log("Initialization finished.");
     }
 
     private static void Log(string message)
@@ -34,25 +41,25 @@ public static class DbInitializer
         try 
         {
             context.Database.ExecuteSqlRaw(@"
-                IF OBJECT_ID('dbo.Usuarios', 'U') IS NULL
-                BEGIN
-                    CREATE TABLE [Usuarios] (
-                        [Id] int NOT NULL IDENTITY,
-                        [Nombre] nvarchar(max) NOT NULL,
-                        [Estado] bit NOT NULL DEFAULT 1,
-                        [FechaCreacion] datetime2 NOT NULL DEFAULT GETDATE(),
-                        CONSTRAINT [PK_Usuarios] PRIMARY KEY ([Id])
-                    );
-                    INSERT INTO [Usuarios] ([Nombre], [Estado]) VALUES 
-                    ('Blandon Moreno Jose Lizandro', 1), ('Cruz Pinto Alberto', 1), ('Enrique Muñoz Hector Hilde', 1), ('Escobar Cardona John Fredy', 1),
-                    ('Martinez Osorno Karen Lizeth', 1), ('Millan Salazar Magaly', 1), ('Moreno Mendez Angel Julio', 1), ('Moreno Urrea Marlene', 1),
-                    ('Motta Talaga Leidy Jhoanna', 1), ('Obando Higuita Jose Luis', 1), ('Ramirez Romero Andres Mauricio', 1), ('Sarmiento Rincon Yhan Otoniel', 1),
-                    ('Velez Arana Robert De Jesus', 1), ('Perdomo Rincon Gustavo Adolfo', 1), ('Moriano Chiguas Yurde Arley', 1), ('Bedoya Maria Fernanda', 1),
-                    ('Morales Grueso Claudia Patricia', 1), ('Gomez Ruiz William Hernan', 1), ('Rodriguez Castaño Maria Alejandra', 1), ('Rojas Collazos Joan Mauricio', 1),
-                    ('Riascos Castillo Andres Felipe', 1), ('Roldan Barona Erik Esteban', 1), ('Renteria Mejia Nestor Alfonso', 1), ('Mina Sinisterra Jhon Jairo', 1),
-                    ('Valencia Mirquez Nicol', 1), ('Uran Quintero Yohao Alexander', 1), ('Preciado Rivas Johan Alexander', 1), ('Jose Fernando Ruiz', 1);
-                    PRINT 'Tabla Usuarios creada.';
-                END
+                CREATE TABLE IF NOT EXISTS ""Usuarios"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""Nombre"" TEXT NOT NULL,
+                    ""Estado"" BOOLEAN NOT NULL DEFAULT TRUE,
+                    ""FechaCreacion"" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    ""Salario"" DECIMAL(18,2) NOT NULL DEFAULT 0
+                );
+                
+                INSERT INTO ""Usuarios"" (""Nombre"", ""Estado"") 
+                SELECT * FROM (VALUES 
+                    ('Blandon Moreno Jose Lizandro', CAST(1 AS BOOLEAN)), ('Cruz Pinto Alberto', CAST(1 AS BOOLEAN)), ('Enrique Muñoz Hector Hilde', CAST(1 AS BOOLEAN)), ('Escobar Cardona John Fredy', CAST(1 AS BOOLEAN)),
+                    ('Martinez Osorno Karen Lizeth', CAST(1 AS BOOLEAN)), ('Millan Salazar Magaly', CAST(1 AS BOOLEAN)), ('Moreno Mendez Angel Julio', CAST(1 AS BOOLEAN)), ('Moreno Urrea Marlene', CAST(1 AS BOOLEAN)),
+                    ('Motta Talaga Leidy Jhoanna', CAST(1 AS BOOLEAN)), ('Obando Higuita Jose Luis', CAST(1 AS BOOLEAN)), ('Ramirez Romero Andres Mauricio', CAST(1 AS BOOLEAN)), ('Sarmiento Rincon Yhan Otoniel', CAST(1 AS BOOLEAN)),
+                    ('Velez Arana Robert De Jesus', CAST(1 AS BOOLEAN)), ('Perdomo Rincon Gustavo Adolfo', CAST(1 AS BOOLEAN)), ('Moriano Chiguas Yurde Arley', CAST(1 AS BOOLEAN)), ('Bedoya Maria Fernanda', CAST(1 AS BOOLEAN)),
+                    ('Morales Grueso Claudia Patricia', CAST(1 AS BOOLEAN)), ('Gomez Ruiz William Hernan', CAST(1 AS BOOLEAN)), ('Rodriguez Castaño Maria Alejandra', CAST(1 AS BOOLEAN)), ('Rojas Collazos Joan Mauricio', CAST(1 AS BOOLEAN)),
+                    ('Riascos Castillo Andres Felipe', CAST(1 AS BOOLEAN)), ('Roldan Barona Erik Esteban', CAST(1 AS BOOLEAN)), ('Renteria Mejia Nestor Alfonso', CAST(1 AS BOOLEAN)), ('Mina Sinisterra Jhon Jairo', CAST(1 AS BOOLEAN)),
+                    ('Valencia Mirquez Nicol', CAST(1 AS BOOLEAN)), ('Uran Quintero Yohao Alexander', CAST(1 AS BOOLEAN)), ('Preciado Rivas Johan Alexander', CAST(1 AS BOOLEAN)), ('Jose Fernando Ruiz', CAST(1 AS BOOLEAN))
+                ) AS v(""Nombre"", ""Estado"")
+                WHERE NOT EXISTS (SELECT 1 FROM ""Usuarios"");
             ");
             Console.WriteLine("[DB INIT] Usuarios checked/created.");
         }
@@ -62,52 +69,46 @@ public static class DbInitializer
         try 
         {
             context.Database.ExecuteSqlRaw(@"
-                IF OBJECT_ID('dbo.Maquinas', 'U') IS NULL
-                BEGIN
-                    CREATE TABLE [Maquinas] (
-                        [Id] int NOT NULL IDENTITY,
-                        [Nombre] nvarchar(max) NOT NULL,
-                        [MetaRendimiento] int NOT NULL DEFAULT 0,
-                        [MetaDesperdicio] decimal(5,4) NOT NULL DEFAULT 0,
-                        [ValorPorTiro] decimal(10,2) NOT NULL DEFAULT 0,
-                        [TirosReferencia] int NOT NULL DEFAULT 0,
-                        [SemaforoMin] int NOT NULL DEFAULT 0,
-                        [SemaforoNormal] int NOT NULL DEFAULT 0,
-                        [SemaforoMax] int NOT NULL DEFAULT 0,
-                        [Activa] bit DEFAULT 1,
-                        CONSTRAINT [PK_Maquinas] PRIMARY KEY ([Id])
-                    );
-                    PRINT 'Tabla Maquinas creada.';
-                END
+                CREATE TABLE IF NOT EXISTS ""Maquinas"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""Nombre"" TEXT NOT NULL,
+                    ""MetaRendimiento"" INTEGER NOT NULL DEFAULT 0,
+                    ""MetaDesperdicio"" DECIMAL(5,4) NOT NULL DEFAULT 0,
+                    ""ValorPorTiro"" DECIMAL(10,2) NOT NULL DEFAULT 0,
+                    ""TirosReferencia"" INTEGER NOT NULL DEFAULT 0,
+                    ""SemaforoMin"" INTEGER NOT NULL DEFAULT 0,
+                    ""SemaforoNormal"" INTEGER NOT NULL DEFAULT 0,
+                    ""SemaforoMax"" INTEGER NOT NULL DEFAULT 0,
+                    ""Activa"" BOOLEAN DEFAULT TRUE
+                );
 
-                IF NOT EXISTS (SELECT 1 FROM [Maquinas])
-                BEGIN
-                    INSERT INTO [Maquinas] (Nombre, MetaRendimiento, MetaDesperdicio, ValorPorTiro, TirosReferencia, SemaforoMin, SemaforoNormal, SemaforoMax, Activa) VALUES
-                    ('CONVERTIDORA 1A', 15000, 0.25, 5, 1250, 0, 0, 0, 1),
-                    ('CONVERTIDORA 1B', 15000, 0.25, 5, 1250, 0, 0, 0, 1),
-                    ('Guillotina 2A polar132', 30000, 0.25, 2, 1250, 0, 0, 0, 1),
-                    ('Guillotina 2B org- Perfecta 107', 30000, 0.25, 2, 1250, 0, 0, 0, 1),
-                    ('3 Sord Z', 15000, 0.25, 5, 1250, 0, 0, 0, 1),
-                    ('4 Sord Z', 15000, 0.25, 5, 2000, 0, 0, 0, 1),
-                    ('5 Sord Z', 15000, 0.25, 5, 1250, 0, 0, 0, 1),
-                    ('6 SpeedMaster', 15000, 0.25, 5, 3000, 0, 0, 0, 1),
-                    ('7 SpeedMaster', 22500, 0.25, 5, 3000, 0, 0, 0, 1),
-                    ('8A Troqueladora de Papel', 7500, 0.25, 10, 1000, 0, 0, 0, 1),
-                    ('8B Troqueladora de Papel', 7500, 0.25, 10, 1000, 0, 0, 0, 1),
-                    ('8C Estampadora', 6000, 0.25, 12, 1500, 0, 0, 0, 1),
-                    ('9 Troqueladora Rollo', 15000, 0.25, 5, 1250, 0, 0, 0, 1),
-                    ('10A Colaminadora Carton', 7500, 0.07, 10, 500, 0, 0, 0, 1),
-                    ('10B Colaminadora Carton', 6000, 0.03, 12, 400, 0, 0, 0, 1),
-                    ('11 Laminadora BOPP', 7500, 0.25, 10, 1000, 0, 0, 0, 1),
-                    ('16 Barnizadora UV', 7500, 0.25, 10, 1250, 0, 0, 0, 1),
-                    ('13A Corrugadora FLTE', 2250, 0.25, 40, 2000, 0, 0, 0, 1),
-                    ('13b Corrugadora FLTB', 2250, 0.25, 35, 1250, 0, 0, 0, 1),
-                    ('14 Pegadora de Cajas', 75000, 0.07, 1, 40000, 0, 0, 0, 1),
-                    ('15 Troqueladora Kirby', 1500, 0.25, 40, 1250, 0, 0, 0, 1),
-                    ('12 Maquina de Cordon', 2100, 0.25, 10, 2000, 0, 0, 0, 1),
-                    ('12 Cortadora de Manijas', 9000, 0.25, 5, 2000, 0, 0, 0, 1);
-                    PRINT 'Datos de Maquinas insertados.';
-                END
+                INSERT INTO ""Maquinas"" (""Nombre"", ""MetaRendimiento"", ""MetaDesperdicio"", ""ValorPorTiro"", ""TirosReferencia"", ""SemaforoMin"", ""SemaforoNormal"", ""SemaforoMax"", ""Activa"")
+                SELECT * FROM (VALUES
+                    ('CONVERTIDORA 1A', 15000, 0.25, 5, 1250, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    ('CONVERTIDORA 1B', 15000, 0.25, 5, 1250, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    ('Guillotina 2A polar132', 30000, 0.25, 2, 1250, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    ('Guillotina 2B org- Perfecta 107', 30000, 0.25, 2, 1250, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    ('3 Sord Z', 15000, 0.25, 5, 1250, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    ('4 Sord Z', 15000, 0.25, 5, 2000, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    ('5 Sord Z', 15000, 0.25, 5, 1250, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    ('6 SpeedMaster', 15000, 0.25, 5, 3000, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    ('7 SpeedMaster', 22500, 0.25, 5, 3000, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    ('8A Troqueladora de Papel', 7500, 0.25, 10, 1000, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    ('8B Troqueladora de Papel', 7500, 0.25, 10, 1000, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    ('8C Estampadora', 6000, 0.25, 12, 1500, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    ('9 Troqueladora Rollo', 15000, 0.25, 5, 1250, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    ('10A Colaminadora Carton', 7500, 0.07, 10, 500, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    ('10B Colaminadora Carton', 6000, 0.03, 12, 400, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    ('11 Laminadora BOPP', 7500, 0.25, 10, 1000, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    ('16 Barnizadora UV', 7500, 0.25, 10, 1250, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    ('13A Corrugadora FLTE', 2250, 0.25, 40, 2000, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    ('13b Corrugadora FLTB', 2250, 0.25, 35, 1250, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    ('14 Pegadora de Cajas', 75000, 0.07, 1, 40000, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    ('15 Troqueladora Kirby', 1500, 0.25, 40, 1250, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    ('12 Maquina de Cordon', 2100, 0.25, 10, 2000, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    ('12 Cortadora de Manijas', 9000, 0.25, 5, 2000, 0, 0, 0, CAST(1 AS BOOLEAN))
+                ) AS v(""Nombre"", ""MetaRendimiento"", ""MetaDesperdicio"", ""ValorPorTiro"", ""TirosReferencia"", ""SemaforoMin"", ""SemaforoNormal"", ""SemaforoMax"", ""Activa"")
+                WHERE NOT EXISTS (SELECT 1 FROM ""Maquinas"");
             ");
             Console.WriteLine("[DB INIT] Maquinas checked/created.");
         }
@@ -117,33 +118,27 @@ public static class DbInitializer
         try 
         {
             context.Database.ExecuteSqlRaw(@"
-                IF OBJECT_ID('dbo.Actividades', 'U') IS NULL
-                BEGIN
-                    CREATE TABLE [Actividades] (
-                        [Id] int NOT NULL IDENTITY,
-                        [Codigo] nvarchar(max) NOT NULL,
-                        [Nombre] nvarchar(max) NOT NULL,
-                        [EsProductiva] bit NOT NULL,
-                        [Orden] int NOT NULL,
-                        [Observaciones] nvarchar(max) NULL,
-                        CONSTRAINT [PK_Actividades] PRIMARY KEY ([Id])
-                    );
-                    PRINT 'Tabla Actividades creada.';
-                END
+                CREATE TABLE IF NOT EXISTS ""Actividades"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""Codigo"" TEXT NOT NULL,
+                    ""Nombre"" TEXT NOT NULL,
+                    ""EsProductiva"" BOOLEAN NOT NULL,
+                    ""Orden"" INTEGER NOT NULL,
+                    ""Observaciones"" TEXT NULL
+                );
 
-                IF NOT EXISTS (SELECT 1 FROM [Actividades])
-                BEGIN
-                    INSERT INTO [Actividades] ([Codigo], [Nombre], [EsProductiva], [Orden], [Observaciones]) VALUES
-                    ('01', 'Puesta a Punto', 0, 1, 'Preparación inicial de la máquina'),
-                    ('02', 'Producción', 1, 2, 'Tiempo productivo de operación'),
-                    ('03', 'Reparación', 0, 3, 'Reparación de fallas o averías'),
-                    ('04', 'Descanso', 0, 4, 'Tiempo de descanso programado'),
-                    ('08', 'Otro Tiempo Muerto', 0, 5, 'Falta de Material, Imprevistos'),
-                    ('10', 'Mantenimiento y Aseo', 0, 6, 'Mantenimiento preventivo'),
-                    ('13', 'Falta de Trabajo', 0, 7, 'Sin órdenes asignadas'),
-                    ('14', 'Otros tiempos', 0, 8, 'Calibración, cambios, reunion');
-                    PRINT 'Datos Actividades insertados.';
-                END
+                INSERT INTO ""Actividades"" (""Codigo"", ""Nombre"", ""EsProductiva"", ""Orden"", ""Observaciones"")
+                SELECT * FROM (VALUES
+                    ('01', 'Puesta a Punto', CAST(0 AS BOOLEAN), 1, 'Preparación inicial de la máquina'),
+                    ('02', 'Producción', CAST(1 AS BOOLEAN), 2, 'Tiempo productivo de operación'),
+                    ('03', 'Reparación', CAST(0 AS BOOLEAN), 3, 'Reparación de fallas o averías'),
+                    ('04', 'Descanso', CAST(0 AS BOOLEAN), 4, 'Tiempo de descanso programado'),
+                    ('08', 'Otro Tiempo Muerto', CAST(0 AS BOOLEAN), 5, 'Falta de Material, Imprevistos'),
+                    ('10', 'Mantenimiento y Aseo', CAST(0 AS BOOLEAN), 6, 'Mantenimiento preventivo'),
+                    ('13', 'Falta de Trabajo', CAST(0 AS BOOLEAN), 7, 'Sin órdenes asignadas'),
+                    ('14', 'Otros tiempos', CAST(0 AS BOOLEAN), 8, 'Calibración, cambios, reunion')
+                ) AS v(""Codigo"", ""Nombre"", ""EsProductiva"", ""Orden"", ""Observaciones"")
+                WHERE NOT EXISTS (SELECT 1 FROM ""Actividades"");
             ");
             Console.WriteLine("[DB INIT] Actividades checked/created.");
         }
@@ -153,20 +148,17 @@ public static class DbInitializer
         try 
         {
             context.Database.ExecuteSqlRaw(@"
-                IF OBJECT_ID('dbo.OrdenesProduccion', 'U') IS NULL
-                BEGIN
-                    CREATE TABLE [OrdenesProduccion] (
-                        [Id] int NOT NULL IDENTITY,
-                        [Numero] nvarchar(max) NOT NULL,
-                        [Descripcion] nvarchar(max) NOT NULL,
-                        [Estado] nvarchar(max) NOT NULL,
-                        [FechaCreacion] datetime2 NOT NULL,
-                        CONSTRAINT [PK_OrdenesProduccion] PRIMARY KEY ([Id])
-                    );
-                    INSERT INTO [OrdenesProduccion] ([Numero], [Descripcion], [Estado], [FechaCreacion]) VALUES
-                    ('OP-2024-001', 'Producción General', 'EnProceso', GETDATE());
-                    PRINT 'Tabla OrdenesProduccion creada.';
-                END
+                CREATE TABLE IF NOT EXISTS ""OrdenesProduccion"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""Numero"" TEXT NOT NULL,
+                    ""Descripcion"" TEXT NOT NULL,
+                    ""Estado"" TEXT NOT NULL,
+                    ""FechaCreacion"" TIMESTAMP NOT NULL
+                );
+
+                INSERT INTO ""OrdenesProduccion"" (""Numero"", ""Descripcion"", ""Estado"", ""FechaCreacion"")
+                SELECT 'OP-2024-001', 'Producción General', 'EnProceso', CURRENT_TIMESTAMP
+                WHERE NOT EXISTS (SELECT 1 FROM ""OrdenesProduccion"");
             ");
             Console.WriteLine("[DB INIT] OrdenesProduccion checked/created.");
         }
@@ -176,31 +168,26 @@ public static class DbInitializer
         try 
         {
             context.Database.ExecuteSqlRaw(@"
-                IF OBJECT_ID('dbo.TiempoProcesos', 'U') IS NULL
-                BEGIN
-                    CREATE TABLE [TiempoProcesos] (
-                        [Id] bigint NOT NULL IDENTITY,
-                        [Fecha] datetime2 NOT NULL,
-                        [HoraInicio] time NOT NULL,
-                        [HoraFin] time NOT NULL,
-                        [Duracion] time NOT NULL,
-                        [UsuarioId] int NOT NULL,
-                        [MaquinaId] int NOT NULL,
-                        [OrdenProduccionId] int NULL,
-                        [ActividadId] int NOT NULL,
-                        [Tiros] int NOT NULL,
-                        [Desperdicio] int NOT NULL,
-                        [Observaciones] nvarchar(max) NULL,
-                        CONSTRAINT [PK_TiempoProcesos] PRIMARY KEY ([Id]),
-                        CONSTRAINT [FK_TiempoProcesos_Actividades_ActividadId] FOREIGN KEY ([ActividadId]) REFERENCES [Actividades] ([Id]) ON DELETE CASCADE,
-                        CONSTRAINT [FK_TiempoProcesos_Maquinas_MaquinaId] FOREIGN KEY ([MaquinaId]) REFERENCES [Maquinas] ([Id]) ON DELETE CASCADE,
-                        CONSTRAINT [FK_TiempoProcesos_OrdenesProduccion_OrdenProduccionId] FOREIGN KEY ([OrdenProduccionId]) REFERENCES [OrdenesProduccion] ([Id]),
-                        CONSTRAINT [FK_TiempoProcesos_Usuarios_UsuarioId] FOREIGN KEY ([UsuarioId]) REFERENCES [Usuarios] ([Id]) ON DELETE CASCADE
-                    );
-                    CREATE INDEX [IX_TiempoProcesos_ActividadId] ON [TiempoProcesos] ([ActividadId]);
-                    CREATE INDEX [IX_TiempoProcesos_UsuarioId] ON [TiempoProcesos] ([UsuarioId]);
-                    PRINT 'Tabla TiempoProcesos creada.';
-                END
+                CREATE TABLE IF NOT EXISTS ""TiempoProcesos"" (
+                    ""Id"" BIGSERIAL PRIMARY KEY,
+                    ""Fecha"" TIMESTAMP NOT NULL,
+                    ""HoraInicio"" TIME NOT NULL,
+                    ""HoraFin"" TIME NOT NULL,
+                    ""Duracion"" TIME NOT NULL,
+                    ""UsuarioId"" INTEGER NOT NULL,
+                    ""MaquinaId"" INTEGER NOT NULL,
+                    ""OrdenProduccionId"" INTEGER NULL,
+                    ""ActividadId"" INTEGER NOT NULL,
+                    ""Tiros"" INTEGER NOT NULL,
+                    ""Desperdicio"" INTEGER NOT NULL,
+                    ""Observaciones"" TEXT NULL,
+                    CONSTRAINT ""FK_TiempoProcesos_Actividades_ActividadId"" FOREIGN KEY (""ActividadId"") REFERENCES ""Actividades"" (""Id"") ON DELETE CASCADE,
+                    CONSTRAINT ""FK_TiempoProcesos_Maquinas_MaquinaId"" FOREIGN KEY (""MaquinaId"") REFERENCES ""Maquinas"" (""Id"") ON DELETE CASCADE,
+                    CONSTRAINT ""FK_TiempoProcesos_OrdenesProduccion_OrdenProduccionId"" FOREIGN KEY (""OrdenProduccionId"") REFERENCES ""OrdenesProduccion"" (""Id""),
+                    CONSTRAINT ""FK_TiempoProcesos_Usuarios_UsuarioId"" FOREIGN KEY (""UsuarioId"") REFERENCES ""Usuarios"" (""Id"") ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS ""IX_TiempoProcesos_ActividadId"" ON ""TiempoProcesos"" (""ActividadId"");
+                CREATE INDEX IF NOT EXISTS ""IX_TiempoProcesos_UsuarioId"" ON ""TiempoProcesos"" (""UsuarioId"");
             ");
             Console.WriteLine("[DB INIT] TiempoProcesos checked/created.");
         }
@@ -210,75 +197,50 @@ public static class DbInitializer
         try
         {
             context.Database.ExecuteSqlRaw(@"
-                IF OBJECT_ID('dbo.ProduccionDiaria', 'U') IS NULL
-                BEGIN
-                     -- Create if missing (unexpected as script ran, but safe to add)
-                    CREATE TABLE [ProduccionDiaria] (
-                        [Id] bigint NOT NULL IDENTITY,
-                        [Fecha] date NOT NULL,
-                        [UsuarioId] int NOT NULL,
-                        [MaquinaId] int NOT NULL,
-                        [HoraInicio] time NULL,
-                        [HoraFin] time NULL,
-                        [HorasOperativas] decimal(10, 2) NOT NULL,
-                        [RendimientoFinal] decimal(10, 2) NOT NULL,
-                        [Cambios] int NOT NULL,
-                        [TiempoPuestaPunto] decimal(10, 2) NOT NULL,
-                        [TirosDiarios] int NOT NULL,
-                        [TotalHorasProductivas] decimal(10, 2) NOT NULL,
-                        [PromedioHoraProductiva] decimal(10, 2) NOT NULL,
-                        [ValorTiroSnapshot] decimal(10, 2) NOT NULL,
-                        [ValorAPagar] decimal(10, 2) NOT NULL,
-                        [HorasMantenimiento] decimal(10, 2) NOT NULL,
-                        [HorasDescanso] decimal(10, 2) NOT NULL,
-                        [HorasOtrosAux] decimal(10, 2) NOT NULL,
-                        [TotalHorasAuxiliares] decimal(10, 2) NOT NULL,
-                        [TiempoFaltaTrabajo] decimal(10, 2) NOT NULL,
-                        [TiempoReparacion] decimal(10, 2) NOT NULL,
-                        [TiempoOtroMuerto] decimal(10, 2) NOT NULL,
-                        [TotalTiemposMuertos] decimal(10, 2) NOT NULL,
-                        [TotalHoras] decimal(10, 2) NOT NULL,
-                        [ReferenciaOP] nvarchar(50) NULL,
-                        [Novedades] nvarchar(max) NULL,
-                        [Desperdicio] decimal(10, 2) NOT NULL,
-                        [DiaLaborado] int NOT NULL,
-                        [EsHorarioLaboral] bit NOT NULL DEFAULT 1,
-                        [TirosBonificables] int NOT NULL DEFAULT 0,
-                        [DesperdicioBonificable] decimal(10, 2) NOT NULL DEFAULT 0,
-                        [ValorAPagarBonificable] decimal(10, 2) NOT NULL DEFAULT 0,
-                        CONSTRAINT [PK_ProduccionDiaria] PRIMARY KEY ([Id]),
-                        CONSTRAINT [FK_ProduccionDiaria_Maquinas_MaquinaId] FOREIGN KEY ([MaquinaId]) REFERENCES [Maquinas] ([Id]) ON DELETE CASCADE,
-                        CONSTRAINT [FK_ProduccionDiaria_Usuarios_UsuarioId] FOREIGN KEY ([UsuarioId]) REFERENCES [Usuarios] ([Id]) ON DELETE CASCADE
-                    );
-                    CREATE INDEX [IX_ProduccionDiaria_MaquinaId] ON [ProduccionDiaria] ([MaquinaId]);
-                    CREATE INDEX [IX_ProduccionDiaria_UsuarioId] ON [ProduccionDiaria] ([UsuarioId]);
-                    PRINT 'Tabla ProduccionDiaria creada/verificada.';
-                END
+                CREATE TABLE IF NOT EXISTS ""ProduccionDiaria"" (
+                    ""Id"" BIGSERIAL PRIMARY KEY,
+                    ""Fecha"" DATE NOT NULL,
+                    ""UsuarioId"" INTEGER NOT NULL,
+                    ""MaquinaId"" INTEGER NOT NULL,
+                    ""HoraInicio"" TIME NULL,
+                    ""HoraFin"" TIME NULL,
+                    ""HorasOperativas"" DECIMAL(10, 2) NOT NULL,
+                    ""RendimientoFinal"" DECIMAL(10, 2) NOT NULL,
+                    ""Cambios"" INTEGER NOT NULL,
+                    ""TiempoPuestaPunto"" DECIMAL(10, 2) NOT NULL,
+                    ""TirosDiarios"" INTEGER NOT NULL,
+                    ""TotalHorasProductivas"" DECIMAL(10, 2) NOT NULL,
+                    ""PromedioHoraProductiva"" DECIMAL(10, 2) NOT NULL,
+                    ""ValorTiroSnapshot"" DECIMAL(10, 2) NOT NULL,
+                    ""ValorAPagar"" DECIMAL(10, 2) NOT NULL,
+                    ""HorasMantenimiento"" DECIMAL(10, 2) NOT NULL,
+                    ""HorasDescanso"" DECIMAL(10, 2) NOT NULL,
+                    ""HorasOtrosAux"" DECIMAL(10, 2) NOT NULL,
+                    ""TotalHorasAuxiliares"" DECIMAL(10, 2) NOT NULL,
+                    ""TiempoFaltaTrabajo"" DECIMAL(10, 2) NOT NULL,
+                    ""TiempoReparacion"" DECIMAL(10, 2) NOT NULL,
+                    ""TiempoOtroMuerto"" DECIMAL(10, 2) NOT NULL,
+                    ""TotalTiemposMuertos"" DECIMAL(10, 2) NOT NULL,
+                    ""TotalHoras"" DECIMAL(10, 2) NOT NULL,
+                    ""ReferenciaOP"" VARCHAR(50) NULL,
+                    ""Novedades"" TEXT NULL,
+                    ""Desperdicio"" DECIMAL(10, 2) NOT NULL,
+                    ""DiaLaborado"" INTEGER NOT NULL,
+                    ""EsHorarioLaboral"" BOOLEAN NOT NULL DEFAULT TRUE,
+                    ""TirosBonificables"" INTEGER NOT NULL DEFAULT 0,
+                    ""DesperdicioBonificable"" DECIMAL(10, 2) NOT NULL DEFAULT 0,
+                    ""ValorAPagarBonificable"" DECIMAL(10, 2) NOT NULL DEFAULT 0,
+                    CONSTRAINT ""FK_ProduccionDiaria_Maquinas_MaquinaId"" FOREIGN KEY (""MaquinaId"") REFERENCES ""Maquinas"" (""Id"") ON DELETE CASCADE,
+                    CONSTRAINT ""FK_ProduccionDiaria_Usuarios_UsuarioId"" FOREIGN KEY (""UsuarioId"") REFERENCES ""Usuarios"" (""Id"") ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS ""IX_ProduccionDiaria_MaquinaId"" ON ""ProduccionDiaria"" (""MaquinaId"");
+                CREATE INDEX IF NOT EXISTS ""IX_ProduccionDiaria_UsuarioId"" ON ""ProduccionDiaria"" (""UsuarioId"");
 
-                -- Add missing columns if table exists but columns don't
-                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ProduccionDiaria' AND COLUMN_NAME = 'EsHorarioLaboral')
-                BEGIN
-                    ALTER TABLE [ProduccionDiaria] ADD [EsHorarioLaboral] bit NOT NULL DEFAULT 1;
-                    PRINT 'Columna EsHorarioLaboral agregada.';
-                END
-
-                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ProduccionDiaria' AND COLUMN_NAME = 'TirosBonificables')
-                BEGIN
-                    ALTER TABLE [ProduccionDiaria] ADD [TirosBonificables] int NOT NULL DEFAULT 0;
-                    PRINT 'Columna TirosBonificables agregada.';
-                END
-
-                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ProduccionDiaria' AND COLUMN_NAME = 'DesperdicioBonificable')
-                BEGIN
-                    ALTER TABLE [ProduccionDiaria] ADD [DesperdicioBonificable] decimal(10, 2) NOT NULL DEFAULT 0;
-                    PRINT 'Columna DesperdicioBonificable agregada.';
-                END
-
-                IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ProduccionDiaria' AND COLUMN_NAME = 'ValorAPagarBonificable')
-                BEGIN
-                    ALTER TABLE [ProduccionDiaria] ADD [ValorAPagarBonificable] decimal(10, 2) NOT NULL DEFAULT 0;
-                    PRINT 'Columna ValorAPagarBonificable agregada.';
-                END
+                -- Add missing columns using IF NOT EXISTS
+                ALTER TABLE ""ProduccionDiaria"" ADD COLUMN IF NOT EXISTS ""EsHorarioLaboral"" BOOLEAN NOT NULL DEFAULT TRUE;
+                ALTER TABLE ""ProduccionDiaria"" ADD COLUMN IF NOT EXISTS ""TirosBonificables"" INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE ""ProduccionDiaria"" ADD COLUMN IF NOT EXISTS ""DesperdicioBonificable"" DECIMAL(10, 2) NOT NULL DEFAULT 0;
+                ALTER TABLE ""ProduccionDiaria"" ADD COLUMN IF NOT EXISTS ""ValorAPagarBonificable"" DECIMAL(10, 2) NOT NULL DEFAULT 0;
             ");
             Console.WriteLine("[DB INIT] ProduccionDiaria checked/created.");
         }
@@ -288,22 +250,17 @@ public static class DbInitializer
         try
         {
             context.Database.ExecuteSqlRaw(@"
-                IF OBJECT_ID('dbo.CalificacionesMensuales', 'U') IS NULL
-                BEGIN
-                    CREATE TABLE [CalificacionesMensuales] (
-                        [Id] int NOT NULL IDENTITY,
-                        [Mes] int NOT NULL,
-                        [Anio] int NOT NULL,
-                        [CalificacionTotal] decimal(10, 2) NOT NULL DEFAULT 0,
-                        [FechaCalculo] datetime NOT NULL DEFAULT GETDATE(),
-                        [Notas] nvarchar(500) NULL,
-                        [DesgloseMaquinas] nvarchar(max) NULL,
-                        CONSTRAINT [PK_CalificacionesMensuales] PRIMARY KEY ([Id]),
-                        CONSTRAINT [UQ_CalificacionesMensuales_MesAnio] UNIQUE ([Mes], [Anio])
-                    );
-                    CREATE INDEX [IX_CalificacionesMensuales_Anio] ON [CalificacionesMensuales] ([Anio] DESC, [Mes] DESC);
-                    PRINT 'Tabla CalificacionesMensuales creada.';
-                END
+                CREATE TABLE IF NOT EXISTS ""CalificacionesMensuales"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""Mes"" INTEGER NOT NULL,
+                    ""Anio"" INTEGER NOT NULL,
+                    ""CalificacionTotal"" DECIMAL(10, 2) NOT NULL DEFAULT 0,
+                    ""FechaCalculo"" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    ""Notas"" VARCHAR(500) NULL,
+                    ""DesgloseMaquinas"" TEXT NULL,
+                    CONSTRAINT ""UQ_CalificacionesMensuales_MesAnio"" UNIQUE (""Mes"", ""Anio"")
+                );
+                CREATE INDEX IF NOT EXISTS ""IX_CalificacionesMensuales_Anio"" ON ""CalificacionesMensuales"" (""Anio"" DESC, ""Mes"" DESC);
             ");
             Console.WriteLine("[DB INIT] CalificacionesMensuales checked/created.");
         }
@@ -313,32 +270,27 @@ public static class DbInitializer
         try
         {
             context.Database.ExecuteSqlRaw(@"
-                IF OBJECT_ID('dbo.EncuestasCalidad', 'U') IS NULL
-                BEGIN
-                    CREATE TABLE [EncuestasCalidad] (
-                        [Id] int NOT NULL IDENTITY,
-                        [OperarioId] int NOT NULL,
-                        [AuxiliarId] int NULL,
-                        [OrdenProduccion] nvarchar(50) NOT NULL,
-                        [CantidadProducir] decimal(18, 2) NOT NULL,
-                        [MaquinaId] int NOT NULL,
-                        [Proceso] nvarchar(100) NOT NULL,
-                        [CantidadEvaluada] decimal(18, 2) NOT NULL,
-                        [EstadoProceso] nvarchar(50) NOT NULL,
-                        [TieneFichaTecnica] bit NOT NULL,
-                        [CorrectoRegistroFormatos] bit NOT NULL,
-                        [AprobacionArranque] bit NOT NULL,
-                        [Observacion] nvarchar(max) NULL,
-                        [FechaCreacion] datetime2 NOT NULL DEFAULT GETDATE(),
-                        [CreadoPor] nvarchar(100) NULL,
-                        CONSTRAINT [PK_EncuestasCalidad] PRIMARY KEY ([Id]),
-                        CONSTRAINT [FK_EncuestasCalidad_Operario] FOREIGN KEY ([OperarioId]) REFERENCES [Usuarios]([Id]),
-                        CONSTRAINT [FK_EncuestasCalidad_Auxiliar] FOREIGN KEY ([AuxiliarId]) REFERENCES [Usuarios]([Id]),
-                        CONSTRAINT [FK_EncuestasCalidad_Maquina] FOREIGN KEY ([MaquinaId]) REFERENCES [Maquinas]([Id])
-                    );
-                    CREATE INDEX [IX_EncuestasCalidad_FechaCreacion] ON [EncuestasCalidad] ([FechaCreacion] DESC);
-                    PRINT 'Tabla EncuestasCalidad creada.';
-                END
+                CREATE TABLE IF NOT EXISTS ""EncuestasCalidad"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""OperarioId"" INTEGER NOT NULL,
+                    ""AuxiliarId"" INTEGER NULL,
+                    ""OrdenProduccion"" VARCHAR(50) NOT NULL,
+                    ""CantidadProducir"" DECIMAL(18, 2) NOT NULL,
+                    ""MaquinaId"" INTEGER NOT NULL,
+                    ""Proceso"" VARCHAR(100) NOT NULL,
+                    ""CantidadEvaluada"" DECIMAL(18, 2) NOT NULL,
+                    ""EstadoProceso"" VARCHAR(50) NOT NULL,
+                    ""TieneFichaTecnica"" BOOLEAN NOT NULL,
+                    ""CorrectoRegistroFormatos"" BOOLEAN NOT NULL,
+                    ""AprobacionArranque"" BOOLEAN NOT NULL,
+                    ""Observacion"" TEXT NULL,
+                    ""FechaCreacion"" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    ""CreadoPor"" VARCHAR(100) NULL,
+                    CONSTRAINT ""FK_EncuestasCalidad_Operario"" FOREIGN KEY (""OperarioId"") REFERENCES ""Usuarios""(""Id""),
+                    CONSTRAINT ""FK_EncuestasCalidad_Auxiliar"" FOREIGN KEY (""AuxiliarId"") REFERENCES ""Usuarios""(""Id""),
+                    CONSTRAINT ""FK_EncuestasCalidad_Maquina"" FOREIGN KEY (""MaquinaId"") REFERENCES ""Maquinas""(""Id"")
+                );
+                CREATE INDEX IF NOT EXISTS ""IX_EncuestasCalidad_FechaCreacion"" ON ""EncuestasCalidad"" (""FechaCreacion"" DESC);
             ");
             Console.WriteLine("[DB INIT] EncuestasCalidad checked/created.");
         }
@@ -348,30 +300,19 @@ public static class DbInitializer
         try
         {
             context.Database.ExecuteSqlRaw(@"
-                IF OBJECT_ID('dbo.EncuestaNovedades', 'U') IS NULL
-                BEGIN
-                    CREATE TABLE [EncuestaNovedades] (
-                        [Id] int NOT NULL IDENTITY,
-                        [EncuestaId] int NOT NULL,
-                        [TipoNovedad] nvarchar(100) NOT NULL,
-                        [FotoPath] nvarchar(500) NULL,
-                        [Descripcion] nvarchar(max) NULL,
-                        [CantidadDefectuosa] int NOT NULL DEFAULT 0,
-                        CONSTRAINT [PK_EncuestaNovedades] PRIMARY KEY ([Id]),
-                        CONSTRAINT [FK_EncuestaNovedades_Encuesta] FOREIGN KEY ([EncuestaId]) REFERENCES [EncuestasCalidad]([Id]) ON DELETE CASCADE
-                    );
-                    CREATE INDEX [IX_EncuestaNovedades_EncuestaId] ON [EncuestaNovedades] ([EncuestaId]);
-                    PRINT 'Tabla EncuestaNovedades creada.';
-                END
-                ELSE
-                BEGIN
-                    -- Agregar columna si no existe
-                    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'EncuestaNovedades' AND COLUMN_NAME = 'CantidadDefectuosa')
-                    BEGIN
-                        ALTER TABLE [EncuestaNovedades] ADD [CantidadDefectuosa] int NOT NULL DEFAULT 0;
-                        PRINT 'Columna CantidadDefectuosa agregada.';
-                    END
-                END
+                CREATE TABLE IF NOT EXISTS ""EncuestaNovedades"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""EncuestaId"" INTEGER NOT NULL,
+                    ""TipoNovedad"" VARCHAR(100) NOT NULL,
+                    ""FotoPath"" VARCHAR(500) NULL,
+                    ""Descripcion"" TEXT NULL,
+                    ""CantidadDefectuosa"" INTEGER NOT NULL DEFAULT 0,
+                    CONSTRAINT ""FK_EncuestaNovedades_Encuesta"" FOREIGN KEY (""EncuestaId"") REFERENCES ""EncuestasCalidad""(""Id"") ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS ""IX_EncuestaNovedades_EncuestaId"" ON ""EncuestaNovedades"" (""EncuestaId"");
+
+                -- Add missing columns
+                ALTER TABLE ""EncuestaNovedades"" ADD COLUMN IF NOT EXISTS ""CantidadDefectuosa"" INTEGER NOT NULL DEFAULT 0;
             ");
             Console.WriteLine("[DB INIT] EncuestaNovedades checked/created.");
         }
@@ -381,19 +322,14 @@ public static class DbInitializer
         try
         {
             context.Database.ExecuteSqlRaw(@"
-                IF OBJECT_ID('dbo.AdminUsuarios', 'U') IS NULL
-                BEGIN
-                    CREATE TABLE [AdminUsuarios] (
-                        [Id] int NOT NULL IDENTITY,
-                        [Username] nvarchar(100) NOT NULL,
-                        [PasswordHash] nvarchar(max) NOT NULL,
-                        [Role] nvarchar(50) NOT NULL,
-                        [NombreMostrar] nvarchar(200) NOT NULL,
-                        CONSTRAINT [PK_AdminUsuarios] PRIMARY KEY ([Id]),
-                        CONSTRAINT [UQ_AdminUsuarios_Username] UNIQUE ([Username])
-                    );
-                    PRINT 'Tabla AdminUsuarios creada.';
-                END
+                CREATE TABLE IF NOT EXISTS ""AdminUsuarios"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""Username"" VARCHAR(100) NOT NULL,
+                    ""PasswordHash"" TEXT NOT NULL,
+                    ""Role"" VARCHAR(50) NOT NULL,
+                    ""NombreMostrar"" VARCHAR(200) NOT NULL,
+                    CONSTRAINT ""UQ_AdminUsuarios_Username"" UNIQUE (""Username"")
+                );
             ");
             Console.WriteLine("[DB INIT] AdminUsuarios checked/created.");
 
@@ -725,5 +661,80 @@ public static class DbInitializer
 
         }
         catch (Exception ex) { Console.WriteLine($"[DB ERROR] Produccion Tables: {ex.Message}"); }
+
+        // TALLERES Y DESPACHOS
+        try
+        {
+            Console.WriteLine("[DB DEBUG] Creating Talleres tables...");
+            
+            // Talleres_Rubros
+            context.Database.ExecuteSqlRaw(@"
+                CREATE TABLE IF NOT EXISTS ""Talleres_Rubros"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""Nombre"" VARCHAR(200) NOT NULL,
+                    ""Activo"" BOOLEAN NOT NULL DEFAULT TRUE
+                );
+            ");
+            Console.WriteLine("[DB INIT] Talleres_Rubros created.");
+
+            // Talleres_Proveedores
+            context.Database.ExecuteSqlRaw(@"
+                CREATE TABLE IF NOT EXISTS ""Talleres_Proveedores"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""Nombre"" VARCHAR(200) NOT NULL,
+                    ""NitCedula"" VARCHAR(50) NOT NULL,
+                    ""Telefono"" VARCHAR(50) NULL,
+                    ""Activo"" BOOLEAN NOT NULL DEFAULT TRUE
+                );
+            ");
+            Console.WriteLine("[DB INIT] Talleres_Proveedores created.");
+
+            // Talleres_Gastos
+            context.Database.ExecuteSqlRaw(@"
+                CREATE TABLE IF NOT EXISTS ""Talleres_Gastos"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""ProveedorId"" INTEGER NOT NULL REFERENCES ""Talleres_Proveedores""(""Id""),
+                    ""RubroId"" INTEGER NOT NULL REFERENCES ""Talleres_Rubros""(""Id""),
+                    ""Anio"" INTEGER NOT NULL,
+                    ""Mes"" INTEGER NOT NULL,
+                    ""NumeroFactura"" VARCHAR(100) NOT NULL,
+                    ""Precio"" DECIMAL(18,2) NOT NULL,
+                    ""Fecha"" TIMESTAMP NOT NULL,
+                    ""Observaciones"" VARCHAR(500) NULL
+                );
+            ");
+            Console.WriteLine("[DB INIT] Talleres_Gastos created.");
+
+            // Talleres_PresupuestosMensuales
+            context.Database.ExecuteSqlRaw(@"
+                CREATE TABLE IF NOT EXISTS ""Talleres_PresupuestosMensuales"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""RubroId"" INTEGER NOT NULL REFERENCES ""Talleres_Rubros""(""Id""),
+                    ""Anio"" INTEGER NOT NULL,
+                    ""Mes"" INTEGER NOT NULL,
+                    ""Presupuesto"" DECIMAL(18,2) NOT NULL,
+                    UNIQUE(""RubroId"", ""Anio"", ""Mes"")
+                );
+            ");
+            Console.WriteLine("[DB INIT] Talleres_PresupuestosMensuales created.");
+
+            // Seed default rubros
+            if (!context.Talleres_Rubros.Any())
+            {
+                var rubros = new List<TiempoProcesos.API.Models.Talleres_Rubro>
+                {
+                    new() { Nombre = "Transporte hacia talleres" },
+                    new() { Nombre = "Transporte al aeropuerto" },
+                    new() { Nombre = "Transporte adicional" },
+                    new() { Nombre = "Acompañamiento" },
+                    new() { Nombre = "Transporte por temas de calidad" },
+                    new() { Nombre = "Estibas plásticas para despacho" }
+                };
+                context.Talleres_Rubros.AddRange(rubros);
+                context.SaveChanges();
+                Console.WriteLine("[DB INIT] Talleres_Rubros seeded with 6 default rubros.");
+            }
+        }
+        catch (Exception ex) { Console.WriteLine($"[DB ERROR] Talleres Tables: {ex.Message}"); }
     }
 }

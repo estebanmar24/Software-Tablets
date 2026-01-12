@@ -108,7 +108,7 @@ public class ProduccionController : ControllerBase
         _context.Produccion_Gastos.Add(gasto);
         await _context.SaveChangesAsync();
 
-        return CreatedAtAction(nameof(GetGastos), new { id = gasto.Id }, gasto);
+        return Ok(gasto);
     }
 
     [HttpPut("gastos/{id}")]
@@ -436,12 +436,12 @@ public class ProduccionController : ControllerBase
 
         // Resumen mensual (para vista anual)
         var resumenMensual = new List<object>();
+        var presupuestos = await _context.Produccion_PresupuestosMensuales
+            .Where(p => p.Anio == anio)
+            .ToListAsync();
+
         if (!mes.HasValue)
         {
-            var presupuestos = await _context.Produccion_PresupuestosMensuales
-                .Where(p => p.Anio == anio)
-                .ToListAsync();
-
             for (int m = 1; m <= 12; m++)
             {
                 var gastosMes = gastos.Where(g => g.Mes == m).Sum(g => g.Precio);
@@ -455,11 +455,34 @@ public class ProduccionController : ControllerBase
             }
         }
 
+        // Performance by Rubro (for progress bars)
+        var rubros = await _context.Produccion_Rubros.Where(r => r.Activo).ToListAsync();
+        var desempenoRubro = rubros.Select(r => {
+            var gastoRubro = gastos.Where(g => g.RubroId == r.Id).Sum(g => g.Precio);
+            var presupuestoRubro = mes.HasValue 
+                ? (presupuestos.FirstOrDefault(p => p.RubroId == r.Id && p.Mes == mes.Value)?.Presupuesto ?? 0)
+                : presupuestos.Where(p => p.RubroId == r.Id).Sum(p => p.Presupuesto);
+
+            return new {
+                rubroId = r.Id,
+                nombre = r.Nombre,
+                gastado = gastoRubro,
+                presupuesto = presupuestoRubro,
+                restante = presupuestoRubro - gastoRubro
+            };
+        }).OrderByDescending(x => x.gastado).ToList();
+
         var totalGastado = gastos.Sum(g => g.Precio);
+        var totalPresupuesto = mes.HasValue 
+            ? presupuestos.Where(p => p.Mes == mes.Value).Sum(p => p.Presupuesto)
+            : presupuestos.Sum(p => p.Presupuesto);
 
         return Ok(new {
             totalGastado,
+            totalPresupuesto,
+            totalRestante = totalPresupuesto - totalGastado,
             porRubro,
+            desempenoRubro,
             porProveedor,
             porUsuario,
             resumenMensual

@@ -44,7 +44,7 @@ public class SSTController : ControllerBase
         rubro.Activo = true;
         _context.SST_Rubros.Add(rubro);
         await _context.SaveChangesAsync();
-        return CreatedAtAction(nameof(GetRubros), new { id = rubro.Id }, rubro);
+        return Ok(new { id = rubro.Id });
     }
 
     /// <summary>
@@ -115,7 +115,7 @@ public class SSTController : ControllerBase
         tipo.Activo = true;
         _context.SST_TiposServicio.Add(tipo);
         await _context.SaveChangesAsync();
-        return CreatedAtAction(nameof(GetTiposServicio), new { id = tipo.Id }, tipo);
+        return Ok(new { id = tipo.Id });
     }
 
     /// <summary>
@@ -186,7 +186,7 @@ public class SSTController : ControllerBase
         proveedor.Activo = true;
         _context.SST_Proveedores.Add(proveedor);
         await _context.SaveChangesAsync();
-        return CreatedAtAction(nameof(GetProveedores), new { id = proveedor.Id }, proveedor);
+        return Ok(new { id = proveedor.Id });
     }
 
     /// <summary>
@@ -396,7 +396,7 @@ public class SSTController : ControllerBase
         cotizacion.Activo = true;
         _context.SST_Cotizaciones.Add(cotizacion);
         await _context.SaveChangesAsync();
-        return CreatedAtAction(nameof(GetCotizaciones), new { id = cotizacion.Id }, cotizacion);
+        return Ok(new { id = cotizacion.Id });
     }
 
     [HttpPut("cotizaciones/{id}")]
@@ -540,7 +540,7 @@ public class SSTController : ControllerBase
     {
         _context.SST_GastosMensuales.Add(gasto);
         await _context.SaveChangesAsync();
-        return CreatedAtAction(nameof(GetGastos), new { id = gasto.Id }, gasto);
+        return Ok(new { id = gasto.Id });
     }
 
     /// <summary>

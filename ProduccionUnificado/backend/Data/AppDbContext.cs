@@ -46,6 +46,12 @@ public class AppDbContext : DbContext
     public DbSet<Produccion_Gasto> Produccion_Gastos { get; set; }
     public DbSet<Produccion_PresupuestoMensual> Produccion_PresupuestosMensuales { get; set; }
 
+    // Talleres y Despachos Management
+    public DbSet<Talleres_Rubro> Talleres_Rubros { get; set; }
+    public DbSet<Talleres_Proveedor> Talleres_Proveedores { get; set; }
+    public DbSet<Talleres_Gasto> Talleres_Gastos { get; set; }
+    public DbSet<Talleres_PresupuestoMensual> Talleres_PresupuestosMensuales { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -255,6 +261,36 @@ public class AppDbContext : DbContext
 
         // Unique constraint: One budget per Rubro per month/year
         modelBuilder.Entity<Produccion_PresupuestoMensual>()
+            .HasIndex(p => new { p.RubroId, p.Anio, p.Mes })
+            .IsUnique();
+
+        // Talleres Tables Configuration
+        modelBuilder.Entity<Talleres_Rubro>().ToTable("Talleres_Rubros");
+        modelBuilder.Entity<Talleres_Proveedor>().ToTable("Talleres_Proveedores");
+        modelBuilder.Entity<Talleres_Gasto>().ToTable("Talleres_Gastos");
+        modelBuilder.Entity<Talleres_PresupuestoMensual>().ToTable("Talleres_PresupuestosMensuales");
+
+        // Talleres Relationships
+        modelBuilder.Entity<Talleres_Gasto>()
+            .HasOne(g => g.Proveedor)
+            .WithMany(p => p.Gastos)
+            .HasForeignKey(g => g.ProveedorId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Talleres_Gasto>()
+            .HasOne(g => g.Rubro)
+            .WithMany(r => r.Gastos)
+            .HasForeignKey(g => g.RubroId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Talleres_PresupuestoMensual>()
+            .HasOne(p => p.Rubro)
+            .WithMany(r => r.Presupuestos)
+            .HasForeignKey(p => p.RubroId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Unique constraint: One budget per Rubro per month/year
+        modelBuilder.Entity<Talleres_PresupuestoMensual>()
             .HasIndex(p => new { p.RubroId, p.Anio, p.Mes })
             .IsUnique();
 

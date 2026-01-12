@@ -38,7 +38,7 @@ public class GHController : ControllerBase
         rubro.Activo = true;
         _context.GH_Rubros.Add(rubro);
         await _context.SaveChangesAsync();
-        return CreatedAtAction(nameof(GetRubros), new { id = rubro.Id }, rubro);
+        return Ok(new { id = rubro.Id });
     }
 
     [HttpPut("rubros/{id}")]
@@ -96,7 +96,7 @@ public class GHController : ControllerBase
         tipo.Activo = true;
         _context.GH_TiposServicio.Add(tipo);
         await _context.SaveChangesAsync();
-        return CreatedAtAction(nameof(GetTiposServicio), new { id = tipo.Id }, tipo);
+        return Ok(new { id = tipo.Id });
     }
 
     [HttpPut("tipos-servicio/{id}")]
@@ -263,7 +263,7 @@ public class GHController : ControllerBase
         proveedor.Activo = true;
         _context.GH_Proveedores.Add(proveedor);
         await _context.SaveChangesAsync();
-        return CreatedAtAction(nameof(GetProveedores), new { id = proveedor.Id }, proveedor);
+        return Ok(new { id = proveedor.Id });
     }
 
     [HttpPut("proveedores/{id}")]
@@ -334,7 +334,7 @@ public class GHController : ControllerBase
         cotizacion.Activo = true;
         _context.GH_Cotizaciones.Add(cotizacion);
         await _context.SaveChangesAsync();
-        return CreatedAtAction(nameof(GetCotizaciones), new { id = cotizacion.Id }, cotizacion);
+        return Ok(new { id = cotizacion.Id });
     }
 
     [HttpPut("cotizaciones/{id}")]
@@ -474,7 +474,7 @@ public class GHController : ControllerBase
     {
         _context.GH_GastosMensuales.Add(gasto);
         await _context.SaveChangesAsync();
-        return CreatedAtAction(nameof(GetGastos), new { id = gasto.Id }, gasto);
+        return Ok(new { id = gasto.Id });
     }
 
     [HttpPut("gastos/{id}")]
