@@ -426,14 +426,25 @@ public class GHController : ControllerBase
 
         var presupuestos = await queryPresupuestos.ToListAsync();
 
-        // 3. Calculate Totals
+        // Get Active TiposServicio IDs to filter budgets
+        var activeTipoIds = await _context.GH_TiposServicio
+            .Where(t => t.Activo)
+            .Select(t => t.Id)
+            .ToListAsync();
+        
+        var activeTipoIdsSet = new HashSet<int>(activeTipoIds);
+
+        // Filter budgets just like in PresupuestosGrid
+        var activePresupuestos = presupuestos.Where(p => activeTipoIdsSet.Contains(p.TipoServicioId)).ToList();
+
+        // 3. Calculate Totals using ONLY active budgets
         var totalGastado = gastos.Sum(g => g.Precio);
-        var totalPresupuesto = presupuestos.Sum(p => p.Presupuesto);
+        var totalPresupuesto = activePresupuestos.Sum(p => p.Presupuesto);
 
         // 4. Group by TipoServicio
         // We need all Tipos that have either generic budget OR expenses
         var tipoIds = gastos.Select(g => g.TipoServicioId)
-            .Union(presupuestos.Select(p => p.TipoServicioId))
+            .Union(activePresupuestos.Select(p => p.TipoServicioId))
             .Distinct()
             .ToList();
 
@@ -445,7 +456,7 @@ public class GHController : ControllerBase
         {
             TipoServicioId = id,
             TipoServicioNombre = tiposInfo.ContainsKey(id) ? tiposInfo[id] : "Desconocido",
-            Presupuesto = presupuestos.Where(p => p.TipoServicioId == id).Sum(p => p.Presupuesto),
+            Presupuesto = activePresupuestos.Where(p => p.TipoServicioId == id).Sum(p => p.Presupuesto),
             Gastado = gastos.Where(g => g.TipoServicioId == id).Sum(g => g.Precio),
             CantidadGastos = gastos.Count(g => g.TipoServicioId == id)
         }).ToList();
