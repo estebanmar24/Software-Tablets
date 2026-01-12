@@ -30,4 +30,30 @@ public class UsuariosController : ControllerBase
 
         return CreatedAtAction(nameof(GetUsuarios), new { id = usuario.Id }, usuario);
     }
+
+    [HttpPut("{id}")]
+    public async Task<IActionResult> UpdateUsuario(int id, [FromBody] Usuario updated)
+    {
+        var usuario = await _context.Usuarios.FindAsync(id);
+        if (usuario == null) return NotFound();
+        
+        usuario.Nombre = updated.Nombre;
+        usuario.Activo = updated.Activo;
+        await _context.SaveChangesAsync();
+        
+        return Ok(usuario);
+    }
+
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> DeleteUsuario(int id)
+    {
+        var usuario = await _context.Usuarios.FindAsync(id);
+        if (usuario == null) return NotFound();
+        
+        // Soft delete - just mark as inactive
+        usuario.Activo = false;
+        await _context.SaveChangesAsync();
+        
+        return NoContent();
+    }
 }

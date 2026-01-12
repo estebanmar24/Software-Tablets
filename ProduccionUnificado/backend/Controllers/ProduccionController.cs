@@ -41,6 +41,128 @@ public class ProduccionController : ControllerBase
         });
     }
 
+    /// <summary>
+    /// Get available periods (month/year combinations) with production data
+    /// </summary>
+    [HttpGet("periodos-disponibles")]
+    public async Task<ActionResult> GetPeriodosDisponibles()
+    {
+        var periodos = await _context.ProduccionDiaria
+            .Select(p => new { Mes = p.Fecha.Month, Anio = p.Fecha.Year })
+            .Distinct()
+            .OrderByDescending(p => p.Anio)
+            .ThenByDescending(p => p.Mes)
+            .ToListAsync();
+        return Ok(periodos);
+    }
+
+    /// <summary>
+    /// Get operators that have production data for a given month/year
+    /// Returns grouped by usuario+maquina with days count for CaptureGridScreen modal
+    /// </summary>
+    [HttpGet("operarios-con-datos")]
+    public async Task<ActionResult> GetOperariosConDatos(int mes, int anio)
+    {
+        var datos = await _context.ProduccionDiaria
+            .Include(p => p.Usuario)
+            .Include(p => p.Maquina)
+            .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio)
+            .GroupBy(p => new { p.UsuarioId, p.MaquinaId })
+            .Select(g => new {
+                usuarioId = g.Key.UsuarioId,
+                usuarioNombre = g.First().Usuario != null ? g.First().Usuario.Nombre : "Desconocido",
+                maquinaId = g.Key.MaquinaId,
+                maquinaNombre = g.First().Maquina != null ? g.First().Maquina.Nombre : "Desconocida",
+                diasRegistrados = g.Select(p => p.Fecha.Date).Distinct().Count()
+            })
+            .OrderBy(x => x.usuarioNombre)
+            .ThenBy(x => x.maquinaNombre)
+            .ToListAsync();
+
+        return Ok(datos);
+    }
+
+    /// <summary>
+    /// Get machines that have production data for a given month/year
+    /// Returns with maquinaId, maquinaNombre, and diasRegistrados for CaptureGridScreen modal
+    /// </summary>
+    [HttpGet("maquinas-con-datos")]
+    public async Task<ActionResult> GetMaquinasConDatos(int mes, int anio)
+    {
+        var datos = await _context.ProduccionDiaria
+            .Include(p => p.Maquina)
+            .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio)
+            .GroupBy(p => p.MaquinaId)
+            .Select(g => new {
+                maquinaId = g.Key,
+                maquinaNombre = g.First().Maquina != null ? g.First().Maquina.Nombre : "Desconocida",
+                diasRegistrados = g.Select(p => p.Fecha.Date).Distinct().Count()
+            })
+            .OrderBy(x => x.maquinaNombre)
+            .ToListAsync();
+
+        return Ok(datos);
+    }
+
+    /// <summary>
+    /// Get detailed daily production records for a specific operator and machine
+    /// Used by CaptureGridScreen to populate the grid
+    /// </summary>
+    [HttpGet("detalles")]
+    public async Task<ActionResult> GetDetalles(int mes, int anio, int maquinaId, int usuarioId)
+    {
+        var detalles = await _context.ProduccionDiaria
+            .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio && p.MaquinaId == maquinaId && p.UsuarioId == usuarioId)
+            .OrderBy(p => p.Fecha)
+            .ToListAsync();
+        return Ok(detalles);
+    }
+
+    /// <summary>
+    /// Get detailed daily production records for a specific machine (all operators)
+    /// Used by CaptureGridScreen when filtered by machine
+    /// </summary>
+    [HttpGet("detalles-maquina")]
+    public async Task<ActionResult> GetDetallesMaquina(int mes, int anio, int maquinaId)
+    {
+        var detalles = await _context.ProduccionDiaria
+            .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio && p.MaquinaId == maquinaId)
+            .OrderBy(p => p.Fecha)
+            .ToListAsync();
+        return Ok(detalles);
+    }
+
+
+    /// <summary>
+    /// Delete production data for a specific period, optionally filtered by user or machine
+    /// </summary>
+    [HttpDelete("borrar")]
+    public async Task<IActionResult> BorrarProduccion(int mes, int anio, int? usuarioId = null, int? maquinaId = null)
+    {
+        var query = _context.ProduccionDiaria.Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio);
+
+        if (usuarioId.HasValue)
+        {
+            query = query.Where(p => p.UsuarioId == usuarioId.Value);
+        }
+
+        if (maquinaId.HasValue)
+        {
+            query = query.Where(p => p.MaquinaId == maquinaId.Value);
+        }
+
+        var records = await query.ToListAsync();
+        if (!records.Any())
+        {
+            return NotFound("No se encontraron registros para borrar con los filtros proporcionados.");
+        }
+
+        _context.ProduccionDiaria.RemoveRange(records);
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = $"Se eliminaron {records.Count} registros." });
+    }
+
     [HttpGet("gastos")]
     public async Task<ActionResult<IEnumerable<object>>> GetGastos(int anio, int? mes = null)
     {
@@ -210,10 +332,158 @@ public class ProduccionController : ControllerBase
     }
 
     /// <summary>
-    /// Get summary with budget comparison for a month
+    /// Get production summary with operators and machines data for a month
     /// </summary>
     [HttpGet("resumen")]
-    public async Task<ActionResult> GetResumen(int anio, int mes)
+    public async Task<ActionResult> GetResumen(int mes, int anio, int? diaInicio = null, int? diaFin = null)
+    {
+        // Get all production data for the month
+        var query = _context.ProduccionDiaria
+            .Include(p => p.Usuario)
+            .Include(p => p.Maquina)
+            .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio);
+
+        // Apply day range filter if provided (for weekly reports)
+        if (diaInicio.HasValue && diaFin.HasValue)
+        {
+            query = query.Where(p => p.Fecha.Day >= diaInicio.Value && p.Fecha.Day <= diaFin.Value);
+        }
+
+        var produccion = await query.ToListAsync();
+
+        // Get machine metadata for importance and meta calculations
+        var maquinas = await _context.Maquinas.Where(m => m.Activo).ToListAsync();
+
+        // Count working days in period
+        var diasLaborados = produccion
+            .Select(p => p.Fecha.Date)
+            .Distinct()
+            .Count();
+
+        // Group by Operario + Maquina combination - ALIGNED WITH CalificacionController
+        var resumenOperarios = produccion
+            .GroupBy(p => new { p.UsuarioId, p.MaquinaId })
+            .Select(g => {
+                var maq = maquinas.FirstOrDefault(m => m.Id == g.Key.MaquinaId);
+                var first = g.First();
+                var tirosReferencia = maq?.TirosReferencia ?? 0;
+                
+                // Calculate TirosConEquivalencia like CalificacionController
+                var totalTiros = g.Sum(p => (p.Cambios * tirosReferencia) + p.TirosDiarios);
+                var tirosBonificables = g.Sum(p => p.TirosBonificables);
+                var diasOp = g.Select(p => p.Fecha.Date).Distinct().Count();
+                
+                // Use Meta100Porciento like CalificacionController
+                var meta100Porciento = maq?.Meta100Porciento ?? maq?.MetaRendimiento ?? 7500;
+                var meta100 = meta100Porciento * diasOp;
+                var meta75 = meta100 * 0.75m;
+                
+                var pct75 = meta75 > 0 ? (decimal)totalTiros / meta75 * 100 : 0;
+                var pct100 = meta100 > 0 ? (decimal)totalTiros / meta100 * 100 : 0;
+                
+                string sem75 = pct75 >= 100 ? "Verde" : pct75 >= 75 ? "Amarillo" : "Rojo";
+                string sem100 = pct100 >= 100 ? "Verde" : pct100 >= 75 ? "Amarillo" : "Rojo";
+
+                // Apply 75% threshold: Only pay bonificación if operario achieved >= 75% of Meta100
+                var valorBonifSum = g.Sum(p => p.ValorAPagarBonificable);
+                var valorAPagarBonificableFinal = pct100 >= 75 ? valorBonifSum : 0;
+
+                return new {
+                    usuarioId = g.Key.UsuarioId,
+                    maquinaId = g.Key.MaquinaId,
+                    operario = first.Usuario?.Nombre ?? "Desconocido",
+                    maquina = first.Maquina?.Nombre ?? "Desconocida",
+                    totalTiros = totalTiros,
+                    tirosBonificables = tirosBonificables,
+                    totalHorasProductivas = g.Sum(p => p.TotalHorasProductivas),
+                    promedioHoraProductiva = g.Average(p => p.PromedioHoraProductiva),
+                    totalHoras = g.Sum(p => p.TotalHoras),
+                    valorAPagar = g.Sum(p => p.ValorAPagar),
+                    valorAPagarBonificable = valorAPagarBonificableFinal,
+                    diasLaborados = diasOp,
+                    metaBonificacion = meta75,
+                    meta100Porciento = meta100,
+                    eficiencia = pct100 / 100,
+                    porcentajeRendimiento75 = pct75,
+                    porcentajeRendimiento100 = pct100,
+                    semaforoColor = sem75,
+                    semaforoColor100 = sem100
+                };
+            })
+            .OrderBy(r => r.operario)
+            .ThenBy(r => r.maquina)
+            .ToList();
+
+        // Group by Maquina only - ALIGNED WITH CalificacionController calculation
+        var resumenMaquinas = produccion
+            .GroupBy(p => p.MaquinaId)
+            .Select(g => {
+                var maq = maquinas.FirstOrDefault(m => m.Id == g.Key);
+                var tirosReferencia = maq?.TirosReferencia ?? 0;
+                
+                // Calculate TirosConEquivalencia like CalificacionController: (Cambios * TirosReferencia) + TirosDiarios
+                var tirosTotales = g.Sum(p => (p.Cambios * tirosReferencia) + p.TirosDiarios);
+                var diasMaq = g.Select(p => p.Fecha.Date).Distinct().Count();
+                
+                // Use Meta100Porciento like CalificacionController
+                var meta100Porciento = maq?.Meta100Porciento ?? maq?.MetaRendimiento ?? 7500;
+                var meta100 = meta100Porciento * diasMaq;
+                var meta75 = meta100 * 0.75m;
+                
+                var pct = meta100 > 0 ? (decimal)tirosTotales / meta100 * 100 : 0;
+                string sem = pct >= 100 ? "Verde" : pct >= 75 ? "Amarillo" : "Rojo";
+                
+                var importancia = maq?.Importancia ?? 0;
+                var calificacion = pct * importancia / 100;
+
+                return new {
+                    maquinaId = g.Key,
+                    maquina = maq?.Nombre ?? "Desconocida",
+                    tirosTotales = tirosTotales,
+                    rendimientoEsperado = meta100,
+                    meta75Porciento = meta75,
+                    meta100Porciento = meta100,
+                    porcentajeRendimiento = pct / 100,
+                    porcentajeRendimiento100 = pct,
+                    semaforoColor = sem,
+                    totalTiemposMuertos = g.Sum(p => p.TotalTiemposMuertos),
+                    totalTiempoReparacion = g.Sum(p => p.TiempoReparacion),
+                    totalTiempoFaltaTrabajo = g.Sum(p => p.TiempoFaltaTrabajo),
+                    totalTiempoOtro = g.Sum(p => p.TiempoOtroMuerto),
+                    importancia = importancia,
+                    calificacion = Math.Round(calificacion, 2)
+                };
+            })
+            .OrderBy(r => r.maquina)
+            .ToList();
+
+        // Daily trend
+        var tendenciaDiaria = produccion
+            .GroupBy(p => p.Fecha.Date)
+            .Select(g => new {
+                fecha = g.Key,
+                tiros = g.Sum(p => p.TirosDiarios),
+                desperdicio = g.Sum(p => p.Desperdicio)
+            })
+            .OrderBy(t => t.fecha)
+            .ToList();
+
+        // Plant score (sum of machine calificaciones)
+        var calificacionTotalPlanta = resumenMaquinas.Sum(m => m.calificacion);
+
+        return Ok(new {
+            resumenOperarios,
+            resumenMaquinas,
+            tendenciaDiaria,
+            calificacionTotalPlanta
+        });
+    }
+
+    /// <summary>
+    /// Get budget summary for a month (renamed from original resumen)
+    /// </summary>
+    [HttpGet("resumen-gastos")]
+    public async Task<ActionResult> GetResumenGastos(int anio, int mes)
     {
         var gastos = await _context.Produccion_Gastos
             .Where(g => g.Anio == anio && g.Mes == mes)

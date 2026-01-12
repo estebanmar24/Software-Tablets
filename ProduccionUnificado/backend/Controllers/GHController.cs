@@ -148,16 +148,20 @@ public class GHController : ControllerBase
             TotalAnual = presupuestos.Where(p => p.TipoServicioId == tipo.Id).Sum(p => p.Presupuesto)
         }).ToList();
 
-        // Calculate monthly totals
+        // Calculate monthly totals ONLY for active types
+        var activeTypeIds = tiposServicio.Select(t => t.Id).ToHashSet();
+        
+        var activePresupuestos = presupuestos.Where(p => activeTypeIds.Contains(p.TipoServicioId)).ToList();
+
         var totalesMensuales = Enumerable.Range(1, 12)
-            .Select(mes => presupuestos.Where(p => p.Mes == mes).Sum(p => p.Presupuesto))
+            .Select(mes => activePresupuestos.Where(p => p.Mes == mes).Sum(p => p.Presupuesto))
             .ToList();
 
         return Ok(new
         {
             TiposServicio = result,
             TotalesMensuales = totalesMensuales,
-            TotalAnual = presupuestos.Sum(p => p.Presupuesto)
+            TotalAnual = activePresupuestos.Sum(p => p.Presupuesto)
         });
     }
 

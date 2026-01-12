@@ -1,7 +1,7 @@
 // API Service for Production Screens (compatible with axios-style responses)
 // This file provides functions that match the interface expected by screens migrated from Software-Empresa-Elliot
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5200/api';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
 // Wrapper to make fetch responses compatible with axios { data } structure
 async function axiosWrapper<T>(url: string, options?: RequestInit): Promise<{ data: T }> {
     const response = await fetch(url, options);
@@ -39,6 +39,16 @@ export const createUsuario = (data: any) => axiosWrapper<any>(`${API_BASE_URL}/u
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
+});
+
+export const updateUsuario = (id: number, data: any) => axiosWrapper<any>(`${API_BASE_URL}/usuarios/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+});
+
+export const deleteUsuario = (id: number) => axiosWrapper<any>(`${API_BASE_URL}/usuarios/${id}`, {
+    method: 'DELETE'
 });
 
 // Producción
@@ -114,6 +124,8 @@ export default {
     updateMaquina,
     deleteMaquina,
     createUsuario,
+    updateUsuario,
+    deleteUsuario,
     saveProduccion,
     getResumen,
     getProduccionDetalles,

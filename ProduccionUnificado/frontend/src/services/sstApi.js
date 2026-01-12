@@ -3,7 +3,7 @@
  * Handles all API calls for SST Budget and Expense Management
  */
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5200/api';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
 
 // ==================== RUBROS ====================
 

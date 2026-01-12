@@ -18,18 +18,64 @@ public class CalificacionController : ControllerBase
     }
 
     /// <summary>
-    /// Obtiene el historial de calificaciones mensuales
+    /// Obtiene el historial de calificaciones calculadas dinámicamente (mismo algoritmo que el resumen)
     /// </summary>
     [HttpGet("historial")]
-    public async Task<ActionResult<IEnumerable<CalificacionMensual>>> GetHistorial(int? limite = 12)
+    public async Task<ActionResult> GetHistorial(int? limite = 12)
     {
-        var calificaciones = await _context.CalificacionesMensuales
-            .OrderByDescending(c => c.Anio)
-            .ThenByDescending(c => c.Mes)
-            .Take(limite ?? 12)
+        // Get all periods with production data
+        var periodos = await _context.ProduccionDiaria
+            .Select(p => new { Mes = p.Fecha.Month, Anio = p.Fecha.Year })
+            .Distinct()
             .ToListAsync();
 
-        return Ok(calificaciones);
+        var maquinas = await _context.Maquinas.Where(m => m.Activo).ToListAsync();
+        var resultados = new List<object>();
+
+        foreach (var periodo in periodos.OrderByDescending(p => p.Anio).ThenByDescending(p => p.Mes).Take(limite ?? 12))
+        {
+            // Use same filtering as ProduccionController.GetResumen
+            var produccion = await _context.ProduccionDiaria
+                .Where(p => p.Fecha.Month == periodo.Mes && p.Fecha.Year == periodo.Anio)
+                .ToListAsync();
+
+            if (!produccion.Any()) continue;
+
+            decimal calificacionTotal = 0;
+
+            foreach (var maq in maquinas)
+            {
+                var grupoMaquina = produccion.Where(p => p.MaquinaId == maq.Id).ToList();
+                
+                if (grupoMaquina.Any())
+                {
+                    var tirosReferencia = maq.TirosReferencia;
+                    // Same formula as ProduccionController.GetResumen
+                    var tirosTotales = grupoMaquina.Sum(p => (p.Cambios * tirosReferencia) + p.TirosDiarios);
+                    var diasMaq = grupoMaquina.Select(p => p.Fecha.Date).Distinct().Count();
+                    
+                    var meta100Porciento = maq.Meta100Porciento > 0 ? maq.Meta100Porciento : maq.MetaRendimiento;
+                    var meta100 = meta100Porciento * diasMaq;
+                    
+                    var pct = meta100 > 0 ? (decimal)tirosTotales / meta100 * 100 : 0;
+                    var calificacion = pct * maq.Importancia / 100;
+                    
+                    calificacionTotal += calificacion;
+                }
+            }
+
+            resultados.Add(new {
+                id = 0,
+                mes = periodo.Mes,
+                anio = periodo.Anio,
+                calificacionTotal = Math.Round(calificacionTotal, 2),
+                fechaCalculo = DateTime.UtcNow,
+                notas = (string?)null,
+                desgloseMaquinas = (string?)null
+            });
+        }
+
+        return Ok(resultados);
     }
 
     /// <summary>
@@ -177,6 +223,107 @@ public class CalificacionController : ControllerBase
             Console.WriteLine($"Inner: {ex.InnerException?.Message}");
             Console.WriteLine($"Stack: {ex.StackTrace}");
             return StatusCode(500, new { error = ex.Message, details = ex.InnerException?.Message, stack = ex.StackTrace });
+        }
+    }
+
+    /// <summary>
+    /// Recalcula y actualiza TODAS las calificaciones históricas con la fórmula correcta
+    /// </summary>
+    [HttpPost("recalcular-todos")]
+    public async Task<ActionResult> RecalcularTodos()
+    {
+        try
+        {
+            // Obtener todos los períodos con datos de producción
+            var periodos = await _context.ProduccionDiaria
+                .Select(p => new { Mes = p.Fecha.Month, Anio = p.Fecha.Year })
+                .Distinct()
+                .ToListAsync();
+
+            var maquinas = await _context.Maquinas.ToListAsync();
+            var resultados = new List<object>();
+
+            foreach (var periodo in periodos)
+            {
+                var fechaInicio = new DateTime(periodo.Anio, periodo.Mes, 1);
+                var fechaFin = fechaInicio.AddMonths(1);
+
+                var produccion = await _context.ProduccionDiaria
+                    .Where(p => p.Fecha >= fechaInicio && p.Fecha < fechaFin)
+                    .ToListAsync();
+
+                if (!produccion.Any()) continue;
+
+                decimal calificacionTotal = 0;
+                var desglose = new List<object>();
+
+                foreach (var maquina in maquinas)
+                {
+                    var grupoMaquina = produccion.Where(p => p.MaquinaId == maquina.Id).ToList();
+                    
+                    if (grupoMaquina.Any())
+                    {
+                        // Same formula as calcular-y-guardar
+                        var tirosTotales = grupoMaquina.Sum(x => (x.Cambios * maquina.TirosReferencia) + x.TirosDiarios);
+                        var diasUnicos = grupoMaquina.Select(x => x.Fecha.Date).Distinct().Count();
+                        var meta100 = diasUnicos * maquina.Meta100Porciento;
+                        
+                        var porcentaje100 = meta100 > 0 ? ((decimal)tirosTotales / meta100) * 100 : 0;
+                        var calificacion = porcentaje100 * ((decimal)maquina.Importancia / 100);
+                        
+                        calificacionTotal += calificacion;
+                        
+                        desglose.Add(new
+                        {
+                            MaquinaId = maquina.Id,
+                            Maquina = maquina.Nombre,
+                            Importancia = maquina.Importancia,
+                            PorcentajeRendimiento100 = Math.Round(porcentaje100, 2),
+                            Calificacion = Math.Round(calificacion, 2)
+                        });
+                    }
+                }
+
+                // Guardar o actualizar
+                var existente = await _context.CalificacionesMensuales
+                    .FirstOrDefaultAsync(c => c.Mes == periodo.Mes && c.Anio == periodo.Anio);
+
+                if (existente != null)
+                {
+                    existente.CalificacionTotal = Math.Round(calificacionTotal, 2);
+                    existente.FechaCalculo = DateTime.UtcNow;
+                    existente.DesgloseMaquinas = JsonSerializer.Serialize(desglose);
+                }
+                else
+                {
+                    existente = new CalificacionMensual
+                    {
+                        Mes = periodo.Mes,
+                        Anio = periodo.Anio,
+                        CalificacionTotal = Math.Round(calificacionTotal, 2),
+                        FechaCalculo = DateTime.UtcNow,
+                        DesgloseMaquinas = JsonSerializer.Serialize(desglose)
+                    };
+                    _context.CalificacionesMensuales.Add(existente);
+                }
+
+                resultados.Add(new {
+                    mes = periodo.Mes,
+                    anio = periodo.Anio,
+                    calificacion = Math.Round(calificacionTotal, 2)
+                });
+            }
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { 
+                message = $"Se recalcularon {resultados.Count} períodos",
+                periodos = resultados
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message });
         }
     }
 }

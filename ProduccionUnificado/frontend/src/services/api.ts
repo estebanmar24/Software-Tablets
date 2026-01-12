@@ -9,7 +9,7 @@ import {
 } from '../types';
 
 // Configurar la URL base de la API
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5200/api';
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
 const API_BASE_URL = `${BASE_URL}/tiempoproceso`;
 
 // Helper para manejar respuestas

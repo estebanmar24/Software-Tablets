@@ -1,5 +1,5 @@
 import axios from 'axios';
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5200/api';
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
 const BASE_URL = `${API_URL}/produccion`;
 
 export const produccionApi = {
