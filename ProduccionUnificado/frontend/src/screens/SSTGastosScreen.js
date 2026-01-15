@@ -14,7 +14,8 @@ import {
     ActivityIndicator,
     Alert,
     Modal,
-    Platform
+    Platform,
+    Image
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -476,7 +477,6 @@ function GastosTab() {
         <View style={styles.contentContainer}>
             {/* Header */}
             <View style={styles.header}>
-                <Text style={styles.title}>📋 Gastos SST</Text>
                 <View style={styles.filters}>
                     <Picker
                         selectedValue={anio}
@@ -500,22 +500,24 @@ function GastosTab() {
             </View>
 
             {/* Summary Cards */}
-            {resumen && (
-                <View style={styles.summaryContainer}>
-                    <View style={[styles.summaryCard, styles.presupuestoCard]}>
-                        <Text style={styles.summaryLabel}>Presupuesto</Text>
-                        <Text style={styles.summaryValue}>{formatCurrency(resumen.totalPresupuesto)}</Text>
+            {
+                resumen && (
+                    <View style={styles.summaryContainer}>
+                        <View style={[styles.summaryCard, styles.presupuestoCard]}>
+                            <Text style={styles.summaryLabel}>Presupuesto</Text>
+                            <Text style={styles.summaryValue}>{formatCurrency(resumen.totalPresupuesto)}</Text>
+                        </View>
+                        <View style={[styles.summaryCard, styles.gastadoCard]}>
+                            <Text style={styles.summaryLabel}>Gastado</Text>
+                            <Text style={styles.summaryValue}>{formatCurrency(resumen.totalGastado)}</Text>
+                        </View>
+                        <View style={[styles.summaryCard, resumen.totalRestante >= 0 ? styles.restanteCard : styles.excesoCard]}>
+                            <Text style={styles.summaryLabel}>{resumen.totalRestante >= 0 ? 'Restante' : 'Exceso'}</Text>
+                            <Text style={styles.summaryValue}>{formatCurrency(Math.abs(resumen.totalRestante))}</Text>
+                        </View>
                     </View>
-                    <View style={[styles.summaryCard, styles.gastadoCard]}>
-                        <Text style={styles.summaryLabel}>Gastado</Text>
-                        <Text style={styles.summaryValue}>{formatCurrency(resumen.totalGastado)}</Text>
-                    </View>
-                    <View style={[styles.summaryCard, resumen.totalRestante >= 0 ? styles.restanteCard : styles.excesoCard]}>
-                        <Text style={styles.summaryLabel}>{resumen.totalRestante >= 0 ? 'Restante' : 'Exceso'}</Text>
-                        <Text style={styles.summaryValue}>{formatCurrency(Math.abs(resumen.totalRestante))}</Text>
-                    </View>
-                </View>
-            )}
+                )
+            }
 
             {/* Add Button */}
             <TouchableOpacity style={styles.addButton} onPress={() => setShowModal(true)}>
@@ -523,85 +525,87 @@ function GastosTab() {
             </TouchableOpacity>
 
             {/* Gastos List */}
-            {loading ? (
-                <ActivityIndicator size="large" color="#2563EB" style={styles.loading} />
-            ) : (
-                <ScrollView style={styles.listContainer}>
-                    {gastos.length === 0 ? (
-                        <View style={styles.emptyState}>
-                            <Text style={styles.emptyText}>No hay gastos registrados para este período</Text>
-                        </View>
-                    ) : (
-                        gastos.map(gasto => (
-                            <View key={gasto.id} style={styles.gastoCard}>
-                                <View style={styles.gastoHeader}>
-                                    <Text style={styles.gastoTipo}>{gasto.tipoServicioNombre}</Text>
-                                    <Text style={styles.gastoPrecio}>{formatCurrency(gasto.precio)}</Text>
-                                </View>
-                                <Text style={styles.gastoRubro}>{gasto.rubroNombre}</Text>
-                                <View style={styles.gastoDetails}>
-                                    <Text style={styles.gastoDetail}>🏢 {gasto.proveedorNombre}</Text>
-                                    <Text style={styles.gastoDetail}>📅 {formatDate(gasto.fechaCompra)}</Text>
-                                    <Text style={styles.gastoDetail}>📄 Factura: {gasto.numeroFactura}</Text>
-                                </View>
-                                {gasto.nota && (
-                                    <Text style={styles.gastoNota}>💬 {gasto.nota}</Text>
-                                )}
-                                {/* Budget Info */}
-                                {(() => {
-                                    const budget = getBudgetInfo(gasto.tipoServicioId);
-                                    return (
-                                        <View style={styles.budgetInfoRow}>
-                                            <Text style={styles.budgetInfoLabel}>
-                                                Tipo: Gastado {formatCurrency(budget.gastado)} / Presup. {formatCurrency(budget.presupuesto)}
-                                            </Text>
-                                            <Text style={[
-                                                styles.budgetInfoValue,
-                                                { color: budget.restante >= 0 ? '#059669' : '#DC2626' }
-                                            ]}>
-                                                {budget.restante >= 0 ? 'Disp: ' : 'Exceso: '}{formatCurrency(Math.abs(budget.restante))}
-                                            </Text>
-                                        </View>
-                                    );
-                                })()}
-                                <View style={styles.cardActions}>
-                                    {gasto.archivoFactura && (
-                                        <TouchableOpacity
-                                            style={styles.downloadButton}
-                                            onPress={() => {
-                                                if (Platform.OS === 'web') {
-                                                    const link = document.createElement('a');
-                                                    link.href = gasto.archivoFactura;
-                                                    link.download = gasto.archivoFacturaNombre || `factura_${gasto.numeroFactura || gasto.id}.pdf`;
-                                                    document.body.appendChild(link);
-                                                    link.click();
-                                                    document.body.removeChild(link);
-                                                } else {
-                                                    Alert.alert('Info', 'Descarga disponible solo en web');
-                                                }
-                                            }}
-                                        >
-                                            <Text style={styles.downloadButtonText}>📥 Descargar Factura</Text>
-                                        </TouchableOpacity>
-                                    )}
-                                    <TouchableOpacity
-                                        style={styles.editCardButton}
-                                        onPress={() => handleEdit(gasto)}
-                                    >
-                                        <Text style={styles.editCardButtonText}>✏️ Editar</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        style={styles.deleteButton}
-                                        onPress={() => handleDelete(gasto.id)}
-                                    >
-                                        <Text style={styles.deleteButtonText}>🗑️ Eliminar</Text>
-                                    </TouchableOpacity>
-                                </View>
+            {
+                loading ? (
+                    <ActivityIndicator size="large" color="#2563EB" style={styles.loading} />
+                ) : (
+                    <ScrollView style={styles.listContainer}>
+                        {gastos.length === 0 ? (
+                            <View style={styles.emptyState}>
+                                <Text style={styles.emptyText}>No hay gastos registrados para este período</Text>
                             </View>
-                        ))
-                    )}
-                </ScrollView>
-            )}
+                        ) : (
+                            gastos.map(gasto => (
+                                <View key={gasto.id} style={styles.gastoCard}>
+                                    <View style={styles.gastoHeader}>
+                                        <Text style={styles.gastoTipo}>{gasto.tipoServicioNombre}</Text>
+                                        <Text style={styles.gastoPrecio}>{formatCurrency(gasto.precio)}</Text>
+                                    </View>
+                                    <Text style={styles.gastoRubro}>{gasto.rubroNombre}</Text>
+                                    <View style={styles.gastoDetails}>
+                                        <Text style={styles.gastoDetail}>🏢 {gasto.proveedorNombre}</Text>
+                                        <Text style={styles.gastoDetail}>📅 {formatDate(gasto.fechaCompra)}</Text>
+                                        <Text style={styles.gastoDetail}>📄 Factura: {gasto.numeroFactura}</Text>
+                                    </View>
+                                    {gasto.nota && (
+                                        <Text style={styles.gastoNota}>💬 {gasto.nota}</Text>
+                                    )}
+                                    {/* Budget Info */}
+                                    {(() => {
+                                        const budget = getBudgetInfo(gasto.tipoServicioId);
+                                        return (
+                                            <View style={styles.budgetInfoRow}>
+                                                <Text style={styles.budgetInfoLabel}>
+                                                    Tipo: Gastado {formatCurrency(budget.gastado)} / Presup. {formatCurrency(budget.presupuesto)}
+                                                </Text>
+                                                <Text style={[
+                                                    styles.budgetInfoValue,
+                                                    { color: budget.restante >= 0 ? '#059669' : '#DC2626' }
+                                                ]}>
+                                                    {budget.restante >= 0 ? 'Disp: ' : 'Exceso: '}{formatCurrency(Math.abs(budget.restante))}
+                                                </Text>
+                                            </View>
+                                        );
+                                    })()}
+                                    <View style={styles.cardActions}>
+                                        {gasto.archivoFactura && (
+                                            <TouchableOpacity
+                                                style={styles.downloadButton}
+                                                onPress={() => {
+                                                    if (Platform.OS === 'web') {
+                                                        const link = document.createElement('a');
+                                                        link.href = gasto.archivoFactura;
+                                                        link.download = gasto.archivoFacturaNombre || `factura_${gasto.numeroFactura || gasto.id}.pdf`;
+                                                        document.body.appendChild(link);
+                                                        link.click();
+                                                        document.body.removeChild(link);
+                                                    } else {
+                                                        Alert.alert('Info', 'Descarga disponible solo en web');
+                                                    }
+                                                }}
+                                            >
+                                                <Text style={styles.downloadButtonText}>📥 Descargar Factura</Text>
+                                            </TouchableOpacity>
+                                        )}
+                                        <TouchableOpacity
+                                            style={styles.editCardButton}
+                                            onPress={() => handleEdit(gasto)}
+                                        >
+                                            <Text style={styles.editCardButtonText}>✏️ Editar</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            style={styles.deleteButton}
+                                            onPress={() => handleDelete(gasto.id)}
+                                        >
+                                            <Text style={styles.deleteButtonText}>🗑️ Eliminar</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            ))
+                        )}
+                    </ScrollView>
+                )
+            }
 
             {/* Add Modal */}
             <Modal
@@ -2365,6 +2369,13 @@ const styles = StyleSheet.create({
         backgroundColor: '#FFF',
         borderBottomWidth: 1,
         borderBottomColor: '#E5E7EB',
+    },
+    headerLogo: {
+        width: 140,
+        height: 70,
+        position: 'absolute',
+        top: 0,
+        right: 15,
     },
     title: {
         fontSize: 18,

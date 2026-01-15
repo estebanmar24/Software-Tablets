@@ -742,19 +742,6 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
 
     return (
         <View style={styles.container}>
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity onPress={onBack} style={styles.backButton}>
-                    <Text style={styles.backButtonText}>← Volver</Text>
-                </TouchableOpacity>
-                <View style={styles.headerTitleContainer}>
-                    <Text style={styles.headerIcon}>💻</Text>
-                    <View>
-                        <Text style={styles.headerTitle}>Control de Mantenimiento de Equipos</Text>
-                        <Text style={styles.headerSubtitle}>Gestión integral de equipos de cómputo</Text>
-                    </View>
-                </View>
-            </View>
 
             {/* Tabs */}
             <View style={styles.tabs}>

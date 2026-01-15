@@ -27,6 +27,10 @@ public class Produccion_Gasto
     [ForeignKey("TipoHoraId")]
     public Produccion_TipoHora? TipoHora { get; set; }
 
+    public int? TipoRecargoId { get; set; } // For Surcharge Rate
+    [ForeignKey("TipoRecargoId")]
+    public Produccion_TipoRecargo? TipoRecargo { get; set; }
+
     public int Anio { get; set; }
     public int Mes { get; set; }
     public decimal Precio { get; set; }

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, ActivityIndicator, Platform } from 'react-native';
 import { adminLogin } from '../services/api';
+import { MaterialIcons } from '@expo/vector-icons';
 
 interface AdminLoginProps {
     onLoginSuccess: (role: string, nombreMostrar: string) => void;
@@ -12,6 +13,7 @@ export function AdminLogin({ onLoginSuccess, onBack }: AdminLoginProps) {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
 
     const handleLogin = async () => {
         if (!username || !password) {
@@ -56,16 +58,29 @@ export function AdminLogin({ onLoginSuccess, onBack }: AdminLoginProps) {
 
                 <View style={styles.inputContainer}>
                     <Text style={styles.label}>Contraseña</Text>
-                    <TextInput
-                        style={styles.input}
-                        secureTextEntry
-                        value={password}
-                        onChangeText={(text) => {
-                            setPassword(text);
-                            setError('');
-                        }}
-                        placeholder="Ingrese contraseña"
-                    />
+                    <View style={styles.passwordWrapper}>
+                        <TextInput
+                            style={styles.passwordInput}
+                            secureTextEntry={!showPassword}
+                            value={password}
+                            onChangeText={(text) => {
+                                setPassword(text);
+                                setError('');
+                            }}
+                            placeholder="Ingrese contraseña"
+                        />
+                        <TouchableOpacity
+                            onPress={() => setShowPassword(!showPassword)}
+                            style={styles.eyeIcon}
+                            activeOpacity={0.7}
+                        >
+                            <MaterialIcons
+                                name={showPassword ? "visibility" : "visibility-off"}
+                                size={24}
+                                color="#718096"
+                            />
+                        </TouchableOpacity>
+                    </View>
                     {error ? <Text style={styles.errorText}>{error}</Text> : null}
                 </View>
 
@@ -135,6 +150,23 @@ const styles = StyleSheet.create({
         padding: 12,
         fontSize: 16,
         color: '#2D3748',
+    },
+    passwordWrapper: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F7FAFC',
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        borderRadius: 8,
+    },
+    passwordInput: {
+        flex: 1,
+        padding: 12,
+        fontSize: 16,
+        color: '#2D3748',
+    },
+    eyeIcon: {
+        paddingRight: 12,
     },
     errorText: {
         color: '#E53E3E',

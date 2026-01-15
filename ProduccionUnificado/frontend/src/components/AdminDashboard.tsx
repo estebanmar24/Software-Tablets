@@ -172,10 +172,27 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
 
     // --- VISTA EQUIPOS (MANTENIMIENTO) ---
     if (mode === 'EQUIPOS') {
-        return <EquipmentMaintenanceScreen onBack={() => {
-            setMode('MENU');
-            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
-        }} />;
+        return (
+            <View style={styles.container}>
+                <View style={styles.header}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => {
+                        setMode('MENU');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                    }}>
+                        <Text style={styles.backButtonText}>← Volver al Panel</Text>
+                    </TouchableOpacity>
+                    <View style={styles.centeredTitleContainer} pointerEvents="box-none">
+                        <Text style={styles.title}>Mantenimiento de Equipos</Text>
+                    </View>
+                    <Image
+                        source={require('../../assets/logo_perla.png')}
+                        style={styles.contentHeaderLogo}
+                        resizeMode="contain"
+                    />
+                </View>
+                <EquipmentMaintenanceScreen onBack={() => { }} />
+            </View>
+        );
     }
 
     // --- VISTA SST PRESUPUESTOS (ADMIN) ---
@@ -189,8 +206,14 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                     }}>
                         <Text style={styles.backButtonText}>← Volver al Panel</Text>
                     </TouchableOpacity>
-                    <Text style={styles.title}>Gestión de Presupuestos</Text>
-                    <View style={{ width: 120 }} />
+                    <View style={styles.centeredTitleContainer} pointerEvents="box-none">
+                        <Text style={styles.title}>Gestión de Presupuestos</Text>
+                    </View>
+                    <Image
+                        source={require('../../assets/logo_perla.png')}
+                        style={styles.contentHeaderLogo}
+                        resizeMode="contain"
+                    />
                 </View>
                 <SSTPresupuestosScreen navigation={mockNavigation} />
             </View>
@@ -208,8 +231,14 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                     }}>
                         <Text style={styles.backButtonText}>← Volver al Panel</Text>
                     </TouchableOpacity>
-                    <Text style={styles.title}>Captura de Gastos SST</Text>
-                    <View style={{ width: 120 }} />
+                    <View style={styles.centeredTitleContainer} pointerEvents="box-none">
+                        <Text style={styles.title}>Captura de Gastos SST</Text>
+                    </View>
+                    <Image
+                        source={require('../../assets/logo_perla.png')}
+                        style={styles.contentHeaderLogo}
+                        resizeMode="contain"
+                    />
                 </View>
                 <SSTGastosScreen navigation={mockNavigation} />
             </View>
@@ -227,8 +256,14 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                     }}>
                         <Text style={styles.backButtonText}>← Volver al Panel</Text>
                     </TouchableOpacity>
-                    <Text style={styles.title}>Gestión Humana - Gastos</Text>
-                    <View style={{ width: 120 }} />
+                    <View style={styles.centeredTitleContainer} pointerEvents="box-none">
+                        <Text style={styles.title}>Gestión Humana - Gastos</Text>
+                    </View>
+                    <Image
+                        source={require('../../assets/logo_perla.png')}
+                        style={styles.contentHeaderLogo}
+                        resizeMode="contain"
+                    />
                 </View>
                 <GHGastosScreen navigation={mockNavigation} />
             </View>
@@ -246,8 +281,14 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                     }}>
                         <Text style={styles.backButtonText}>← Volver al Panel</Text>
                     </TouchableOpacity>
-                    <Text style={styles.title}>Gastos de Producción</Text>
-                    <View style={{ width: 120 }} />
+                    <View style={styles.centeredTitleContainer} pointerEvents="box-none">
+                        <Text style={styles.title}>Gastos de Producción</Text>
+                    </View>
+                    <Image
+                        source={require('../../assets/logo_perla.png')}
+                        style={styles.contentHeaderLogo}
+                        resizeMode="contain"
+                    />
                 </View>
                 <ProduccionGastosScreen />
             </View>
@@ -265,8 +306,14 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                     }}>
                         <Text style={styles.backButtonText}>← Volver al Panel</Text>
                     </TouchableOpacity>
-                    <Text style={styles.title}>Gastos de Talleres y Despachos</Text>
-                    <View style={{ width: 120 }} />
+                    <View style={styles.centeredTitleContainer} pointerEvents="box-none">
+                        <Text style={styles.title}>Gastos de Talleres y Despachos</Text>
+                    </View>
+                    <Image
+                        source={require('../../assets/logo_perla.png')}
+                        style={styles.contentHeaderLogo}
+                        resizeMode="contain"
+                    />
                 </View>
                 <TalleresGastosScreen navigation={mockNavigation} />
             </View>
@@ -285,8 +332,14 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                     }}>
                         <Text style={styles.backButtonText}>← Volver al Panel</Text>
                     </TouchableOpacity>
-                    <Text style={styles.title}>Administración Master</Text>
-                    <View style={{ width: 120 }} />
+                    <View style={styles.centeredTitleContainer} pointerEvents="box-none">
+                        <Text style={styles.title}>Administración Master</Text>
+                    </View>
+                    <Image
+                        source={require('../../assets/logo_perla.png')}
+                        style={styles.contentHeaderLogo}
+                        resizeMode="contain"
+                    />
                 </View>
 
                 {/* Tab Navigation */}
@@ -347,12 +400,17 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                     <TouchableOpacity style={styles.backButtonSimple} onPress={onBack}>
                         <Text style={styles.backButtonSimpleText}>← Salir</Text>
                     </TouchableOpacity>
-                    <View>
+                    <View style={{ flex: 1 }}>
                         <Text style={styles.menuTitle}>Panel del Administrador</Text>
                         <Text style={styles.menuSubtitle}>
                             Usuario: {displayName || roleDisplayNames[role] || role.toUpperCase()}
                         </Text>
                     </View>
+                    <Image
+                        source={require('../../assets/logo_perla.png')}
+                        style={styles.headerLogo}
+                        resizeMode="contain"
+                    />
                 </View>
 
                 <ScrollView contentContainerStyle={styles.cardsGrid} showsVerticalScrollIndicator={false}>
@@ -476,6 +534,7 @@ const styles = StyleSheet.create({
     backButtonSimple: {
         marginRight: 20,
         padding: 10,
+        zIndex: 10,
     },
     backButtonSimpleText: {
         fontSize: 16,
@@ -569,17 +628,31 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
+        position: 'relative', // Added
+        height: Platform.OS === 'web' ? 70 : 100, // Fixed height for alignment
+    },
+    centeredTitleContainer: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        top: Platform.OS === 'web' ? 0 : 40,
+        bottom: 0,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 150, // Prevent overlapping buttons/logo
     },
     title: {
         color: '#FFFFFF',
         fontSize: 20,
         fontWeight: 'bold',
+        textAlign: 'center',
     },
     backButton: {
         backgroundColor: 'rgba(255,255,255,0.15)',
         paddingHorizontal: 16,
         paddingVertical: 8,
         borderRadius: 6,
+        zIndex: 10, // Ensure it's on top
     },
     backButtonText: {
         color: '#FFFFFF',
@@ -625,5 +698,20 @@ const styles = StyleSheet.create({
     },
     content: {
         flex: 1,
+    },
+    headerLogo: {
+        width: 220,
+        height: 110,
+        position: 'absolute',
+        top: 0,
+        right: 0,
+    },
+    contentHeaderLogo: {
+        width: 140,
+        height: 70,
+        position: 'absolute',
+        top: 5,
+        right: 15,
+        zIndex: 10, // Added
     },
 });
