@@ -1257,6 +1257,8 @@ function TiposRecargoTab() {
                 porcentaje: parseFloat(porcentaje) || 0,
                 factor: parseFloat(factor) || 0
             };
+            console.log('Saving Recargo Data:', data);
+
             if (editItem) {
                 await produccionApi.updateTipoRecargo(editItem.id, data);
                 Alert.alert('Éxito', 'Recargo actualizado');
@@ -1267,7 +1269,9 @@ function TiposRecargoTab() {
             setShowModal(false);
             loadData();
         } catch (error) {
-            Alert.alert('Error', 'No se pudo guardar');
+            console.error('Error saving recargo:', error);
+            const msg = error.response?.data || error.message || 'No se pudo guardar';
+            Alert.alert('Error', `Detalle: ${typeof msg === 'object' ? JSON.stringify(msg) : msg}`);
         } finally {
             setSaving(false);
         }
