@@ -72,6 +72,21 @@ export const produccionApi = {
         await axios.delete(`${BASE_URL}/tiposhora/${id}`);
     },
 
+    // ==================== TIPOS DE RECARGO CRUD ====================
+    createTipoRecargo: async (tipoRecargo) => {
+        const response = await axios.post(`${BASE_URL}/tiposrecargo`, tipoRecargo);
+        return response.data;
+    },
+
+    updateTipoRecargo: async (id, tipoRecargo) => {
+        const response = await axios.put(`${BASE_URL}/tiposrecargo/${id}`, tipoRecargo);
+        return response.data;
+    },
+
+    deleteTipoRecargo: async (id) => {
+        await axios.delete(`${BASE_URL}/tiposrecargo/${id}`);
+    },
+
     // ==================== BUDGET ENDPOINTS ====================
     getResumen: async (anio, mes) => {
         const response = await axios.get(`${BASE_URL}/resumen-gastos?anio=${anio}&mes=${mes}`);

@@ -14,7 +14,8 @@ import {
     ActivityIndicator,
     Alert,
     Modal,
-    Platform
+    Platform,
+    Image
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { produccionApi } from '../services/produccionApi';
@@ -26,8 +27,9 @@ const TABS = [
     { key: 'rubros', label: 'Rubros', icon: '📁' },
     { key: 'cotizaciones', label: 'Cotizaciones', icon: '📝' },
     { key: 'proveedores', label: 'Proveedores', icon: '🏢' },
-    { key: 'tiposHora', label: 'Tipos de Hora', icon: '⏱️' },
-    { key: 'salarios', label: 'Salarios', icon: '💵' },
+    { key: 'tiposHora', label: 'H. Extras', icon: '⏱️' },
+    { key: 'recargos', label: 'Recargos', icon: '🌙' },
+    { key: 'salarios', label: 'Salarios', icon: '💸' },
 ];
 
 const MESES = [
@@ -75,6 +77,7 @@ export default function ProduccionGastosScreen() {
             {activeTab === 'cotizaciones' && <CotizacionesTab />}
             {activeTab === 'proveedores' && <ProveedoresTab />}
             {activeTab === 'tiposHora' && <TiposHoraTab />}
+            {activeTab === 'recargos' && <TiposRecargoTab />}
             {activeTab === 'salarios' && <SalariosTab />}
         </View>
     );
@@ -91,6 +94,7 @@ function GastosTab() {
     const [maquinas, setMaquinas] = useState([]);
     const [usuarios, setUsuarios] = useState([]);
     const [tiposHora, setTiposHora] = useState([]);
+    const [tiposRecargo, setTiposRecargo] = useState([]);
 
     const [gastos, setGastos] = useState([]);
     const [resumen, setResumen] = useState(null);
@@ -98,7 +102,7 @@ function GastosTab() {
     const [showModal, setShowModal] = useState(false);
     const [editItem, setEditItem] = useState(null);
     const [formData, setFormData] = useState({
-        rubroId: '', proveedorId: '', usuarioId: '', maquinaId: '', tipoHoraId: '',
+        rubroId: '', proveedorId: '', usuarioId: '', maquinaId: '', tipoHoraId: '', tipoRecargoId: '',
         precio: '', fecha: new Date().toISOString().split('T')[0], nota: '', cantidadHoras: '',
         numeroFactura: '', facturaPdfUrl: ''
     });
@@ -116,6 +120,7 @@ function GastosTab() {
             setMaquinas(data.maquinas || []);
             setUsuarios(data.usuarios || []);
             setTiposHora(data.tiposHora || []);
+            setTiposRecargo(data.tiposRecargo || []);
         } catch (error) {
             console.error('Error loading master data:', error);
         }
@@ -163,19 +168,31 @@ function GastosTab() {
         }
     }, [formData.rubroId, formData.proveedorId, cotizaciones, formData.numeroFactura, rubros]);
 
-    // Auto-calculate for Horas Extras
+    // Auto-calculate for Horas Extras or Recargos
     useEffect(() => {
         const selectedRubro = rubros.find(r => r.id == formData.rubroId);
-        if (selectedRubro?.nombre === 'Horas Extras' && formData.usuarioId && formData.tipoHoraId && formData.cantidadHoras) {
+        const name = selectedRubro?.nombre?.toLowerCase() || '';
+        const isHE = name === 'horas extras';
+        const isRec = name === 'recargo';
+
+        if ((isHE || isRec) && formData.usuarioId && formData.cantidadHoras) {
             const usuario = usuarios.find(u => u.id == formData.usuarioId);
-            const tipoHora = tiposHora.find(t => t.id == formData.tipoHoraId);
-            if (usuario && tipoHora) {
+            let factor = 0;
+            if (isHE && formData.tipoHoraId) {
+                const tipoHora = tiposHora.find(t => t.id == formData.tipoHoraId);
+                factor = tipoHora?.factor || 0;
+            } else if (isRec && formData.tipoRecargoId) {
+                const tipoRec = tiposRecargo.find(t => t.id == formData.tipoRecargoId);
+                factor = tipoRec?.factor || 0;
+            }
+
+            if (usuario && factor > 0) {
                 const hourlyRate = (usuario.salario || 0) / 240;
-                const total = hourlyRate * (tipoHora.factor || 0) * parseFloat(formData.cantidadHoras);
+                const total = hourlyRate * factor * parseFloat(formData.cantidadHoras);
                 setFormData(prev => ({ ...prev, precio: Math.round(total).toString() }));
             }
         }
-    }, [formData.rubroId, formData.usuarioId, formData.tipoHoraId, formData.cantidadHoras, rubros, usuarios, tiposHora]);
+    }, [formData.rubroId, formData.usuarioId, formData.tipoHoraId, formData.tipoRecargoId, formData.cantidadHoras, rubros, usuarios, tiposHora, tiposRecargo]);
 
     // Load presupuestoInfo for ANY selected rubro - SST style
     useEffect(() => {
@@ -216,7 +233,7 @@ function GastosTab() {
 
     const resetForm = () => {
         setEditItem(null);
-        setFormData({ rubroId: '', proveedorId: '', usuarioId: '', maquinaId: '', tipoHoraId: '', precio: '', fecha: new Date().toISOString().split('T')[0], nota: '', cantidadHoras: '', numeroFactura: '', facturaPdfUrl: '' });
+        setFormData({ rubroId: '', proveedorId: '', usuarioId: '', maquinaId: '', tipoHoraId: '', tipoRecargoId: '', precio: '', fecha: new Date().toISOString().split('T')[0], nota: '', cantidadHoras: '', numeroFactura: '', facturaPdfUrl: '' });
     };
 
     const handleEdit = (gasto) => {
@@ -224,7 +241,7 @@ function GastosTab() {
         setFormData({
             rubroId: gasto.rubroId?.toString() || '', proveedorId: gasto.proveedorId?.toString() || '',
             usuarioId: gasto.usuarioId?.toString() || '', maquinaId: gasto.maquinaId?.toString() || '',
-            tipoHoraId: gasto.tipoHoraId?.toString() || '', precio: gasto.precio?.toString() || '',
+            tipoHoraId: gasto.tipoHoraId?.toString() || '', tipoRecargoId: gasto.tipoRecargoId?.toString() || '', precio: gasto.precio?.toString() || '',
             fecha: gasto.fecha?.split('T')[0] || new Date().toISOString().split('T')[0],
             nota: gasto.nota || '', cantidadHoras: gasto.cantidadHoras?.toString() || '',
             numeroFactura: gasto.numeroFactura || '', facturaPdfUrl: gasto.facturaPdfUrl || ''
@@ -251,11 +268,12 @@ function GastosTab() {
                 usuarioId: formData.usuarioId ? parseInt(formData.usuarioId) : null,
                 maquinaId: formData.maquinaId ? parseInt(formData.maquinaId) : null,
                 tipoHoraId: formData.tipoHoraId ? parseInt(formData.tipoHoraId) : null,
+                tipoRecargoId: formData.tipoRecargoId ? parseInt(formData.tipoRecargoId) : null,
                 precio: parseFloat(formData.precio || 0), fecha: formData.fecha, nota: formData.nota,
                 cantidadHoras: formData.cantidadHoras ? parseFloat(formData.cantidadHoras) : null,
                 anio: new Date(formData.fecha).getFullYear(), mes: new Date(formData.fecha).getMonth() + 1,
-                numeroFactura: isHorasExtras ? null : formData.numeroFactura,
-                facturaPdfUrl: isHorasExtras ? null : formData.facturaPdfUrl
+                numeroFactura: (isHorasExtras || isRecargo) ? null : formData.numeroFactura,
+                facturaPdfUrl: (isHorasExtras || isRecargo) ? null : formData.facturaPdfUrl
             };
 
             // Quote Update Prompt Logic
@@ -297,9 +315,10 @@ function GastosTab() {
         else { Alert.alert('Confirmar', '¿Eliminar este gasto?', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Eliminar', style: 'destructive', onPress: doDelete }]); }
     };
 
-    const selectedRubroName = rubros.find(r => r.id == formData.rubroId)?.nombre;
-    const isHorasExtras = selectedRubroName === 'Horas Extras';
-    const isMaintenance = selectedRubroName === 'Mantenimiento' || selectedRubroName === 'Repuesto';
+    const selectedRubroName = rubros.find(r => r.id == formData.rubroId)?.nombre?.toLowerCase();
+    const isHorasExtras = selectedRubroName === 'horas extras';
+    const isRecargo = selectedRubroName === 'recargo';
+    const isMaintenance = selectedRubroName === 'mantenimiento' || selectedRubroName === 'repuesto';
 
     // Calculate totals for summary cards - SST style
     const totalMes = resumen?.total || 0;
@@ -310,7 +329,6 @@ function GastosTab() {
         <View style={styles.contentContainer}>
             {/* Header - EXACT SST STYLE */}
             <View style={styles.header}>
-                <Text style={styles.title}>📋 Gastos Producción</Text>
                 <View style={styles.filters}>
                     <Picker selectedValue={anio} onValueChange={setAnio} style={styles.picker}>
                         {anios.map(a => <Picker.Item key={a} label={a.toString()} value={a} />)}
@@ -358,7 +376,9 @@ function GastosTab() {
                                     <Text style={styles.gastoTipo}>{gasto.rubro?.nombre || 'Sin Rubro'}</Text>
                                     <Text style={styles.gastoPrecio}>{formatCurrency(gasto.precio)}</Text>
                                 </View>
-                                <Text style={styles.gastoRubro}>{gasto.tipoHora?.nombre || 'General'}</Text>
+                                <Text style={styles.gastoRubro}>
+                                    {gasto.tipoHora?.nombre || gasto.tipoRecargo?.nombre || 'General'}
+                                </Text>
                                 <View style={styles.gastoDetails}>
                                     {gasto.usuario && <Text style={styles.gastoDetail}>🏢 {gasto.usuario.nombre}</Text>}
                                     {gasto.maquina && <Text style={styles.gastoDetail}>⚙️ {gasto.maquina.nombre}</Text>}
@@ -406,7 +426,7 @@ function GastosTab() {
                                 </Picker>
                             </View>
 
-                            {isHorasExtras && (<>
+                            {(isHorasExtras || isRecargo) && (<>
                                 <Text style={styles.label}>Operario *</Text>
                                 <View style={styles.pickerContainer}>
                                     <Picker selectedValue={formData.usuarioId} onValueChange={(v) => setFormData(p => ({ ...p, usuarioId: v }))}>
@@ -414,13 +434,24 @@ function GastosTab() {
                                         {usuarios.map(u => <Picker.Item key={u.id} label={u.nombre} value={u.id.toString()} />)}
                                     </Picker>
                                 </View>
-                                <Text style={styles.label}>Tipo de Hora *</Text>
-                                <View style={styles.pickerContainer}>
-                                    <Picker selectedValue={formData.tipoHoraId} onValueChange={(v) => setFormData(p => ({ ...p, tipoHoraId: v }))}>
-                                        <Picker.Item label="Seleccione..." value="" />
-                                        {tiposHora.map(t => <Picker.Item key={t.id} label={`${t.nombre} (${t.porcentaje}%)`} value={t.id.toString()} />)}
-                                    </Picker>
-                                </View>
+                                {isHorasExtras && (<>
+                                    <Text style={styles.label}>Tipo de Hora *</Text>
+                                    <View style={styles.pickerContainer}>
+                                        <Picker selectedValue={formData.tipoHoraId} onValueChange={(v) => setFormData(p => ({ ...p, tipoHoraId: v }))}>
+                                            <Picker.Item label="Seleccione..." value="" />
+                                            {tiposHora.map(t => <Picker.Item key={t.id} label={`${t.nombre} (${t.porcentaje}%)`} value={t.id.toString()} />)}
+                                        </Picker>
+                                    </View>
+                                </>)}
+                                {isRecargo && (<>
+                                    <Text style={styles.label}>Tipo de Recargo *</Text>
+                                    <View style={styles.pickerContainer}>
+                                        <Picker selectedValue={formData.tipoRecargoId} onValueChange={(v) => setFormData(p => ({ ...p, tipoRecargoId: v }))}>
+                                            <Picker.Item label="Seleccione..." value="" />
+                                            {tiposRecargo.map(t => <Picker.Item key={t.id} label={`${t.nombre} (${t.porcentaje}%)`} value={t.id.toString()} />)}
+                                        </Picker>
+                                    </View>
+                                </>)}
                                 <Text style={styles.label}>Cantidad Horas *</Text>
                                 <TextInput style={styles.input} value={formData.cantidadHoras} onChangeText={(t) => setFormData(p => ({ ...p, cantidadHoras: t }))} keyboardType="numeric" placeholder="Ej: 2.5" />
                             </>)}
@@ -435,7 +466,7 @@ function GastosTab() {
                                 </View>
                             </>)}
 
-                            {!isHorasExtras && (<>
+                            {!isHorasExtras && !isRecargo && (<>
                                 <Text style={styles.label}>Proveedor</Text>
                                 <View style={styles.pickerContainer}>
                                     <Picker selectedValue={formData.proveedorId} onValueChange={(v) => {
@@ -452,15 +483,15 @@ function GastosTab() {
                                 </View>
                             </>)}
 
-                            <Text style={styles.label}>Fecha de Compra</Text>
+                            <Text style={styles.label}>Fecha</Text>
                             {Platform.OS === 'web' ? (
                                 <input type="date" value={formData.fecha} onChange={(e) => setFormData(p => ({ ...p, fecha: e.target.value }))} style={{ padding: 12, fontSize: 16, borderRadius: 8, border: '1px solid #D1D5DB', backgroundColor: '#F9FAFB', width: '100%', boxSizing: 'border-box' }} />
                             ) : (
                                 <TextInput style={styles.input} value={formData.fecha} onChangeText={(t) => setFormData(p => ({ ...p, fecha: t }))} placeholder="YYYY-MM-DD" />
                             )}
 
-                            {/* Invoice fields - BEFORE price, only for non-Horas Extras */}
-                            {!isHorasExtras && (<>
+                            {/* Invoice fields - BEFORE price, only for non-Horas Extras and non-Recargo */}
+                            {!isHorasExtras && !isRecargo && (<>
                                 <Text style={styles.label}>Número de Factura *</Text>
                                 <TextInput
                                     style={styles.input}
@@ -500,14 +531,14 @@ function GastosTab() {
                                 )}
                             </>)}
 
-                            <Text style={styles.label}>Precio * {isHorasExtras ? '(calculado automáticamente)' : (!formData.numeroFactura.trim() ? '(ingrese factura primero)' : '')}</Text>
+                            <Text style={styles.label}>Precio * {(isHorasExtras || isRecargo) ? '(calculado automáticamente)' : (!formData.numeroFactura.trim() ? '(ingrese factura primero)' : '')}</Text>
                             <TextInput
-                                style={[styles.input, (isHorasExtras || (!isHorasExtras && !formData.numeroFactura.trim())) && styles.inputDisabled]}
+                                style={[styles.input, (isHorasExtras || isRecargo || (!isHorasExtras && !isRecargo && !formData.numeroFactura.trim())) && styles.inputDisabled]}
                                 value={formData.precio}
                                 onChangeText={(t) => setFormData(p => ({ ...p, precio: t }))}
                                 keyboardType="numeric"
                                 placeholder="$ 0"
-                                editable={isHorasExtras ? false : !!formData.numeroFactura.trim()}
+                                editable={(isHorasExtras || isRecargo) ? false : !!formData.numeroFactura.trim()}
                             />
                             {(() => {
                                 const q = cotizaciones.find(c => c.rubroId.toString() === formData.rubroId && c.proveedorId.toString() === formData.proveedorId);
@@ -1192,6 +1223,121 @@ function TiposHoraTab() {
     );
 }
 
+// ===================== TIPOS DE RECARGO TAB =====================
+function TiposRecargoTab() {
+    const [loading, setLoading] = useState(true);
+    const [items, setItems] = useState([]);
+    const [showModal, setShowModal] = useState(false);
+    const [editItem, setEditItem] = useState(null);
+    const [nombre, setNombre] = useState('');
+    const [porcentaje, setPorcentaje] = useState('');
+    const [factor, setFactor] = useState('');
+    const [saving, setSaving] = useState(false);
+
+    const loadData = async () => {
+        try {
+            setLoading(true);
+            const data = await produccionApi.getMaestros();
+            setItems(data.tiposRecargo || []);
+        } catch (error) { console.error('Error:', error); }
+        finally { setLoading(false); }
+    };
+
+    useEffect(() => { loadData(); }, []);
+
+    const handleAdd = () => { setEditItem(null); setNombre(''); setPorcentaje(''); setFactor(''); setShowModal(true); };
+    const handleEdit = (item) => { setEditItem(item); setNombre(item.nombre); setPorcentaje(item.porcentaje?.toString() || ''); setFactor(item.factor?.toString() || ''); setShowModal(true); };
+
+    const handleSave = async () => {
+        if (!nombre.trim()) { Alert.alert('Error', 'Nombre obligatorio'); return; }
+        try {
+            setSaving(true);
+            const data = {
+                nombre,
+                porcentaje: parseFloat(porcentaje) || 0,
+                factor: parseFloat(factor) || 0
+            };
+            if (editItem) {
+                await produccionApi.updateTipoRecargo(editItem.id, data);
+                Alert.alert('Éxito', 'Recargo actualizado');
+            } else {
+                await produccionApi.createTipoRecargo(data);
+                Alert.alert('Éxito', 'Recargo creado');
+            }
+            setShowModal(false);
+            loadData();
+        } catch (error) {
+            Alert.alert('Error', 'No se pudo guardar');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleDelete = async (id) => {
+        const doDelete = async () => {
+            try {
+                await produccionApi.deleteTipoRecargo(id);
+                Alert.alert('Éxito', 'Recargo eliminado');
+                loadData();
+            } catch (error) {
+                Alert.alert('Error', 'No se pudo eliminar');
+            }
+        };
+        if (Platform.OS === 'web') {
+            if (window.confirm('¿Eliminar este tipo de recargo?')) doDelete();
+        } else {
+            Alert.alert('Confirmar', '¿Eliminar este tipo de recargo?', [
+                { text: 'Cancelar' },
+                { text: 'Eliminar', onPress: doDelete, style: 'destructive' }
+            ]);
+        }
+    };
+
+    if (loading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#2563EB" /></View>;
+
+    return (
+        <View style={styles.contentContainer}>
+            <View style={styles.header}>
+                <Text style={styles.title}>🌙 Tipos de Recargo</Text>
+                <TouchableOpacity style={styles.addButtonSmall} onPress={handleAdd}>
+                    <Text style={styles.addButtonText}>+ Agregar</Text>
+                </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.listContainer}>
+                {items.map(item => (
+                    <View key={item.id} style={styles.itemCard}>
+                        <View style={styles.itemInfo}>
+                            <Text style={styles.itemName}>{item.nombre}</Text>
+                            <Text style={styles.itemParent}>Porcentaje: {item.porcentaje}% | Factor: {item.factor}</Text>
+                        </View>
+                        <View style={styles.itemActions}>
+                            <TouchableOpacity onPress={() => handleEdit(item)}><Text style={styles.editButton}>✏️</Text></TouchableOpacity>
+                            <TouchableOpacity onPress={() => handleDelete(item.id)}><Text style={styles.deleteButtonIcon}>🗑️</Text></TouchableOpacity>
+                        </View>
+                    </View>
+                ))}
+            </ScrollView>
+            <Modal visible={showModal} transparent animationType="slide" onRequestClose={() => setShowModal(false)}>
+                <View style={styles.modalOverlay}><View style={styles.modalContentSmall}>
+                    <Text style={styles.modalTitle}>{editItem ? 'Editar' : 'Agregar'} Tipo de Recargo</Text>
+                    <Text style={styles.label}>Nombre *</Text>
+                    <TextInput style={styles.input} value={nombre} onChangeText={setNombre} placeholder="Ej: Recargo Nocturno" />
+                    <Text style={styles.label}>Porcentaje (%)</Text>
+                    <TextInput style={styles.input} value={porcentaje} onChangeText={setPorcentaje} keyboardType="numeric" placeholder="Ej: 35" />
+                    <Text style={styles.label}>Factor</Text>
+                    <TextInput style={styles.input} value={factor} onChangeText={setFactor} keyboardType="numeric" placeholder="Ej: 0.35" />
+                    <View style={styles.modalActions}>
+                        <TouchableOpacity style={styles.cancelButton} onPress={() => setShowModal(false)}><Text style={styles.cancelButtonText}>Cancelar</Text></TouchableOpacity>
+                        <TouchableOpacity style={[styles.submitButton, saving && styles.submitButtonDisabled]} onPress={handleSave} disabled={saving}>
+                            {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>Guardar</Text>}
+                        </TouchableOpacity>
+                    </View>
+                </View></View>
+            </Modal>
+        </View>
+    );
+}
+
 // ===================== SALARIOS TAB =====================
 function SalariosTab() {
     const [loading, setLoading] = useState(true);
@@ -1342,6 +1488,13 @@ const styles = StyleSheet.create({
         backgroundColor: '#FFF',
         borderBottomWidth: 1,
         borderBottomColor: '#E5E7EB',
+    },
+    headerLogo: {
+        width: 140,
+        height: 70,
+        position: 'absolute',
+        top: 0,
+        right: 15,
     },
     title: {
         fontSize: 18,

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Modal, TextInput, Alert, ScrollView, Platform } from 'react-native';
 import { getUsers, createUser, updateUser, deleteUser } from '../services/api';
+import { MaterialIcons } from '@expo/vector-icons';
 
 interface User {
     id: number;
@@ -22,6 +23,7 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
     // const [role, setRole] = useState('admin'); // Removed single role
     const [selectedRoles, setSelectedRoles] = useState<string[]>(['produccion']); // Multi-role state
     const [nombreMostrar, setNombreMostrar] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
 
     const rolesDisponibles = [
         { label: 'Administrador Master', value: 'admin' },
@@ -137,6 +139,7 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
         setPassword('');
         setSelectedRoles(['produccion']);
         setNombreMostrar('');
+        setShowPassword(false);
     };
 
     const renderItem = ({ item }: { item: User }) => {
@@ -229,13 +232,25 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
                             </View>
 
                             <Text style={styles.label}>Contraseña:</Text>
-                            <TextInput
-                                style={styles.input}
-                                value={password}
-                                onChangeText={setPassword}
-                                placeholder={isEditing ? "(Dejar en blanco para no cambiar)" : "Requerida"}
-                                secureTextEntry
-                            />
+                            <View style={styles.passwordWrapper}>
+                                <TextInput
+                                    style={styles.passwordInput}
+                                    value={password}
+                                    onChangeText={setPassword}
+                                    placeholder={isEditing ? "(Dejar en blanco para no cambiar)" : "Requerida"}
+                                    secureTextEntry={!showPassword}
+                                />
+                                <TouchableOpacity
+                                    onPress={() => setShowPassword(!showPassword)}
+                                    style={styles.eyeIcon}
+                                >
+                                    <MaterialIcons
+                                        name={showPassword ? "visibility" : "visibility-off"}
+                                        size={24}
+                                        color="#718096"
+                                    />
+                                </TouchableOpacity>
+                            </View>
                         </ScrollView>
 
                         <View style={styles.modalActions}>
@@ -281,6 +296,21 @@ const styles = StyleSheet.create({
     label: { fontWeight: 'bold', marginTop: 10, marginBottom: 5 },
     input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 5, padding: 10, backgroundColor: '#fff' },
     disabledInput: { backgroundColor: '#eee', color: '#888' },
+    passwordWrapper: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#ccc',
+        borderRadius: 5,
+        backgroundColor: '#fff',
+    },
+    passwordInput: {
+        flex: 1,
+        padding: 10,
+    },
+    eyeIcon: {
+        paddingHorizontal: 10,
+    },
 
     // Multi-select styles
     rolesList: { borderWidth: 1, borderColor: '#ccc', borderRadius: 5, padding: 5, marginBottom: 15 },

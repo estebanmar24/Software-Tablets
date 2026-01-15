@@ -48,6 +48,7 @@ public class AppDbContext : DbContext
     public DbSet<Produccion_Gasto> Produccion_Gastos { get; set; }
     public DbSet<Produccion_Cotizacion> Produccion_Cotizaciones { get; set; }
     public DbSet<Produccion_PresupuestoMensual> Produccion_PresupuestosMensuales { get; set; }
+    public DbSet<Produccion_TipoRecargo> Produccion_TiposRecargo { get; set; }
 
     // Talleres y Despachos Management
     public DbSet<Talleres_Rubro> Talleres_Rubros { get; set; }
@@ -261,6 +262,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Produccion_Rubro>().ToTable("Produccion_Rubros");
         modelBuilder.Entity<Produccion_Proveedor>().ToTable("Produccion_Proveedores");
         modelBuilder.Entity<Produccion_TipoHora>().ToTable("Produccion_TiposHora");
+        modelBuilder.Entity<Produccion_TipoRecargo>().ToTable("Produccion_TiposRecargo");
         modelBuilder.Entity<Produccion_Gasto>().ToTable("Produccion_Gastos");
         modelBuilder.Entity<Produccion_PresupuestoMensual>().ToTable("Produccion_PresupuestosMensuales");
 

@@ -452,6 +452,13 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         elevation: 2,
     },
+    headerLogo: {
+        width: 140,
+        height: 70,
+        position: 'absolute',
+        top: -10,
+        right: 15,
+    },
     filterGroup: {
         flexDirection: 'row',
         alignItems: 'center',

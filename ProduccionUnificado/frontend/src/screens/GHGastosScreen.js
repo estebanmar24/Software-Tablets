@@ -15,7 +15,8 @@ import {
     ActivityIndicator,
     Alert,
     Modal,
-    Platform
+    Platform,
+    Image
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -465,7 +466,6 @@ function GastosTab() {
         <View style={styles.contentContainer}>
             {/* Header */}
             <View style={styles.header}>
-                <Text style={styles.title}>📋 Gastos GH</Text>
                 <View style={styles.filters}>
                     <Picker
                         selectedValue={anio}
@@ -2361,6 +2361,13 @@ const styles = StyleSheet.create({
         backgroundColor: '#FFF',
         borderBottomWidth: 1,
         borderBottomColor: '#E5E7EB',
+    },
+    headerLogo: {
+        width: 140,
+        height: 70,
+        position: 'absolute',
+        top: 0,
+        right: 15,
     },
     title: {
         fontSize: 18,

@@ -27,6 +27,7 @@ public class ProduccionController : ControllerBase
         var rubros = await _context.Produccion_Rubros.Where(r => r.Activo).ToListAsync();
         var proveedores = await _context.Produccion_Proveedores.Where(p => p.Activo).ToListAsync();
         var tiposHora = await _context.Produccion_TiposHora.Where(t => t.Activo).ToListAsync();
+        var tiposRecargo = await _context.Produccion_TiposRecargo.Where(t => t.Activo).ToListAsync();
         
         // Existing tables
         var maquinas = await _context.Maquinas.Where(m => m.Activo).Select(m => new { m.Id, m.Nombre }).ToListAsync();
@@ -41,6 +42,7 @@ public class ProduccionController : ControllerBase
             rubros,
             proveedores,
             tiposHora,
+            tiposRecargo,
             maquinas,
             usuarios
         });
@@ -177,6 +179,7 @@ public class ProduccionController : ControllerBase
             .Include(g => g.Usuario)
             .Include(g => g.Maquina)
             .Include(g => g.TipoHora)
+            .Include(g => g.TipoRecargo)
             .Where(g => g.Anio == anio);
 
         if (mes.HasValue)
@@ -210,25 +213,36 @@ public class ProduccionController : ControllerBase
         var rubro = await _context.Produccion_Rubros.FindAsync(gasto.RubroId);
         if (rubro != null)
         {
-            if (rubro.Nombre == "Horas Extras")
+            if (rubro.Nombre == "Horas Extras" || rubro.Nombre == "Recargo")
             {
-                if (gasto.UsuarioId == null) return BadRequest("Usuario es requerido para Horas Extras");
-                if (gasto.TipoHoraId == null) return BadRequest("Tipo de Hora es requerido");
+                bool isRecargo = rubro.Nombre == "Recargo";
+                if (gasto.UsuarioId == null) return BadRequest("Usuario es requerido");
+                if (!isRecargo && gasto.TipoHoraId == null) return BadRequest("Tipo de Hora es requerido");
+                if (isRecargo && gasto.TipoRecargoId == null) return BadRequest("Tipo de Recargo es requerido");
                 if (gasto.CantidadHoras == null || gasto.CantidadHoras <= 0) return BadRequest("Cantidad de Horas invalidas");
 
                 // Server-side calculation to ensure integrity
                 var usuario = await _context.Usuarios.FindAsync(gasto.UsuarioId);
-                var tipoHora = await _context.Produccion_TiposHora.FindAsync(gasto.TipoHoraId);
+                decimal factor = 0;
+                
+                if (isRecargo)
+                {
+                    var tipoRec = await _context.Produccion_TiposRecargo.FindAsync(gasto.TipoRecargoId);
+                    factor = tipoRec?.Factor ?? 0;
+                }
+                else
+                {
+                    var tipoHora = await _context.Produccion_TiposHora.FindAsync(gasto.TipoHoraId);
+                    factor = tipoHora?.Factor ?? 0;
+                }
 
-                if (usuario == null || tipoHora == null) return BadRequest("Referencia a Usuario o TipoHora no encontrada");
+                if (usuario == null || factor <= 0) return BadRequest("Referencia no encontrada o factor inválido");
 
                 // Formula: (Salario / 240) * Factor * Horas
-                // 240 is the standard monthly hours
                 decimal hourlyRate = usuario.Salario / 240m;
-                gasto.Precio = hourlyRate * tipoHora.Factor * (gasto.CantidadHoras ?? 0);
-                gasto.Precio = Math.Round(gasto.Precio, 2); // Ensure database precision compatibility
+                gasto.Precio = hourlyRate * factor * (gasto.CantidadHoras ?? 0);
+                gasto.Precio = Math.Round(gasto.Precio, 2);
                 
-                // Horas Extras don't require invoice
                 gasto.NumeroFactura = null;
                 gasto.FacturaPdfUrl = null;
             }
@@ -682,6 +696,38 @@ public class ProduccionController : ControllerBase
         return Ok();
     }
 
+    // ===================== TIPOS DE RECARGO CRUD =====================
+    [HttpPost("tiposrecargo")]
+    public async Task<ActionResult> CreateTipoRecargo([FromBody] Produccion_TipoRecargo tipoRecargo)
+    {
+        tipoRecargo.Activo = true;
+        _context.Produccion_TiposRecargo.Add(tipoRecargo);
+        await _context.SaveChangesAsync();
+        return Ok(tipoRecargo);
+    }
+
+    [HttpPut("tiposrecargo/{id}")]
+    public async Task<ActionResult> UpdateTipoRecargo(int id, [FromBody] Produccion_TipoRecargo updated)
+    {
+        var tipoRecargo = await _context.Produccion_TiposRecargo.FindAsync(id);
+        if (tipoRecargo == null) return NotFound();
+        tipoRecargo.Nombre = updated.Nombre;
+        tipoRecargo.Porcentaje = updated.Porcentaje;
+        tipoRecargo.Factor = updated.Factor;
+        await _context.SaveChangesAsync();
+        return Ok(tipoRecargo);
+    }
+
+    [HttpDelete("tiposrecargo/{id}")]
+    public async Task<ActionResult> DeleteTipoRecargo(int id)
+    {
+        var tipoRecargo = await _context.Produccion_TiposRecargo.FindAsync(id);
+        if (tipoRecargo == null) return NotFound();
+        tipoRecargo.Activo = false;
+        await _context.SaveChangesAsync();
+        return Ok();
+    }
+
     // ===================== GRAFICAS ENDPOINT =====================
     [HttpGet("graficas")]
     public async Task<ActionResult> GetGraficas(int anio, int? mes = null)
@@ -690,6 +736,8 @@ public class ProduccionController : ControllerBase
             .Include(g => g.Rubro)
             .Include(g => g.Proveedor)
             .Include(g => g.Usuario)
+            .Include(g => g.TipoHora)
+            .Include(g => g.TipoRecargo)
             .Where(g => g.Anio == anio);
 
         if (mes.HasValue)
