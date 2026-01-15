@@ -298,6 +298,8 @@ public class EquiposController : ControllerBase
                     m.Tecnico,
                     m.Costo,
                     m.Fecha,
+                    m.FechaRegistro,
+                    m.FechaActualizacion,
                     m.ProximoProgramado,
                     m.Observaciones
                 })
@@ -333,7 +335,10 @@ public class EquiposController : ControllerBase
                 return NotFound(new { message = "Equipo no encontrado" });
 
             mantenimiento.EquipoId = id;
-            mantenimiento.Fecha = DateTime.UtcNow;
+            // Use provided fecha or default to now
+            if (mantenimiento.Fecha == default)
+                mantenimiento.Fecha = DateTime.UtcNow;
+            mantenimiento.FechaRegistro = DateTime.UtcNow; // Always set to now on creation
 
             _context.HistorialMantenimientos.Add(mantenimiento);
 
@@ -348,6 +353,42 @@ public class EquiposController : ControllerBase
             await _context.SaveChangesAsync();
 
             return Ok(new { message = "Mantenimiento registrado", id = mantenimiento.Id });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = ex.Message, inner = ex.InnerException?.Message });
+        }
+    }
+
+    /// <summary>
+    /// Actualiza un registro de mantenimiento existente
+    /// </summary>
+    [HttpPut("{equipoId}/mantenimientos/{mantenimientoId}")]
+    public async Task<ActionResult> UpdateMantenimiento(int equipoId, int mantenimientoId, [FromBody] HistorialMantenimiento data)
+    {
+        try
+        {
+            var mantenimiento = await _context.HistorialMantenimientos.FindAsync(mantenimientoId);
+            if (mantenimiento == null)
+                return NotFound(new { message = "Mantenimiento no encontrado" });
+
+            if (mantenimiento.EquipoId != equipoId)
+                return BadRequest(new { message = "El mantenimiento no pertenece a este equipo" });
+
+            // Update fields
+            mantenimiento.Tipo = data.Tipo;
+            mantenimiento.Fecha = data.Fecha;
+            mantenimiento.TrabajoRealizado = data.TrabajoRealizado;
+            mantenimiento.Tecnico = data.Tecnico;
+            mantenimiento.Costo = data.Costo;
+            mantenimiento.Observaciones = data.Observaciones;
+            mantenimiento.ProximoProgramado = data.ProximoProgramado;
+            mantenimiento.FechaActualizacion = DateTime.UtcNow; // Set update timestamp
+            // FechaRegistro stays the same (original registration date)
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Mantenimiento actualizado", id = mantenimiento.Id });
         }
         catch (Exception ex)
         {
@@ -371,6 +412,123 @@ public class EquiposController : ControllerBase
             await _context.SaveChangesAsync();
 
             return Ok(new { message = "Mantenimiento eliminado" });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = ex.Message, inner = ex.InnerException?.Message });
+        }
+    }
+
+    // ============ LICENCIAS DE SOFTWARE ============
+
+    /// <summary>
+    /// Obtiene las licencias de un equipo
+    /// </summary>
+    [HttpGet("{id}/licencias")]
+    public async Task<ActionResult> GetLicencias(int id)
+    {
+        try
+        {
+            var equipo = await _context.Equipos.FindAsync(id);
+            if (equipo == null)
+                return NotFound(new { message = "Equipo no encontrado" });
+
+            var licencias = await _context.LicenciasEquipos
+                .Where(l => l.EquipoId == id)
+                .OrderByDescending(l => l.FechaRegistro)
+                .Select(l => new
+                {
+                    l.Id,
+                    l.Nombre,
+                    l.Clave,
+                    l.FechaInicio,
+                    l.FechaExpiracion,
+                    l.Observaciones,
+                    l.FechaRegistro
+                })
+                .ToListAsync();
+
+            return Ok(licencias);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = ex.Message, inner = ex.InnerException?.Message });
+        }
+    }
+
+    /// <summary>
+    /// Agrega una licencia a un equipo
+    /// </summary>
+    [HttpPost("{id}/licencias")]
+    public async Task<ActionResult> AddLicencia(int id, [FromBody] LicenciaEquipo licencia)
+    {
+        try
+        {
+            var equipo = await _context.Equipos.FindAsync(id);
+            if (equipo == null)
+                return NotFound(new { message = "Equipo no encontrado" });
+
+            licencia.EquipoId = id;
+            licencia.FechaRegistro = DateTime.UtcNow;
+
+            _context.LicenciasEquipos.Add(licencia);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Licencia agregada", id = licencia.Id });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = ex.Message, inner = ex.InnerException?.Message });
+        }
+    }
+
+    /// <summary>
+    /// Actualiza una licencia
+    /// </summary>
+    [HttpPut("{equipoId}/licencias/{licenciaId}")]
+    public async Task<ActionResult> UpdateLicencia(int equipoId, int licenciaId, [FromBody] LicenciaEquipo data)
+    {
+        try
+        {
+            var licencia = await _context.LicenciasEquipos.FindAsync(licenciaId);
+            if (licencia == null)
+                return NotFound(new { message = "Licencia no encontrada" });
+
+            if (licencia.EquipoId != equipoId)
+                return BadRequest(new { message = "La licencia no pertenece a este equipo" });
+
+            licencia.Nombre = data.Nombre;
+            licencia.Clave = data.Clave;
+            licencia.FechaInicio = data.FechaInicio;
+            licencia.FechaExpiracion = data.FechaExpiracion;
+            licencia.Observaciones = data.Observaciones;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Licencia actualizada" });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = ex.Message, inner = ex.InnerException?.Message });
+        }
+    }
+
+    /// <summary>
+    /// Elimina una licencia
+    /// </summary>
+    [HttpDelete("licencias/{licenciaId}")]
+    public async Task<ActionResult> DeleteLicencia(int licenciaId)
+    {
+        try
+        {
+            var licencia = await _context.LicenciasEquipos.FindAsync(licenciaId);
+            if (licencia == null)
+                return NotFound(new { message = "Licencia no encontrada" });
+
+            _context.LicenciasEquipos.Remove(licencia);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Licencia eliminada" });
         }
         catch (Exception ex)
         {

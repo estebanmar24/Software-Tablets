@@ -62,6 +62,17 @@ interface Equipo {
     escanerModelo?: string;
     escanerSerie?: string;
     otrosDispositivos?: string;
+    // Cámara de Video
+    camaraTipo?: string;
+    camaraTipoOtro?: string;
+    camaraResolucion?: string;
+    camaraCapacidad?: string;
+    camaraCanal?: string;
+    camaraMarca?: string;
+    camaraModelo?: string;
+    camaraSerie?: string;
+    camaraCondicionesFisicas?: string;
+    camaraFuncionaCorrectamente?: boolean;
     // Software
     sistemaOperativo?: string;
     versionOffice?: string;
@@ -69,6 +80,8 @@ interface Equipo {
     // Fechas
     ultimoMantenimiento?: string;
     proximoMantenimiento?: string;
+    fechaCreacion?: string;
+    fechaActualizacion?: string;
     // Mantenimiento
     mantenimientoRequerido?: string;
     observaciones?: string;
@@ -93,7 +106,9 @@ interface Mantenimiento {
     trabajoRealizado?: string;
     tecnico?: string;
     costo: number;
-    fecha: string;
+    fecha: string; // Fecha cuando se realizó el mantenimiento
+    fechaRegistro?: string; // Fecha cuando se registró en el sistema
+    fechaActualizacion?: string; // Fecha cuando se editó
     proximoProgramado?: string;
     observaciones?: string;
 }
@@ -105,6 +120,16 @@ interface ProximoMantenimiento {
     area?: string;
     proximoMantenimiento: string;
     diasRestantes: number;
+}
+
+interface Licencia {
+    id: number;
+    nombre: string;
+    clave?: string;
+    fechaInicio?: string;
+    fechaExpiracion?: string;
+    observaciones?: string;
+    fechaRegistro?: string;
 }
 
 export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => void }) {
@@ -144,6 +169,18 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
     // Full Screen Image
     const [fullScreenImage, setFullScreenImage] = useState<string | null>(null);
 
+    // Licencias de software
+    const [modalLicencias, setModalLicencias] = useState(false);
+    const [licencias, setLicencias] = useState<Licencia[]>([]);
+    const [licenciaData, setLicenciaData] = useState({
+        nombre: '',
+        clave: '',
+        fechaInicio: '',
+        fechaExpiracion: '',
+        observaciones: ''
+    });
+    const [editingLicenciaId, setEditingLicenciaId] = useState<number | null>(null);
+
     // Autocomplete for equipment name
     const [showNameSuggestions, setShowNameSuggestions] = useState(false);
     const [nameSuggestions, setNameSuggestions] = useState<string[]>([]);
@@ -155,6 +192,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
         { id: 'mouse', nombre: '🖱️ Mouse', descripcion: 'Solo mouse', icono: '🖱️' },
         { id: 'teclado', nombre: '⌨️ Teclado', descripcion: 'Solo teclado', icono: '⌨️' },
         { id: 'impresora', nombre: '🖨️ Impresora', descripcion: 'Impresora o multifuncional', icono: '🖨️' },
+        { id: 'camara', nombre: '📹 Cámara de Video', descripcion: 'Cámara IP, NVR, DVR', icono: '📹' },
         { id: 'otro', nombre: '📦 Otro Dispositivo', descripcion: 'Especificar cuál es', icono: '📦' },
     ];
 
@@ -169,6 +207,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
         observaciones: '',
         proximoProgramado: ''
     });
+    const [editingMantenimientoId, setEditingMantenimientoId] = useState<number | null>(null);
 
     useEffect(() => {
         loadData();
@@ -379,23 +418,51 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                 (sanitizedData as any).proximoProgramado = null;
             }
 
-            const res = await fetch(`${API_BASE}/equipos/${equipoSeleccionado.id}/mantenimientos`, {
-                method: 'POST',
+            const isEditing = editingMantenimientoId !== null;
+            const url = isEditing
+                ? `${API_BASE}/equipos/${equipoSeleccionado.id}/mantenimientos/${editingMantenimientoId}`
+                : `${API_BASE}/equipos/${equipoSeleccionado.id}/mantenimientos`;
+
+            const res = await fetch(url, {
+                method: isEditing ? 'PUT' : 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(sanitizedData)
             });
             if (res.ok) {
-                Alert.alert('Éxito', 'Mantenimiento registrado');
+                Alert.alert('Éxito', isEditing ? 'Mantenimiento actualizado' : 'Mantenimiento registrado');
                 setModalMantenimiento(false);
+                setEditingMantenimientoId(null);
+                // Reload historial if open
+                if (equipoSeleccionado) {
+                    const histRes = await fetch(`${API_BASE}/equipos/${equipoSeleccionado.id}/mantenimientos`);
+                    if (histRes.ok) {
+                        const data = await histRes.json();
+                        setHistorial(data.mantenimientos || []);
+                    }
+                }
                 loadEquipos();
                 loadData();
             } else {
                 const err = await res.json().catch(() => ({}));
-                Alert.alert('Error', err.message || 'No se pudo registrar');
+                Alert.alert('Error', err.message || 'No se pudo guardar');
             }
         } catch (error) {
-            Alert.alert('Error', 'No se pudo registrar');
+            Alert.alert('Error', 'No se pudo guardar');
         }
+    };
+
+    const handleEditMantenimiento = (m: Mantenimiento) => {
+        setMantenimientoData({
+            tipo: m.tipo,
+            fecha: m.fecha ? m.fecha.split('T')[0] : '',
+            trabajoRealizado: m.trabajoRealizado || '',
+            tecnico: m.tecnico || '',
+            costo: m.costo,
+            observaciones: m.observaciones || '',
+            proximoProgramado: m.proximoProgramado || ''
+        });
+        setEditingMantenimientoId(m.id);
+        setModalMantenimiento(true);
     };
 
     const handleDeleteMantenimiento = async (mantenimientoId: number) => {
@@ -449,6 +516,80 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                     { text: 'Eliminar', style: 'destructive', onPress: doDelete }
                 ]
             );
+        }
+    };
+
+    // ============ LICENCIAS DE SOFTWARE ============
+    const loadLicencias = async (equipoId: number) => {
+        try {
+            const res = await fetch(`${API_BASE}/equipos/${equipoId}/licencias`);
+            if (res.ok) setLicencias(await res.json());
+        } catch (error) {
+            console.error('Error loading licencias:', error);
+        }
+    };
+
+    const handleSaveLicencia = async () => {
+        if (!equipoSeleccionado || !licenciaData.nombre) {
+            Alert.alert('Error', 'El nombre de la licencia es requerido');
+            return;
+        }
+        try {
+            const isEditing = editingLicenciaId !== null;
+            const url = isEditing
+                ? `${API_BASE}/equipos/${equipoSeleccionado.id}/licencias/${editingLicenciaId}`
+                : `${API_BASE}/equipos/${equipoSeleccionado.id}/licencias`;
+
+            const res = await fetch(url, {
+                method: isEditing ? 'PUT' : 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(licenciaData)
+            });
+            if (res.ok) {
+                Alert.alert('Éxito', isEditing ? 'Licencia actualizada' : 'Licencia agregada');
+                setLicenciaData({ nombre: '', clave: '', fechaInicio: '', fechaExpiracion: '', observaciones: '' });
+                setEditingLicenciaId(null);
+                loadLicencias(equipoSeleccionado.id);
+            } else {
+                const err = await res.json().catch(() => ({}));
+                Alert.alert('Error', err.message || 'No se pudo guardar');
+            }
+        } catch (error) {
+            Alert.alert('Error', 'No se pudo guardar la licencia');
+        }
+    };
+
+    const handleEditLicencia = (lic: Licencia) => {
+        setLicenciaData({
+            nombre: lic.nombre,
+            clave: lic.clave || '',
+            fechaInicio: lic.fechaInicio ? lic.fechaInicio.split('T')[0] : '',
+            fechaExpiracion: lic.fechaExpiracion ? lic.fechaExpiracion.split('T')[0] : '',
+            observaciones: lic.observaciones || ''
+        });
+        setEditingLicenciaId(lic.id);
+    };
+
+    const handleDeleteLicencia = async (licenciaId: number) => {
+        const doDelete = async () => {
+            try {
+                const res = await fetch(`${API_BASE}/equipos/licencias/${licenciaId}`, { method: 'DELETE' });
+                if (res.ok && equipoSeleccionado) {
+                    Alert.alert('Éxito', 'Licencia eliminada');
+                    loadLicencias(equipoSeleccionado.id);
+                }
+            } catch (error) {
+                Alert.alert('Error', 'No se pudo eliminar');
+            }
+        };
+
+        if (Platform.OS === 'web') {
+            if (window.confirm('¿Eliminar esta licencia?')) await doDelete();
+        } else {
+            Alert.alert('Confirmar', '¿Eliminar esta licencia?', [
+                { text: 'Cancelar', style: 'cancel' },
+                { text: 'Eliminar', style: 'destructive', onPress: doDelete }
+            ]);
         }
     };
 
@@ -568,6 +709,11 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                         {(stats?.disponibles || 0) + (stats?.asignados || 0)}
                     </Text>
                     <Text style={styles.statSubtitle}>{stats?.porcentajeOperativos || 0}% del total</Text>
+                </View>
+                <View style={[styles.statCard, { borderLeftColor: '#17a2b8' }]}>
+                    <Text style={styles.statTitle}>Asignados</Text>
+                    <Text style={[styles.statValue, { color: '#17a2b8' }]}>{stats?.asignados || 0}</Text>
+                    <Text style={styles.statSubtitle}>Con usuario</Text>
                 </View>
                 <View style={[styles.statCard, { borderLeftColor: '#ffc107' }]}>
                     <Text style={styles.statTitle}>En Mantenimiento</Text>
@@ -720,6 +866,16 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                             >
                                 <Text style={styles.mantenimientoBtnText}>+ Mantenimiento</Text>
                             </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.mantenimientoBtn, { backgroundColor: '#17a2b8', marginTop: 8 }]}
+                                onPress={() => {
+                                    setEquipoSeleccionado(item);
+                                    loadLicencias(item.id);
+                                    setModalLicencias(true);
+                                }}
+                            >
+                                <Text style={styles.mantenimientoBtnText}>📜 Licencias</Text>
+                            </TouchableOpacity>
 
                             {/* Quick actions */}
                             <View style={styles.quickActions}>
@@ -860,10 +1016,10 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
 
                             {/* Info Section */}
                             <Text style={styles.formSectionTitle}>📋 Información General</Text>
-                            <View style={styles.formRow}>
+                            <View style={[styles.formRow, { zIndex: 1000 }]}>
                                 <View style={[styles.formGroup, { flex: 2, zIndex: 1000 }]}>
                                     <Text style={styles.label}>Nombre del Equipo *</Text>
-                                    <View style={{ position: 'relative' }}>
+                                    <View style={{ position: 'relative', zIndex: 1000 }}>
                                         <TextInput
                                             style={styles.input}
                                             value={formData.nombre || ''}
@@ -894,22 +1050,23 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                                         {showNameSuggestions && nameSuggestions.length > 0 && (
                                             <View style={{
                                                 position: 'absolute',
-                                                top: '100%',
+                                                top: 48,
                                                 left: 0,
                                                 right: 0,
                                                 backgroundColor: '#fff',
                                                 borderRadius: 8,
                                                 borderWidth: 1,
-                                                borderColor: '#e0e0e0',
-                                                maxHeight: 150,
+                                                borderColor: '#ddd',
+                                                maxHeight: 180,
                                                 zIndex: 9999,
+                                                elevation: 10,
                                                 shadowColor: '#000',
-                                                shadowOffset: { width: 0, height: 2 },
-                                                shadowOpacity: 0.15,
-                                                shadowRadius: 4,
-                                                elevation: 5
+                                                shadowOffset: { width: 0, height: 4 },
+                                                shadowOpacity: 0.25,
+                                                shadowRadius: 8,
+                                                overflow: 'hidden'
                                             }}>
-                                                <ScrollView nestedScrollEnabled>
+                                                <ScrollView nestedScrollEnabled style={{ maxHeight: 180 }}>
                                                     {nameSuggestions.slice(0, 10).map((name, idx) => (
                                                         <TouchableOpacity
                                                             key={idx}
@@ -919,8 +1076,9 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                                                             }}
                                                             style={{
                                                                 padding: 12,
-                                                                borderBottomWidth: idx < nameSuggestions.length - 1 ? 1 : 0,
-                                                                borderBottomColor: '#f0f0f0'
+                                                                borderBottomWidth: idx < Math.min(nameSuggestions.length, 10) - 1 ? 1 : 0,
+                                                                borderBottomColor: '#f0f0f0',
+                                                                backgroundColor: '#fff'
                                                             }}
                                                         >
                                                             <Text style={{ color: '#2c3e50', fontSize: 14 }}>💻 {name}</Text>
@@ -1004,59 +1162,83 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                             {(isEditing || tipoEquipoSeleccionado === 'computador') && (
                                 <>
                                     <Text style={styles.formSectionTitle}>💻 PC</Text>
-                                    <View style={styles.row}>
-                                        <TextInput
-                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
-                                            placeholder="Marca"
-                                            value={formData.pcMarca || ''}
-                                            onChangeText={v => setFormData({ ...formData, pcMarca: v })}
-                                        />
-                                        <TextInput
-                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
-                                            placeholder="Modelo"
-                                            value={formData.pcModelo || ''}
-                                            onChangeText={v => setFormData({ ...formData, pcModelo: v })}
-                                        />
-                                        <TextInput
-                                            style={[styles.input, { flex: 1 }]}
-                                            placeholder="Serie"
-                                            value={formData.pcSerie || ''}
-                                            onChangeText={v => setFormData({ ...formData, pcSerie: v })}
-                                        />
+                                    <View style={styles.formRow}>
+                                        <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                                            <Text style={styles.label}>Marca</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Ej: Dell, HP, Lenovo"
+                                                value={formData.pcMarca || ''}
+                                                onChangeText={v => setFormData({ ...formData, pcMarca: v })}
+                                            />
+                                        </View>
+                                        <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                                            <Text style={styles.label}>Modelo</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Modelo del equipo"
+                                                value={formData.pcModelo || ''}
+                                                onChangeText={v => setFormData({ ...formData, pcModelo: v })}
+                                            />
+                                        </View>
+                                        <View style={[styles.formGroup, { flex: 1 }]}>
+                                            <Text style={styles.label}>Serie</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Número de serie"
+                                                value={formData.pcSerie || ''}
+                                                onChangeText={v => setFormData({ ...formData, pcSerie: v })}
+                                            />
+                                        </View>
                                     </View>
-                                    <View style={styles.row}>
-                                        <TextInput
-                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
-                                            placeholder="Inventario"
-                                            value={formData.pcInventario || ''}
-                                            onChangeText={v => setFormData({ ...formData, pcInventario: v })}
-                                        />
-                                        <TextInput
-                                            style={[styles.input, { flex: 1 }]}
-                                            placeholder="Condiciones Físicas"
-                                            value={formData.pcCondicionesFisicas || ''}
-                                            onChangeText={v => setFormData({ ...formData, pcCondicionesFisicas: v })}
-                                        />
+                                    <View style={styles.formRow}>
+                                        <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                                            <Text style={styles.label}>Inventario</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Código de inventario"
+                                                value={formData.pcInventario || ''}
+                                                onChangeText={v => setFormData({ ...formData, pcInventario: v })}
+                                            />
+                                        </View>
+                                        <View style={[styles.formGroup, { flex: 1 }]}>
+                                            <Text style={styles.label}>Condiciones Físicas</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Estado físico del equipo"
+                                                value={formData.pcCondicionesFisicas || ''}
+                                                onChangeText={v => setFormData({ ...formData, pcCondicionesFisicas: v })}
+                                            />
+                                        </View>
                                     </View>
-                                    <View style={styles.row}>
-                                        <TextInput
-                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
-                                            placeholder="Procesador"
-                                            value={formData.procesador || ''}
-                                            onChangeText={v => setFormData({ ...formData, procesador: v })}
-                                        />
-                                        <TextInput
-                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
-                                            placeholder="Memoria RAM"
-                                            value={formData.memoriaRam || ''}
-                                            onChangeText={v => setFormData({ ...formData, memoriaRam: v })}
-                                        />
-                                        <TextInput
-                                            style={[styles.input, { flex: 1 }]}
-                                            placeholder="Disco Duro"
-                                            value={formData.discoDuro || ''}
-                                            onChangeText={v => setFormData({ ...formData, discoDuro: v })}
-                                        />
+                                    <View style={styles.formRow}>
+                                        <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                                            <Text style={styles.label}>Procesador</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Ej: Intel Core i5"
+                                                value={formData.procesador || ''}
+                                                onChangeText={v => setFormData({ ...formData, procesador: v })}
+                                            />
+                                        </View>
+                                        <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                                            <Text style={styles.label}>Memoria RAM</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Ej: 8GB, 16GB"
+                                                value={formData.memoriaRam || ''}
+                                                onChangeText={v => setFormData({ ...formData, memoriaRam: v })}
+                                            />
+                                        </View>
+                                        <View style={[styles.formGroup, { flex: 1 }]}>
+                                            <Text style={styles.label}>Disco Duro</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Ej: 500GB SSD"
+                                                value={formData.discoDuro || ''}
+                                                onChangeText={v => setFormData({ ...formData, discoDuro: v })}
+                                            />
+                                        </View>
                                     </View>
                                     <View style={styles.checkboxRow}>
                                         <TouchableOpacity style={styles.checkbox} onPress={() => setFormData({ ...formData, pcEnciende: !formData.pcEnciende })}>
@@ -1083,32 +1265,44 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                             {(isEditing || tipoEquipoSeleccionado === 'computador' || tipoEquipoSeleccionado === 'monitor') && (
                                 <>
                                     <Text style={styles.formSectionTitle}>🖥️ Monitor</Text>
-                                    <View style={styles.row}>
+                                    <View style={styles.formRow}>
+                                        <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                                            <Text style={styles.label}>Marca</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Ej: LG, Samsung"
+                                                value={formData.monitorMarca || ''}
+                                                onChangeText={v => setFormData({ ...formData, monitorMarca: v })}
+                                            />
+                                        </View>
+                                        <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                                            <Text style={styles.label}>Modelo</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Modelo del monitor"
+                                                value={formData.monitorModelo || ''}
+                                                onChangeText={v => setFormData({ ...formData, monitorModelo: v })}
+                                            />
+                                        </View>
+                                        <View style={[styles.formGroup, { flex: 1 }]}>
+                                            <Text style={styles.label}>Serie</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Número de serie"
+                                                value={formData.monitorSerie || ''}
+                                                onChangeText={v => setFormData({ ...formData, monitorSerie: v })}
+                                            />
+                                        </View>
+                                    </View>
+                                    <View style={styles.formGroup}>
+                                        <Text style={styles.label}>Condiciones Físicas</Text>
                                         <TextInput
-                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
-                                            placeholder="Marca"
-                                            value={formData.monitorMarca || ''}
-                                            onChangeText={v => setFormData({ ...formData, monitorMarca: v })}
-                                        />
-                                        <TextInput
-                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
-                                            placeholder="Modelo"
-                                            value={formData.monitorModelo || ''}
-                                            onChangeText={v => setFormData({ ...formData, monitorModelo: v })}
-                                        />
-                                        <TextInput
-                                            style={[styles.input, { flex: 1 }]}
-                                            placeholder="Serie"
-                                            value={formData.monitorSerie || ''}
-                                            onChangeText={v => setFormData({ ...formData, monitorSerie: v })}
+                                            style={styles.input}
+                                            placeholder="Estado físico del monitor"
+                                            value={formData.monitorCondicionesFisicas || ''}
+                                            onChangeText={v => setFormData({ ...formData, monitorCondicionesFisicas: v })}
                                         />
                                     </View>
-                                    <TextInput
-                                        style={styles.input}
-                                        placeholder="Condiciones Físicas"
-                                        value={formData.monitorCondicionesFisicas || ''}
-                                        onChangeText={v => setFormData({ ...formData, monitorCondicionesFisicas: v })}
-                                    />
                                     <View style={styles.checkboxRow}>
                                         <TouchableOpacity style={styles.checkbox} onPress={() => setFormData({ ...formData, monitorEnciende: !formData.monitorEnciende })}>
                                             <Text style={styles.checkboxIcon}>{formData.monitorEnciende ? '☑' : '☐'}</Text>
@@ -1130,32 +1324,44 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                             {(isEditing || tipoEquipoSeleccionado === 'computador' || tipoEquipoSeleccionado === 'teclado') && (
                                 <>
                                     <Text style={styles.formSectionTitle}>⌨️ Teclado</Text>
-                                    <View style={styles.row}>
+                                    <View style={styles.formRow}>
+                                        <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                                            <Text style={styles.label}>Marca</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Ej: Logitech, Dell"
+                                                value={formData.tecladoMarca || ''}
+                                                onChangeText={v => setFormData({ ...formData, tecladoMarca: v })}
+                                            />
+                                        </View>
+                                        <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                                            <Text style={styles.label}>Modelo</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Modelo del teclado"
+                                                value={formData.tecladoModelo || ''}
+                                                onChangeText={v => setFormData({ ...formData, tecladoModelo: v })}
+                                            />
+                                        </View>
+                                        <View style={[styles.formGroup, { flex: 1 }]}>
+                                            <Text style={styles.label}>Serie</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Número de serie"
+                                                value={formData.tecladoSerie || ''}
+                                                onChangeText={v => setFormData({ ...formData, tecladoSerie: v })}
+                                            />
+                                        </View>
+                                    </View>
+                                    <View style={styles.formGroup}>
+                                        <Text style={styles.label}>Condiciones Físicas</Text>
                                         <TextInput
-                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
-                                            placeholder="Marca"
-                                            value={formData.tecladoMarca || ''}
-                                            onChangeText={v => setFormData({ ...formData, tecladoMarca: v })}
-                                        />
-                                        <TextInput
-                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
-                                            placeholder="Modelo"
-                                            value={formData.tecladoModelo || ''}
-                                            onChangeText={v => setFormData({ ...formData, tecladoModelo: v })}
-                                        />
-                                        <TextInput
-                                            style={[styles.input, { flex: 1 }]}
-                                            placeholder="Serie"
-                                            value={formData.tecladoSerie || ''}
-                                            onChangeText={v => setFormData({ ...formData, tecladoSerie: v })}
+                                            style={styles.input}
+                                            placeholder="Estado físico del teclado"
+                                            value={formData.tecladoCondicionesFisicas || ''}
+                                            onChangeText={v => setFormData({ ...formData, tecladoCondicionesFisicas: v })}
                                         />
                                     </View>
-                                    <TextInput
-                                        style={styles.input}
-                                        placeholder="Condiciones Físicas"
-                                        value={formData.tecladoCondicionesFisicas || ''}
-                                        onChangeText={v => setFormData({ ...formData, tecladoCondicionesFisicas: v })}
-                                    />
                                     <View style={styles.checkboxRow}>
                                         <TouchableOpacity style={styles.checkbox} onPress={() => setFormData({ ...formData, tecladoFuncionaCorrectamente: !formData.tecladoFuncionaCorrectamente })}>
                                             <Text style={styles.checkboxIcon}>{formData.tecladoFuncionaCorrectamente ? '☑' : '☐'}</Text>
@@ -1177,32 +1383,44 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                             {(isEditing || tipoEquipoSeleccionado === 'computador' || tipoEquipoSeleccionado === 'mouse') && (
                                 <>
                                     <Text style={styles.formSectionTitle}>🖱️ Mouse</Text>
-                                    <View style={styles.row}>
+                                    <View style={styles.formRow}>
+                                        <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                                            <Text style={styles.label}>Marca</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Ej: Logitech, Microsoft"
+                                                value={formData.mouseMarca || ''}
+                                                onChangeText={v => setFormData({ ...formData, mouseMarca: v })}
+                                            />
+                                        </View>
+                                        <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                                            <Text style={styles.label}>Modelo</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Modelo del mouse"
+                                                value={formData.mouseModelo || ''}
+                                                onChangeText={v => setFormData({ ...formData, mouseModelo: v })}
+                                            />
+                                        </View>
+                                        <View style={[styles.formGroup, { flex: 1 }]}>
+                                            <Text style={styles.label}>Serie</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Número de serie"
+                                                value={formData.mouseSerie || ''}
+                                                onChangeText={v => setFormData({ ...formData, mouseSerie: v })}
+                                            />
+                                        </View>
+                                    </View>
+                                    <View style={styles.formGroup}>
+                                        <Text style={styles.label}>Condiciones Físicas</Text>
                                         <TextInput
-                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
-                                            placeholder="Marca"
-                                            value={formData.mouseMarca || ''}
-                                            onChangeText={v => setFormData({ ...formData, mouseMarca: v })}
-                                        />
-                                        <TextInput
-                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
-                                            placeholder="Modelo"
-                                            value={formData.mouseModelo || ''}
-                                            onChangeText={v => setFormData({ ...formData, mouseModelo: v })}
-                                        />
-                                        <TextInput
-                                            style={[styles.input, { flex: 1 }]}
-                                            placeholder="Serie"
-                                            value={formData.mouseSerie || ''}
-                                            onChangeText={v => setFormData({ ...formData, mouseSerie: v })}
+                                            style={styles.input}
+                                            placeholder="Estado físico del mouse"
+                                            value={formData.mouseCondicionesFisicas || ''}
+                                            onChangeText={v => setFormData({ ...formData, mouseCondicionesFisicas: v })}
                                         />
                                     </View>
-                                    <TextInput
-                                        style={styles.input}
-                                        placeholder="Condiciones Físicas"
-                                        value={formData.mouseCondicionesFisicas || ''}
-                                        onChangeText={v => setFormData({ ...formData, mouseCondicionesFisicas: v })}
-                                    />
                                     <View style={styles.checkboxRow}>
                                         <TouchableOpacity style={styles.checkbox} onPress={() => setFormData({ ...formData, mouseFuncionaCorrectamente: !formData.mouseFuncionaCorrectamente })}>
                                             <Text style={styles.checkboxIcon}>{formData.mouseFuncionaCorrectamente ? '☑' : '☐'}</Text>
@@ -1220,45 +1438,179 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                             {(isEditing || tipoEquipoSeleccionado === 'impresora') && (
                                 <>
                                     <Text style={styles.formSectionTitle}>🖨️ Impresora / Escáner</Text>
-                                    <View style={styles.row}>
+                                    <Text style={styles.sectionLabel}>Impresora</Text>
+                                    <View style={styles.formRow}>
+                                        <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                                            <Text style={styles.label}>Marca</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Ej: HP, Epson, Canon"
+                                                value={formData.impresoraMarca || ''}
+                                                onChangeText={v => setFormData({ ...formData, impresoraMarca: v })}
+                                            />
+                                        </View>
+                                        <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                                            <Text style={styles.label}>Modelo</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Modelo de la impresora"
+                                                value={formData.impresoraModelo || ''}
+                                                onChangeText={v => setFormData({ ...formData, impresoraModelo: v })}
+                                            />
+                                        </View>
+                                        <View style={[styles.formGroup, { flex: 1 }]}>
+                                            <Text style={styles.label}>Serie</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Número de serie"
+                                                value={formData.impresoraSerie || ''}
+                                                onChangeText={v => setFormData({ ...formData, impresoraSerie: v })}
+                                            />
+                                        </View>
+                                    </View>
+                                    <Text style={styles.sectionLabel}>Escáner</Text>
+                                    <View style={styles.formRow}>
+                                        <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                                            <Text style={styles.label}>Marca</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Ej: HP, Epson, Canon"
+                                                value={formData.escanerMarca || ''}
+                                                onChangeText={v => setFormData({ ...formData, escanerMarca: v })}
+                                            />
+                                        </View>
+                                        <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                                            <Text style={styles.label}>Modelo</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Modelo del escáner"
+                                                value={formData.escanerModelo || ''}
+                                                onChangeText={v => setFormData({ ...formData, escanerModelo: v })}
+                                            />
+                                        </View>
+                                        <View style={[styles.formGroup, { flex: 1 }]}>
+                                            <Text style={styles.label}>Serie</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Número de serie"
+                                                value={formData.escanerSerie || ''}
+                                                onChangeText={v => setFormData({ ...formData, escanerSerie: v })}
+                                            />
+                                        </View>
+                                    </View>
+                                </>
+                            )}
+
+                            {/* Cámara de Video */}
+                            {(isEditing || tipoEquipoSeleccionado === 'camara') && (
+                                <>
+                                    <Text style={styles.formSectionTitle}>📹 Cámara de Video</Text>
+                                    <View style={styles.formRow}>
+                                        <View style={styles.formGroup}>
+                                            <Text style={styles.label}>Tipo de Cámara</Text>
+                                            <View style={styles.tipoSelector}>
+                                                {['IP', 'NVR', 'DVR', 'Otro'].map(tipo => (
+                                                    <TouchableOpacity
+                                                        key={tipo}
+                                                        style={[
+                                                            styles.tipoOption,
+                                                            formData.camaraTipo === tipo && styles.tipoOptionActive
+                                                        ]}
+                                                        onPress={() => setFormData({ ...formData, camaraTipo: tipo })}
+                                                    >
+                                                        <Text style={formData.camaraTipo === tipo ? styles.tipoOptionTextActive : styles.tipoOptionText}>
+                                                            {tipo}
+                                                        </Text>
+                                                    </TouchableOpacity>
+                                                ))}
+                                            </View>
+                                        </View>
+                                    </View>
+                                    {formData.camaraTipo === 'Otro' && (
+                                        <View style={styles.formGroup}>
+                                            <Text style={styles.label}>Especifique tipo</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Ej: Cámara analógica"
+                                                value={formData.camaraTipoOtro || ''}
+                                                onChangeText={v => setFormData({ ...formData, camaraTipoOtro: v })}
+                                            />
+                                        </View>
+                                    )}
+                                    <View style={styles.formRow}>
+                                        <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                                            <Text style={styles.label}>Resolución</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Ej: 1080p, 4K"
+                                                value={formData.camaraResolucion || ''}
+                                                onChangeText={v => setFormData({ ...formData, camaraResolucion: v })}
+                                            />
+                                        </View>
+                                        <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                                            <Text style={styles.label}>Capacidad</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Ej: 1TB, 2TB"
+                                                value={formData.camaraCapacidad || ''}
+                                                onChangeText={v => setFormData({ ...formData, camaraCapacidad: v })}
+                                            />
+                                        </View>
+                                        <View style={[styles.formGroup, { flex: 1 }]}>
+                                            <Text style={styles.label}>Canal</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Ej: 1, 2, 3"
+                                                value={formData.camaraCanal || ''}
+                                                onChangeText={v => setFormData({ ...formData, camaraCanal: v })}
+                                            />
+                                        </View>
+                                    </View>
+                                    <View style={styles.formRow}>
+                                        <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                                            <Text style={styles.label}>Marca</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Ej: Hikvision, Dahua"
+                                                value={formData.camaraMarca || ''}
+                                                onChangeText={v => setFormData({ ...formData, camaraMarca: v })}
+                                            />
+                                        </View>
+                                        <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                                            <Text style={styles.label}>Modelo</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Ej: DS-2CD2143G0-I"
+                                                value={formData.camaraModelo || ''}
+                                                onChangeText={v => setFormData({ ...formData, camaraModelo: v })}
+                                            />
+                                        </View>
+                                        <View style={[styles.formGroup, { flex: 1 }]}>
+                                            <Text style={styles.label}>Serie</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Número de serie"
+                                                value={formData.camaraSerie || ''}
+                                                onChangeText={v => setFormData({ ...formData, camaraSerie: v })}
+                                            />
+                                        </View>
+                                    </View>
+                                    <View style={styles.formGroup}>
+                                        <Text style={styles.label}>Condiciones Físicas</Text>
                                         <TextInput
-                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
-                                            placeholder="Marca (Impresora)"
-                                            value={formData.impresoraMarca || ''}
-                                            onChangeText={v => setFormData({ ...formData, impresoraMarca: v })}
-                                        />
-                                        <TextInput
-                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
-                                            placeholder="Modelo"
-                                            value={formData.impresoraModelo || ''}
-                                            onChangeText={v => setFormData({ ...formData, impresoraModelo: v })}
-                                        />
-                                        <TextInput
-                                            style={[styles.input, { flex: 1 }]}
-                                            placeholder="Serie"
-                                            value={formData.impresoraSerie || ''}
-                                            onChangeText={v => setFormData({ ...formData, impresoraSerie: v })}
+                                            style={styles.input}
+                                            placeholder="Estado físico del dispositivo"
+                                            value={formData.camaraCondicionesFisicas || ''}
+                                            onChangeText={v => setFormData({ ...formData, camaraCondicionesFisicas: v })}
                                         />
                                     </View>
-                                    <View style={styles.row}>
-                                        <TextInput
-                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
-                                            placeholder="Marca (Escáner)"
-                                            value={formData.escanerMarca || ''}
-                                            onChangeText={v => setFormData({ ...formData, escanerMarca: v })}
-                                        />
-                                        <TextInput
-                                            style={[styles.input, { flex: 1, marginRight: 8 }]}
-                                            placeholder="Modelo"
-                                            value={formData.escanerModelo || ''}
-                                            onChangeText={v => setFormData({ ...formData, escanerModelo: v })}
-                                        />
-                                        <TextInput
-                                            style={[styles.input, { flex: 1 }]}
-                                            placeholder="Serie"
-                                            value={formData.escanerSerie || ''}
-                                            onChangeText={v => setFormData({ ...formData, escanerSerie: v })}
-                                        />
+                                    <View style={styles.checkboxRow}>
+                                        <TouchableOpacity
+                                            style={styles.checkbox}
+                                            onPress={() => setFormData({ ...formData, camaraFuncionaCorrectamente: !formData.camaraFuncionaCorrectamente })}
+                                        >
+                                            <Text>{formData.camaraFuncionaCorrectamente ? '☑️' : '⬜'} Funciona Correctamente</Text>
+                                        </TouchableOpacity>
                                     </View>
                                 </>
                             )}
@@ -1327,27 +1679,36 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                                     />
                                 </View>
                             ) : (
-                                <TextInput
-                                    style={styles.input}
-                                    placeholder="Fecha próximo mantenimiento (YYYY-MM-DD)"
-                                    value={formData.proximoMantenimiento ? formData.proximoMantenimiento.split('T')[0] : ''}
-                                    onChangeText={v => setFormData({ ...formData, proximoMantenimiento: v })}
-                                />
+                                <View style={styles.formGroup}>
+                                    <Text style={styles.label}>F. Próx. Mantenimiento</Text>
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="YYYY-MM-DD"
+                                        value={formData.proximoMantenimiento ? formData.proximoMantenimiento.split('T')[0] : ''}
+                                        onChangeText={v => setFormData({ ...formData, proximoMantenimiento: v })}
+                                    />
+                                </View>
                             )}
-                            <TextInput
-                                style={[styles.input, { height: 80 }]}
-                                placeholder="Descripción del mantenimiento que se debe realizar"
-                                multiline
-                                value={formData.mantenimientoRequerido || ''}
-                                onChangeText={v => setFormData({ ...formData, mantenimientoRequerido: v })}
-                            />
-                            <TextInput
-                                style={[styles.input, { height: 80 }]}
-                                placeholder="Observaciones generales del equipo"
-                                multiline
-                                value={formData.observaciones || ''}
-                                onChangeText={v => setFormData({ ...formData, observaciones: v })}
-                            />
+                            <View style={styles.formGroup}>
+                                <Text style={styles.label}>Descripción del Mantenimiento</Text>
+                                <TextInput
+                                    style={[styles.input, { height: 80 }]}
+                                    placeholder="Trabajo que se debe realizar"
+                                    multiline
+                                    value={formData.mantenimientoRequerido || ''}
+                                    onChangeText={v => setFormData({ ...formData, mantenimientoRequerido: v })}
+                                />
+                            </View>
+                            <View style={styles.formGroup}>
+                                <Text style={styles.label}>Observaciones Generales</Text>
+                                <TextInput
+                                    style={[styles.input, { height: 80 }]}
+                                    placeholder="Notas adicionales sobre el equipo"
+                                    multiline
+                                    value={formData.observaciones || ''}
+                                    onChangeText={v => setFormData({ ...formData, observaciones: v })}
+                                />
+                            </View>
 
                             {/* Estado */}
                             <Text style={styles.sectionLabel}>Estado del Equipo</Text>
@@ -1446,6 +1807,36 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                                             </View>
                                         </View>
                                     </View>
+
+                                    {/* Galería de Fotos */}
+                                    {((equipoSeleccionado.fotos?.length ?? 0) > 0 || equipoSeleccionado.fotoUrl) && (
+                                        <View style={styles.detalleSection}>
+                                            <Text style={styles.detalleSectionTitle}>📷 Galería de Fotos</Text>
+                                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+                                                {(equipoSeleccionado.fotos || (equipoSeleccionado.fotoUrl ? [{ fotoUrl: equipoSeleccionado.fotoUrl }] : [])).map((foto, index) => (
+                                                    <TouchableOpacity
+                                                        key={index}
+                                                        onPress={() => setFullScreenImage(foto.fotoUrl)}
+                                                        style={{
+                                                            width: 150,
+                                                            height: 150,
+                                                            borderRadius: 12,
+                                                            overflow: 'hidden',
+                                                            borderWidth: 2,
+                                                            borderColor: '#e0e0e0',
+                                                            backgroundColor: '#f5f5f5'
+                                                        }}
+                                                    >
+                                                        <Image
+                                                            source={{ uri: `${API_BASE.replace('/api', '')}${foto.fotoUrl}` }}
+                                                            style={{ width: '100%', height: '100%' }}
+                                                            resizeMode="cover"
+                                                        />
+                                                    </TouchableOpacity>
+                                                ))}
+                                            </View>
+                                        </View>
+                                    )}
 
                                     {/* Hardware - PC */}
                                     <View style={styles.detalleSection}>
@@ -1775,7 +2166,15 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                                                     <Text style={styles.recienteBadgeText}>Más reciente</Text>
                                                 </View>
                                             )}
-                                            <Text style={styles.historialFecha}>{formatDate(m.fecha)}</Text>
+                                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                                                <Text style={{ fontSize: 12, color: '#2c3e50' }}>📅 {formatDate(m.fecha)}</Text>
+                                                {m.fechaRegistro && (
+                                                    <Text style={{ fontSize: 11, color: '#999' }}>| 📝 {formatDate(m.fechaRegistro)}</Text>
+                                                )}
+                                                {m.fechaActualizacion && (
+                                                    <Text style={{ fontSize: 11, color: '#4A90D9' }}>| 🔄 {formatDate(m.fechaActualizacion)}</Text>
+                                                )}
+                                            </View>
                                         </View>
                                         <Text style={styles.historialDescripcion}>{m.trabajoRealizado || 'Sin descripción'}</Text>
                                         <View style={styles.historialFooter}>
@@ -1783,8 +2182,14 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                                 <Text style={styles.historialCosto}>💵 ${m.costo.toFixed(2)}</Text>
                                                 <TouchableOpacity
-                                                    onPress={() => handleDeleteMantenimiento(m.id)}
+                                                    onPress={() => handleEditMantenimiento(m)}
                                                     style={{ marginLeft: 12, padding: 4 }}
+                                                >
+                                                    <Text style={{ fontSize: 16, color: '#4A90D9' }}>✏️</Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity
+                                                    onPress={() => handleDeleteMantenimiento(m.id)}
+                                                    style={{ marginLeft: 8, padding: 4 }}
                                                 >
                                                     <Text style={{ fontSize: 16, color: '#dc3545' }}>🗑️</Text>
                                                 </TouchableOpacity>
@@ -1798,11 +2203,11 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                 </View>
             </Modal >
 
-            {/* Modal: Registrar Mantenimiento */}
+            {/* Modal: Registrar/Editar Mantenimiento */}
             < Modal visible={modalMantenimiento} animationType="slide" transparent >
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>+ Registrar Mantenimiento</Text>
+                        <Text style={styles.modalTitle}>{editingMantenimientoId ? '✏️ Editar Mantenimiento' : '+ Registrar Mantenimiento'}</Text>
                         <Text style={styles.modalSubtitle}>{equipoSeleccionado?.nombre}</Text>
 
                         <Text style={styles.sectionLabel}>Tipo de Mantenimiento</Text>
@@ -1894,28 +2299,166 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                 </View>
             </Modal>
 
+            {/* Modal: Licencias de Software */}
+            <Modal visible={modalLicencias} animationType="slide" transparent>
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { maxWidth: 700, maxHeight: '90%' }]}>
+                        <Text style={styles.modalTitle}>{editingLicenciaId ? '✏️ Editar Licencia' : '➕ Agregar Licencia'}</Text>
+                        <Text style={styles.modalSubtitle}>{equipoSeleccionado?.nombre}</Text>
+
+                        <ScrollView style={{ maxHeight: 450 }} showsVerticalScrollIndicator={false}>
+                            {/* Formulario */}
+                            <Text style={{ fontSize: 12, color: '#666', marginBottom: 4, marginTop: 4 }}>Nombre de la licencia *</Text>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Ej: Windows 11 Pro, Office 365"
+                                value={licenciaData.nombre}
+                                onChangeText={v => setLicenciaData({ ...licenciaData, nombre: v })}
+                            />
+
+                            <Text style={{ fontSize: 12, color: '#666', marginBottom: 4, marginTop: 8 }}>Clave/Serial (opcional)</Text>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Ej: XXXXX-XXXXX-XXXXX-XXXXX"
+                                value={licenciaData.clave}
+                                onChangeText={v => setLicenciaData({ ...licenciaData, clave: v })}
+                            />
+
+                            <View style={styles.row}>
+                                <View style={{ flex: 1, marginRight: 8 }}>
+                                    <Text style={{ fontSize: 12, color: '#666', marginBottom: 4, marginTop: 8 }}>Fecha de Inicio</Text>
+                                    {Platform.OS === 'web' ? (
+                                        <input
+                                            type="date"
+                                            value={licenciaData.fechaInicio || ''}
+                                            onChange={(e: any) => setLicenciaData({ ...licenciaData, fechaInicio: e.target.value })}
+                                            style={{
+                                                padding: '12px',
+                                                borderRadius: 8,
+                                                border: '1px solid #e0e0e0',
+                                                backgroundColor: '#f5f7fa',
+                                                width: '100%',
+                                                boxSizing: 'border-box' as const,
+                                                fontSize: 14,
+                                                height: 45
+                                            }}
+                                        />
+                                    ) : (
+                                        <TextInput style={styles.input} placeholder="YYYY-MM-DD" value={licenciaData.fechaInicio} onChangeText={v => setLicenciaData({ ...licenciaData, fechaInicio: v })} />
+                                    )}
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{ fontSize: 12, color: '#666', marginBottom: 4, marginTop: 8 }}>Fecha de Expiración</Text>
+                                    {Platform.OS === 'web' ? (
+                                        <input
+                                            type="date"
+                                            value={licenciaData.fechaExpiracion || ''}
+                                            onChange={(e: any) => setLicenciaData({ ...licenciaData, fechaExpiracion: e.target.value })}
+                                            style={{
+                                                padding: '12px',
+                                                borderRadius: 8,
+                                                border: '1px solid #e0e0e0',
+                                                backgroundColor: '#f5f7fa',
+                                                width: '100%',
+                                                boxSizing: 'border-box' as const,
+                                                fontSize: 14,
+                                                height: 45
+                                            }}
+                                        />
+                                    ) : (
+                                        <TextInput style={styles.input} placeholder="YYYY-MM-DD" value={licenciaData.fechaExpiracion} onChangeText={v => setLicenciaData({ ...licenciaData, fechaExpiracion: v })} />
+                                    )}
+                                </View>
+                            </View>
+
+                            <Text style={{ fontSize: 12, color: '#666', marginBottom: 4, marginTop: 8 }}>Observaciones (opcional)</Text>
+                            <TextInput
+                                style={[styles.input, { height: 60 }]}
+                                placeholder="Notas adicionales..."
+                                multiline
+                                value={licenciaData.observaciones}
+                                onChangeText={v => setLicenciaData({ ...licenciaData, observaciones: v })}
+                            />
+
+                            {/* Botones del formulario */}
+                            <View style={styles.licenseBtnGroup}>
+                                <TouchableOpacity style={styles.licenseBtnCancel} onPress={() => {
+                                    if (editingLicenciaId) {
+                                        setEditingLicenciaId(null);
+                                        setLicenciaData({ nombre: '', clave: '', fechaInicio: '', fechaExpiracion: '', observaciones: '' });
+                                    } else {
+                                        setModalLicencias(false);
+                                        setLicenciaData({ nombre: '', clave: '', fechaInicio: '', fechaExpiracion: '', observaciones: '' });
+                                    }
+                                }}>
+                                    <Text style={styles.licenseBtnCancelText}>{editingLicenciaId ? 'Limpiar' : 'Cancelar'}</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={styles.licenseBtnSave} onPress={handleSaveLicencia}>
+                                    <Text style={styles.licenseBtnSaveText}>{editingLicenciaId ? 'Actualizar' : 'Agregar'}</Text>
+                                </TouchableOpacity>
+                            </View>
+
+                            {/* Lista de licencias existentes */}
+                            <View style={{ marginTop: 20, borderTopWidth: 1, borderTopColor: '#e0e0e0', paddingTop: 16 }}>
+                                <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#2c3e50', marginBottom: 12 }}>📋 Licencias Registradas ({licencias.length})</Text>
+                                {licencias.length === 0 ? (
+                                    <Text style={{ color: '#999', textAlign: 'center', padding: 20 }}>No hay licencias registradas</Text>
+                                ) : (
+                                    licencias.map(lic => (
+                                        <View key={lic.id} style={{ backgroundColor: '#f8f9fa', borderRadius: 8, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#e0e0e0' }}>
+                                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={{ fontWeight: 'bold', fontSize: 14, color: '#333' }}>{lic.nombre}</Text>
+                                                    {lic.clave && <Text style={{ fontSize: 12, color: '#666', marginTop: 2 }}>🔑 {lic.clave}</Text>}
+                                                    <View style={{ flexDirection: 'row', gap: 12, marginTop: 4, flexWrap: 'wrap' }}>
+                                                        {lic.fechaInicio && <Text style={{ fontSize: 11, color: '#28a745' }}>📅 Inicio: {formatDate(lic.fechaInicio)}</Text>}
+                                                        {lic.fechaExpiracion && <Text style={{ fontSize: 11, color: new Date(lic.fechaExpiracion) < new Date() ? '#dc3545' : '#17a2b8' }}>⏰ Expira: {formatDate(lic.fechaExpiracion)}</Text>}
+                                                    </View>
+                                                    {lic.observaciones && <Text style={{ fontSize: 11, color: '#999', marginTop: 4 }}>{lic.observaciones}</Text>}
+                                                </View>
+                                                <View style={{ flexDirection: 'row', gap: 8 }}>
+                                                    <TouchableOpacity onPress={() => handleEditLicencia(lic)} style={{ padding: 4 }}><Text style={{ fontSize: 16, color: '#4A90D9' }}>✏️</Text></TouchableOpacity>
+                                                    <TouchableOpacity onPress={() => handleDeleteLicencia(lic.id)} style={{ padding: 4 }}><Text style={{ fontSize: 16, color: '#dc3545' }}>🗑️</Text></TouchableOpacity>
+                                                </View>
+                                            </View>
+                                        </View>
+                                    ))
+                                )}
+                            </View>
+                        </ScrollView>
+                    </View>
+                </View>
+            </Modal>
+
             {/* Modal: Seleccionar Tipo de Equipo */}
             <Modal visible={modalTipoEquipo} animationType="fade" transparent>
                 <View style={styles.modalOverlay}>
-                    <View style={[styles.modalContent, { maxWidth: 600 }]}>
-                        <Text style={styles.modalTitle}>Seleccionar Tipo de Equipo</Text>
+                    <View style={[styles.modalContent, { maxWidth: 600, maxHeight: '80%' }]}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                            <Text style={styles.modalTitle}>Seleccionar Tipo de Equipo</Text>
+                            <TouchableOpacity onPress={() => setModalTipoEquipo(false)} style={{ padding: 8 }}>
+                                <Text style={{ fontSize: 24, color: '#666' }}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
                         <Text style={styles.modalSubtitle}>¿Qué tipo de equipo deseas agregar?</Text>
 
-                        <View style={styles.tipoEquipoGrid}>
-                            {TIPOS_EQUIPO.map(tipo => (
-                                <TouchableOpacity
-                                    key={tipo.id}
-                                    style={styles.tipoEquipoCard}
-                                    onPress={() => confirmarTipoEquipo(tipo.id)}
-                                >
-                                    <Text style={styles.tipoEquipoIcono}>{tipo.icono}</Text>
-                                    <Text style={styles.tipoEquipoNombre}>{tipo.nombre.replace(tipo.icono + ' ', '')}</Text>
-                                    <Text style={styles.tipoEquipoDescripcion}>{tipo.descripcion}</Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
+                        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }} showsVerticalScrollIndicator>
+                            <View style={styles.tipoEquipoGrid}>
+                                {TIPOS_EQUIPO.map(tipo => (
+                                    <TouchableOpacity
+                                        key={tipo.id}
+                                        style={styles.tipoEquipoCard}
+                                        onPress={() => confirmarTipoEquipo(tipo.id)}
+                                    >
+                                        <Text style={styles.tipoEquipoIcono}>{tipo.icono}</Text>
+                                        <Text style={styles.tipoEquipoNombre}>{tipo.nombre.replace(tipo.icono + ' ', '')}</Text>
+                                        <Text style={styles.tipoEquipoDescripcion}>{tipo.descripcion}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </ScrollView>
 
-                        <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalTipoEquipo(false)}>
+                        <TouchableOpacity style={[styles.cancelBtn, { alignSelf: 'center', marginTop: 12, backgroundColor: '#f0f0f0', borderRadius: 8 }]} onPress={() => setModalTipoEquipo(false)}>
                             <Text style={styles.cancelBtnText}>Cancelar</Text>
                         </TouchableOpacity>
                     </View>
@@ -1990,10 +2533,10 @@ const styles = StyleSheet.create({
 
     // Dashboard
     dashboardContainer: { flex: 1, padding: 16 },
-    statsRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 24 },
-    statCard: { backgroundColor: '#fff', borderRadius: 12, padding: 16, width: '24%', borderLeftWidth: 4, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+    statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 24 },
+    statCard: { backgroundColor: '#fff', borderRadius: 12, padding: 16, minWidth: 150, flex: 1, borderLeftWidth: 4, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
     statTitle: { fontSize: 12, color: '#666', marginBottom: 8 },
-    statValue: { fontSize: 32, fontWeight: 'bold', color: '#333' },
+    statValue: { fontSize: 28, fontWeight: 'bold', color: '#333' },
     statSubtitle: { fontSize: 11, color: '#999', marginTop: 4 },
 
     // Próximos Mantenimientos
@@ -2134,6 +2677,13 @@ const styles = StyleSheet.create({
     segmentControl: { flexDirection: 'row', backgroundColor: '#f0f4f8', padding: 4, borderRadius: 8, marginBottom: 24 },
     segmentBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 6 },
     segmentBtnText: { fontSize: 13, fontWeight: '600', color: '#7f8c8d' },
+
+    // Button Groups for Licenses
+    licenseBtnGroup: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 24, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
+    licenseBtnCancel: { paddingVertical: 12, paddingHorizontal: 20, borderRadius: 8, backgroundColor: '#f5f7fa', borderWidth: 1, borderColor: '#e0e0e0', alignItems: 'center' },
+    licenseBtnCancelText: { fontSize: 14, fontWeight: '600', color: '#666' },
+    licenseBtnSave: { paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8, backgroundColor: '#28a745', alignItems: 'center', shadowColor: '#28a745', shadowOpacity: 0.2, shadowRadius: 4, elevation: 2 },
+    licenseBtnSaveText: { fontSize: 14, fontWeight: 'bold', color: '#fff' },
 
     modalFooter: { flexDirection: 'row', justifyContent: 'flex-end', paddingTop: 24, borderTopWidth: 1, borderTopColor: '#f0f0f0', marginTop: 24 },
     btnCancel: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8, marginRight: 12, backgroundColor: '#f8f9fa' },
