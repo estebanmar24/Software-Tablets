@@ -122,6 +122,16 @@ interface ProximoMantenimiento {
     diasRestantes: number;
 }
 
+interface ProximaLicencia {
+    id: number;
+    nombre: string;
+    clave?: string;
+    fechaExpiracion: string;
+    equipoId: number;
+    equipoNombre: string;
+    diasRestantes: number;
+}
+
 interface Licencia {
     id: number;
     nombre: string;
@@ -142,6 +152,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
     const [equipos, setEquipos] = useState<Equipo[]>([]);
     const [stats, setStats] = useState<Stats | null>(null);
     const [proximos, setProximos] = useState<ProximoMantenimiento[]>([]);
+    const [proximasLicencias, setProximasLicencias] = useState<ProximaLicencia[]>([]);
     const [loading, setLoading] = useState(false);
 
     // Filtros
@@ -222,9 +233,10 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
     const loadData = async () => {
         setLoading(true);
         try {
-            const [statsRes, proximosRes, areasRes] = await Promise.all([
+            const [statsRes, proximosRes, licenciasRes, areasRes] = await Promise.all([
                 fetch(`${API_BASE}/equipos/stats`),
                 fetch(`${API_BASE}/equipos/proximos-mantenimientos`),
+                fetch(`${API_BASE}/equipos/proximas-licencias`),
                 fetch(`${API_BASE}/equipos/areas`)
             ]);
 
@@ -232,6 +244,9 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
             if (proximosRes.ok) {
                 const data = await proximosRes.json();
                 setProximos(data.proximos || []);
+            }
+            if (licenciasRes.ok) {
+                setProximasLicencias(await licenciasRes.json());
             }
             if (areasRes.ok) setAreas(await areasRes.json());
         } catch (error) {
@@ -727,35 +742,74 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                 </View>
             </View>
 
-            {/* Próximos Mantenimientos */}
-            <View style={styles.proximosSection}>
-                <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>Próximos Mantenimientos (30 días)</Text>
-                    <View style={styles.badge}>
-                        <Text style={styles.badgeText}>{proximos.length} pendientes</Text>
+            {/* Row Layout for Web */}
+            <View style={Platform.OS === 'web' ? styles.webRowContainer : {}}>
+                {/* Próximos Mantenimientos */}
+                <View style={[styles.proximosSection, Platform.OS === 'web' && styles.webColumnLeft]}>
+                    <View style={styles.sectionHeader}>
+                        <Text style={styles.sectionTitle}>Próximos Mantenimientos (30 días)</Text>
+                        <View style={styles.badge}>
+                            <Text style={styles.badgeText}>{proximos.length} pendientes</Text>
+                        </View>
                     </View>
-                </View>
-                {proximos.length === 0 ? (
-                    <Text style={styles.emptyText}>No hay mantenimientos programados</Text>
-                ) : (
-                    proximos.map(item => (
-                        <View key={item.id} style={styles.proximoCard}>
-                            <View style={styles.proximoIcon}>
-                                <Text style={{ fontSize: 20 }}>💻</Text>
-                            </View>
-                            <View style={styles.proximoInfo}>
-                                <Text style={styles.proximoNombre}>{item.nombre}</Text>
-                                <Text style={styles.proximoUbicacion}>{item.ubicacion} - {item.area}</Text>
-                            </View>
-                            <View style={styles.proximoFecha}>
-                                <Text style={styles.proximoFechaText}>{formatDate(item.proximoMantenimiento)}</Text>
-                                <View style={[styles.diasBadge, { backgroundColor: item.diasRestantes <= 7 ? '#ffc107' : '#e3f2fd' }]}>
-                                    <Text style={styles.diasBadgeText}>{item.diasRestantes} días</Text>
+                    {proximos.length === 0 ? (
+                        <Text style={styles.emptyText}>No hay mantenimientos programados</Text>
+                    ) : (
+                        proximos.map(item => (
+                            <View key={item.id} style={styles.proximoCard}>
+                                <View style={styles.proximoIcon}>
+                                    <Text style={{ fontSize: 20 }}>💻</Text>
+                                </View>
+                                <View style={styles.proximoInfo}>
+                                    <Text style={styles.proximoNombre}>{item.nombre}</Text>
+                                    <Text style={styles.proximoUbicacion}>{item.ubicacion} - {item.area}</Text>
+                                </View>
+                                <View style={styles.proximoFecha}>
+                                    <Text style={styles.proximoFechaText}>{formatDate(item.proximoMantenimiento)}</Text>
+                                    <View style={[styles.diasBadge, { backgroundColor: item.diasRestantes <= 7 ? '#ffc107' : '#e3f2fd' }]}>
+                                        <Text style={styles.diasBadgeText}>{item.diasRestantes} días</Text>
+                                    </View>
                                 </View>
                             </View>
+                        ))
+                    )}
+                </View>
+
+                {/* Licencias por Vencer */}
+                <View style={[styles.proximosSection, Platform.OS === 'web' && styles.webColumnRight]}>
+                    <View style={styles.sectionHeader}>
+                        <Text style={styles.sectionTitle}>Licencias por Vencer (60 días)</Text>
+                        <View style={[styles.badge, { backgroundColor: '#ffc107' }]}>
+                            <Text style={[styles.badgeText, { color: '#000' }]}>{proximasLicencias.length} pendientes</Text>
                         </View>
-                    ))
-                )}
+                    </View>
+                    {proximasLicencias.length === 0 ? (
+                        <Text style={styles.emptyText}>No hay licencias próximas a vencer</Text>
+                    ) : (
+                        proximasLicencias.map(item => (
+                            <View key={item.id} style={styles.proximoCard}>
+                                <View style={styles.proximoIcon}>
+                                    <Text style={{ fontSize: 20 }}>🔑</Text>
+                                </View>
+                                <View style={styles.proximoInfo}>
+                                    <Text style={styles.proximoNombre}>{item.nombre}</Text>
+                                    <Text style={styles.proximoUbicacion}>
+                                        {item.equipoNombre}
+                                    </Text>
+                                    {item.clave && <Text style={{ fontSize: 10, color: '#999' }}>{item.clave}</Text>}
+                                </View>
+                                <View style={styles.proximoFecha}>
+                                    <Text style={styles.proximoFechaText}>{new Date(item.fechaExpiracion).toLocaleDateString()}</Text>
+                                    <View style={[styles.diasBadge, { backgroundColor: item.diasRestantes < 30 ? '#ffd700' : '#e3f2fd' }]}>
+                                        <Text style={[styles.diasBadgeText, { color: item.diasRestantes < 30 ? '#000' : '#4A90D9' }]}>
+                                            {item.diasRestantes} días
+                                        </Text>
+                                    </View>
+                                </View>
+                            </View>
+                        ))
+                    )}
+                </View>
             </View>
         </ScrollView>
     );
@@ -2541,6 +2595,11 @@ const styles = StyleSheet.create({
     proximoFechaText: { fontSize: 12, color: '#666' },
     diasBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, marginTop: 4 },
     diasBadgeText: { fontSize: 11, color: '#333' },
+
+    // Web Layout
+    webRowContainer: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 24 },
+    webColumnLeft: { flex: 1, marginBottom: 0 },
+    webColumnRight: { flex: 1, marginBottom: 0 },
 
     // Equipos
     equiposContainer: { flex: 1, padding: 16 },

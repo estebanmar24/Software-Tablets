@@ -422,6 +422,54 @@ public class EquiposController : ControllerBase
     // ============ LICENCIAS DE SOFTWARE ============
 
     /// <summary>
+    /// Obtiene las licencias próximas a expirar (en los próximos 60 días)
+    /// </summary>
+    [HttpGet("proximas-licencias")]
+    public async Task<ActionResult> GetProximasLicencias()
+    {
+        try
+        {
+            var hoy = DateTime.UtcNow.Date;
+            var limite = hoy.AddDays(60);
+
+            var licencias = await _context.LicenciasEquipos
+                .Include(l => l.Equipo)
+                .Where(l => l.FechaExpiracion.HasValue && 
+                            l.FechaExpiracion.Value >= hoy && 
+                            l.FechaExpiracion.Value <= limite)
+                .OrderBy(l => l.FechaExpiracion)
+                .Select(l => new
+                {
+                    l.Id,
+                    l.Nombre,
+                    l.Clave,
+                    l.FechaExpiracion,
+                    EquipoId = l.EquipoId,
+                    EquipoNombre = l.Equipo != null ? l.Equipo.Nombre : "Sin Equipo"
+                })
+                .ToListAsync();
+
+            // Calculate days remaining in memory
+            var resultado = licencias.Select(l => new 
+            {
+                l.Id,
+                l.Nombre,
+                l.Clave,
+                l.FechaExpiracion,
+                l.EquipoId,
+                l.EquipoNombre,
+                DiasRestantes = (int)(l.FechaExpiracion!.Value.Date - hoy).TotalDays
+            }).ToList();
+
+            return Ok(resultado);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = ex.Message, inner = ex.InnerException?.Message });
+        }
+    }
+
+    /// <summary>
     /// Obtiene las licencias de un equipo
     /// </summary>
     [HttpGet("{id}/licencias")]

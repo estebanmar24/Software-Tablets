@@ -101,6 +101,19 @@ Este sistema permite a los operarios de una planta de producción registrar sus 
 - Generación de PDFs
 - Historial de actividades
 
+### 🛠 Módulo de Mantenimiento y Activos (Nuevo)
+- **Dashboard de Equipos**: Visualización en tiempo real del estado de los activos (Operativo, En Mantenimiento, Fuera de Servicio).
+- **Alertas de Mantenimiento**: Notificaciones automáticas de mantenimientos preventivos próximos (30 días).
+- **Gestión de Licencias**: 
+  - Registro de licencias de software por equipo.
+  - **Alertas de Vencimiento**: Semáforo visual para licencias por vencer (< 60 días).
+  - Listado "Licencias por Vencer" en el Dashboard (diseño a 2 columnas en Web).
+- **Hoja de Vida Digital**: Historial completo de intervenciones, galería de fotos y ficha técnica.
+
+### 💰 Gestión de Nómina y Producción
+- **Gestión de Salarios**: Tablero para visualizar y ajustar salarios base de operarios.
+- **Tipos de Recargo**: Configuración de porcentajes para horas extra, nocturnas y dominicales.
+
 ---
 
 ## ⚙️ Instalación y Configuración
@@ -156,6 +169,8 @@ npx expo start --lan
 | **Web** | `http://TU-IP:8081` |
 | **API Swagger** | `http://TU-IP:5144/swagger` |
 | **Android/Tablets** | Escanear QR con Expo Go o usar APK |
+
+> 🚀 **Actualizaciones OTA**: El proyecto está configurado con **EAS Update**. Las mejoras de frontend se despliegan automáticamente al canal `preview` sin necesidad de reinstalar el APK.
 
 ---
 
@@ -257,6 +272,9 @@ Base URL: `http://TU-IP:5144/api`
 | GET | `/produccion/resumen` | Resumen mensual |
 | GET | `/maquinas` | CRUD de máquinas |
 | GET | `/usuarios` | CRUD de usuarios |
+| GET | `/api/equipos/proximas-licencias` | Licencias por vencer (60 días) |
+| GET | `/api/produccion/salarios` | Gestión de salarios |
+| GET | `/api/produccion/tipos-recargo` | Configuración de recargos |
 
 ---
 
