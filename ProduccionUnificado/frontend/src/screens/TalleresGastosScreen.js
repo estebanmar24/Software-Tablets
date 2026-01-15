@@ -293,7 +293,6 @@ function GastosTab() {
         <View style={styles.contentContainer}>
             {/* Header - EXACT PRODUCCION STYLE */}
             <View style={styles.header}>
-                <Text style={styles.title}>📋 Gastos de Talleres y Despachos</Text>
                 <View style={styles.filters}>
                     <Picker selectedValue={anio} onValueChange={setAnio} style={styles.picker}>
                         {anios.map(a => <Picker.Item key={a} label={a.toString()} value={a} />)}
@@ -481,6 +480,7 @@ function GraficasTab() {
     const [dataAnual, setDataAnual] = useState(null);
     const [dataMensual, setDataMensual] = useState({});
     const [dataMesActual, setDataMesActual] = useState(null);
+    const [cantidadRegistros, setCantidadRegistros] = useState(0);
 
     const anios = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
 
@@ -490,6 +490,15 @@ function GraficasTab() {
             // 1. Load specific month data for cards and rubro chart
             const mesData = await talleresApi.getGraficas(anio, mes);
             setDataMesActual(mesData);
+
+            // 1.1 Load actual records count
+            try {
+                const gastosList = await talleresApi.getGastos(anio, mes);
+                setCantidadRegistros(gastosList?.length || 0);
+            } catch (err) {
+                console.error('Error loading gastos count:', err);
+                setCantidadRegistros(0);
+            }
 
             // 2. Load annual data for context
             const anualData = await talleresApi.getGraficasAnual(anio);
@@ -560,7 +569,7 @@ function GraficasTab() {
                     </View>
                     <View style={[grafStyles.summaryCardSmall, { backgroundColor: '#F3F4F6' }]}>
                         <Text style={grafStyles.cardLabel}>📋 Registros</Text>
-                        <Text style={[grafStyles.cardValue, { color: '#374151' }]}>{dataMesActual?.porRubro?.length || 0}</Text>
+                        <Text style={[grafStyles.cardValue, { color: '#374151' }]}>{cantidadRegistros}</Text>
                     </View>
                 </View>
 
