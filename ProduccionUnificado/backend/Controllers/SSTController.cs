@@ -170,6 +170,10 @@ public class SSTController : ControllerBase
                 p.Nombre,
                 p.TipoServicioId,
                 TipoServicioNombre = p.TipoServicio!.Nombre,
+                p.Nit,
+                p.Telefono,
+                p.Direccion,
+                p.Correo,
                 p.Activo
             })
             .ToListAsync();

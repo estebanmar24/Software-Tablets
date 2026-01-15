@@ -1127,6 +1127,10 @@ function ProveedoresTab() {
     const [editItem, setEditItem] = useState(null);
     const [nombre, setNombre] = useState('');
     const [tipoServicioId, setTipoServicioId] = useState('');
+    const [nit, setNit] = useState('');
+    const [telefono, setTelefono] = useState('');
+    const [direccion, setDireccion] = useState('');
+    const [correo, setCorreo] = useState('');
     const [saving, setSaving] = useState(false);
 
     const loadData = async () => {
@@ -1168,17 +1172,43 @@ function ProveedoresTab() {
         setFilterTipoId('');
     }, [filterRubroId]);
 
-    const handleAdd = () => { setEditItem(null); setNombre(''); setTipoServicioId(''); setShowModal(true); };
-    const handleEdit = (item) => { setEditItem(item); setNombre(item.nombre); setTipoServicioId(item.tipoServicioId?.toString() || ''); setShowModal(true); };
+    const handleAdd = () => {
+        setEditItem(null);
+        setNombre('');
+        setTipoServicioId('');
+        setNit('');
+        setTelefono('');
+        setDireccion('');
+        setCorreo('');
+        setShowModal(true);
+    };
+    const handleEdit = (item) => {
+        setEditItem(item);
+        setNombre(item.nombre);
+        setTipoServicioId(item.tipoServicioId?.toString() || '');
+        setNit(item.nit || '');
+        setTelefono(item.telefono || '');
+        setDireccion(item.direccion || '');
+        setCorreo(item.correo || '');
+        setShowModal(true);
+    };
 
     const handleSave = async () => {
-        if (!nombre.trim() || !tipoServicioId) { Alert.alert('Error', 'Complete todos los campos'); return; }
+        if (!nombre.trim() || !tipoServicioId) { Alert.alert('Error', 'Complete los campos obligatorios (Tipo de Servicio y Nombre)'); return; }
         try {
             setSaving(true);
+            const data = {
+                nombre,
+                tipoServicioId: parseInt(tipoServicioId),
+                nit: nit || null,
+                telefono: telefono || null,
+                direccion: direccion || null,
+                correo: correo || null
+            };
             if (editItem) {
-                await sstApi.updateProveedor(editItem.id, { nombre, tipoServicioId: parseInt(tipoServicioId) });
+                await sstApi.updateProveedor(editItem.id, data);
             } else {
-                await sstApi.createProveedor({ nombre, tipoServicioId: parseInt(tipoServicioId) });
+                await sstApi.createProveedor(data);
             }
             setShowModal(false);
             loadData();
@@ -1245,6 +1275,8 @@ function ProveedoresTab() {
                         <View style={styles.itemInfo}>
                             <Text style={styles.itemName}>{item.nombre}</Text>
                             <Text style={styles.itemParent}>Tipo: {item.tipoServicioNombre}</Text>
+                            {item.nit && <Text style={styles.itemParent}>NIT: {item.nit}</Text>}
+                            {item.telefono && <Text style={styles.itemParent}>📞 {item.telefono}</Text>}
                         </View>
                         <View style={styles.itemActions}>
                             <TouchableOpacity onPress={() => handleEdit(item)}><Text style={styles.editButton}>✏️</Text></TouchableOpacity>
@@ -1265,7 +1297,15 @@ function ProveedoresTab() {
                             </Picker>
                         </View>
                         <Text style={styles.label}>Nombre *</Text>
-                        <TextInput style={styles.input} value={nombre} onChangeText={setNombre} placeholder="Nombre" />
+                        <TextInput style={styles.input} value={nombre} onChangeText={setNombre} placeholder="Nombre del proveedor" />
+                        <Text style={styles.label}>NIT</Text>
+                        <TextInput style={styles.input} value={nit} onChangeText={setNit} placeholder="NIT" />
+                        <Text style={styles.label}>Teléfono</Text>
+                        <TextInput style={styles.input} value={telefono} onChangeText={setTelefono} placeholder="Teléfono" keyboardType="phone-pad" />
+                        <Text style={styles.label}>Dirección</Text>
+                        <TextInput style={styles.input} value={direccion} onChangeText={setDireccion} placeholder="Dirección" />
+                        <Text style={styles.label}>Correo</Text>
+                        <TextInput style={styles.input} value={correo} onChangeText={setCorreo} placeholder="correo@ejemplo.com" keyboardType="email-address" autoCapitalize="none" />
                         <View style={styles.modalActions}>
                             <TouchableOpacity style={styles.cancelButton} onPress={() => setShowModal(false)}><Text style={styles.cancelButtonText}>Cancelar</Text></TouchableOpacity>
                             <TouchableOpacity style={[styles.submitButton, saving && styles.submitButtonDisabled]} onPress={handleSave} disabled={saving}>

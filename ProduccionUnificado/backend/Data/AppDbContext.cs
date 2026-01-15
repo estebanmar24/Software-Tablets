@@ -21,6 +21,7 @@ public class AppDbContext : DbContext
     public DbSet<EncuestaNovedad> EncuestaNovedades { get; set; }
     public DbSet<AdminUsuario> AdminUsuarios { get; set; }
     public DbSet<Equipo> Equipos { get; set; }
+    public DbSet<EquipoFoto> EquipoFotos { get; set; }
     public DbSet<HistorialMantenimiento> HistorialMantenimientos { get; set; }
 
     // SST Budget and Expense Management
@@ -44,11 +45,13 @@ public class AppDbContext : DbContext
     public DbSet<Produccion_Proveedor> Produccion_Proveedores { get; set; }
     public DbSet<Produccion_TipoHora> Produccion_TiposHora { get; set; }
     public DbSet<Produccion_Gasto> Produccion_Gastos { get; set; }
+    public DbSet<Produccion_Cotizacion> Produccion_Cotizaciones { get; set; }
     public DbSet<Produccion_PresupuestoMensual> Produccion_PresupuestosMensuales { get; set; }
 
     // Talleres y Despachos Management
     public DbSet<Talleres_Rubro> Talleres_Rubros { get; set; }
     public DbSet<Talleres_Proveedor> Talleres_Proveedores { get; set; }
+    public DbSet<Talleres_Cotizacion> Talleres_Cotizaciones { get; set; }
     public DbSet<Talleres_Gasto> Talleres_Gastos { get; set; }
     public DbSet<Talleres_PresupuestoMensual> Talleres_PresupuestosMensuales { get; set; }
 
@@ -134,6 +137,7 @@ public class AppDbContext : DbContext
 
         // Configurar Equipos y HistorialMantenimientos
         modelBuilder.Entity<Equipo>().ToTable("Equipos");
+        modelBuilder.Entity<EquipoFoto>().ToTable("EquipoFotos");
         modelBuilder.Entity<HistorialMantenimiento>().ToTable("HistorialMantenimientos");
 
         modelBuilder.Entity<HistorialMantenimiento>()

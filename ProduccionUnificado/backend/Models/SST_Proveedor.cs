@@ -20,6 +20,18 @@ public class SST_Proveedor
     [MaxLength(200)]
     public string Nombre { get; set; } = string.Empty;
 
+    [MaxLength(50)]
+    public string? Nit { get; set; }
+
+    [MaxLength(50)]
+    public string? Telefono { get; set; }
+
+    [MaxLength(300)]
+    public string? Direccion { get; set; }
+
+    [MaxLength(200)]
+    public string? Correo { get; set; }
+
     public bool Activo { get; set; } = true;
 
     // Navigation property - Many-to-One with TipoServicio

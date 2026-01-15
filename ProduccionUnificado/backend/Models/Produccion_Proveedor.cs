@@ -11,5 +11,6 @@ public class Produccion_Proveedor
     public string Telefono { get; set; } = string.Empty;
     public int? RubroId { get; set; }
     public Produccion_Rubro? Rubro { get; set; }
+    public decimal? PrecioCotizado { get; set; }
     public bool Activo { get; set; } = true;
 }

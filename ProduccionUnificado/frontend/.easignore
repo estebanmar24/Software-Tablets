@@ -1,0 +1,8 @@
+# Ignore local-specific files that shouldn't be uploaded to EAS
+android/local.properties
+
+# Other build artifacts
+android/app/build/
+android/.gradle/
+.expo/
+dist/

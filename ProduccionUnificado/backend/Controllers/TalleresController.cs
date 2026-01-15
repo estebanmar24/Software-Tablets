@@ -2,6 +2,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using System.IO;
 
 namespace TiempoProcesos.API.Controllers;
 
@@ -14,10 +17,12 @@ namespace TiempoProcesos.API.Controllers;
 public class TalleresController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly IWebHostEnvironment _env;
 
-    public TalleresController(AppDbContext context)
+    public TalleresController(AppDbContext context, IWebHostEnvironment env)
     {
         _context = context;
+        _env = env;
     }
 
     #region Rubros
@@ -68,6 +73,32 @@ public class TalleresController : ControllerBase
         rubro.Activo = false;
         await _context.SaveChangesAsync();
         return NoContent();
+    }
+
+    /// <summary>
+    /// Upload PDF Factura
+    /// </summary>
+    [HttpPost("upload-factura")]
+    public async Task<ActionResult> UploadFactura(IFormFile file)
+    {
+        if (file == null || file.Length == 0)
+            return BadRequest("No file uploaded");
+
+        // Ensure uploads folder exists
+        var uploadsFolder = Path.Combine(_env.WebRootPath, "uploads", "facturas");
+        if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
+
+        // Generate unique filename
+        var uniqueFileName = Guid.NewGuid().ToString() + "_" + file.FileName;
+        var filePath = Path.Combine(uploadsFolder, uniqueFileName);
+
+        using (var stream = new FileStream(filePath, FileMode.Create))
+        {
+            await file.CopyToAsync(stream);
+        }
+
+        // Return relative URL
+        return Ok(new { url = $"/uploads/facturas/{uniqueFileName}" });
     }
 
     #endregion
@@ -165,7 +196,8 @@ public class TalleresController : ControllerBase
                 g.NumeroFactura,
                 g.Precio,
                 g.Fecha,
-                g.Observaciones
+                g.Observaciones,
+                g.FacturaPdfUrl
             })
             .ToListAsync();
 
@@ -257,6 +289,101 @@ public class TalleresController : ControllerBase
         await _context.SaveChangesAsync();
         return NoContent();
     }
+
+    #endregion
+
+    #region File Upload
+
+    /// <summary>
+    /// Upload a factura PDF file
+    /// </summary>
+    // ==========================================
+    // COTIZACIONES (QUOTES)
+    // ==========================================
+
+    [HttpGet("cotizaciones")]
+    public async Task<ActionResult<List<object>>> GetCotizaciones([FromQuery] int? proveedorId, [FromQuery] int? anio, [FromQuery] int? mes)
+    {
+        var query = _context.Talleres_Cotizaciones
+            .Include(c => c.Proveedor)
+            .Include(c => c.Rubro)
+            .Where(c => c.Activo);
+
+        if (proveedorId.HasValue)
+            query = query.Where(c => c.ProveedorId == proveedorId.Value);
+        if (anio.HasValue)
+            query = query.Where(c => c.Anio == anio.Value);
+        if (mes.HasValue)
+            query = query.Where(c => c.Mes == mes.Value);
+
+        var cotizaciones = await query
+            .OrderByDescending(c => c.FechaCotizacion)
+            .Select(c => new
+            {
+                c.Id,
+                c.ProveedorId,
+                ProveedorNombre = c.Proveedor != null ? c.Proveedor.Nombre : "",
+                c.RubroId,
+                RubroNombre = c.Rubro != null ? c.Rubro.Nombre : "",
+                c.Anio,
+                c.Mes,
+                c.PrecioCotizado,
+                c.FechaCotizacion,
+                c.Descripcion,
+                c.Activo
+            })
+            .ToListAsync();
+
+        return Ok(cotizaciones);
+    }
+
+    [HttpPost("cotizaciones")]
+    public async Task<ActionResult<Talleres_Cotizacion>> CreateCotizacion([FromBody] Talleres_Cotizacion cotizacion)
+    {
+        cotizacion.Activo = true;
+        _context.Talleres_Cotizaciones.Add(cotizacion);
+        await _context.SaveChangesAsync();
+        return Ok(new { id = cotizacion.Id });
+    }
+
+    [HttpPut("cotizaciones/{id}")]
+    public async Task<IActionResult> UpdateCotizacion(int id, Talleres_Cotizacion cotizacion)
+    {
+        if (id != cotizacion.Id) return BadRequest();
+
+        // Ensure we don't clear fields if partial update (but here we expect full object usually, or at least keys)
+        // Better to fetch and update?
+        // For simplicity, we assume full update or mapped fields. But EntityState.Modified updates all.
+        // Let's use simple approach as in other controllers.
+        
+        _context.Entry(cotizacion).State = EntityState.Modified;
+
+        try
+        {
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (!_context.Talleres_Cotizaciones.Any(e => e.Id == id)) return NotFound();
+            else throw;
+        }
+
+        return NoContent();
+    }
+
+    [HttpDelete("cotizaciones/{id}")]
+    public async Task<IActionResult> DeleteCotizacion(int id)
+    {
+        var cotizacion = await _context.Talleres_Cotizaciones.FindAsync(id);
+        if (cotizacion == null) return NotFound();
+
+        cotizacion.Activo = false; // Soft delete
+        _context.Entry(cotizacion).State = EntityState.Modified;
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
+
 
     #endregion
 

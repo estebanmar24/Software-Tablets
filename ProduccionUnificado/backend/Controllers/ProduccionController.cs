@@ -4,16 +4,21 @@ using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
 
 namespace TiempoProcesos.API.Controllers;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using System.IO;
 
 [Route("api/[controller]")]
 [ApiController]
 public class ProduccionController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly IWebHostEnvironment _env;
 
-    public ProduccionController(AppDbContext context)
+    public ProduccionController(AppDbContext context, IWebHostEnvironment env)
     {
         _context = context;
+        _env = env;
     }
 
     [HttpGet("maestros")]
@@ -222,6 +227,16 @@ public class ProduccionController : ControllerBase
                 decimal hourlyRate = usuario.Salario / 240m;
                 gasto.Precio = hourlyRate * tipoHora.Factor * (gasto.CantidadHoras ?? 0);
                 gasto.Precio = Math.Round(gasto.Precio, 2); // Ensure database precision compatibility
+                
+                // Horas Extras don't require invoice
+                gasto.NumeroFactura = null;
+                gasto.FacturaPdfUrl = null;
+            }
+            else
+            {
+                // Non-Horas Extras rubros require invoice number
+                if (string.IsNullOrWhiteSpace(gasto.NumeroFactura))
+                    return BadRequest("Número de Factura es requerido para este tipo de rubro");
             }
             // Add more if needed
         }
@@ -267,6 +282,8 @@ public class ProduccionController : ControllerBase
 
         return NoContent();
     }
+
+
 
     // ===================== PRESUPUESTOS (Budgets) =====================
 
@@ -615,7 +632,10 @@ public class ProduccionController : ControllerBase
         var proveedor = await _context.Produccion_Proveedores.FindAsync(id);
         if (proveedor == null) return NotFound();
         proveedor.Nombre = updated.Nombre;
+        proveedor.Nit = updated.Nit;
+        proveedor.Telefono = updated.Telefono;
         proveedor.RubroId = updated.RubroId;
+        proveedor.PrecioCotizado = updated.PrecioCotizado;
         await _context.SaveChangesAsync();
         return Ok(proveedor);
     }
@@ -757,5 +777,99 @@ public class ProduccionController : ControllerBase
             porUsuario,
             resumenMensual
         });
+    }
+
+    /// <summary>
+    /// Upload PDF Factura
+    /// </summary>
+    [HttpPost("upload-factura")]
+    public async Task<ActionResult> UploadFactura(IFormFile file)
+    {
+        if (file == null || file.Length == 0)
+            return BadRequest("No file uploaded");
+
+        // Ensure uploads folder exists
+        var uploadsFolder = Path.Combine(_env.WebRootPath, "uploads", "facturas");
+        if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
+
+        // Generate unique filename
+        var uniqueFileName = Guid.NewGuid().ToString() + "_" + file.FileName;
+        var filePath = Path.Combine(uploadsFolder, uniqueFileName);
+
+        using (var stream = new FileStream(filePath, FileMode.Create))
+        {
+            await file.CopyToAsync(stream);
+        }
+
+        // Return relative URL
+        return Ok(new { url = $"/uploads/facturas/{uniqueFileName}" });
+    }
+
+    // ================== COTIZACIONES CRUD ==================
+    [HttpGet("cotizaciones")]
+    public async Task<ActionResult<List<object>>> GetCotizaciones([FromQuery] int? proveedorId, [FromQuery] int? anio, [FromQuery] int? mes)
+    {
+        var query = _context.Produccion_Cotizaciones
+            .Include(c => c.Proveedor)
+            .Include(c => c.Rubro)
+            .Where(c => c.Activo);
+
+        if (proveedorId.HasValue)
+            query = query.Where(c => c.ProveedorId == proveedorId.Value);
+        if (anio.HasValue)
+            query = query.Where(c => c.Anio == anio.Value);
+        if (mes.HasValue)
+            query = query.Where(c => c.Mes == mes.Value);
+
+        var cotizaciones = await query
+            .OrderByDescending(c => c.FechaCotizacion)
+            .Select(c => new
+            {
+                c.Id,
+                c.ProveedorId,
+                ProveedorNombre = c.Proveedor != null ? c.Proveedor.Nombre : "",
+                c.RubroId,
+                RubroNombre = c.Rubro != null ? c.Rubro.Nombre : "",
+                c.Anio,
+                c.Mes,
+                c.PrecioCotizado,
+                c.FechaCotizacion,
+                c.Descripcion,
+                c.Activo
+            })
+            .ToListAsync();
+
+        return Ok(cotizaciones);
+    }
+
+    [HttpPost("cotizaciones")]
+    public async Task<ActionResult<Produccion_Cotizacion>> CreateCotizacion([FromBody] Produccion_Cotizacion cotizacion)
+    {
+        cotizacion.Activo = true;
+        _context.Produccion_Cotizaciones.Add(cotizacion);
+        await _context.SaveChangesAsync();
+        return Ok(new { id = cotizacion.Id });
+    }
+
+    [HttpPut("cotizaciones/{id}")]
+    public async Task<IActionResult> UpdateCotizacion(int id, Produccion_Cotizacion cotizacion)
+    {
+        if (id != cotizacion.Id) return BadRequest();
+        _context.Entry(cotizacion).State = EntityState.Modified;
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    [HttpDelete("cotizaciones/{id}")]
+    public async Task<IActionResult> DeleteCotizacion(int id)
+    {
+        var cotizacion = await _context.Produccion_Cotizaciones.FindAsync(id);
+        if (cotizacion == null) return NotFound();
+        
+        // Soft delete
+        cotizacion.Activo = false;
+        await _context.SaveChangesAsync();
+        
+        return NoContent();
     }
 }

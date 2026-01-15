@@ -124,7 +124,7 @@ public class EquiposController : ControllerBase
                 (e.UsuarioAsignado != null && e.UsuarioAsignado.ToLower().Contains(term)));
         }
 
-        var equipos = await query.OrderBy(e => e.Nombre).ToListAsync();
+        var equipos = await query.Include(e => e.Fotos).OrderBy(e => e.Nombre).ToListAsync();
         return Ok(equipos);
     }
 
@@ -136,6 +136,7 @@ public class EquiposController : ControllerBase
     {
         var equipo = await _context.Equipos
             .Include(e => e.Mantenimientos.OrderByDescending(m => m.Fecha))
+            .Include(e => e.Fotos)
             .FirstOrDefaultAsync(e => e.Id == id);
 
         if (equipo == null)
@@ -154,6 +155,12 @@ public class EquiposController : ControllerBase
         {
             equipo.FechaCreacion = DateTime.UtcNow;
             equipo.FechaActualizacion = DateTime.UtcNow;
+            
+            // Si el frontend envía 'FotoUrl' antiguo, lo agregamos a la lista si esta vacía, para compatibilidad
+            if (!string.IsNullOrEmpty(equipo.FotoUrl) && (equipo.Fotos == null || equipo.Fotos.Count == 0))
+            {
+                 equipo.Fotos = new List<EquipoFoto> { new EquipoFoto { FotoUrl = equipo.FotoUrl } };
+            }
 
             _context.Equipos.Add(equipo);
             await _context.SaveChangesAsync();
@@ -179,9 +186,50 @@ public class EquiposController : ControllerBase
         if (existente == null)
             return NotFound(new { message = "Equipo no encontrado" });
 
-        // Actualizar campos
+        // Actualizar campos escalares
         _context.Entry(existente).CurrentValues.SetValues(equipo);
         existente.FechaActualizacion = DateTime.UtcNow;
+
+        // Estrategia: Reemplazar lista completa de fotos
+        
+        // 1. Eliminar fotos existentes asociadas a este equipo
+        var fotosExistentes = await _context.EquipoFotos.Where(f => f.EquipoId == id).ToListAsync();
+        if (fotosExistentes.Any())
+        {
+            _context.EquipoFotos.RemoveRange(fotosExistentes);
+        }
+        
+        // 2. Limpiar la colección en memoria del objeto existente para evitar conflictos
+        // (Aunque no hayamos hecho Load(), es buena práctica si EF la inicializó)
+        existente.Fotos.Clear();
+
+        // 3. Agregar fotos nuevas desde el DTO
+        if (equipo.Fotos != null && equipo.Fotos.Count > 0)
+        {
+            foreach (var f in equipo.Fotos)
+            {
+                existente.Fotos.Add(new EquipoFoto 
+                { 
+                     FotoUrl = f.FotoUrl,
+                     FechaSubida = DateTime.UtcNow 
+                });
+            }
+        }
+        else if (!string.IsNullOrEmpty(equipo.FotoUrl)) // Compatibilidad Legacy
+        {
+             existente.Fotos.Add(new EquipoFoto { FotoUrl = equipo.FotoUrl, FechaSubida = DateTime.UtcNow });
+        }
+
+        // 4. Sincronizar columna Legacy 'FotoUrl' con la colección
+        // Esto asegura que si se borran todas las fotos, la url principal también desaparezca
+        if (existente.Fotos.Any())
+        {
+            existente.FotoUrl = existente.Fotos.First().FotoUrl;
+        }
+        else
+        {
+            existente.FotoUrl = null;
+        }
 
         await _context.SaveChangesAsync();
         return Ok(existente);
@@ -305,6 +353,54 @@ public class EquiposController : ControllerBase
         {
             return StatusCode(500, new { message = ex.Message, inner = ex.InnerException?.Message });
         }
+    }
+
+    /// <summary>
+    /// Elimina un registro de mantenimiento
+    /// </summary>
+    [HttpDelete("mantenimientos/{mantenimientoId}")]
+    public async Task<ActionResult> DeleteMantenimiento(int mantenimientoId)
+    {
+        try
+        {
+            var mantenimiento = await _context.HistorialMantenimientos.FindAsync(mantenimientoId);
+            if (mantenimiento == null)
+                return NotFound(new { message = "Mantenimiento no encontrado" });
+
+            _context.HistorialMantenimientos.Remove(mantenimiento);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Mantenimiento eliminado" });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = ex.Message, inner = ex.InnerException?.Message });
+        }
+    }
+
+    /// <summary>
+    /// Sube una foto de equipo
+    /// </summary>
+    [HttpPost("upload-foto")]
+    public async Task<ActionResult> UploadFoto([FromForm] IFormFile archivo)
+    {
+        if (archivo == null || archivo.Length == 0)
+            return BadRequest(new { message = "No se ha subido ningún archivo" });
+
+        var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "equipos");
+        if (!Directory.Exists(uploadsFolder))
+            Directory.CreateDirectory(uploadsFolder);
+
+        var uniqueFileName = Guid.NewGuid().ToString() + Path.GetExtension(archivo.FileName);
+        var filePath = Path.Combine(uploadsFolder, uniqueFileName);
+
+        using (var stream = new FileStream(filePath, FileMode.Create))
+        {
+            await archivo.CopyToAsync(stream);
+        }
+
+        var photoUrl = $"/uploads/equipos/{uniqueFileName}";
+        return Ok(new { url = photoUrl });
     }
 
     /// <summary>

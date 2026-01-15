@@ -1,0 +1,21 @@
+{
+    "cli": {
+        "version": ">= 0.52.0"
+    },
+    "build": {
+        "preview": {
+            "channel": "preview",
+            "android": {
+                "buildType": "apk"
+            },
+            "env": {
+                "EXPO_PUBLIC_API_URL": "http://192.168.100.227:5144/api"
+            }
+        },
+        "production": {
+            "env": {
+                "EXPO_PUBLIC_API_URL": "http://192.168.100.227:5144/api"
+            }
+        }
+    }
+}

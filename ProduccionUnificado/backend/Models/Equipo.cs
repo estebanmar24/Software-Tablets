@@ -175,6 +175,12 @@ public class Equipo
     public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;
     
     public DateTime? FechaActualizacion { get; set; }
+
+    [MaxLength(500)]
+    public string? FotoUrl { get; set; }
+
+    public List<EquipoFoto> Fotos { get; set; } = new();
+
     
     // Navigation
     public List<HistorialMantenimiento> Mantenimientos { get; set; } = new();

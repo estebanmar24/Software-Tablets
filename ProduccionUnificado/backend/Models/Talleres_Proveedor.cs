@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace TiempoProcesos.API.Models;
 
@@ -24,6 +25,12 @@ public class Talleres_Proveedor
 
     [MaxLength(50)]
     public string? Telefono { get; set; }
+
+    /// <summary>
+    /// Precio cotizado por el proveedor
+    /// </summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? PrecioCotizado { get; set; }
 
     public bool Activo { get; set; } = true;
 

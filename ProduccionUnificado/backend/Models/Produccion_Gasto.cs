@@ -35,4 +35,8 @@ public class Produccion_Gasto
     
     // Optional: store hours for history
     public decimal? CantidadHoras { get; set; }
+
+    // Invoice fields (required for non-Horas Extras rubros)
+    public string? NumeroFactura { get; set; }
+    public string? FacturaPdfUrl { get; set; }
 }

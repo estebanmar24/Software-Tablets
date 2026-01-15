@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { MaterialIcons } from '@expo/vector-icons';
 import {
     View, Text, StyleSheet, FlatList, TouchableOpacity, Modal,
-    TextInput, Alert, ScrollView, ActivityIndicator, Platform
+    TextInput, Alert, ScrollView, ActivityIndicator, Platform, Image, TouchableWithoutFeedback
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 
-const API_BASE = 'http://localhost:5144/api';
+const API_BASE = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
 
 interface Equipo {
     id: number;
@@ -72,6 +73,8 @@ interface Equipo {
     mantenimientoRequerido?: string;
     observaciones?: string;
     prioridad?: string;
+    fotoUrl?: string; // Legacy
+    fotos?: { id?: number; fotoUrl: string }[]; // New Gallery
 }
 
 interface Stats {
@@ -135,6 +138,16 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
     const [historial, setHistorial] = useState<Mantenimiento[]>([]);
     const [isEditing, setIsEditing] = useState(false);
 
+    const [statusModalVisible, setStatusModalVisible] = useState(false);
+    const [equipoParaEstado, setEquipoParaEstado] = useState<Equipo | null>(null);
+
+    // Full Screen Image
+    const [fullScreenImage, setFullScreenImage] = useState<string | null>(null);
+
+    // Autocomplete for equipment name
+    const [showNameSuggestions, setShowNameSuggestions] = useState(false);
+    const [nameSuggestions, setNameSuggestions] = useState<string[]>([]);
+
     // Tipos de equipo disponibles
     const TIPOS_EQUIPO = [
         { id: 'computador', nombre: '💻 Equipo de Cómputo', descripcion: 'PC + Monitor + Teclado + Mouse (obligatorio)', icono: '💻' },
@@ -149,6 +162,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
     const [formData, setFormData] = useState<Partial<Equipo>>({});
     const [mantenimientoData, setMantenimientoData] = useState({
         tipo: 'Preventivo',
+        fecha: new Date().toISOString().split('T')[0],
         trabajoRealizado: '',
         tecnico: '',
         costo: 0,
@@ -262,6 +276,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
         setEquipoSeleccionado(equipo);
         setMantenimientoData({
             tipo: 'Preventivo',
+            fecha: new Date().toISOString().split('T')[0],
             trabajoRealizado: '',
             tecnico: '',
             costo: 0,
@@ -288,6 +303,10 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                     (sanitizedData as any)[field] = null;
                 }
             });
+
+            // DEBUG: Log what we're sending
+            console.log('💾 Saving Equipo:', JSON.stringify(sanitizedData, null, 2));
+            console.log('📷 Fotos being sent:', sanitizedData.fotos);
 
             const res = await fetch(url, {
                 method,
@@ -378,6 +397,127 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
             Alert.alert('Error', 'No se pudo registrar');
         }
     };
+
+    const handleDeleteMantenimiento = async (mantenimientoId: number) => {
+        // Use window.confirm on web, Alert.alert on native
+        const doDelete = async () => {
+            try {
+                const res = await fetch(`${API_BASE}/equipos/mantenimientos/${mantenimientoId}`, {
+                    method: 'DELETE'
+                });
+                if (res.ok) {
+                    if (Platform.OS === 'web') {
+                        alert('Mantenimiento eliminado');
+                    } else {
+                        Alert.alert('Éxito', 'Mantenimiento eliminado');
+                    }
+                    // Reload historial
+                    if (equipoSeleccionado) {
+                        const histRes = await fetch(`${API_BASE}/equipos/${equipoSeleccionado.id}/mantenimientos`);
+                        if (histRes.ok) {
+                            const data = await histRes.json();
+                            setHistorial(data.mantenimientos || []);
+                        }
+                    }
+                } else {
+                    const errData = await res.json().catch(() => ({}));
+                    if (Platform.OS === 'web') {
+                        alert('Error: ' + (errData.message || 'No se pudo eliminar'));
+                    } else {
+                        Alert.alert('Error', errData.message || 'No se pudo eliminar');
+                    }
+                }
+            } catch (error) {
+                if (Platform.OS === 'web') {
+                    alert('Error: No se pudo eliminar');
+                } else {
+                    Alert.alert('Error', 'No se pudo eliminar');
+                }
+            }
+        };
+
+        if (Platform.OS === 'web') {
+            if (window.confirm('¿Está seguro que desea eliminar este registro de mantenimiento?')) {
+                await doDelete();
+            }
+        } else {
+            Alert.alert(
+                'Confirmar Eliminación',
+                '¿Está seguro que desea eliminar este registro de mantenimiento?',
+                [
+                    { text: 'Cancelar', style: 'cancel' },
+                    { text: 'Eliminar', style: 'destructive', onPress: doDelete }
+                ]
+            );
+        }
+    };
+
+    const pickImage = async () => {
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [4, 3],
+            quality: 0.5,
+        });
+
+        if (!result.canceled) {
+            uploadImage(result.assets[0]);
+        }
+    };
+
+    const uploadImage = async (asset: ImagePicker.ImagePickerAsset) => {
+        const localUri = asset.uri;
+        const filename = localUri.split('/').pop();
+        const match = /\.(\w+)$/.exec(filename || '');
+        const type = match ? `image/${match[1]}` : `image`;
+
+        const formDataImg = new FormData();
+
+        if (Platform.OS === 'web') {
+            // For Web: Fetch the blob from the URI
+            const response = await fetch(localUri);
+            const blob = await response.blob();
+
+            // Ensure filename has extension (Crucial for StaticFiles middleware)
+            let finalName = filename || 'image.jpg';
+            if (!finalName.includes('.')) {
+                const ext = blob.type.split('/')[1] || 'jpg';
+                finalName = `${finalName}.${ext}`;
+            }
+
+            formDataImg.append('archivo', blob, finalName);
+        } else {
+            // For Mobile (iOS/Android): Use the React Native FormData object format
+            // @ts-ignore
+            formDataImg.append('archivo', { uri: localUri, name: filename, type });
+        }
+
+        try {
+            const res = await fetch(`${API_BASE}/equipos/upload-foto`, {
+                method: 'POST',
+                body: formDataImg,
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                // Agregar a la lista de fotos
+                setFormData(prev => {
+                    const currentFotos = prev.fotos || [];
+                    return {
+                        ...prev,
+                        fotos: [...currentFotos, { fotoUrl: data.url }]
+                    };
+                });
+            } else {
+                console.error('Upload error:', data);
+                Alert.alert('Error', `Error al subir imagen: ${data.message || res.statusText}`);
+            }
+        } catch (error) {
+            console.error(error);
+            Alert.alert('Error', 'Error de conexión al subir imagen');
+        }
+    };
+
 
     const formatDate = (dateStr?: string) => {
         if (!dateStr) return 'N/A';
@@ -519,19 +659,44 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                     keyExtractor={item => item.id.toString()}
                     numColumns={3}
                     columnWrapperStyle={styles.equiposRow}
+                    initialNumToRender={8}
+                    maxToRenderPerBatch={8}
+                    windowSize={5}
+                    removeClippedSubviews={Platform.OS === 'android'}
                     renderItem={({ item }) => (
                         <View style={styles.equipoCard}>
                             <View style={styles.equipoHeader}>
-                                <Text style={styles.equipoNombre}>{item.nombre}</Text>
-                                <View style={[styles.estadoBadge, { backgroundColor: getEstadoColor(item.estado) }]}>
-                                    <Text style={styles.estadoBadgeText}>{getEstadoLabel(item.estado)}</Text>
+
+                                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
+                                    <Text style={styles.equipoNombre} numberOfLines={2}>{item.nombre}</Text>
+                                    {((item.fotos?.length ?? 0) > 0 || !!item.fotoUrl) && (
+                                        <MaterialIcons name="photo-camera" size={16} color="#4A90D9" style={{ marginLeft: 6 }} />
+                                    )}
                                 </View>
+                                <TouchableOpacity
+                                    style={[styles.estadoBadge, { backgroundColor: getEstadoColor(item.estado) }]}
+                                    onPress={() => {
+                                        setEquipoParaEstado(item);
+                                        setStatusModalVisible(true);
+                                    }}
+                                >
+                                    <Text style={styles.estadoBadgeText}>{getEstadoLabel(item.estado)} ▼</Text>
+                                </TouchableOpacity>
                                 {item.prioridad && (
                                     <View style={[styles.estadoBadge, { backgroundColor: getPrioridadColor(item.prioridad), marginLeft: 4 }]}>
                                         <Text style={styles.estadoBadgeText}>{item.prioridad}</Text>
                                     </View>
                                 )}
                             </View>
+
+                            {item.fotoUrl && (
+                                <Image
+                                    source={{ uri: `${API_BASE.replace('/api', '')}${item.fotoUrl}` }}
+                                    style={styles.equipoImageCard}
+                                    resizeMode="cover"
+                                />
+                            )}
+
                             <Text style={styles.equipoMarca}>{item.pcMarca} {item.pcModelo}</Text>
                             <Text style={styles.equipoUbicacion}>📍 {item.ubicacion || 'Sin ubicación'}</Text>
                             <Text style={styles.equipoArea}>● {item.area || 'Sin área'}</Text>
@@ -624,137 +789,213 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
             {/* Modal: Agregar/Editar Equipo */}
             <Modal visible={modalEquipo} animationType="slide" transparent>
                 <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <ScrollView>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, marginBottom: 20 }}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                    {!isEditing && (
-                                        <TouchableOpacity
-                                            onPress={() => {
-                                                setModalEquipo(false);
-                                                setModalTipoEquipo(true);
-                                            }}
-                                            style={{ marginRight: 10, padding: 5 }}
-                                        >
-                                            <MaterialIcons name="arrow-back" size={24} color="#333" />
-                                        </TouchableOpacity>
-                                    )}
-                                    <Text style={[styles.modalTitle, { marginBottom: 0 }]}>
-                                        {isEditing ? 'Editar Equipo' : 'Agregar Nuevo Equipo'}
-                                    </Text>
-                                </View>
-                                <TouchableOpacity onPress={() => setModalEquipo(false)} style={{ padding: 5 }}>
-                                    <Text style={{ fontSize: 24, paddingHorizontal: 10 }}>✕</Text>
-                                </TouchableOpacity>
+                    <View style={[styles.modalContent, { maxWidth: 800, width: '90%', maxHeight: '90%' }]}>
+                        <View style={styles.modalHeader}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                {!isEditing && (
+                                    <TouchableOpacity onPress={() => { setModalEquipo(false); setModalTipoEquipo(true); }} style={{ padding: 8, marginRight: 8 }}>
+                                        <MaterialIcons name="arrow-back" size={24} color="#333" />
+                                    </TouchableOpacity>
+                                )}
+                                <Text style={styles.modalTitle}>{isEditing ? 'Editar Equipo' : 'Nuevo Equipo'}</Text>
+                            </View>
+                            <TouchableOpacity onPress={() => setModalEquipo(false)} style={{ padding: 8 }}>
+                                <MaterialIcons name="close" size={24} color="#666" />
+                            </TouchableOpacity>
+                        </View>
+                        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+                            {/* Photo Gallery Section */}
+                            <View style={styles.photoSection}>
+                                <Text style={styles.label}>Galería de Fotos</Text>
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ alignItems: 'center', paddingVertical: 10 }}>
+
+                                    {/* Add Button */}
+                                    <TouchableOpacity onPress={pickImage} style={styles.addPhotoBtn}>
+                                        <MaterialIcons name="add-a-photo" size={32} color="#4A90D9" />
+                                        <Text style={{ fontSize: 11, marginTop: 4, color: '#4A90D9' }}>Agregar</Text>
+                                    </TouchableOpacity>
+
+                                    {/* List Photos */}
+                                    {(formData.fotos || (formData.fotoUrl ? [{ fotoUrl: formData.fotoUrl }] : [])).map((foto, index) => (
+                                        <View key={index} style={{ marginLeft: 12, position: 'relative' }}>
+                                            <TouchableOpacity onPress={() => setFullScreenImage(foto.fotoUrl)}>
+                                                <Image
+                                                    source={{ uri: `${API_BASE.replace('/api', '')}${foto.fotoUrl}` }}
+                                                    style={styles.photoPreview}
+                                                />
+                                            </TouchableOpacity>
+                                            <TouchableOpacity
+                                                style={styles.deletePhotoBtn}
+                                                onPress={async () => {
+                                                    const performDelete = () => {
+                                                        setFormData(prev => {
+                                                            const current = prev.fotos || (prev.fotoUrl ? [{ fotoUrl: prev.fotoUrl }] : []);
+                                                            const updated = current.filter((_, i) => i !== index);
+                                                            return { ...prev, fotos: updated, fotoUrl: updated.length > 0 ? updated[0].fotoUrl : '' };
+                                                        });
+                                                    };
+
+                                                    if (Platform.OS === 'web') {
+                                                        if (window.confirm('¿Estás seguro que deseas eliminar esta foto? Tendrás que guardar los cambios del equipo para que sea permanente.')) {
+                                                            performDelete();
+                                                        }
+                                                    } else {
+                                                        Alert.alert(
+                                                            'Eliminar Foto',
+                                                            '¿Estás seguro que deseas eliminar esta foto? Tendrás que guardar los cambios del equipo para que sea permanente.',
+                                                            [
+                                                                { text: 'Cancelar', style: 'cancel' },
+                                                                { text: 'Eliminar', style: 'destructive', onPress: performDelete }
+                                                            ]
+                                                        );
+                                                    }
+                                                }}
+                                            >
+                                                <MaterialIcons name="close" size={14} color="#fff" />
+                                            </TouchableOpacity>
+                                        </View>
+                                    ))}
+                                </ScrollView>
                             </View>
 
-                            {!isEditing && tipoEquipoSeleccionado && (
-                                <View style={[styles.badge, { alignSelf: 'flex-start', marginBottom: 12, backgroundColor: '#4A90D9' }]}>
-                                    <Text style={[styles.badgeText, { color: '#fff' }]}>
-                                        {TIPOS_EQUIPO.find(t => t.id === tipoEquipoSeleccionado)?.nombre || tipoEquipoSeleccionado}
-                                    </Text>
+                            {/* Info Section */}
+                            <Text style={styles.formSectionTitle}>📋 Información General</Text>
+                            <View style={styles.formRow}>
+                                <View style={[styles.formGroup, { flex: 2, zIndex: 1000 }]}>
+                                    <Text style={styles.label}>Nombre del Equipo *</Text>
+                                    <View style={{ position: 'relative' }}>
+                                        <TextInput
+                                            style={styles.input}
+                                            value={formData.nombre || ''}
+                                            onChangeText={v => {
+                                                setFormData({ ...formData, nombre: v });
+                                                // Filter suggestions based on input
+                                                if (v.length > 0) {
+                                                    const filtered = equipos
+                                                        .map(e => e.nombre)
+                                                        .filter(n => n.toLowerCase().includes(v.toLowerCase()) && n !== v);
+                                                    setNameSuggestions(filtered);
+                                                    setShowNameSuggestions(filtered.length > 0);
+                                                } else {
+                                                    // Show all if empty
+                                                    const allNames = equipos.map(e => e.nombre);
+                                                    setNameSuggestions(allNames);
+                                                    setShowNameSuggestions(allNames.length > 0);
+                                                }
+                                            }}
+                                            onFocus={() => {
+                                                const allNames = equipos.map(e => e.nombre);
+                                                setNameSuggestions(allNames);
+                                                setShowNameSuggestions(allNames.length > 0);
+                                            }}
+                                            onBlur={() => setTimeout(() => setShowNameSuggestions(false), 200)}
+                                            placeholder="Ej: PC-Gerencia-01 o seleccione existente"
+                                        />
+                                        {showNameSuggestions && nameSuggestions.length > 0 && (
+                                            <View style={{
+                                                position: 'absolute',
+                                                top: '100%',
+                                                left: 0,
+                                                right: 0,
+                                                backgroundColor: '#fff',
+                                                borderRadius: 8,
+                                                borderWidth: 1,
+                                                borderColor: '#e0e0e0',
+                                                maxHeight: 150,
+                                                zIndex: 9999,
+                                                shadowColor: '#000',
+                                                shadowOffset: { width: 0, height: 2 },
+                                                shadowOpacity: 0.15,
+                                                shadowRadius: 4,
+                                                elevation: 5
+                                            }}>
+                                                <ScrollView nestedScrollEnabled>
+                                                    {nameSuggestions.slice(0, 10).map((name, idx) => (
+                                                        <TouchableOpacity
+                                                            key={idx}
+                                                            onPress={() => {
+                                                                setFormData({ ...formData, nombre: name });
+                                                                setShowNameSuggestions(false);
+                                                            }}
+                                                            style={{
+                                                                padding: 12,
+                                                                borderBottomWidth: idx < nameSuggestions.length - 1 ? 1 : 0,
+                                                                borderBottomColor: '#f0f0f0'
+                                                            }}
+                                                        >
+                                                            <Text style={{ color: '#2c3e50', fontSize: 14 }}>💻 {name}</Text>
+                                                        </TouchableOpacity>
+                                                    ))}
+                                                </ScrollView>
+                                            </View>
+                                        )}
+                                    </View>
                                 </View>
-                            )}
-
-                            {/* Información Básica */}
-                            <Text style={styles.sectionLabel}>Datos del Cliente</Text>
-                            <View style={styles.row}>
-                                <View style={{ flex: 1, marginRight: 8 }}>
-                                    <Text style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Nombre del Equipo *</Text>
-                                    <TextInput
-                                        style={styles.input}
-                                        placeholder="Ej: PC-001"
-                                        value={formData.nombre || ''}
-                                        onChangeText={v => setFormData({ ...formData, nombre: v })}
-                                    />
-                                </View>
-                                {Platform.OS === 'web' ? (
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>F. Inspección</Text>
+                                <View style={[styles.formGroup, { flex: 1 }]}>
+                                    <Text style={styles.label}>Fecha Inspección</Text>
+                                    {Platform.OS === 'web' ? (
                                         <input
                                             type="date"
                                             value={formData.fechaInspeccion ? formData.fechaInspeccion.split('T')[0] : ''}
                                             onChange={(e: any) => setFormData({ ...formData, fechaInspeccion: e.target.value })}
                                             style={{
-                                                padding: '12px 30px 12px 12px',
+                                                padding: '11px',
                                                 borderRadius: 8,
                                                 border: '1px solid #e0e0e0',
-                                                backgroundColor: '#f5f7fa',
+                                                backgroundColor: '#fff',
                                                 width: '100%',
-                                                boxSizing: 'border-box' as const,
                                                 fontSize: 14,
                                                 fontFamily: 'System',
-                                                cursor: 'pointer'
+                                                color: '#2c3e50'
                                             }}
-                                            placeholder="Fecha Inspección"
                                         />
-                                    </View>
-                                ) : (
-                                    <TextInput
-                                        style={[styles.input, { flex: 1 }]}
-                                        placeholder="Fecha Inspección (YYYY-MM-DD)"
-                                        value={formData.fechaInspeccion ? formData.fechaInspeccion.split('T')[0] : ''}
-                                        onChangeText={v => setFormData({ ...formData, fechaInspeccion: v })}
-                                    />
-                                )}
+                                    ) : (
+                                        <TextInput
+                                            style={styles.input}
+                                            value={formData.fechaInspeccion?.split('T')[0]}
+                                            onChangeText={v => setFormData({ ...formData, fechaInspeccion: v })}
+                                            placeholder="YYYY-MM-DD"
+                                        />
+                                    )}
+                                </View>
                             </View>
-                            <View style={styles.row}>
-                                <TextInput
-                                    style={[styles.input, { flex: 1, marginRight: 8 }]}
-                                    placeholder="Área/Departamento"
-                                    value={formData.area || ''}
-                                    onChangeText={v => setFormData({ ...formData, area: v })}
-                                />
-                                <TextInput
-                                    style={[styles.input, { flex: 1 }]}
-                                    placeholder="Ubicación Física"
-                                    value={formData.ubicacion || ''}
-                                    onChangeText={v => setFormData({ ...formData, ubicacion: v })}
-                                />
-                            </View>
-                            <View style={styles.row}>
-                                <TextInput
-                                    style={[styles.input, { flex: 1, marginRight: 8 }]}
-                                    placeholder="Usuario Asignado"
-                                    value={formData.usuarioAsignado || ''}
-                                    onChangeText={v => setFormData({ ...formData, usuarioAsignado: v })}
-                                />
-                                <TextInput
-                                    style={[styles.input, { flex: 1 }]}
-                                    placeholder="Correo"
-                                    value={formData.correoUsuario || ''}
-                                    onChangeText={v => setFormData({ ...formData, correoUsuario: v })}
-                                />
-                            </View>
-                            <TextInput
-                                style={styles.input}
-                                placeholder="Contraseña del Equipo"
-                                value={formData.contrasenaEquipo || ''}
-                                onChangeText={v => setFormData({ ...formData, contrasenaEquipo: v })}
-                            />
 
-                            <Text style={styles.sectionLabel}>Prioridad de Atención</Text>
-                            <View style={{ flexDirection: 'row', marginBottom: 16 }}>
+                            <View style={styles.formRow}>
+                                <View style={styles.formGroup}>
+                                    <Text style={styles.label}>Departamento / Área</Text>
+                                    <TextInput style={styles.input} value={formData.area || ''} onChangeText={v => setFormData({ ...formData, area: v })} placeholder="Ej: Contabilidad" />
+                                </View>
+                                <View style={styles.formGroup}>
+                                    <Text style={styles.label}>Ubicación Física</Text>
+                                    <TextInput style={styles.input} value={formData.ubicacion || ''} onChangeText={v => setFormData({ ...formData, ubicacion: v })} placeholder="Ej: Piso 2, Oficina 204" />
+                                </View>
+                            </View>
+
+                            <View style={styles.formRow}>
+                                <View style={styles.formGroup}>
+                                    <Text style={styles.label}>Usuario Asignado</Text>
+                                    <TextInput style={styles.input} value={formData.usuarioAsignado || ''} onChangeText={v => setFormData({ ...formData, usuarioAsignado: v })} placeholder="Nombre del responsable" />
+                                </View>
+                                <View style={styles.formGroup}>
+                                    <Text style={styles.label}>Correo Electrónico</Text>
+                                    <TextInput style={styles.input} value={formData.correoUsuario || ''} onChangeText={v => setFormData({ ...formData, correoUsuario: v })} placeholder="usuario@empresa.com" keyboardType="email-address" />
+                                </View>
+                            </View>
+
+                            <View style={styles.formGroup}>
+                                <Text style={styles.label}>Contraseña Equipo</Text>
+                                <TextInput style={styles.input} value={formData.contrasenaEquipo || ''} onChangeText={v => setFormData({ ...formData, contrasenaEquipo: v })} placeholder="Contraseña de inicio de sesión" />
+                            </View>
+
+                            <Text style={[styles.label, { marginTop: 16 }]}>Prioridad</Text>
+                            <View style={styles.segmentControl}>
                                 {['Alta', 'Media', 'Baja'].map(p => (
                                     <TouchableOpacity
                                         key={p}
-                                        style={{
-                                            paddingVertical: 8,
-                                            paddingHorizontal: 16,
-                                            borderRadius: 20,
-                                            backgroundColor: formData.prioridad === p ? getPrioridadColor(p) : '#f0f0f0',
-                                            marginRight: 8,
-                                            borderWidth: 1,
-                                            borderColor: formData.prioridad === p ? getPrioridadColor(p) : '#e0e0e0'
-                                        }}
+                                        style={[styles.segmentBtn, formData.prioridad === p && { backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 }]}
                                         onPress={() => setFormData({ ...formData, prioridad: p })}
                                     >
-                                        <Text style={{
-                                            color: formData.prioridad === p ? '#fff' : '#333',
-                                            fontWeight: 'bold'
-                                        }}>
-                                            {p}
-                                        </Text>
+                                        <Text style={[styles.segmentBtnText, formData.prioridad === p && { color: getPrioridadColor(p) }]}>{p}</Text>
                                     </TouchableOpacity>
                                 ))}
                             </View>
@@ -762,7 +1003,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                             {/* PC - Solo para Equipo de Cómputo */}
                             {(isEditing || tipoEquipoSeleccionado === 'computador') && (
                                 <>
-                                    <Text style={styles.sectionLabel}>💻 PC</Text>
+                                    <Text style={styles.formSectionTitle}>💻 PC</Text>
                                     <View style={styles.row}>
                                         <TextInput
                                             style={[styles.input, { flex: 1, marginRight: 8 }]}
@@ -841,7 +1082,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                             {/* Monitor */}
                             {(isEditing || tipoEquipoSeleccionado === 'computador' || tipoEquipoSeleccionado === 'monitor') && (
                                 <>
-                                    <Text style={styles.sectionLabel}>🖥️ Monitor</Text>
+                                    <Text style={styles.formSectionTitle}>🖥️ Monitor</Text>
                                     <View style={styles.row}>
                                         <TextInput
                                             style={[styles.input, { flex: 1, marginRight: 8 }]}
@@ -888,7 +1129,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                             {/* Teclado */}
                             {(isEditing || tipoEquipoSeleccionado === 'computador' || tipoEquipoSeleccionado === 'teclado') && (
                                 <>
-                                    <Text style={styles.sectionLabel}>⌨️ Teclado</Text>
+                                    <Text style={styles.formSectionTitle}>⌨️ Teclado</Text>
                                     <View style={styles.row}>
                                         <TextInput
                                             style={[styles.input, { flex: 1, marginRight: 8 }]}
@@ -935,7 +1176,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                             {/* Mouse */}
                             {(isEditing || tipoEquipoSeleccionado === 'computador' || tipoEquipoSeleccionado === 'mouse') && (
                                 <>
-                                    <Text style={styles.sectionLabel}>🖱️ Mouse</Text>
+                                    <Text style={styles.formSectionTitle}>🖱️ Mouse</Text>
                                     <View style={styles.row}>
                                         <TextInput
                                             style={[styles.input, { flex: 1, marginRight: 8 }]}
@@ -978,7 +1219,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                             {/* Impresora, Escáner */}
                             {(isEditing || tipoEquipoSeleccionado === 'impresora') && (
                                 <>
-                                    <Text style={styles.sectionLabel}>🖨️ Impresora / Escáner</Text>
+                                    <Text style={styles.formSectionTitle}>🖨️ Impresora / Escáner</Text>
                                     <View style={styles.row}>
                                         <TextInput
                                             style={[styles.input, { flex: 1, marginRight: 8 }]}
@@ -1130,13 +1371,13 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                                 ))}
                             </View>
 
-                            {/* Buttons */}
-                            <View style={styles.modalButtons}>
-                                <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalEquipo(false)}>
-                                    <Text style={styles.cancelBtnText}>Cancelar</Text>
+                            {/* Footer */}
+                            <View style={styles.modalFooter}>
+                                <TouchableOpacity style={styles.btnCancel} onPress={() => setModalEquipo(false)}>
+                                    <Text style={styles.btnCancelText}>Cancelar</Text>
                                 </TouchableOpacity>
-                                <TouchableOpacity style={styles.saveBtn} onPress={handleSaveEquipo}>
-                                    <Text style={styles.saveBtnText}>Guardar</Text>
+                                <TouchableOpacity style={styles.btnSave} onPress={handleSaveEquipo}>
+                                    <Text style={styles.btnSaveText}>Guardar Cambios</Text>
                                 </TouchableOpacity>
                             </View>
                         </ScrollView>
@@ -1159,6 +1400,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
 
                             {equipoSeleccionado && (
                                 <>
+                                    {/* Información Básica */}
                                     <View style={styles.detalleSection}>
                                         <Text style={styles.detalleSectionTitle}>💻 Información Básica</Text>
                                         <View style={styles.detalleRow}>
@@ -1173,12 +1415,49 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                                         </View>
                                         <View style={styles.detalleRow}>
                                             <View style={styles.detalleItem}>
-                                                <Text style={styles.detalleLabel}>Marca y Modelo</Text>
-                                                <Text style={styles.detalleValue}>{equipoSeleccionado.pcMarca} {equipoSeleccionado.pcModelo}</Text>
-                                            </View>
-                                            <View style={styles.detalleItem}>
                                                 <Text style={styles.detalleLabel}>Departamento</Text>
                                                 <Text style={styles.detalleValue}>{equipoSeleccionado.area || 'N/A'}</Text>
+                                            </View>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Estado Actual</Text>
+                                                <View style={[styles.estadoBadge, { backgroundColor: getEstadoColor(equipoSeleccionado.estado) }]}>
+                                                    <Text style={styles.estadoBadgeText}>{getEstadoLabel(equipoSeleccionado.estado)}</Text>
+                                                </View>
+                                            </View>
+                                        </View>
+                                        <View style={styles.detalleRow}>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Usuario Asignado</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.usuarioAsignado || 'N/A'}</Text>
+                                            </View>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Correo Usuario</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.correoUsuario || 'N/A'}</Text>
+                                            </View>
+                                        </View>
+                                        <View style={styles.detalleRow}>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Contraseña Equipo</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.contrasenaEquipo || 'N/A'}</Text>
+                                            </View>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Fecha Inspección</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.fechaInspeccion ? formatDate(equipoSeleccionado.fechaInspeccion) : 'N/A'}</Text>
+                                            </View>
+                                        </View>
+                                    </View>
+
+                                    {/* Hardware - PC */}
+                                    <View style={styles.detalleSection}>
+                                        <Text style={styles.detalleSectionTitle}>🖥️ Hardware - PC</Text>
+                                        <View style={styles.detalleRow}>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Marca</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.pcMarca || 'N/A'}</Text>
+                                            </View>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Modelo</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.pcModelo || 'N/A'}</Text>
                                             </View>
                                         </View>
                                         <View style={styles.detalleRow}>
@@ -1187,20 +1466,33 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                                                 <Text style={styles.detalleValue}>{equipoSeleccionado.pcSerie || 'N/A'}</Text>
                                             </View>
                                             <View style={styles.detalleItem}>
-                                                <Text style={styles.detalleLabel}>Usuario Asignado</Text>
-                                                <Text style={styles.detalleValue}>{equipoSeleccionado.usuarioAsignado || 'N/A'}</Text>
+                                                <Text style={styles.detalleLabel}>Inventario</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.pcInventario || 'N/A'}</Text>
                                             </View>
                                         </View>
                                         <View style={styles.detalleRow}>
                                             <View style={styles.detalleItem}>
-                                                <Text style={styles.detalleLabel}>Estado Actual</Text>
-                                                <View style={[styles.estadoBadge, { backgroundColor: getEstadoColor(equipoSeleccionado.estado) }]}>
-                                                    <Text style={styles.estadoBadgeText}>{getEstadoLabel(equipoSeleccionado.estado)}</Text>
-                                                </View>
+                                                <Text style={styles.detalleLabel}>Condiciones Físicas</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.pcCondicionesFisicas || 'N/A'}</Text>
                                             </View>
+                                        </View>
+                                        <View style={[styles.detalleRow, { flexWrap: 'wrap' }]}>
+                                            <Text style={[styles.detalleValue, { marginRight: 16 }]}>
+                                                {equipoSeleccionado.pcEnciende ? '✅' : '❌'} Enciende
+                                            </Text>
+                                            <Text style={[styles.detalleValue, { marginRight: 16 }]}>
+                                                {equipoSeleccionado.pcBotonesCompletos ? '✅' : '❌'} Botones Completos
+                                            </Text>
+                                            <Text style={[styles.detalleValue, { marginRight: 16 }]}>
+                                                {equipoSeleccionado.pcTieneDiscoFlexible ? '✅' : '❌'} Disco Flexible
+                                            </Text>
+                                            <Text style={styles.detalleValue}>
+                                                {equipoSeleccionado.pcTieneCdDvd ? '✅' : '❌'} CD/DVD
+                                            </Text>
                                         </View>
                                     </View>
 
+                                    {/* Especificaciones */}
                                     <View style={styles.detalleSection}>
                                         <Text style={styles.detalleSectionTitle}>⚙️ Especificaciones</Text>
                                         <View style={styles.detalleRow}>
@@ -1218,23 +1510,232 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                                                 <Text style={styles.detalleLabel}>Disco Duro</Text>
                                                 <Text style={styles.detalleValue}>{equipoSeleccionado.discoDuro || 'N/A'}</Text>
                                             </View>
+                                        </View>
+                                    </View>
+
+                                    {/* Monitor */}
+                                    <View style={styles.detalleSection}>
+                                        <Text style={styles.detalleSectionTitle}>🖥️ Monitor</Text>
+                                        <View style={styles.detalleRow}>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Marca</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.monitorMarca || 'N/A'}</Text>
+                                            </View>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Modelo</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.monitorModelo || 'N/A'}</Text>
+                                            </View>
+                                        </View>
+                                        <View style={styles.detalleRow}>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Serie</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.monitorSerie || 'N/A'}</Text>
+                                            </View>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Condiciones Físicas</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.monitorCondicionesFisicas || 'N/A'}</Text>
+                                            </View>
+                                        </View>
+                                        <View style={[styles.detalleRow, { flexWrap: 'wrap' }]}>
+                                            <Text style={[styles.detalleValue, { marginRight: 16 }]}>
+                                                {equipoSeleccionado.monitorEnciende ? '✅' : '❌'} Enciende
+                                            </Text>
+                                            <Text style={[styles.detalleValue, { marginRight: 16 }]}>
+                                                {equipoSeleccionado.monitorColoresCorrectos ? '✅' : '❌'} Colores Correctos
+                                            </Text>
+                                            <Text style={styles.detalleValue}>
+                                                {equipoSeleccionado.monitorBotonesCompletos ? '✅' : '❌'} Botones Completos
+                                            </Text>
+                                        </View>
+                                    </View>
+
+                                    {/* Teclado */}
+                                    <View style={styles.detalleSection}>
+                                        <Text style={styles.detalleSectionTitle}>⌨️ Teclado</Text>
+                                        <View style={styles.detalleRow}>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Marca</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.tecladoMarca || 'N/A'}</Text>
+                                            </View>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Modelo</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.tecladoModelo || 'N/A'}</Text>
+                                            </View>
+                                        </View>
+                                        <View style={styles.detalleRow}>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Serie</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.tecladoSerie || 'N/A'}</Text>
+                                            </View>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Condiciones Físicas</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.tecladoCondicionesFisicas || 'N/A'}</Text>
+                                            </View>
+                                        </View>
+                                        <View style={[styles.detalleRow, { flexWrap: 'wrap' }]}>
+                                            <Text style={[styles.detalleValue, { marginRight: 16 }]}>
+                                                {equipoSeleccionado.tecladoFuncionaCorrectamente ? '✅' : '❌'} Funciona
+                                            </Text>
+                                            <Text style={[styles.detalleValue, { marginRight: 16 }]}>
+                                                {equipoSeleccionado.tecladoBotonesCompletos ? '✅' : '❌'} Botones Completos
+                                            </Text>
+                                            <Text style={styles.detalleValue}>
+                                                {equipoSeleccionado.tecladoSeReemplazo ? '✅' : '❌'} Se Reemplazó
+                                            </Text>
+                                        </View>
+                                    </View>
+
+                                    {/* Mouse */}
+                                    <View style={styles.detalleSection}>
+                                        <Text style={styles.detalleSectionTitle}>🖱️ Mouse</Text>
+                                        <View style={styles.detalleRow}>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Marca</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.mouseMarca || 'N/A'}</Text>
+                                            </View>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Modelo</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.mouseModelo || 'N/A'}</Text>
+                                            </View>
+                                        </View>
+                                        <View style={styles.detalleRow}>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Serie</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.mouseSerie || 'N/A'}</Text>
+                                            </View>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Condiciones Físicas</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.mouseCondicionesFisicas || 'N/A'}</Text>
+                                            </View>
+                                        </View>
+                                        <View style={[styles.detalleRow, { flexWrap: 'wrap' }]}>
+                                            <Text style={[styles.detalleValue, { marginRight: 16 }]}>
+                                                {equipoSeleccionado.mouseFuncionaCorrectamente ? '✅' : '❌'} Funciona
+                                            </Text>
+                                            <Text style={styles.detalleValue}>
+                                                {equipoSeleccionado.mouseBotonesCompletos ? '✅' : '❌'} Botones Completos
+                                            </Text>
+                                        </View>
+                                    </View>
+
+                                    {/* Impresora / Escáner */}
+                                    <View style={styles.detalleSection}>
+                                        <Text style={styles.detalleSectionTitle}>🖨️ Impresora / Escáner</Text>
+                                        <View style={styles.detalleRow}>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Impresora Marca</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.impresoraMarca || 'N/A'}</Text>
+                                            </View>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Modelo</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.impresoraModelo || 'N/A'}</Text>
+                                            </View>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Serie</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.impresoraSerie || 'N/A'}</Text>
+                                            </View>
+                                        </View>
+                                        <View style={styles.detalleRow}>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Escáner Marca</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.escanerMarca || 'N/A'}</Text>
+                                            </View>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Modelo</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.escanerModelo || 'N/A'}</Text>
+                                            </View>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Serie</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.escanerSerie || 'N/A'}</Text>
+                                            </View>
+                                        </View>
+                                        {equipoSeleccionado.otrosDispositivos && (
+                                            <View style={styles.detalleRow}>
+                                                <View style={styles.detalleItem}>
+                                                    <Text style={styles.detalleLabel}>Otros Dispositivos</Text>
+                                                    <Text style={styles.detalleValue}>{equipoSeleccionado.otrosDispositivos}</Text>
+                                                </View>
+                                            </View>
+                                        )}
+                                    </View>
+
+                                    {/* Software */}
+                                    <View style={styles.detalleSection}>
+                                        <Text style={styles.detalleSectionTitle}>💿 Software</Text>
+                                        <View style={styles.detalleRow}>
                                             <View style={styles.detalleItem}>
                                                 <Text style={styles.detalleLabel}>Sistema Operativo</Text>
                                                 <Text style={styles.detalleValue}>{equipoSeleccionado.sistemaOperativo || 'N/A'}</Text>
                                             </View>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Office</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.versionOffice || 'N/A'}</Text>
+                                            </View>
                                         </View>
+                                        {equipoSeleccionado.otroSoftware && (
+                                            <View style={styles.detalleRow}>
+                                                <View style={styles.detalleItem}>
+                                                    <Text style={styles.detalleLabel}>Otro Software</Text>
+                                                    <Text style={styles.detalleValue}>{equipoSeleccionado.otroSoftware}</Text>
+                                                </View>
+                                            </View>
+                                        )}
                                     </View>
 
+                                    {/* Mantenimiento */}
                                     <View style={styles.detalleSection}>
-                                        <Text style={styles.detalleSectionTitle}>🖥️ Periféricos</Text>
+                                        <Text style={styles.detalleSectionTitle}>🔧 Mantenimiento</Text>
                                         <View style={styles.detalleRow}>
                                             <View style={styles.detalleItem}>
-                                                <Text style={styles.detalleLabel}>Monitor</Text>
-                                                <Text style={styles.detalleValue}>{equipoSeleccionado.monitorMarca} {equipoSeleccionado.monitorModelo || 'N/A'}</Text>
+                                                <Text style={styles.detalleLabel}>Último Mantenimiento</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.ultimoMantenimiento ? formatDate(equipoSeleccionado.ultimoMantenimiento) : 'N/A'}</Text>
                                             </View>
                                             <View style={styles.detalleItem}>
-                                                <Text style={styles.detalleLabel}>Teclado</Text>
-                                                <Text style={styles.detalleValue}>{equipoSeleccionado.tecladoMarca || 'N/A'}</Text>
+                                                <Text style={styles.detalleLabel}>Próximo Mantenimiento</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.proximoMantenimiento ? formatDate(equipoSeleccionado.proximoMantenimiento) : 'N/A'}</Text>
+                                            </View>
+                                        </View>
+                                        {equipoSeleccionado.mantenimientoRequerido && (
+                                            <View style={styles.detalleRow}>
+                                                <View style={styles.detalleItem}>
+                                                    <Text style={styles.detalleLabel}>Mantenimiento Requerido</Text>
+                                                    <Text style={styles.detalleValue}>{equipoSeleccionado.mantenimientoRequerido}</Text>
+                                                </View>
+                                            </View>
+                                        )}
+                                        {equipoSeleccionado.prioridad && (
+                                            <View style={styles.detalleRow}>
+                                                <View style={styles.detalleItem}>
+                                                    <Text style={styles.detalleLabel}>Prioridad</Text>
+                                                    <Text style={styles.detalleValue}>{equipoSeleccionado.prioridad}</Text>
+                                                </View>
+                                            </View>
+                                        )}
+                                    </View>
+
+                                    {/* Observaciones */}
+                                    {equipoSeleccionado.observaciones && (
+                                        <View style={styles.detalleSection}>
+                                            <Text style={styles.detalleSectionTitle}>📝 Observaciones</Text>
+                                            <View style={styles.detalleRow}>
+                                                <View style={styles.detalleItem}>
+                                                    <Text style={styles.detalleValue}>{equipoSeleccionado.observaciones}</Text>
+                                                </View>
+                                            </View>
+                                        </View>
+                                    )}
+
+                                    {/* Registro */}
+                                    <View style={styles.detalleSection}>
+                                        <Text style={styles.detalleSectionTitle}>📅 Registro</Text>
+                                        <View style={styles.detalleRow}>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Fecha Creación</Text>
+                                                <Text style={styles.detalleValue}>{formatDate(equipoSeleccionado.fechaCreacion)}</Text>
+                                            </View>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Última Actualización</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.fechaActualizacion ? formatDate(equipoSeleccionado.fechaActualizacion) : 'N/A'}</Text>
                                             </View>
                                         </View>
                                     </View>
@@ -1279,7 +1780,15 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                                         <Text style={styles.historialDescripcion}>{m.trabajoRealizado || 'Sin descripción'}</Text>
                                         <View style={styles.historialFooter}>
                                             <Text style={styles.historialTecnico}>👤 {m.tecnico || 'N/A'}</Text>
-                                            <Text style={styles.historialCosto}>💵 ${m.costo.toFixed(2)}</Text>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                                <Text style={styles.historialCosto}>💵 ${m.costo.toFixed(2)}</Text>
+                                                <TouchableOpacity
+                                                    onPress={() => handleDeleteMantenimiento(m.id)}
+                                                    style={{ marginLeft: 12, padding: 4 }}
+                                                >
+                                                    <Text style={{ fontSize: 16, color: '#dc3545' }}>🗑️</Text>
+                                                </TouchableOpacity>
+                                            </View>
                                         </View>
                                     </View>
                                 ))
@@ -1313,6 +1822,34 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                                 </TouchableOpacity>
                             ))}
                         </View>
+
+                        {/* Fecha del Mantenimiento */}
+                        {Platform.OS === 'web' ? (
+                            <View style={{ marginBottom: 12 }}>
+                                <Text style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Fecha del Mantenimiento</Text>
+                                <input
+                                    type="date"
+                                    value={mantenimientoData.fecha || ''}
+                                    onChange={(e: any) => setMantenimientoData({ ...mantenimientoData, fecha: e.target.value })}
+                                    style={{
+                                        padding: '12px',
+                                        borderRadius: 8,
+                                        border: '1px solid #e0e0e0',
+                                        backgroundColor: '#f5f7fa',
+                                        width: '100%',
+                                        boxSizing: 'border-box' as const,
+                                        fontSize: 14
+                                    }}
+                                />
+                            </View>
+                        ) : (
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Fecha del Mantenimiento (YYYY-MM-DD)"
+                                value={mantenimientoData.fecha || ''}
+                                onChangeText={v => setMantenimientoData({ ...mantenimientoData, fecha: v })}
+                            />
+                        )}
 
                         <TextInput
                             style={[styles.input, { height: 80 }]}
@@ -1355,10 +1892,10 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                         </View>
                     </View>
                 </View>
-            </Modal >
+            </Modal>
 
             {/* Modal: Seleccionar Tipo de Equipo */}
-            < Modal visible={modalTipoEquipo} animationType="fade" transparent >
+            <Modal visible={modalTipoEquipo} animationType="fade" transparent>
                 <View style={styles.modalOverlay}>
                     <View style={[styles.modalContent, { maxWidth: 600 }]}>
                         <Text style={styles.modalTitle}>Seleccionar Tipo de Equipo</Text>
@@ -1383,7 +1920,51 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                         </TouchableOpacity>
                     </View>
                 </View>
-            </Modal >
+            </Modal>
+
+            {/* Modal: Cambio Rápido de Estado */}
+            <Modal visible={statusModalVisible} animationType="fade" transparent>
+                <TouchableWithoutFeedback onPress={() => setStatusModalVisible(false)}>
+                    <View style={styles.modalOverlay}>
+                        <TouchableWithoutFeedback onPress={() => { }}>
+                            <View style={styles.statusModalContent}>
+                                <Text style={styles.modalTitle}>Cambiar Estado</Text>
+                                {['Disponible', 'Asignado', 'EnMantenimiento', 'FueraDeServicio'].map(est => (
+                                    <TouchableOpacity
+                                        key={est}
+                                        style={[styles.statusOption, { borderLeftColor: getEstadoColor(est) }]}
+                                        onPress={() => {
+                                            if (equipoParaEstado) {
+                                                handleCambiarEstado(equipoParaEstado, est);
+                                                setStatusModalVisible(false);
+                                            }
+                                        }}
+                                    >
+                                        <Text style={styles.statusOptionText}>{getEstadoLabel(est)}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </TouchableWithoutFeedback>
+                    </View>
+                </TouchableWithoutFeedback>
+            </Modal>
+
+            {/* Modal: Full Screen Image */}
+            <Modal visible={!!fullScreenImage} animationType="fade" transparent onRequestClose={() => setFullScreenImage(null)}>
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center' }}>
+                    <TouchableOpacity style={{ position: 'absolute', top: 40, right: 20, zIndex: 10, padding: 10 }} onPress={() => setFullScreenImage(null)}>
+                        <MaterialIcons name="close" size={30} color="#fff" />
+                    </TouchableOpacity>
+                    {fullScreenImage && (
+                        <Image
+                            source={{ uri: `${API_BASE.replace('/api', '')}${fullScreenImage}` }}
+                            style={{ width: '100%', height: '80%' }}
+                            resizeMode="contain"
+                        />
+                    )}
+                </View>
+            </Modal>
+
         </View >
     );
 }
@@ -1529,5 +2110,34 @@ const styles = StyleSheet.create({
     tipoEquipoNombre: { fontSize: 14, fontWeight: 'bold', color: '#333', textAlign: 'center', marginBottom: 4 },
     tipoEquipoDescripcion: { fontSize: 11, color: '#666', textAlign: 'center' },
 
-    emptyText: { textAlign: 'center', color: '#999', padding: 40, fontSize: 14 }
+    emptyText: { textAlign: 'center', color: '#999', padding: 40, fontSize: 14 },
+
+    // Photo Upload Styles
+    equipoImageCard: { width: '100%', height: 120, borderRadius: 8, marginBottom: 8, resizeMode: 'cover' },
+
+    // Status Modal Styles
+    statusModalContent: { backgroundColor: '#fff', borderRadius: 12, padding: 24, width: 300 },
+    statusOption: { padding: 16, borderBottomWidth: 1, borderBottomColor: '#f0f0f0', borderLeftWidth: 4, marginBottom: 8, backgroundColor: '#fafafa', borderRadius: 4 },
+    statusOptionText: { fontSize: 16, color: '#333' },
+
+    // Gallery Styles
+    photoSection: { marginVertical: 20 },
+    photoPreview: { width: 80, height: 80, borderRadius: 8, borderWidth: 1, borderColor: '#eee' },
+    addPhotoBtn: { width: 80, height: 80, borderRadius: 8, borderStyle: 'dashed', borderWidth: 2, borderColor: '#4A90D9', justifyContent: 'center', alignItems: 'center', backgroundColor: '#f0f8ff', marginLeft: 12 },
+    deletePhotoBtn: { position: 'absolute', top: -6, right: -6, backgroundColor: '#dc3545', borderRadius: 10, width: 20, height: 20, justifyContent: 'center', alignItems: 'center', zIndex: 10, borderWidth: 2, borderColor: '#fff' },
+
+    formSectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#2c3e50', marginTop: 24, marginBottom: 16, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#eee' },
+    formRow: { flexDirection: 'row', marginHorizontal: -8, marginBottom: 16 },
+    formGroup: { flex: 1, paddingHorizontal: 8 },
+    label: { fontSize: 12, fontWeight: '600', color: '#7f8c8d', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
+
+    segmentControl: { flexDirection: 'row', backgroundColor: '#f0f4f8', padding: 4, borderRadius: 8, marginBottom: 24 },
+    segmentBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 6 },
+    segmentBtnText: { fontSize: 13, fontWeight: '600', color: '#7f8c8d' },
+
+    modalFooter: { flexDirection: 'row', justifyContent: 'flex-end', paddingTop: 24, borderTopWidth: 1, borderTopColor: '#f0f0f0', marginTop: 24 },
+    btnCancel: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8, marginRight: 12, backgroundColor: '#f8f9fa' },
+    btnCancelText: { color: '#636e72', fontWeight: '600' },
+    btnSave: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8, backgroundColor: '#4A90D9', shadowColor: '#4A90D9', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 },
+    btnSaveText: { color: '#fff', fontWeight: 'bold' }
 });

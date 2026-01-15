@@ -42,6 +42,12 @@ public class Talleres_Gasto
     [MaxLength(500)]
     public string? Observaciones { get; set; }
 
+    /// <summary>
+    /// URL to the uploaded invoice PDF file
+    /// </summary>
+    [MaxLength(500)]
+    public string? FacturaPdfUrl { get; set; }
+
     // Navigation properties
     [ForeignKey("ProveedorId")]
     public virtual Talleres_Proveedor? Proveedor { get; set; }
