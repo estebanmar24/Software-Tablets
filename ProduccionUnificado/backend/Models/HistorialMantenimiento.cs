@@ -26,7 +26,11 @@ public class HistorialMantenimiento
     [Column(TypeName = "decimal(10, 2)")]
     public decimal Costo { get; set; } = 0;
     
-    public DateTime Fecha { get; set; } = DateTime.UtcNow;
+    public DateTime Fecha { get; set; } = DateTime.UtcNow; // Fecha cuando se realizó el mantenimiento
+    
+    public DateTime FechaRegistro { get; set; } = DateTime.UtcNow; // Fecha cuando se registró en el sistema
+    
+    public DateTime? FechaActualizacion { get; set; } // Fecha cuando se editó por última vez
     
     public DateTime? ProximoProgramado { get; set; }
     

@@ -148,6 +148,36 @@ public class Equipo
     [MaxLength(500)]
     public string? OtrosDispositivos { get; set; } // JSON o texto libre
     
+    // ============ CÁMARAS DE VIDEO ============
+    [MaxLength(50)]
+    public string? CamaraTipo { get; set; } // IP, NVR, DVR, Otro
+    
+    [MaxLength(100)]
+    public string? CamaraTipoOtro { get; set; } // Si selecciona "Otro"
+    
+    [MaxLength(50)]
+    public string? CamaraResolucion { get; set; } // Ej: 1080p, 4K
+    
+    [MaxLength(50)]
+    public string? CamaraCapacidad { get; set; } // Capacidad de almacenamiento
+    
+    [MaxLength(20)]
+    public string? CamaraCanal { get; set; } // Número de canal
+    
+    [MaxLength(50)]
+    public string? CamaraMarca { get; set; }
+    
+    [MaxLength(100)]
+    public string? CamaraModelo { get; set; }
+    
+    [MaxLength(100)]
+    public string? CamaraSerie { get; set; }
+    
+    [MaxLength(100)]
+    public string? CamaraCondicionesFisicas { get; set; }
+    
+    public bool CamaraFuncionaCorrectamente { get; set; } = true;
+    
     // ============ SOFTWARE ============
     [MaxLength(100)]
     public string? SistemaOperativo { get; set; } // Windows 10, Windows 11
@@ -184,4 +214,5 @@ public class Equipo
     
     // Navigation
     public List<HistorialMantenimiento> Mantenimientos { get; set; } = new();
+    public List<LicenciaEquipo> Licencias { get; set; } = new();
 }

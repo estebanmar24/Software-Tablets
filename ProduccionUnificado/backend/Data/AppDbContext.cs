@@ -23,6 +23,7 @@ public class AppDbContext : DbContext
     public DbSet<Equipo> Equipos { get; set; }
     public DbSet<EquipoFoto> EquipoFotos { get; set; }
     public DbSet<HistorialMantenimiento> HistorialMantenimientos { get; set; }
+    public DbSet<LicenciaEquipo> LicenciasEquipos { get; set; }
 
     // SST Budget and Expense Management
     public DbSet<SST_Rubro> SST_Rubros { get; set; }
@@ -145,6 +146,13 @@ public class AppDbContext : DbContext
             .HasOne(h => h.Equipo)
             .WithMany(e => e.Mantenimientos)
             .HasForeignKey(h => h.EquipoId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<LicenciaEquipo>().ToTable("LicenciasEquipos");
+        modelBuilder.Entity<LicenciaEquipo>()
+            .HasOne(l => l.Equipo)
+            .WithMany(e => e.Licencias)
+            .HasForeignKey(l => l.EquipoId)
             .OnDelete(DeleteBehavior.Cascade);
 
         // SST Tables Configuration
