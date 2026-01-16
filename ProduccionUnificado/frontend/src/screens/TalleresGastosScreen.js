@@ -479,7 +479,8 @@ function GastosTab() {
                                 </Picker>
                             </View>
 
-                            {isHorasExtras || isRecargo ? (
+                            {/* Rubro specific fields */}
+                            {(isHorasExtras || isRecargo) ? (
                                 <>
                                     <Text style={styles.label}>Personal *</Text>
                                     <View style={styles.pickerContainer}>
@@ -538,16 +539,28 @@ function GastosTab() {
 
                                     <Text style={styles.label}>PDF Factura</Text>
                                     {Platform.OS === 'web' && (
-                                        <input type="file" accept=".pdf" onChange={async (e) => { /* Reuse logic */ }} style={{ marginBottom: 10 }} />
+                                        <input type="file" accept=".pdf" onChange={async (e) => {
+                                            const file = e.target.files[0];
+                                            if (file) {
+                                                try {
+                                                    const result = await talleresApi.uploadFactura(file);
+                                                    setFormData(p => ({ ...p, facturaPdfUrl: result.url }));
+                                                    Alert.alert('Éxito', 'PDF subido correctamente');
+                                                } catch (err) {
+                                                    Alert.alert('Error', 'No se pudo subir el PDF');
+                                                }
+                                            }
+                                        }} style={{ marginBottom: 10 }} />
                                     )}
                                 </>
                             ) : null}
 
+                            {/* Always visible fields once Rubro is selected */}
                             {formData.rubroId ? (
                                 <>
                                     <Text style={styles.label}>Fecha</Text>
                                     {Platform.OS === 'web' ? (
-                                        <input type="date" value={formData.fecha} onChange={(e) => setFormData(p => ({ ...p, fecha: e.target.value }))} style={{ padding: 12, fontSize: 16, borderRadius: 8, border: '1px solid #D1D5DB', marginBottom: 10, width: '100%' }} />
+                                        <input type="date" value={formData.fecha} onChange={(e) => setFormData(p => ({ ...p, fecha: e.target.value }))} style={{ padding: 12, fontSize: 16, borderRadius: 8, border: '1px solid #D1D5DB', marginBottom: 10, width: '100%', boxSizing: 'border-box' }} />
                                     ) : (
                                         <TextInput style={styles.input} value={formData.fecha} onChangeText={(t) => setFormData(p => ({ ...p, fecha: t }))} placeholder="YYYY-MM-DD" />
                                     )}
@@ -567,15 +580,16 @@ function GastosTab() {
                                         <View style={styles.budgetContainer}>
                                             <View style={styles.budgetHeader}>
                                                 <Text style={styles.budgetTitle}>
-                                                    📊 Presupuesto: {presupuestoInfo.rubroNombre}
+                                                    📊 Presupuesto: {presupuestoInfo.rubroNombre || presupuestoInfo.RubroNombre}
                                                 </Text>
                                             </View>
                                             {(() => {
                                                 const currentPrice = parseFloat(formData.precio) || 0;
                                                 const originalPrice = editItem ? (editItem.precio || 0) : 0;
-                                                const adjustedGastadoMes = (presupuestoInfo.gastadoMes || 0) - originalPrice;
+                                                const adjustedGastadoMes = (presupuestoInfo.gastadoMes || presupuestoInfo.GastadoMes || 0) - originalPrice;
                                                 const liveGastado = adjustedGastadoMes + currentPrice;
-                                                const liveRestante = (presupuestoInfo.presupuestoMensual || 0) - liveGastado;
+                                                const mensual = presupuestoInfo.presupuestoMensual || presupuestoInfo.PresupuestoMensual || 0;
+                                                const liveRestante = mensual - liveGastado;
 
                                                 return (
                                                     <>
@@ -583,7 +597,7 @@ function GastosTab() {
                                                             <View style={[styles.budgetInfoItem, { backgroundColor: '#E0E7FF' }]}>
                                                                 <Text style={styles.budgetInfoLabel}>Presupuesto Anual</Text>
                                                                 <Text style={styles.budgetInfoValue}>
-                                                                    {formatCurrency(presupuestoInfo.presupuestoAnual || 0)}
+                                                                    {formatCurrency(presupuestoInfo.presupuestoAnual || presupuestoInfo.PresupuestoAnual || 0)}
                                                                 </Text>
                                                             </View>
                                                             <View style={[styles.budgetInfoItem, { backgroundColor: '#FEF3C7' }]}>
@@ -595,7 +609,7 @@ function GastosTab() {
                                                             <View style={[styles.budgetInfoItem, { backgroundColor: '#E0F2FE' }]}>
                                                                 <Text style={styles.budgetInfoLabel}>Presupuesto Mensual</Text>
                                                                 <Text style={styles.budgetInfoValue}>
-                                                                    {formatCurrency(presupuestoInfo.presupuestoMensual || 0)}
+                                                                    {formatCurrency(mensual)}
                                                                 </Text>
                                                             </View>
                                                         </View>
@@ -619,7 +633,7 @@ function GastosTab() {
                                                     </>
                                                 );
                                             })()}
-                                            {presupuestoInfo.presupuestoMensual === 0 && (
+                                            {(presupuestoInfo.presupuestoMensual === 0 || presupuestoInfo.PresupuestoMensual === 0) && (
                                                 <Text style={styles.budgetNoData}>
                                                     ℹ️ No hay presupuesto mensual asignado
                                                 </Text>

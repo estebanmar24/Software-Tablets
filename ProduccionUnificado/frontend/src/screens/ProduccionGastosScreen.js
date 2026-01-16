@@ -498,7 +498,10 @@ function GastosTab() {
                                         }));
                                     }}>
                                         <Picker.Item label="Seleccione..." value="" />
-                                        {proveedores.map(p => <Picker.Item key={p.id} label={`${p.nombre}${p.precioCotizado ? ` - ${formatCurrency(p.precioCotizado)}` : ''}`} value={p.id.toString()} />)}
+                                        {proveedores
+                                            .filter(p => !formData.rubroId || p.rubroId?.toString() === formData.rubroId)
+                                            .map(p => <Picker.Item key={p.id} label={`${p.nombre}${p.precioCotizado ? ` - ${formatCurrency(p.precioCotizado)}` : ''}`} value={p.id.toString()} />)
+                                        }
                                     </Picker>
                                 </View>
                             </>)}
@@ -1031,8 +1034,7 @@ function ProveedoresTab() {
                 nombre,
                 nit,
                 telefono,
-                rubroId: rubroId ? parseInt(rubroId) : null,
-                precioCotizado: precioCotizado ? parseFloat(precioCotizado) : null
+                rubroId: rubroId ? parseInt(rubroId) : null
             };
             if (editItem) {
                 await produccionApi.updateProveedor(editItem.id, provData);
@@ -1085,7 +1087,6 @@ function ProveedoresTab() {
                     <View key={item.id} style={styles.gastoCard}>
                         <View style={styles.gastoHeader}>
                             <Text style={styles.gastoTipo}>{item.nombre}</Text>
-                            <Text style={styles.gastoPrecio}>{item.precioCotizado ? formatCurrency(item.precioCotizado) : '$ 0'}</Text>
                         </View>
                         <Text style={styles.gastoRubro}>{item.rubro?.nombre || 'Sin rubro asignado'}</Text>
                         <View style={styles.gastoDetails}>
@@ -1123,9 +1124,6 @@ function ProveedoresTab() {
                                 {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
                             </Picker>
                         </View>
-
-                        <Text style={styles.label}>Precio Cotizado</Text>
-                        <TextInput style={styles.input} value={precioCotizado} onChangeText={setPrecioCotizado} placeholder="$ 0" keyboardType="numeric" />
                     </ScrollView>
                     <View style={styles.modalActions}>
                         <TouchableOpacity style={styles.cancelButton} onPress={() => setShowModal(false)}><Text style={styles.cancelButtonText}>Cancelar</Text></TouchableOpacity>
