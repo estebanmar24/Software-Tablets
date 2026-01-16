@@ -12,8 +12,7 @@ public class Talleres_Gasto
     [Key]
     public int Id { get; set; }
 
-    [Required]
-    public int ProveedorId { get; set; }
+    public int? ProveedorId { get; set; }
 
     [Required]
     public int RubroId { get; set; }
@@ -54,4 +53,24 @@ public class Talleres_Gasto
 
     [ForeignKey("RubroId")]
     public virtual Talleres_Rubro? Rubro { get; set; }
+
+    // New Columns for Overtime/Recargos
+    public int? PersonalId { get; set; }
+    public int? TipoHoraId { get; set; }
+    public int? TipoRecargoId { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? CantidadHoras { get; set; }
+
+    [MaxLength(100)]
+    public string? NumeroOP { get; set; }
+
+    [ForeignKey("PersonalId")]
+    public virtual Talleres_Personal? Personal { get; set; }
+
+    [ForeignKey("TipoHoraId")]
+    public virtual Produccion_TipoHora? TipoHora { get; set; }
+
+    [ForeignKey("TipoRecargoId")]
+    public virtual Produccion_TipoRecargo? TipoRecargo { get; set; }
 }

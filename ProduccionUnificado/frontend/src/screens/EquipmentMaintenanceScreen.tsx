@@ -16,6 +16,7 @@ interface Equipo {
     usuarioAsignado?: string;
     correoUsuario?: string;
     contrasenaEquipo?: string;
+    ipDireccion?: string;
     ubicacion?: string;
     estado: string;
     // PC
@@ -899,6 +900,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
 
                             <Text style={styles.equipoMarca}>{item.pcMarca} {item.pcModelo}</Text>
                             <Text style={styles.equipoUbicacion}>📍 {item.ubicacion || 'Sin ubicación'}</Text>
+                            {item.ipDireccion && <Text style={[styles.equipoUbicacion, { color: '#4A90D9', fontWeight: '500' }]}>📡 {item.ipDireccion}</Text>}
                             <Text style={styles.equipoArea}>● {item.area || 'Sin área'}</Text>
 
                             <View style={styles.equipoFechas}>
@@ -1167,6 +1169,10 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                                 <View style={styles.formGroup}>
                                     <Text style={styles.label}>Ubicación Física</Text>
                                     <TextInput style={styles.input} value={formData.ubicacion || ''} onChangeText={v => setFormData({ ...formData, ubicacion: v })} placeholder="Ej: Piso 2, Oficina 204" />
+                                </View>
+                                <View style={styles.formGroup}>
+                                    <Text style={styles.label}>Dirección IP</Text>
+                                    <TextInput style={styles.input} value={formData.ipDireccion || ''} onChangeText={v => setFormData({ ...formData, ipDireccion: v })} placeholder="Ej: 192.168.1.100" />
                                 </View>
                             </View>
 
@@ -1813,6 +1819,10 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                                             <View style={styles.detalleItem}>
                                                 <Text style={styles.detalleLabel}>Ubicación</Text>
                                                 <Text style={styles.detalleValue}>{equipoSeleccionado.ubicacion || 'N/A'}</Text>
+                                            </View>
+                                            <View style={styles.detalleItem}>
+                                                <Text style={styles.detalleLabel}>Dirección IP</Text>
+                                                <Text style={styles.detalleValue}>{equipoSeleccionado.ipDireccion || 'N/A'}</Text>
                                             </View>
                                         </View>
                                         <View style={styles.detalleRow}>

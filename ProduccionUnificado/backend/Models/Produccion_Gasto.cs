@@ -39,6 +39,9 @@ public class Produccion_Gasto
     
     // Optional: store hours for history
     public decimal? CantidadHoras { get; set; }
+    
+    // OP Number for Horas Extras and Recargos
+    public string? NumeroOP { get; set; }
 
     // Invoice fields (required for non-Horas Extras rubros)
     public string? NumeroFactura { get; set; }

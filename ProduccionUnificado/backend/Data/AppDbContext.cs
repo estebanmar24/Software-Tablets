@@ -46,6 +46,8 @@ public class AppDbContext : DbContext
     public DbSet<Produccion_Proveedor> Produccion_Proveedores { get; set; }
     public DbSet<Produccion_TipoHora> Produccion_TiposHora { get; set; }
     public DbSet<Produccion_Gasto> Produccion_Gastos { get; set; }
+    // Talleres
+    public DbSet<Talleres_Personal> Talleres_Personal { get; set; }
     public DbSet<Produccion_Cotizacion> Produccion_Cotizaciones { get; set; }
     public DbSet<Produccion_PresupuestoMensual> Produccion_PresupuestosMensuales { get; set; }
     public DbSet<Produccion_TipoRecargo> Produccion_TiposRecargo { get; set; }

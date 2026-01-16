@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS "Talleres_Personal" (
+    "Id" SERIAL PRIMARY KEY,
+    "Nombre" VARCHAR(200) NOT NULL,
+    "Cargo" VARCHAR(200),
+    "Salario" DECIMAL(18, 2) DEFAULT 0,
+    "Activo" BOOLEAN DEFAULT TRUE,
+    "Estado" BOOLEAN DEFAULT TRUE,
+    "FechaCreacion" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

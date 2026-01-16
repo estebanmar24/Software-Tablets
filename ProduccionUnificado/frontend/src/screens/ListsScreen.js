@@ -137,7 +137,14 @@ export default function ListsScreen({ navigation }) {
                 keyExtractor={(item) => item.id.toString()}
                 renderItem={({ item }) => (
                     <View style={styles.item}>
-                        <Text style={styles.itemText}>{item.nombre}</Text>
+                        <View>
+                            <Text style={styles.itemText}>{item.nombre}</Text>
+                            {item.salario != null && (
+                                <Text style={{ fontSize: 13, color: '#059669', marginTop: 2 }}>
+                                    💰 {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(item.salario)}
+                                </Text>
+                            )}
+                        </View>
                         <View style={styles.actionButtons}>
                             <TouchableOpacity
                                 style={styles.editBtn}
