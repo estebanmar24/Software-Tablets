@@ -523,7 +523,7 @@ function GastosTab() {
                                         </>
                                     )}
                                 </>
-                            ) : (
+                            ) : formData.rubroId ? (
                                 <>
                                     <Text style={styles.label}>Proveedor *</Text>
                                     <View style={styles.pickerContainer}>
@@ -541,89 +541,93 @@ function GastosTab() {
                                         <input type="file" accept=".pdf" onChange={async (e) => { /* Reuse logic */ }} style={{ marginBottom: 10 }} />
                                     )}
                                 </>
-                            )}
+                            ) : null}
 
-                            <Text style={styles.label}>Fecha</Text>
-                            {Platform.OS === 'web' ? (
-                                <input type="date" value={formData.fecha} onChange={(e) => setFormData(p => ({ ...p, fecha: e.target.value }))} style={{ padding: 12, fontSize: 16, borderRadius: 8, border: '1px solid #D1D5DB', marginBottom: 10, width: '100%' }} />
-                            ) : (
-                                <TextInput style={styles.input} value={formData.fecha} onChangeText={(t) => setFormData(p => ({ ...p, fecha: t }))} placeholder="YYYY-MM-DD" />
-                            )}
-
-                            <Text style={styles.label}>Precio *</Text>
-                            <TextInput
-                                style={[styles.input, (isHorasExtras || isRecargo) && styles.inputDisabled]}
-                                value={formData.precio}
-                                onChangeText={(t) => setFormData(p => ({ ...p, precio: t }))}
-                                keyboardType="numeric"
-                                placeholder="$ 0"
-                                editable={!isHorasExtras && !isRecargo}
-                            />
-
-                            {/* Budget Status Alert - EXACT COPY FROM PRODUCCION */}
-                            {presupuestoInfo && (
-                                <View style={styles.budgetContainer}>
-                                    <View style={styles.budgetHeader}>
-                                        <Text style={styles.budgetTitle}>
-                                            📊 Presupuesto: {presupuestoInfo.rubroNombre}
-                                        </Text>
-                                    </View>
-                                    {(() => {
-                                        const currentPrice = parseFloat(formData.precio) || 0;
-                                        const originalPrice = editItem ? (editItem.precio || 0) : 0;
-                                        const adjustedGastadoMes = (presupuestoInfo.gastadoMes || 0) - originalPrice;
-                                        const liveGastado = adjustedGastadoMes + currentPrice;
-                                        const liveRestante = (presupuestoInfo.presupuestoMensual || 0) - liveGastado;
-
-                                        return (
-                                            <>
-                                                <View style={styles.budgetInfoRow}>
-                                                    <View style={[styles.budgetInfoItem, { backgroundColor: '#E0E7FF' }]}>
-                                                        <Text style={styles.budgetInfoLabel}>Presupuesto Anual</Text>
-                                                        <Text style={styles.budgetInfoValue}>
-                                                            {formatCurrency(presupuestoInfo.presupuestoAnual || 0)}
-                                                        </Text>
-                                                    </View>
-                                                    <View style={[styles.budgetInfoItem, { backgroundColor: '#FEF3C7' }]}>
-                                                        <Text style={styles.budgetInfoLabel}>Gastado</Text>
-                                                        <Text style={[styles.budgetInfoValue, { color: '#D97706' }]}>
-                                                            {formatCurrency(liveGastado)}
-                                                        </Text>
-                                                    </View>
-                                                    <View style={[styles.budgetInfoItem, { backgroundColor: '#E0F2FE' }]}>
-                                                        <Text style={styles.budgetInfoLabel}>Presupuesto Mensual</Text>
-                                                        <Text style={styles.budgetInfoValue}>
-                                                            {formatCurrency(presupuestoInfo.presupuestoMensual || 0)}
-                                                        </Text>
-                                                    </View>
-                                                </View>
-
-                                                <View style={{ marginTop: 8, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
-                                                    <Text style={{ fontSize: 12, color: '#4B5563' }}>Restante Mensual:</Text>
-                                                    <Text style={{
-                                                        fontWeight: 'bold',
-                                                        fontSize: 14,
-                                                        color: liveRestante >= 0 ? '#059669' : '#DC2626'
-                                                    }}>
-                                                        {formatCurrency(liveRestante)}
-                                                    </Text>
-                                                </View>
-
-                                                {liveRestante < 0 && (
-                                                    <Text style={styles.budgetWarning}>
-                                                        ⚠️ Este gasto excederá el presupuesto mensual en {formatCurrency(Math.abs(liveRestante))}
-                                                    </Text>
-                                                )}
-                                            </>
-                                        );
-                                    })()}
-                                    {presupuestoInfo.presupuestoMensual === 0 && (
-                                        <Text style={styles.budgetNoData}>
-                                            ℹ️ No hay presupuesto mensual asignado
-                                        </Text>
+                            {formData.rubroId ? (
+                                <>
+                                    <Text style={styles.label}>Fecha</Text>
+                                    {Platform.OS === 'web' ? (
+                                        <input type="date" value={formData.fecha} onChange={(e) => setFormData(p => ({ ...p, fecha: e.target.value }))} style={{ padding: 12, fontSize: 16, borderRadius: 8, border: '1px solid #D1D5DB', marginBottom: 10, width: '100%' }} />
+                                    ) : (
+                                        <TextInput style={styles.input} value={formData.fecha} onChangeText={(t) => setFormData(p => ({ ...p, fecha: t }))} placeholder="YYYY-MM-DD" />
                                     )}
-                                </View>
-                            )}
+
+                                    <Text style={styles.label}>Precio *</Text>
+                                    <TextInput
+                                        style={[styles.input, (isHorasExtras || isRecargo) && styles.inputDisabled]}
+                                        value={formData.precio}
+                                        onChangeText={(t) => setFormData(p => ({ ...p, precio: t }))}
+                                        keyboardType="numeric"
+                                        placeholder="$ 0"
+                                        editable={!isHorasExtras && !isRecargo}
+                                    />
+
+                                    {/* Budget Status Alert */}
+                                    {presupuestoInfo && (
+                                        <View style={styles.budgetContainer}>
+                                            <View style={styles.budgetHeader}>
+                                                <Text style={styles.budgetTitle}>
+                                                    📊 Presupuesto: {presupuestoInfo.rubroNombre}
+                                                </Text>
+                                            </View>
+                                            {(() => {
+                                                const currentPrice = parseFloat(formData.precio) || 0;
+                                                const originalPrice = editItem ? (editItem.precio || 0) : 0;
+                                                const adjustedGastadoMes = (presupuestoInfo.gastadoMes || 0) - originalPrice;
+                                                const liveGastado = adjustedGastadoMes + currentPrice;
+                                                const liveRestante = (presupuestoInfo.presupuestoMensual || 0) - liveGastado;
+
+                                                return (
+                                                    <>
+                                                        <View style={styles.budgetInfoRow}>
+                                                            <View style={[styles.budgetInfoItem, { backgroundColor: '#E0E7FF' }]}>
+                                                                <Text style={styles.budgetInfoLabel}>Presupuesto Anual</Text>
+                                                                <Text style={styles.budgetInfoValue}>
+                                                                    {formatCurrency(presupuestoInfo.presupuestoAnual || 0)}
+                                                                </Text>
+                                                            </View>
+                                                            <View style={[styles.budgetInfoItem, { backgroundColor: '#FEF3C7' }]}>
+                                                                <Text style={styles.budgetInfoLabel}>Gastado</Text>
+                                                                <Text style={[styles.budgetInfoValue, { color: '#D97706' }]}>
+                                                                    {formatCurrency(liveGastado)}
+                                                                </Text>
+                                                            </View>
+                                                            <View style={[styles.budgetInfoItem, { backgroundColor: '#E0F2FE' }]}>
+                                                                <Text style={styles.budgetInfoLabel}>Presupuesto Mensual</Text>
+                                                                <Text style={styles.budgetInfoValue}>
+                                                                    {formatCurrency(presupuestoInfo.presupuestoMensual || 0)}
+                                                                </Text>
+                                                            </View>
+                                                        </View>
+
+                                                        <View style={{ marginTop: 8, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
+                                                            <Text style={{ fontSize: 12, color: '#4B5563' }}>Restante Mensual:</Text>
+                                                            <Text style={{
+                                                                fontWeight: 'bold',
+                                                                fontSize: 14,
+                                                                color: liveRestante >= 0 ? '#059669' : '#DC2626'
+                                                            }}>
+                                                                {formatCurrency(liveRestante)}
+                                                            </Text>
+                                                        </View>
+
+                                                        {liveRestante < 0 && (
+                                                            <Text style={styles.budgetWarning}>
+                                                                ⚠️ Este gasto excederá el presupuesto mensual en {formatCurrency(Math.abs(liveRestante))}
+                                                            </Text>
+                                                        )}
+                                                    </>
+                                                );
+                                            })()}
+                                            {presupuestoInfo.presupuestoMensual === 0 && (
+                                                <Text style={styles.budgetNoData}>
+                                                    ℹ️ No hay presupuesto mensual asignado
+                                                </Text>
+                                            )}
+                                        </View>
+                                    )}
+                                </>
+                            ) : null}
 
                             <Text style={styles.label}>Observaciones</Text>
                             <TextInput style={[styles.input, styles.textArea]} value={formData.observaciones} onChangeText={(t) => setFormData(p => ({ ...p, observaciones: t }))} multiline placeholder="Opcional..." />
@@ -638,9 +642,9 @@ function GastosTab() {
                             </View>
                         </ScrollView>
                     </View>
-                </View>
-            </Modal>
-        </View>
+                </View >
+            </Modal >
+        </View >
     );
 }
 
