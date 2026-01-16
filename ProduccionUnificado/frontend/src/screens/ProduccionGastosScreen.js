@@ -486,7 +486,7 @@ function GastosTab() {
                                 </View>
                             </>)}
 
-                            {!isHorasExtras && !isRecargo && (<>
+                            {!isHorasExtras && !isRecargo && formData.rubroId && (<>
                                 <Text style={styles.label}>Proveedor</Text>
                                 <View style={styles.pickerContainer}>
                                     <Picker selectedValue={formData.proveedorId} onValueChange={(v) => {
@@ -506,79 +506,81 @@ function GastosTab() {
                                 </View>
                             </>)}
 
-                            <Text style={styles.label}>Fecha</Text>
-                            {Platform.OS === 'web' ? (
-                                <input type="date" value={formData.fecha} onChange={(e) => setFormData(p => ({ ...p, fecha: e.target.value }))} style={{ padding: 12, fontSize: 16, borderRadius: 8, border: '1px solid #D1D5DB', backgroundColor: '#F9FAFB', width: '100%', boxSizing: 'border-box' }} />
-                            ) : (
-                                <TextInput style={styles.input} value={formData.fecha} onChangeText={(t) => setFormData(p => ({ ...p, fecha: t }))} placeholder="YYYY-MM-DD" />
-                            )}
-
-                            {/* OP Number field - ONLY for Horas Extras and Recargos, BEFORE price */}
-                            {(isHorasExtras || isRecargo) && (<>
-                                <Text style={styles.label}>Número de OP (Orden de Producción) *</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    value={formData.numeroOP}
-                                    onChangeText={(t) => setFormData(p => ({ ...p, numeroOP: t }))}
-                                    placeholder="Ej: OP-12345 o número de orden"
-                                />
-                            </>)}
-
-                            {/* Invoice fields - BEFORE price, only for non-Horas Extras and non-Recargo */}
-                            {!isHorasExtras && !isRecargo && (<>
-                                <Text style={styles.label}>Número de Factura *</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    value={formData.numeroFactura}
-                                    onChangeText={(t) => setFormData(p => ({ ...p, numeroFactura: t }))}
-                                    placeholder="Ej: FAC-001234"
-                                />
-
-                                <Text style={styles.label}>PDF Factura (opcional)</Text>
+                            {formData.rubroId && (<>
+                                <Text style={styles.label}>Fecha</Text>
                                 {Platform.OS === 'web' ? (
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                                        <input
-                                            type="file"
-                                            accept=".pdf"
-                                            onChange={async (e) => {
-                                                const file = e.target.files[0];
-                                                if (file) {
-                                                    try {
-                                                        const result = await produccionApi.uploadFactura(file);
-                                                        setFormData(p => ({ ...p, facturaPdfUrl: result.url }));
-                                                        Alert.alert('Éxito', 'PDF subido correctamente');
-                                                    } catch (err) {
-                                                        Alert.alert('Error', 'No se pudo subir el PDF');
-                                                    }
-                                                }
-                                            }}
-                                            style={{ padding: 8 }}
-                                        />
-                                        {formData.facturaPdfUrl && (
-                                            <a href={`${process.env.EXPO_PUBLIC_API_URL?.replace('/api', '') || 'http://192.168.100.227:5144'}${formData.facturaPdfUrl}`} target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB' }}>
-                                                📄 Ver PDF
-                                            </a>
-                                        )}
-                                    </View>
+                                    <input type="date" value={formData.fecha} onChange={(e) => setFormData(p => ({ ...p, fecha: e.target.value }))} style={{ padding: 12, fontSize: 16, borderRadius: 8, border: '1px solid #D1D5DB', backgroundColor: '#F9FAFB', width: '100%', boxSizing: 'border-box', marginBottom: 10 }} />
                                 ) : (
-                                    <Text style={styles.input}>Función de PDF solo disponible en Web</Text>
+                                    <TextInput style={styles.input} value={formData.fecha} onChangeText={(t) => setFormData(p => ({ ...p, fecha: t }))} placeholder="YYYY-MM-DD" />
                                 )}
-                            </>)}
 
-                            <Text style={styles.label}>Precio * {(isHorasExtras || isRecargo) ? (formData.numeroOP.trim() ? '(editable con OP)' : '(ingrese OP primero)') : (!formData.numeroFactura.trim() ? '(ingrese factura primero)' : '')}</Text>
-                            <TextInput
-                                style={[styles.input, ((isHorasExtras || isRecargo) ? !formData.numeroOP.trim() : !formData.numeroFactura.trim()) && styles.inputDisabled]}
-                                value={formData.precio}
-                                onChangeText={(t) => setFormData(p => ({ ...p, precio: t }))}
-                                keyboardType="numeric"
-                                placeholder="$ 0"
-                                editable={(isHorasExtras || isRecargo) ? !!formData.numeroOP.trim() : !!formData.numeroFactura.trim()}
-                            />
-                            {(() => {
-                                const q = cotizaciones.find(c => c.rubroId.toString() === formData.rubroId && c.proveedorId.toString() === formData.proveedorId);
-                                if (q) return <Text style={{ fontSize: 13, color: '#059669', marginBottom: 10, marginTop: -5 }}>✅ Cotización vinculada: {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(q.precioCotizado)}</Text>;
-                                return <Text style={{ fontSize: 12, color: '#6B7280', marginBottom: 10, marginTop: -5 }}>ℹ️ Sin cotización vinculada</Text>;
-                            })()}
+                                {/* OP Number field - ONLY for Horas Extras and Recargos, BEFORE price */}
+                                {(isHorasExtras || isRecargo) && (<>
+                                    <Text style={styles.label}>Número de OP (Orden de Producción) *</Text>
+                                    <TextInput
+                                        style={styles.input}
+                                        value={formData.numeroOP}
+                                        onChangeText={(t) => setFormData(p => ({ ...p, numeroOP: t }))}
+                                        placeholder="Ej: OP-12345 o número de orden"
+                                    />
+                                </>)}
+
+                                {/* Invoice fields - BEFORE price, only for non-Horas Extras and non-Recargo */}
+                                {!isHorasExtras && !isRecargo && (<>
+                                    <Text style={styles.label}>Número de Factura *</Text>
+                                    <TextInput
+                                        style={styles.input}
+                                        value={formData.numeroFactura}
+                                        onChangeText={(t) => setFormData(p => ({ ...p, numeroFactura: t }))}
+                                        placeholder="Ej: FAC-001234"
+                                    />
+
+                                    <Text style={styles.label}>PDF Factura (opcional)</Text>
+                                    {Platform.OS === 'web' ? (
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                                            <input
+                                                type="file"
+                                                accept=".pdf"
+                                                onChange={async (e) => {
+                                                    const file = e.target.files[0];
+                                                    if (file) {
+                                                        try {
+                                                            const result = await produccionApi.uploadFactura(file);
+                                                            setFormData(p => ({ ...p, facturaPdfUrl: result.url }));
+                                                            Alert.alert('Éxito', 'PDF subido correctamente');
+                                                        } catch (err) {
+                                                            Alert.alert('Error', 'No se pudo subir el PDF');
+                                                        }
+                                                    }
+                                                }}
+                                                style={{ padding: 8 }}
+                                            />
+                                            {formData.facturaPdfUrl && (
+                                                <a href={`${process.env.EXPO_PUBLIC_API_URL?.replace('/api', '') || 'http://192.168.100.227:5144'}${formData.facturaPdfUrl}`} target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB' }}>
+                                                    📄 Ver PDF
+                                                </a>
+                                            )}
+                                        </View>
+                                    ) : (
+                                        <Text style={styles.input}>Función de PDF solo disponible en Web</Text>
+                                    )}
+                                </>)}
+
+                                <Text style={styles.label}>Precio * {(isHorasExtras || isRecargo) ? (formData.numeroOP.trim() ? '(editable con OP)' : '(ingrese OP primero)') : (!formData.numeroFactura.trim() ? '(ingrese factura primero)' : '')}</Text>
+                                <TextInput
+                                    style={[styles.input, ((isHorasExtras || isRecargo) ? !formData.numeroOP.trim() : !formData.numeroFactura.trim()) && styles.inputDisabled]}
+                                    value={formData.precio}
+                                    onChangeText={(t) => setFormData(p => ({ ...p, precio: t }))}
+                                    keyboardType="numeric"
+                                    placeholder="$ 0"
+                                    editable={(isHorasExtras || isRecargo) ? !!formData.numeroOP.trim() : !!formData.numeroFactura.trim()}
+                                />
+                                {(() => {
+                                    const q = cotizaciones.find(c => c.rubroId.toString() === formData.rubroId && c.proveedorId.toString() === formData.proveedorId);
+                                    if (q) return <Text style={{ fontSize: 13, color: '#059669', marginBottom: 10, marginTop: -5 }}>✅ Cotización vinculada: {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(q.precioCotizado)}</Text>;
+                                    return <Text style={{ fontSize: 12, color: '#6B7280', marginBottom: 10, marginTop: -5 }}>ℹ️ Sin cotización vinculada</Text>;
+                                })()}
+                            </>)}
 
                             {/* Cuadro de presupuesto estilo SST - DEBAJO DEL PRECIO */}
                             {presupuestoInfo && (
