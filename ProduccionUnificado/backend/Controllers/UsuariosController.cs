@@ -19,7 +19,7 @@ public class UsuariosController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Usuario>>> GetUsuarios()
     {
-        return await _context.Usuarios.ToListAsync();
+        return await _context.Usuarios.Where(u => u.Activo).ToListAsync();
     }
 
     [HttpPost]
