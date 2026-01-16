@@ -149,6 +149,57 @@ public class TalleresController : ControllerBase
     }
 
     /// <summary>
+    /// Create a new gasto
+    /// </summary>
+    [HttpPost("gastos")]
+    public async Task<ActionResult<Talleres_Gasto>> CreateGasto(Talleres_Gasto gasto)
+    {
+        if (!ModelState.IsValid)
+        {
+            var errors = string.Join("; ", ModelState.Values
+                .SelectMany(v => v.Errors)
+                .Select(e => e.ErrorMessage));
+            Console.WriteLine($"[CreateGasto] Validation Errors: {errors}"); // Log to console
+            return BadRequest($"Validation Failed: {errors}");
+        }
+
+        try 
+        {
+            _context.Talleres_Gastos.Add(gasto);
+            await _context.SaveChangesAsync();
+            return Ok(new { id = gasto.Id });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] CreateGasto Exception: {ex.Message}");
+            if (ex.InnerException != null) Console.WriteLine($"[ERROR] Inner: {ex.InnerException.Message}");
+            return StatusCode(500, new { error = ex.Message, detail = ex.InnerException?.Message });
+        }
+    }
+
+    /// <summary>
+    /// Update a gasto
+    /// </summary>
+    [HttpPut("gastos/{id}")]
+    public async Task<IActionResult> UpdateGasto(int id, Talleres_Gasto gasto)
+    {
+        if (id != gasto.Id) return BadRequest("ID mismatch");
+
+        if (!ModelState.IsValid)
+        {
+             var errors = string.Join("; ", ModelState.Values
+                .SelectMany(v => v.Errors)
+                .Select(e => e.ErrorMessage));
+            Console.WriteLine($"[UpdateGasto] Validation Errors: {errors}");
+            return BadRequest($"Validation Failed: {errors}");
+        }
+
+        _context.Entry(gasto).State = EntityState.Modified;
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    /// <summary>
     /// Delete (deactivate) a proveedor
     /// </summary>
     [HttpDelete("proveedores/{id}")]
@@ -174,6 +225,9 @@ public class TalleresController : ControllerBase
         var query = _context.Talleres_Gastos
             .Include(g => g.Proveedor)
             .Include(g => g.Rubro)
+            .Include(g => g.Personal) // Include Personal
+            .Include(g => g.TipoHora) // Include TipoHora
+            .Include(g => g.TipoRecargo) // Include TipoRecargo
             .AsQueryable();
 
         if (anio.HasValue)
@@ -197,85 +251,26 @@ public class TalleresController : ControllerBase
                 g.Precio,
                 g.Fecha,
                 g.Observaciones,
-                g.FacturaPdfUrl
+                g.FacturaPdfUrl,
+                // New Fields for Display
+                g.PersonalId,
+                PersonalNombre = g.Personal != null ? g.Personal.Nombre : "",
+                g.CantidadHoras,
+                g.NumeroOP,
+                g.TipoHoraId,
+                // Add Names for Types
+                TipoHoraNombre = g.TipoHora != null ? g.TipoHora.Nombre : "",
+                TipoHoraPorcentaje = g.TipoHora != null ? g.TipoHora.Porcentaje : 0,
+                g.TipoRecargoId,
+                TipoRecargoNombre = g.TipoRecargo != null ? g.TipoRecargo.Nombre : "",
+                TipoRecargoPorcentaje = g.TipoRecargo != null ? g.TipoRecargo.Porcentaje : 0
             })
             .ToListAsync();
 
         return Ok(gastos);
     }
 
-    /// <summary>
-    /// Create a new gasto (NumeroFactura is required)
-    /// </summary>
-    [HttpPost("gastos")]
-    public async Task<IActionResult> CreateGasto(Talleres_Gasto gasto)
-    {
-        try 
-        {
-            if (string.IsNullOrWhiteSpace(gasto.NumeroFactura))
-            {
-                return BadRequest("El número de factura es obligatorio");
-            }
-            
-            // Validate proveedor exists
-            var proveedor = await _context.Talleres_Proveedores.FindAsync(gasto.ProveedorId);
-            if (proveedor == null || !proveedor.Activo)
-            {
-                return BadRequest("El proveedor no existe o no está activo");
-            }
 
-            // Auto-populate Anio and Mes from Fecha
-            if (gasto.Fecha != default)
-            {
-                gasto.Anio = gasto.Fecha.Year;
-                gasto.Mes = gasto.Fecha.Month;
-            }
-            else 
-            {
-                gasto.Fecha = DateTime.Now;
-                gasto.Anio = gasto.Fecha.Year;
-                gasto.Mes = gasto.Fecha.Month;
-            }
-
-            // Ensure navigation properties are NULL so EF doesn't try to track them as new objects
-            gasto.Proveedor = null;
-            gasto.Rubro = null;
-
-            _context.Talleres_Gastos.Add(gasto);
-            await _context.SaveChangesAsync();
-            
-            return Ok(new { id = gasto.Id, success = true, message = "Gasto creado correctamente" });
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[ERROR] CreateGasto failed: {ex.Message}");
-            return StatusCode(500, new { error = ex.Message, detail = ex.InnerException?.Message });
-        }
-    }
-
-    /// <summary>
-    /// Update a gasto
-    /// </summary>
-    [HttpPut("gastos/{id}")]
-    public async Task<IActionResult> UpdateGasto(int id, Talleres_Gasto gasto)
-    {
-        if (id != gasto.Id) return BadRequest();
-        if (string.IsNullOrWhiteSpace(gasto.NumeroFactura))
-        {
-            return BadRequest("El número de factura es obligatorio");
-        }
-
-        // Auto-update Anio and Mes from Fecha
-        if (gasto.Fecha != default)
-        {
-            gasto.Anio = gasto.Fecha.Year;
-            gasto.Mes = gasto.Fecha.Month;
-        }
-
-        _context.Entry(gasto).State = EntityState.Modified;
-        await _context.SaveChangesAsync();
-        return NoContent();
-    }
 
     /// <summary>
     /// Delete a gasto

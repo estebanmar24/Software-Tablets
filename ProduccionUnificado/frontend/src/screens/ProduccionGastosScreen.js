@@ -104,7 +104,7 @@ function GastosTab() {
     const [formData, setFormData] = useState({
         rubroId: '', proveedorId: '', usuarioId: '', maquinaId: '', tipoHoraId: '', tipoRecargoId: '',
         precio: '', fecha: new Date().toISOString().split('T')[0], nota: '', cantidadHoras: '',
-        numeroFactura: '', facturaPdfUrl: ''
+        numeroFactura: '', facturaPdfUrl: '', numeroOP: ''
     });
     const [saving, setSaving] = useState(false);
     const [presupuestoInfo, setPresupuestoInfo] = useState(null);
@@ -233,7 +233,7 @@ function GastosTab() {
 
     const resetForm = () => {
         setEditItem(null);
-        setFormData({ rubroId: '', proveedorId: '', usuarioId: '', maquinaId: '', tipoHoraId: '', tipoRecargoId: '', precio: '', fecha: new Date().toISOString().split('T')[0], nota: '', cantidadHoras: '', numeroFactura: '', facturaPdfUrl: '' });
+        setFormData({ rubroId: '', proveedorId: '', usuarioId: '', maquinaId: '', tipoHoraId: '', tipoRecargoId: '', precio: '', fecha: new Date().toISOString().split('T')[0], nota: '', cantidadHoras: '', numeroFactura: '', facturaPdfUrl: '', numeroOP: '' });
     };
 
     const handleEdit = (gasto) => {
@@ -244,7 +244,8 @@ function GastosTab() {
             tipoHoraId: gasto.tipoHoraId?.toString() || '', tipoRecargoId: gasto.tipoRecargoId?.toString() || '', precio: gasto.precio?.toString() || '',
             fecha: gasto.fecha?.split('T')[0] || new Date().toISOString().split('T')[0],
             nota: gasto.nota || '', cantidadHoras: gasto.cantidadHoras?.toString() || '',
-            numeroFactura: gasto.numeroFactura || '', facturaPdfUrl: gasto.facturaPdfUrl || ''
+            numeroFactura: gasto.numeroFactura || '', facturaPdfUrl: gasto.facturaPdfUrl || '',
+            numeroOP: gasto.numeroOP || ''
         });
         setShowModal(true);
     };
@@ -253,12 +254,23 @@ function GastosTab() {
         if (!formData.rubroId) { Alert.alert('Error', 'Seleccione un rubro'); return; }
         const selectedRubro = rubros.find(r => r.id == formData.rubroId);
         const isHorasExtras = selectedRubro?.nombre === 'Horas Extras';
+        const isRecargo = selectedRubro?.nombre?.toLowerCase() === 'recargo';
+
+        // Validation for Horas Extras
         if (isHorasExtras && (!formData.usuarioId || !formData.tipoHoraId || !formData.cantidadHoras)) {
             Alert.alert('Error', 'Complete Operario, Tipo de Hora y Cantidad'); return;
         }
-        if (!isHorasExtras && !formData.precio) { Alert.alert('Error', 'Ingrese el precio'); return; }
-        // Validación de factura para rubros que NO son Horas Extras
-        if (!isHorasExtras && !formData.numeroFactura.trim()) { Alert.alert('Error', 'Número de Factura es obligatorio'); return; }
+        // Validation for Recargo
+        if (isRecargo && (!formData.usuarioId || !formData.tipoRecargoId || !formData.cantidadHoras)) {
+            Alert.alert('Error', 'Complete Operario, Tipo de Recargo y Cantidad de Horas'); return;
+        }
+        // Validation for OP number (required for Horas Extras and Recargos)
+        if ((isHorasExtras || isRecargo) && !formData.numeroOP.trim()) {
+            Alert.alert('Error', 'Ingrese el Número de OP (Orden de Producción)'); return;
+        }
+        if (!isHorasExtras && !isRecargo && !formData.precio) { Alert.alert('Error', 'Ingrese el precio'); return; }
+        // Validación de factura para rubros que NO son Horas Extras ni Recargo
+        if (!isHorasExtras && !isRecargo && !formData.numeroFactura.trim()) { Alert.alert('Error', 'Número de Factura es obligatorio'); return; }
 
         try {
             setSaving(true);
@@ -273,7 +285,8 @@ function GastosTab() {
                 cantidadHoras: formData.cantidadHoras ? parseFloat(formData.cantidadHoras) : null,
                 anio: new Date(formData.fecha).getFullYear(), mes: new Date(formData.fecha).getMonth() + 1,
                 numeroFactura: (isHorasExtras || isRecargo) ? null : formData.numeroFactura,
-                facturaPdfUrl: (isHorasExtras || isRecargo) ? null : formData.facturaPdfUrl
+                facturaPdfUrl: (isHorasExtras || isRecargo) ? null : formData.facturaPdfUrl,
+                numeroOP: (isHorasExtras || isRecargo) ? formData.numeroOP : null
             };
 
             // Quote Update Prompt Logic
@@ -386,7 +399,14 @@ function GastosTab() {
                                     <Text style={styles.gastoDetail}>📅 {formatDate(gasto.fecha)}</Text>
                                     {gasto.cantidadHoras && <Text style={styles.gastoDetail}>⏱️ {gasto.cantidadHoras} hrs</Text>}
                                 </View>
-                                {gasto.nota && <Text style={styles.gastoNota}>💬 {gasto.nota}</Text>}
+                                {/* Show OP number for Horas Extras/Recargos */}
+                                {gasto.numeroOP && (
+                                    <Text style={styles.gastoNota}>📋 OP: {gasto.numeroOP}</Text>
+                                )}
+                                {/* Show nota if present (for general notes) */}
+                                {gasto.nota && (
+                                    <Text style={styles.gastoNota}>💬 {gasto.nota}</Text>
+                                )}
                                 {gasto.numeroFactura && <Text style={styles.gastoDetail}>📄 Factura: {gasto.numeroFactura}</Text>}
                                 {gasto.facturaPdfUrl && Platform.OS === 'web' && (
                                     <a
@@ -466,7 +486,7 @@ function GastosTab() {
                                 </View>
                             </>)}
 
-                            {!isHorasExtras && !isRecargo && (<>
+                            {!isHorasExtras && !isRecargo && formData.rubroId && (<>
                                 <Text style={styles.label}>Proveedor</Text>
                                 <View style={styles.pickerContainer}>
                                     <Picker selectedValue={formData.proveedorId} onValueChange={(v) => {
@@ -478,73 +498,89 @@ function GastosTab() {
                                         }));
                                     }}>
                                         <Picker.Item label="Seleccione..." value="" />
-                                        {proveedores.map(p => <Picker.Item key={p.id} label={`${p.nombre}${p.precioCotizado ? ` - ${formatCurrency(p.precioCotizado)}` : ''}`} value={p.id.toString()} />)}
+                                        {proveedores
+                                            .filter(p => !formData.rubroId || p.rubroId?.toString() === formData.rubroId)
+                                            .map(p => <Picker.Item key={p.id} label={`${p.nombre}${p.precioCotizado ? ` - ${formatCurrency(p.precioCotizado)}` : ''}`} value={p.id.toString()} />)
+                                        }
                                     </Picker>
                                 </View>
                             </>)}
 
-                            <Text style={styles.label}>Fecha</Text>
-                            {Platform.OS === 'web' ? (
-                                <input type="date" value={formData.fecha} onChange={(e) => setFormData(p => ({ ...p, fecha: e.target.value }))} style={{ padding: 12, fontSize: 16, borderRadius: 8, border: '1px solid #D1D5DB', backgroundColor: '#F9FAFB', width: '100%', boxSizing: 'border-box' }} />
-                            ) : (
-                                <TextInput style={styles.input} value={formData.fecha} onChangeText={(t) => setFormData(p => ({ ...p, fecha: t }))} placeholder="YYYY-MM-DD" />
-                            )}
-
-                            {/* Invoice fields - BEFORE price, only for non-Horas Extras and non-Recargo */}
-                            {!isHorasExtras && !isRecargo && (<>
-                                <Text style={styles.label}>Número de Factura *</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    value={formData.numeroFactura}
-                                    onChangeText={(t) => setFormData(p => ({ ...p, numeroFactura: t }))}
-                                    placeholder="Ej: FAC-001234"
-                                />
-
-                                <Text style={styles.label}>PDF Factura (opcional)</Text>
+                            {formData.rubroId && (<>
+                                <Text style={styles.label}>Fecha</Text>
                                 {Platform.OS === 'web' ? (
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                                        <input
-                                            type="file"
-                                            accept=".pdf"
-                                            onChange={async (e) => {
-                                                const file = e.target.files[0];
-                                                if (file) {
-                                                    try {
-                                                        const result = await produccionApi.uploadFactura(file);
-                                                        setFormData(p => ({ ...p, facturaPdfUrl: result.url }));
-                                                        Alert.alert('Éxito', 'PDF subido correctamente');
-                                                    } catch (err) {
-                                                        Alert.alert('Error', 'No se pudo subir el PDF');
-                                                    }
-                                                }
-                                            }}
-                                            style={{ padding: 8 }}
-                                        />
-                                        {formData.facturaPdfUrl && (
-                                            <a href={`${process.env.EXPO_PUBLIC_API_URL?.replace('/api', '') || 'http://192.168.100.227:5144'}${formData.facturaPdfUrl}`} target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB' }}>
-                                                📄 Ver PDF
-                                            </a>
-                                        )}
-                                    </View>
+                                    <input type="date" value={formData.fecha} onChange={(e) => setFormData(p => ({ ...p, fecha: e.target.value }))} style={{ padding: 12, fontSize: 16, borderRadius: 8, border: '1px solid #D1D5DB', backgroundColor: '#F9FAFB', width: '100%', boxSizing: 'border-box', marginBottom: 10 }} />
                                 ) : (
-                                    <Text style={styles.input}>Función de PDF solo disponible en Web</Text>
+                                    <TextInput style={styles.input} value={formData.fecha} onChangeText={(t) => setFormData(p => ({ ...p, fecha: t }))} placeholder="YYYY-MM-DD" />
                                 )}
-                            </>)}
 
-                            <Text style={styles.label}>Precio * {(isHorasExtras || isRecargo) ? '(calculado automáticamente)' : (!formData.numeroFactura.trim() ? '(ingrese factura primero)' : '')}</Text>
-                            <TextInput
-                                style={[styles.input, (isHorasExtras || isRecargo || (!isHorasExtras && !isRecargo && !formData.numeroFactura.trim())) && styles.inputDisabled]}
-                                value={formData.precio}
-                                onChangeText={(t) => setFormData(p => ({ ...p, precio: t }))}
-                                keyboardType="numeric"
-                                placeholder="$ 0"
-                                editable={(isHorasExtras || isRecargo) ? false : !!formData.numeroFactura.trim()}
-                            />
-                            {(() => {
-                                const q = cotizaciones.find(c => c.rubroId.toString() === formData.rubroId && c.proveedorId.toString() === formData.proveedorId);
-                                if (q) return <Text style={{ fontSize: 13, color: '#059669', marginBottom: 10, marginTop: -5 }}>✅ Cotización vinculada: {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(q.precioCotizado)}</Text>;
-                                return <Text style={{ fontSize: 12, color: '#6B7280', marginBottom: 10, marginTop: -5 }}>ℹ️ Sin cotización vinculada</Text>;
-                            })()}
+                                {/* OP Number field - ONLY for Horas Extras and Recargos, BEFORE price */}
+                                {(isHorasExtras || isRecargo) && (<>
+                                    <Text style={styles.label}>Número de OP (Orden de Producción) *</Text>
+                                    <TextInput
+                                        style={styles.input}
+                                        value={formData.numeroOP}
+                                        onChangeText={(t) => setFormData(p => ({ ...p, numeroOP: t }))}
+                                        placeholder="Ej: OP-12345 o número de orden"
+                                    />
+                                </>)}
+
+                                {/* Invoice fields - BEFORE price, only for non-Horas Extras and non-Recargo */}
+                                {!isHorasExtras && !isRecargo && (<>
+                                    <Text style={styles.label}>Número de Factura *</Text>
+                                    <TextInput
+                                        style={styles.input}
+                                        value={formData.numeroFactura}
+                                        onChangeText={(t) => setFormData(p => ({ ...p, numeroFactura: t }))}
+                                        placeholder="Ej: FAC-001234"
+                                    />
+
+                                    <Text style={styles.label}>PDF Factura (opcional)</Text>
+                                    {Platform.OS === 'web' ? (
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                                            <input
+                                                type="file"
+                                                accept=".pdf"
+                                                onChange={async (e) => {
+                                                    const file = e.target.files[0];
+                                                    if (file) {
+                                                        try {
+                                                            const result = await produccionApi.uploadFactura(file);
+                                                            setFormData(p => ({ ...p, facturaPdfUrl: result.url }));
+                                                            Alert.alert('Éxito', 'PDF subido correctamente');
+                                                        } catch (err) {
+                                                            Alert.alert('Error', 'No se pudo subir el PDF');
+                                                        }
+                                                    }
+                                                }}
+                                                style={{ padding: 8 }}
+                                            />
+                                            {formData.facturaPdfUrl && (
+                                                <a href={`${process.env.EXPO_PUBLIC_API_URL?.replace('/api', '') || 'http://192.168.100.227:5144'}${formData.facturaPdfUrl}`} target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB' }}>
+                                                    📄 Ver PDF
+                                                </a>
+                                            )}
+                                        </View>
+                                    ) : (
+                                        <Text style={styles.input}>Función de PDF solo disponible en Web</Text>
+                                    )}
+                                </>)}
+
+                                <Text style={styles.label}>Precio * {(isHorasExtras || isRecargo) ? (formData.numeroOP.trim() ? '(editable con OP)' : '(ingrese OP primero)') : (!formData.numeroFactura.trim() ? '(ingrese factura primero)' : '')}</Text>
+                                <TextInput
+                                    style={[styles.input, ((isHorasExtras || isRecargo) ? !formData.numeroOP.trim() : !formData.numeroFactura.trim()) && styles.inputDisabled]}
+                                    value={formData.precio}
+                                    onChangeText={(t) => setFormData(p => ({ ...p, precio: t }))}
+                                    keyboardType="numeric"
+                                    placeholder="$ 0"
+                                    editable={(isHorasExtras || isRecargo) ? !!formData.numeroOP.trim() : !!formData.numeroFactura.trim()}
+                                />
+                                {(() => {
+                                    const q = cotizaciones.find(c => c.rubroId.toString() === formData.rubroId && c.proveedorId.toString() === formData.proveedorId);
+                                    if (q) return <Text style={{ fontSize: 13, color: '#059669', marginBottom: 10, marginTop: -5 }}>✅ Cotización vinculada: {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(q.precioCotizado)}</Text>;
+                                    return <Text style={{ fontSize: 12, color: '#6B7280', marginBottom: 10, marginTop: -5 }}>ℹ️ Sin cotización vinculada</Text>;
+                                })()}
+                            </>)}
 
                             {/* Cuadro de presupuesto estilo SST - DEBAJO DEL PRECIO */}
                             {presupuestoInfo && (
@@ -618,7 +654,7 @@ function GastosTab() {
                             <TextInput style={[styles.input, styles.textArea]} value={formData.nota} onChangeText={(t) => setFormData(p => ({ ...p, nota: t }))} multiline placeholder="Opcional..." />
 
                             <View style={styles.modalActions}>
-                                <TouchableOpacity style={styles.cancelButton} onPress={() => setShowModal(false)}>
+                                <TouchableOpacity style={styles.cancelButton} onPress={() => { resetForm(); setShowModal(false); }}>
                                     <Text style={styles.cancelButtonText}>Cancelar</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity style={[styles.submitButton, saving && styles.submitButtonDisabled]} onPress={handleSubmit} disabled={saving}>
@@ -1000,8 +1036,7 @@ function ProveedoresTab() {
                 nombre,
                 nit,
                 telefono,
-                rubroId: rubroId ? parseInt(rubroId) : null,
-                precioCotizado: precioCotizado ? parseFloat(precioCotizado) : null
+                rubroId: rubroId ? parseInt(rubroId) : null
             };
             if (editItem) {
                 await produccionApi.updateProveedor(editItem.id, provData);
@@ -1054,7 +1089,6 @@ function ProveedoresTab() {
                     <View key={item.id} style={styles.gastoCard}>
                         <View style={styles.gastoHeader}>
                             <Text style={styles.gastoTipo}>{item.nombre}</Text>
-                            <Text style={styles.gastoPrecio}>{item.precioCotizado ? formatCurrency(item.precioCotizado) : '$ 0'}</Text>
                         </View>
                         <Text style={styles.gastoRubro}>{item.rubro?.nombre || 'Sin rubro asignado'}</Text>
                         <View style={styles.gastoDetails}>
@@ -1092,9 +1126,6 @@ function ProveedoresTab() {
                                 {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
                             </Picker>
                         </View>
-
-                        <Text style={styles.label}>Precio Cotizado</Text>
-                        <TextInput style={styles.input} value={precioCotizado} onChangeText={setPrecioCotizado} placeholder="$ 0" keyboardType="numeric" />
                     </ScrollView>
                     <View style={styles.modalActions}>
                         <TouchableOpacity style={styles.cancelButton} onPress={() => setShowModal(false)}><Text style={styles.cancelButtonText}>Cancelar</Text></TouchableOpacity>
@@ -1351,6 +1382,11 @@ function SalariosTab() {
     const [salario, setSalario] = useState('');
     const [saving, setSaving] = useState(false);
 
+    // New operario creation states
+    const [newNombre, setNewNombre] = useState('');
+    const [newSalario, setNewSalario] = useState('');
+    const [showAddModal, setShowAddModal] = useState(false);
+
     const loadData = useCallback(async () => {
         try {
             setLoading(true);
@@ -1383,6 +1419,48 @@ function SalariosTab() {
         }
     };
 
+    const handleAddOperario = async () => {
+        if (!newNombre.trim()) {
+            if (Platform.OS === 'web') alert('Ingrese el nombre del operario');
+            else Alert.alert('Error', 'Ingrese el nombre del operario');
+            return;
+        }
+        if (!newSalario || parseFloat(newSalario) <= 0) {
+            if (Platform.OS === 'web') alert('Ingrese un salario válido');
+            else Alert.alert('Error', 'Ingrese un salario válido');
+            return;
+        }
+        try {
+            setSaving(true);
+            // Use existing createUsuario API
+            const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api'}/usuarios`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    nombre: newNombre.trim(),
+                    salario: parseFloat(newSalario),
+                    estado: true,
+                    activo: true
+                })
+            });
+            if (!response.ok) throw new Error('Error creating operario');
+
+            if (Platform.OS === 'web') alert('✅ Operario agregado correctamente');
+            else Alert.alert('Éxito', 'Operario agregado correctamente');
+
+            setShowAddModal(false);
+            setNewNombre('');
+            setNewSalario('');
+            loadData();
+        } catch (error) {
+            console.error('Error adding operario:', error);
+            if (Platform.OS === 'web') alert('❌ No se pudo agregar el operario');
+            else Alert.alert('Error', 'No se pudo agregar el operario');
+        } finally {
+            setSaving(false);
+        }
+    };
+
     if (loading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#2563EB" /></View>;
 
     return (
@@ -1390,6 +1468,15 @@ function SalariosTab() {
             <View style={styles.header}>
                 <Text style={styles.title}>💵 Salarios de Operarios</Text>
             </View>
+
+            {/* Add New Operario Button */}
+            <TouchableOpacity
+                style={{ backgroundColor: '#10B981', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 8, marginBottom: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}
+                onPress={() => setShowAddModal(true)}
+            >
+                <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 16 }}>+ Agregar Nuevo Operario</Text>
+            </TouchableOpacity>
+
             <ScrollView style={styles.listContainer}>
                 {items.map(item => (
                     <View key={item.id} style={styles.itemCard}>
@@ -1407,6 +1494,7 @@ function SalariosTab() {
                 ))}
             </ScrollView>
 
+            {/* Edit Salary Modal */}
             <Modal visible={showModal} transparent animationType="slide" onRequestClose={() => setShowModal(false)}>
                 <View style={styles.modalOverlay}><View style={styles.modalContentSmall}>
                     <Text style={styles.modalTitle}>Ajustar Salario</Text>
@@ -1426,6 +1514,38 @@ function SalariosTab() {
                         <TouchableOpacity style={styles.cancelButton} onPress={() => setShowModal(false)}><Text style={styles.cancelButtonText}>Cancelar</Text></TouchableOpacity>
                         <TouchableOpacity style={[styles.submitButton, saving && styles.submitButtonDisabled]} onPress={handleSave} disabled={saving}>
                             {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>Guardar</Text>}
+                        </TouchableOpacity>
+                    </View>
+                </View></View>
+            </Modal>
+
+            {/* Add New Operario Modal */}
+            <Modal visible={showAddModal} transparent animationType="slide" onRequestClose={() => setShowAddModal(false)}>
+                <View style={styles.modalOverlay}><View style={styles.modalContentSmall}>
+                    <Text style={styles.modalTitle}>➕ Nuevo Operario</Text>
+
+                    <Text style={styles.label}>Nombre del Operario *</Text>
+                    <TextInput
+                        style={styles.input}
+                        value={newNombre}
+                        onChangeText={setNewNombre}
+                        placeholder="Ej: Juan Pérez"
+                        autoFocus={true}
+                    />
+
+                    <Text style={styles.label}>Salario Mensual *</Text>
+                    <TextInput
+                        style={styles.input}
+                        value={newSalario}
+                        onChangeText={setNewSalario}
+                        keyboardType="numeric"
+                        placeholder="Ej: 1500000"
+                    />
+
+                    <View style={styles.modalActions}>
+                        <TouchableOpacity style={styles.cancelButton} onPress={() => { setShowAddModal(false); setNewNombre(''); setNewSalario(''); }}><Text style={styles.cancelButtonText}>Cancelar</Text></TouchableOpacity>
+                        <TouchableOpacity style={[styles.submitButton, { backgroundColor: '#10B981' }, saving && styles.submitButtonDisabled]} onPress={handleAddOperario} disabled={saving}>
+                            {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>Agregar</Text>}
                         </TouchableOpacity>
                     </View>
                 </View></View>

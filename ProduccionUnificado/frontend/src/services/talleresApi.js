@@ -13,6 +13,12 @@ export async function getRubros() {
     return response.json();
 }
 
+export async function getMaestros() {
+    const response = await fetch(`${API_BASE_URL}/produccion/maestros`);
+    if (!response.ok) throw new Error('Error fetching maestros');
+    return response.json();
+}
+
 export async function createRubro(rubro) {
     const response = await fetch(`${API_BASE_URL}/talleres/rubros`, {
         method: 'POST',
@@ -233,4 +239,40 @@ export async function setPresupuestosBulk(presupuestos) {
     });
     if (!response.ok) throw new Error('Error setting presupuestos bulk');
     return response.ok;
+    return response.ok;
+}
+
+// ==================== PERSONAL ====================
+export async function getPersonal() {
+    const response = await fetch(`${API_BASE_URL}/tallerespersonal`);
+    if (!response.ok) throw new Error('Error fetching personal');
+    return response.json();
+}
+
+export async function createPersonal(personal) {
+    const response = await fetch(`${API_BASE_URL}/tallerespersonal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(personal)
+    });
+    if (!response.ok) throw new Error('Error creating personal');
+    return response.json();
+}
+
+export async function updatePersonal(id, personal) {
+    const response = await fetch(`${API_BASE_URL}/tallerespersonal/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...personal, id })
+    });
+    if (!response.ok) throw new Error('Error updating personal');
+    return true;
+}
+
+export async function deletePersonal(id) {
+    const response = await fetch(`${API_BASE_URL}/tallerespersonal/${id}`, {
+        method: 'DELETE'
+    });
+    if (!response.ok) throw new Error('Error deleting personal');
+    return true;
 }

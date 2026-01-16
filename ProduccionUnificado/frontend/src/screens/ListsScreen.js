@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, TextInput, Button, StyleSheet, Alert, TouchableOpacity, Modal } from 'react-native';
+import { View, Text, FlatList, TextInput, Button, StyleSheet, Alert, TouchableOpacity, Modal, Platform } from 'react-native';
 import { getUsuarios, createUsuario, updateUsuario, deleteUsuario } from '../services/productionApi';
 
 export default function ListsScreen({ navigation }) {
@@ -34,9 +34,18 @@ export default function ListsScreen({ navigation }) {
             await createUsuario({ nombre: newUsuario, estado: true, activo: true });
             setNewUsuario('');
             loadUsuarios();
-            Alert.alert("Éxito", "Operario agregado");
+            if (Platform.OS === 'web') {
+                alert("Operario agregado");
+            } else {
+                Alert.alert("Éxito", "Operario agregado");
+            }
         } catch (error) {
-            Alert.alert("Error", "No se pudo agregar");
+            console.error('Add usuario error:', error);
+            if (Platform.OS === 'web') {
+                alert("Error: No se pudo agregar");
+            } else {
+                Alert.alert("Error", "No se pudo agregar");
+            }
         }
     };
 
@@ -57,33 +66,53 @@ export default function ListsScreen({ navigation }) {
             setEditModalVisible(false);
             setEditingUser(null);
             loadUsuarios();
-            Alert.alert("Éxito", "Operario actualizado");
+            if (Platform.OS === 'web') {
+                alert("Operario actualizado");
+            } else {
+                Alert.alert("Éxito", "Operario actualizado");
+            }
         } catch (error) {
-            Alert.alert("Error", "No se pudo actualizar");
+            console.error('Update usuario error:', error);
+            if (Platform.OS === 'web') {
+                alert("Error: No se pudo actualizar");
+            } else {
+                Alert.alert("Error", "No se pudo actualizar");
+            }
         }
     };
 
     const handleDeletePress = (user) => {
-        Alert.alert(
-            "Confirmar",
-            `¿Eliminar a ${user.nombre}?`,
-            [
-                { text: "Cancelar", style: "cancel" },
-                {
-                    text: "Eliminar",
-                    style: "destructive",
-                    onPress: async () => {
-                        try {
-                            await deleteUsuario(user.id);
-                            loadUsuarios();
-                            Alert.alert("Éxito", "Operario eliminado");
-                        } catch (error) {
-                            Alert.alert("Error", "No se pudo eliminar");
+        if (Platform.OS === 'web') {
+            if (window.confirm(`¿Eliminar a ${user.nombre}?`)) {
+                deleteUsuario(user.id)
+                    .then(() => {
+                        loadUsuarios();
+                        alert("Operario eliminado");
+                    })
+                    .catch(() => alert("Error: No se pudo eliminar"));
+            }
+        } else {
+            Alert.alert(
+                "Confirmar",
+                `¿Eliminar a ${user.nombre}?`,
+                [
+                    { text: "Cancelar", style: "cancel" },
+                    {
+                        text: "Eliminar",
+                        style: "destructive",
+                        onPress: async () => {
+                            try {
+                                await deleteUsuario(user.id);
+                                loadUsuarios();
+                                Alert.alert("Éxito", "Operario eliminado");
+                            } catch (error) {
+                                Alert.alert("Error", "No se pudo eliminar");
+                            }
                         }
                     }
-                }
-            ]
-        );
+                ]
+            );
+        }
     };
 
     return (
@@ -108,7 +137,14 @@ export default function ListsScreen({ navigation }) {
                 keyExtractor={(item) => item.id.toString()}
                 renderItem={({ item }) => (
                     <View style={styles.item}>
-                        <Text style={styles.itemText}>{item.nombre}</Text>
+                        <View>
+                            <Text style={styles.itemText}>{item.nombre}</Text>
+                            {item.salario != null && (
+                                <Text style={{ fontSize: 13, color: '#059669', marginTop: 2 }}>
+                                    💰 {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(item.salario)}
+                                </Text>
+                            )}
+                        </View>
                         <View style={styles.actionButtons}>
                             <TouchableOpacity
                                 style={styles.editBtn}

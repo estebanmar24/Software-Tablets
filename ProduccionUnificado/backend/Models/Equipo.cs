@@ -30,6 +30,9 @@ public class Equipo
     [MaxLength(100)]
     public string? ContrasenaEquipo { get; set; } // Contraseña del equipo
     
+    [MaxLength(50)]
+    public string? IpDireccion { get; set; } // Dirección IP del equipo
+
     [MaxLength(200)]
     public string? Ubicacion { get; set; } // Piso 1, Oficina 101
     

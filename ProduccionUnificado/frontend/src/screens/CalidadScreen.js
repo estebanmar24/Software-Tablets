@@ -184,8 +184,8 @@ export default function CalidadScreen({ navigation }) {
         if (nombre.includes('guillotina') || nombre.includes('polar')) return 'Guillotina';
         if (nombre.includes('troqueladora')) return 'Troquelado';
         if (nombre.includes('estampadora')) return 'Estampado';
+        if (nombre.includes('colaminadora')) return 'Colaminado';
         if (nombre.includes('laminadora')) return 'Laminado';
-        if (nombre.includes('colaminadora')) return 'Colaminadora';
         if (nombre.includes('corrugadora')) return 'Corrugadora';
         if (nombre.includes('pegadora')) return 'Pegadora';
         if (nombre.includes('barnizadora')) return 'Screen';
