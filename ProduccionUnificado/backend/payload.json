@@ -1,0 +1,10 @@
+{
+    "rubroId": 1,
+    "usuarioId": 1,
+    "tipoHoraId": 1,
+    "cantidadHoras": 2,
+    "precio": 100,
+    "fecha": "2024-10-27T10:00:00Z",
+    "anio": 2024,
+    "mes": 10
+}

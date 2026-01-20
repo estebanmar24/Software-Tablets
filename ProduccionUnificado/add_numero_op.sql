@@ -1,0 +1,1 @@
+ALTER TABLE "Produccion_Gastos" ADD COLUMN IF NOT EXISTS "NumeroOP" VARCHAR(100);
