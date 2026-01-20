@@ -567,7 +567,14 @@ export default function App() {
     return (
       <CalidadScreen
         navigation={{
-          goBack: () => setCurrentView('timer'),
+          goBack: () => {
+            // Limpiar rol y vista guardada para que no vuelva a abrir aquí
+            setAdminRole('');
+            setAdminName('');
+            AsyncStorage.removeItem('adminRole');
+            AsyncStorage.removeItem('lastView');
+            setCurrentView('timer');
+          },
           navigate: (screen: string, params?: any) => {
             // Simple navigation handler for quality screens
             console.log('Navigate to:', screen, params);
