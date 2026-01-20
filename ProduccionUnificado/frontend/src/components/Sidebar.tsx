@@ -144,7 +144,7 @@ export function Sidebar({
                     style={styles.logo}
                     resizeMode="contain"
                 />
-                <Text style={{ fontSize: 10, color: '#718096', marginTop: 4 }}>v1.0.4 - Captura Mensual Fix 📝</Text>
+                <Text style={{ fontSize: 10, color: '#718096', marginTop: 4 }}>v1.0.5 - UI Fix 🔧</Text>
             </View>
 
             {/* Toggle Button for Phones */}
@@ -254,6 +254,7 @@ const styles = StyleSheet.create({
     },
     adminButton: {
         marginTop: 20,
+        marginBottom: 40, // Espacio extra para evitar que la barra de navegación tape el botón
         padding: 10,
         backgroundColor: '#EDF2F7',
         borderRadius: 6,
