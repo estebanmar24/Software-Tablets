@@ -163,7 +163,7 @@ public class DesperdicioController : ControllerBase
     // ==========================================
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<object>>> GetRegistros(int? maquinaId, DateTime? fecha)
+    public async Task<ActionResult<IEnumerable<object>>> GetRegistros(int? maquinaId, DateTime? fecha, int? usuarioId, string? ordenProduccion)
     {
         var query = _context.RegistrosDesperdicio
             .Include(r => r.CodigoDesperdicio)
@@ -179,6 +179,16 @@ public class DesperdicioController : ControllerBase
         if (fecha.HasValue)
         {
             query = query.Where(r => r.Fecha.Date == fecha.Value.Date);
+        }
+
+        if (usuarioId.HasValue)
+        {
+            query = query.Where(r => r.UsuarioId == usuarioId.Value);
+        }
+
+        if (!string.IsNullOrEmpty(ordenProduccion))
+        {
+            query = query.Where(r => r.OrdenProduccion != null && r.OrdenProduccion.Contains(ordenProduccion));
         }
 
         var registros = await query

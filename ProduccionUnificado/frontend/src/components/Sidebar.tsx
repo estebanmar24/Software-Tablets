@@ -144,7 +144,7 @@ export function Sidebar({
                     style={styles.logo}
                     resizeMode="contain"
                 />
-                <Text style={{ fontSize: 10, color: '#718096', marginTop: 4 }}>v1.2.7 - Nota & Edit ✨</Text>
+                <Text style={{ fontSize: 10, color: '#718096', marginTop: 4 }}>v1.2.9 - PDF Reports 📄</Text>
             </View>
 
             {/* Toggle Button for Phones */}

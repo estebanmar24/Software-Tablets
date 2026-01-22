@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, FlatList, TextInput, Alert, ScrollView, Platform } from 'react-native';
-import { Picker } from '@react-native-picker/picker'; // Asegúrate de tener esta dependencia o usa un select nativo html en web
-import DateTimePicker from '@react-native-community/datetimepicker'; // O input date en web
+import { View, Text, StyleSheet, TouchableOpacity, Modal, FlatList, TextInput, Alert, ScrollView, Platform, ActivityIndicator } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
+import { Asset } from 'expo-asset';
+import * as FileSystem from 'expo-file-system/legacy';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
 
@@ -12,10 +14,16 @@ const DesperdicioScreen = () => {
     const [codigos, setCodigos] = useState([]);
     const [registros, setRegistros] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [generatingPdf, setGeneratingPdf] = useState(false);
 
+    const logoSource = require('../../assets/LOGO_ALEPH_IMPRESORES.jpg');
+
+    // Filtros
     // Filtros
     const [selectedMaquina, setSelectedMaquina] = useState('');
     const [selectedFecha, setSelectedFecha] = useState(null);
+    const [selectedUsuario, setSelectedUsuario] = useState(''); // Nuevo filtro
+    const [selectedOP, setSelectedOP] = useState(''); // Nuevo filtro
 
     // Modales
     const [modalConfigVisible, setModalConfigVisible] = useState(false);
@@ -43,9 +51,9 @@ const DesperdicioScreen = () => {
     }, []);
 
     useEffect(() => {
-        // Recargar si cambian filtros (aunque máquina está oculta por ahora)
+        // Recargar si cambian filtros
         loadRegistros();
-    }, [selectedMaquina, selectedFecha]);
+    }, [selectedMaquina, selectedFecha, selectedUsuario, selectedOP]);
 
     const loadInitialData = async () => {
         try {
@@ -82,7 +90,9 @@ const DesperdicioScreen = () => {
 
             let url = `${API_URL}/desperdicio?`;
             if (dateStr) url += `fecha=${dateStr}&`;
-            if (selectedMaquina) url += `maquinaId=${selectedMaquina}`;
+            if (selectedMaquina) url += `maquinaId=${selectedMaquina}&`;
+            if (selectedUsuario) url += `usuarioId=${selectedUsuario}&`;
+            if (selectedOP) url += `ordenProduccion=${selectedOP}&`;
 
             const res = await fetch(url);
             if (res.ok) {
@@ -272,42 +282,229 @@ const DesperdicioScreen = () => {
         return date.toISOString().split('T')[0];
     };
 
+    const getBase64FromUrl = async (url) => {
+        if (Platform.OS !== 'web') {
+            try {
+                const base64 = await FileSystem.readAsStringAsync(url, { encoding: 'base64' });
+                return `data:image/jpeg;base64,${base64}`;
+            } catch (err) {
+                const tempPath = FileSystem.cacheDirectory + 'temp_logo.jpg';
+                await FileSystem.downloadAsync(url, tempPath);
+                const base64 = await FileSystem.readAsStringAsync(tempPath, { encoding: 'base64' });
+                return `data:image/jpeg;base64,${base64}`;
+            }
+        }
+        const data = await fetch(url);
+        const blob = await data.blob();
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(blob);
+            reader.onloadend = () => resolve(reader.result);
+        });
+    };
+
+    const generatePDF = async () => {
+        setGeneratingPdf(true);
+        try {
+            let jsPDF, autoTable;
+            if (Platform.OS === 'web') {
+                const jsPDFModule = await import('jspdf');
+                jsPDF = jsPDFModule.jsPDF;
+                const autoTableModule = await import('jspdf-autotable');
+                autoTable = autoTableModule.default;
+            } else {
+                alert("PDF disponible solo en Web por ahora.");
+                setGeneratingPdf(false);
+                return;
+            }
+
+            const doc = new jsPDF();
+            const pageWidth = doc.internal.pageSize.getWidth();
+
+            // Logo
+            try {
+                const asset = Asset.fromModule(logoSource);
+                await asset.downloadAsync();
+                const base64Logo = await getBase64FromUrl(asset.uri);
+                doc.addImage(base64Logo, 'JPEG', 10, 10, 30, 30);
+            } catch (err) { console.log("Error logo", err); }
+
+            // Header
+            doc.setFontSize(18);
+            doc.setFont('helvetica', 'bold');
+            doc.text('REPORTE DE DESPERDICIOS', pageWidth / 2, 20, { align: 'center' });
+
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'normal');
+            const fechaStr = selectedFecha ? formatDate(selectedFecha) : 'Todo el Historial';
+            doc.text(`Fecha: ${fechaStr}`, pageWidth / 2, 30, { align: 'center' });
+
+            if (selectedMaquina) {
+                const maquina = maquinas.find(m => m.id == selectedMaquina)?.nombre || 'Desconocida';
+                doc.text(`Máquina: ${maquina}`, pageWidth / 2, 36, { align: 'center' });
+            }
+
+            // Summary Stats
+            const totalItems = registros.length;
+            const totalCantidad = registros.reduce((sum, r) => sum + r.cantidad, 0);
+
+            doc.setFontSize(10);
+            doc.text(`Total Registros: ${totalItems}   |   Total Cantidad: ${totalCantidad.toFixed(2)}`, 14, 50);
+
+            // Table
+            const columns = ['Fecha', 'Máquina', 'Operario', 'Código', 'OP', 'Cant', 'Nota'];
+            const data = registros.map(r => [
+                formatDate(new Date(r.fecha)),
+                r.maquinaNombre,
+                r.usuarioNombre,
+                r.codigo,
+                r.ordenProduccion || '-',
+                r.cantidad.toString(),
+                r.nota || '-'
+            ]);
+
+            autoTable(doc, {
+                head: [columns],
+                body: data,
+                startY: 55,
+                styles: { fontSize: 8, cellPadding: 2 },
+                headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' },
+                alternateRowStyles: { fillColor: [245, 245, 245] },
+                columnStyles: {
+                    0: { cellWidth: 22 },
+                    6: { cellWidth: 60 }
+                }
+            });
+
+            // Resumen por Código (Gráfica Simple simulada con barras de texto o tabla pequeña)
+            let finalY = doc.lastAutoTable.finalY + 15;
+
+            // Agrupar por código
+            const group = {};
+            registros.forEach(r => {
+                const k = r.codigo;
+                if (!group[k]) group[k] = 0;
+                group[k] += r.cantidad;
+            });
+            const summaryData = Object.keys(group).map(k => [k, group[k].toFixed(2)]);
+
+            doc.text('Resumen por Código:', 14, finalY);
+            autoTable(doc, {
+                head: [['Código', 'Total Cantidad']],
+                body: summaryData,
+                startY: finalY + 5,
+                theme: 'grid',
+                styles: { fontSize: 8 },
+                tableWidth: 80
+            });
+
+            doc.save(`reporte_desperdicios_${new Date().getTime()}.pdf`);
+
+        } catch (error) {
+            console.error(error);
+            Alert.alert("Error", "No se pudo generar el PDF");
+        } finally {
+            setGeneratingPdf(false);
+        }
+    };
+
+
     return (
         <View style={styles.container}>
             {/* Header / Botones Superiores */}
             <View style={styles.header}>
-                <View style={styles.filterRow}>
-                    <Text style={styles.label}>Fecha:</Text>
-                    {selectedFecha ? (
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            {Platform.OS === 'web' ? (
-                                <input
-                                    type="date"
-                                    value={selectedFecha && !isNaN(selectedFecha.getTime()) ? selectedFecha.toISOString().split('T')[0] : ''}
-                                    onChange={(e) => {
-                                        if (!e.target.value) { setSelectedFecha(null); return; }
-                                        const d = new Date(e.target.value);
-                                        if (isNaN(d.getTime())) return;
-                                        const localDate = new Date(d.getTime() + d.getTimezoneOffset() * 60000);
-                                        setSelectedFecha(localDate);
-                                    }}
-                                    style={{ padding: 5, borderRadius: 4, border: '1px solid #ccc', marginRight: 10 }}
-                                />
-                            ) : (
-                                <Text style={{ marginRight: 10 }}>{formatDate(selectedFecha)}</Text>
-                            )}
-                            <TouchableOpacity onPress={() => setSelectedFecha(null)} style={{ backgroundColor: '#dc3545', padding: 5, borderRadius: 4 }}>
-                                <Text style={{ color: 'white', fontSize: 12 }}>X Ver Todos</Text>
+                <View style={[styles.filterRow, { flexWrap: 'wrap', gap: 10 }]}>
+                    {/* Filtro Fecha */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={[styles.label, { marginBottom: 0, marginRight: 5 }]}>Fecha:</Text>
+                        {selectedFecha ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                {Platform.OS === 'web' ? (
+                                    <input
+                                        type="date"
+                                        value={selectedFecha && !isNaN(selectedFecha.getTime()) ? selectedFecha.toISOString().split('T')[0] : ''}
+                                        onChange={(e) => {
+                                            if (!e.target.value) { setSelectedFecha(null); return; }
+                                            const d = new Date(e.target.value);
+                                            if (isNaN(d.getTime())) return;
+                                            const localDate = new Date(d.getTime() + d.getTimezoneOffset() * 60000);
+                                            setSelectedFecha(localDate);
+                                        }}
+                                        style={{ padding: 5, borderRadius: 4, border: '1px solid #ccc', marginRight: 5 }}
+                                    />
+                                ) : (
+                                    <Text style={{ marginRight: 5 }}>{formatDate(selectedFecha)}</Text>
+                                )}
+                                <TouchableOpacity onPress={() => setSelectedFecha(null)} style={{ backgroundColor: '#dc3545', padding: 5, borderRadius: 4 }}>
+                                    <Text style={{ color: 'white', fontSize: 10 }}>X</Text>
+                                </TouchableOpacity>
+                            </View>
+                        ) : (
+                            <TouchableOpacity onPress={() => setSelectedFecha(new Date())} style={{ backgroundColor: '#007bff', padding: 5, borderRadius: 4 }}>
+                                <Text style={{ color: 'white', fontSize: 12 }}>📅 Hoy</Text>
                             </TouchableOpacity>
-                        </View>
-                    ) : (
-                        <TouchableOpacity onPress={() => setSelectedFecha(new Date())} style={{ backgroundColor: '#007bff', padding: 5, borderRadius: 4 }}>
-                            <Text style={{ color: 'white', fontSize: 12 }}>📅 Filtrar por Fecha</Text>
-                        </TouchableOpacity>
-                    )}
+                        )}
+                    </View>
+
+                    {/* Filtro Máquina */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={[styles.label, { marginBottom: 0, marginRight: 5 }]}>Máq:</Text>
+                        <Picker
+                            selectedValue={selectedMaquina}
+                            onValueChange={(v) => setSelectedMaquina(v)}
+                            style={{ height: 30, width: 150, padding: 0 }}
+                        >
+                            <Picker.Item label="Todas" value="" />
+                            {maquinas.map(m => (
+                                <Picker.Item key={m.id} label={m.nombre} value={m.id} />
+                            ))}
+                        </Picker>
+                    </View>
+
+                    {/* Filtro Operario */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={[styles.label, { marginBottom: 0, marginRight: 5 }]}>Op:</Text>
+                        <Picker
+                            selectedValue={selectedUsuario}
+                            onValueChange={(v) => setSelectedUsuario(v)}
+                            style={{ height: 30, width: 150, padding: 0 }}
+                        >
+                            <Picker.Item label="Todos" value="" />
+                            {usuarios.map(u => (
+                                <Picker.Item key={u.id} label={u.nombre} value={u.id} />
+                            ))}
+                        </Picker>
+                    </View>
+
+                    {/* Filtro OP */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={[styles.label, { marginBottom: 0, marginRight: 5 }]}>OP:</Text>
+                        <TextInput
+                            style={{
+                                height: 30,
+                                borderColor: '#ccc',
+                                borderWidth: 1,
+                                borderRadius: 4,
+                                paddingHorizontal: 5,
+                                width: 80,
+                                backgroundColor: 'white'
+                            }}
+                            placeholder="Buscar..."
+                            value={selectedOP}
+                            onChangeText={setSelectedOP}
+                        />
+                    </View>
                 </View>
 
                 <View style={styles.buttonRow}>
+                    <TouchableOpacity
+                        style={[styles.button, { backgroundColor: '#6c757d', marginRight: 10 }]}
+                        onPress={generatePDF}
+                        disabled={generatingPdf}
+                    >
+                        {generatingPdf ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>📄 PDF</Text>}
+                    </TouchableOpacity>
+
                     <TouchableOpacity
                         style={[styles.button, styles.configButton]}
                         onPress={() => setModalConfigVisible(true)}
