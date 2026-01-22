@@ -160,7 +160,6 @@ const DesperdicioScreen = () => {
                 if (resCod.ok) setCodigos(await resCod.json());
             } else {
                 const txt = await res.text();
-                // Si es un error 400 u otro, mostrarlo
                 Alert.alert('Error al guardar', `Detalle: ${txt}`);
             }
         } catch (error) {
@@ -288,121 +287,131 @@ const DesperdicioScreen = () => {
                             value={newCodigo.descripcion}
                             onChangeText={t => setNewCodigo({ ...newCodigo, descripcion: t })}
                         />
+
+                        <TouchableOpacity style={styles.largeSaveButton} onPress={handleSaveCodigo}>
+                            <Text style={styles.largeSaveButtonText}>{editingCodigoId ? 'Actualizar Código' : 'Guardar Código'}</Text>
+                        </TouchableOpacity>
+
+                        <FlatList
+                            data={codigos}
+                            keyExtractor={item => item.id.toString()}
+                            style={{ maxHeight: 300, marginTop: 10 }}
+                            renderItem={({ item }) => (
+                                <View style={styles.codeRow}>
+                                    <Text style={{ width: 60, fontWeight: 'bold' }}>{item.codigo}</Text>
+                                    <Text style={{ flex: 1 }}>{item.descripcion}</Text>
+                                    <TouchableOpacity onPress={() => {
+                                        setNewCodigo(item);
+                                        setEditingCodigoId(item.id);
+                                    }}>
+                                        <Text style={styles.actionText}>✏️</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity onPress={() => handleDeleteCodigo(item.id)} style={{ marginLeft: 10 }}>
+                                        <Text style={styles.actionText}>🗑️</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+                        />
+
+                        <TouchableOpacity style={styles.closeButton} onPress={() => setModalConfigVisible(false)}>
+                            <Text style={styles.closeButtonText}>Cerrar</Text>
+                        </TouchableOpacity>
                     </View>
+                </View>
+            </Modal>
 
-                    <TouchableOpacity style={styles.largeSaveButton} onPress={handleSaveCodigo}>
-                        <Text style={styles.largeSaveButtonText}>{editingCodigoId ? 'Actualizar Código' : 'Guardar Código'}</Text>
-                    </TouchableOpacity>
+            {/* MODAL AGREGAR DESPERDICIO */}
+            <Modal visible={modalRegistroVisible} animationType="slide" transparent>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>Registrar Desperdicio</Text>
 
-                    <FlatList
-                        data={codigos}
-                        keyExtractor={item => item.id.toString()}
-                        style={{ maxHeight: 300, marginTop: 10 }}
-                        renderItem={({ item }) => (
-                            <View style={styles.codeRow}>
-                                <Text style={{ width: 60, fontWeight: 'bold' }}>{item.codigo}</Text>
-                                <Text style={{ flex: 1 }}>{item.descripcion}</Text>
-                                <TouchableOpacity onPress={() => {
-                                    setNewCodigo(item);
-                                    setEditingCodigoId(item.id);
-                                }}>
-                                    <Text style={styles.actionText}>✏️</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity onPress={() => handleDeleteCodigo(item.id)} style={{ marginLeft: 10 }}>
-                                    <Text style={styles.actionText}>🗑️</Text>
-                                </TouchableOpacity>
+                        {selectedMaquina ? (
+                            <View style={styles.readOnlyField}>
+                                <Text style={styles.readOnlyLabel}>Máquina: </Text>
+                                <Text style={styles.readOnlyValue}>{maquinas.find(m => m.id == selectedMaquina)?.nombre || selectedMaquina}</Text>
                             </View>
+                        ) : (
+                            <>
+                                <Text style={styles.label}>Máquina</Text>
+                                <Picker
+                                    selectedValue={newRegistro.maquinaId}
+                                    onValueChange={(v) => setNewRegistro({ ...newRegistro, maquinaId: v })}
+                                    style={styles.picker}
+                                >
+                                    <Picker.Item label="Seleccionar..." value="" />
+                                    {maquinas.map(m => (
+                                        <Picker.Item key={m.id} label={m.nombre} value={m.id} />
+                                    ))}
+                                </Picker>
+                            </>
                         )}
-                    />
 
-                    <TouchableOpacity style={styles.closeButton} onPress={() => setModalConfigVisible(false)}>
-                        <Text style={styles.closeButtonText}>Cerrar</Text>
-                    </TouchableOpacity>
+                        <Text style={styles.label}>Operario</Text>
+                        <Picker
+                            selectedValue={newRegistro.usuarioId}
+                            onValueChange={(v) => setNewRegistro({ ...newRegistro, usuarioId: v })}
+                            style={styles.picker}
+                        >
+                            <Picker.Item label="Seleccionar..." value="" />
+                            {usuarios.map(u => (
+                                <Picker.Item key={u.id} label={u.nombre} value={u.id} />
+                            ))}
+                        </Picker>
+
+                        {Platform.OS === 'web' ? (
+                            <View style={{ marginBottom: 10 }}>
+                                <Text style={styles.label}>Fecha</Text>
+                                <input
+                                    type="date"
+                                    value={formatDate(newRegistro.fecha)}
+                                    disabled={true}
+                                    style={[styles.webInput, { backgroundColor: '#e9ecef' }]}
+                                />
+                            </View>
+                        ) : null}
+
+                        <Text style={styles.label}>Código Desperdicio</Text>
+                        <Picker
+                            selectedValue={newRegistro.codigoDesperdicioId}
+                            onValueChange={(v) => setNewRegistro({ ...newRegistro, codigoDesperdicioId: v })}
+                            style={styles.picker}
+                        >
+                            <Picker.Item label="Seleccionar..." value="" />
+                            {codigos.filter(c => c.activo).map(c => (
+                                <Picker.Item key={c.id} label={`${c.codigo} - ${c.descripcion}`} value={c.id} />
+                            ))}
+                        </Picker>
+
+                        <Text style={styles.label}>Cantidad (Kg)</Text>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="0.00"
+                            keyboardType="numeric"
+                            value={newRegistro.cantidad}
+                            onChangeText={t => setNewRegistro({ ...newRegistro, cantidad: t })}
+                        />
+
+                        <Text style={styles.label}>Orden Producción</Text>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="OP..."
+                            value={newRegistro.ordenProduccion}
+                            onChangeText={t => setNewRegistro({ ...newRegistro, ordenProduccion: t })}
+                        />
+
+                        <View style={styles.modalButtons}>
+                            <TouchableOpacity style={[styles.button, { backgroundColor: '#ccc' }]} onPress={() => setModalRegistroVisible(false)}>
+                                <Text style={styles.buttonText}>Cancelar</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.button, styles.addButton]} onPress={handleSaveRegistro}>
+                                <Text style={styles.buttonText}>Guardar</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
                 </View>
+            </Modal>
         </View>
-            </Modal >
-
-    {/* MODAL AGREGAR DESPERDICIO */ }
-    < Modal visible = { modalRegistroVisible } animationType = "slide" transparent >
-        <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-                <Text style={styles.modalTitle}>Registrar Desperdicio</Text>
-
-                <Text style={styles.label}>Máquina</Text>
-                <Picker
-                    selectedValue={newRegistro.maquinaId}
-                    onValueChange={(v) => setNewRegistro({ ...newRegistro, maquinaId: v })}
-                    style={styles.picker}
-                >
-                    <Picker.Item label="Seleccionar..." value="" />
-                    {maquinas.map(m => (
-                        <Picker.Item key={m.id} label={m.nombre} value={m.id} />
-                    ))}
-                </Picker>
-
-                <Text style={styles.label}>Operario</Text>
-                <Picker
-                    selectedValue={newRegistro.usuarioId}
-                    onValueChange={(v) => setNewRegistro({ ...newRegistro, usuarioId: v })}
-                    style={styles.picker}
-                >
-                    <Picker.Item label="Seleccionar..." value="" />
-                    {usuarios.map(u => (
-                        <Picker.Item key={u.id} label={u.nombre} value={u.id} />
-                    ))}
-                </Picker>
-
-                <Text style={styles.label}>Fecha</Text>
-                {Platform.OS === 'web' ? (
-                    <input
-                        type="date"
-                        value={formatDate(newRegistro.fecha)}
-                        onChange={(e) => setNewRegistro({ ...newRegistro, fecha: new Date(e.target.value) })}
-                        style={styles.webInput}
-                    />
-                ) : null}
-
-                <Text style={styles.label}>Código Desperdicio</Text>
-                <Picker
-                    selectedValue={newRegistro.codigoDesperdicioId}
-                    onValueChange={(v) => setNewRegistro({ ...newRegistro, codigoDesperdicioId: v })}
-                    style={styles.picker}
-                >
-                    <Picker.Item label="Seleccionar..." value="" />
-                    {codigos.filter(c => c.activo).map(c => (
-                        <Picker.Item key={c.id} label={`${c.codigo} - ${c.descripcion}`} value={c.id} />
-                    ))}
-                </Picker>
-
-                <Text style={styles.label}>Cantidad (Kg)</Text>
-                <TextInput
-                    style={styles.input}
-                    placeholder="0.00"
-                    keyboardType="numeric"
-                    value={newRegistro.cantidad}
-                    onChangeText={t => setNewRegistro({ ...newRegistro, cantidad: t })}
-                />
-
-                <Text style={styles.label}>Orden Producción</Text>
-                <TextInput
-                    style={styles.input}
-                    placeholder="OP..."
-                    value={newRegistro.ordenProduccion}
-                    onChangeText={t => setNewRegistro({ ...newRegistro, ordenProduccion: t })}
-                />
-
-                <View style={styles.modalButtons}>
-                    <TouchableOpacity style={[styles.button, { backgroundColor: '#ccc' }]} onPress={() => setModalRegistroVisible(false)}>
-                        <Text style={styles.buttonText}>Cancelar</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.button, styles.addButton]} onPress={handleSaveRegistro}>
-                        <Text style={styles.buttonText}>Guardar</Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
-        </View>
-            </Modal >
-        </View >
     );
 };
 
