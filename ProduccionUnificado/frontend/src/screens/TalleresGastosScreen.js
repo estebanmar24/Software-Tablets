@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import * as talleresApi from '../services/talleresApi';
+import { ExpenseHistoryModal } from '../components/ExpenseHistoryModal';
 
 // TABS - Same structure as Produccion (sin Presupuesto)
 const TABS = [
@@ -103,6 +104,10 @@ function GastosTab() {
     const [resumen, setResumen] = useState(null);
     const [resumenAnual, setResumenAnual] = useState(null);
     const [presupuestoInfo, setPresupuestoInfo] = useState(null);
+
+    // History Modal State
+    const [showHistoryModal, setShowHistoryModal] = useState(false);
+    const [selectedHistoryGasto, setSelectedHistoryGasto] = useState(null);
 
     const [showModal, setShowModal] = useState(false);
     const [editItem, setEditItem] = useState(null);
@@ -454,6 +459,9 @@ function GastosTab() {
                                     <TouchableOpacity style={styles.editCardButton} onPress={() => handleEdit(gasto)}>
                                         <Text style={styles.editCardButtonText}>✏️ Editar</Text>
                                     </TouchableOpacity>
+                                    <TouchableOpacity style={styles.historyButton} onPress={() => { setSelectedHistoryGasto(gasto); setShowHistoryModal(true); }}>
+                                        <Text style={styles.historyButtonText}>🕒 Historial</Text>
+                                    </TouchableOpacity>
                                     <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(gasto.id)}>
                                         <Text style={styles.deleteButtonText}>🗑️ Eliminar</Text>
                                     </TouchableOpacity>
@@ -463,6 +471,13 @@ function GastosTab() {
                     )}
                 </ScrollView>
             )}
+
+            {/* History Modal */}
+            <ExpenseHistoryModal
+                visible={showHistoryModal}
+                onClose={() => setShowHistoryModal(false)}
+                gasto={selectedHistoryGasto}
+            />
 
             <Modal visible={showModal} animationType="slide" transparent onRequestClose={() => setShowModal(false)}>
                 <View style={styles.modalOverlay}>
@@ -1292,6 +1307,8 @@ const styles = StyleSheet.create({
     cardActions: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 14, gap: 12 },
     editCardButton: { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: '#EBF5FF', borderRadius: 6 },
     editCardButtonText: { color: '#2563EB', fontSize: 13, fontWeight: '500' },
+    historyButton: { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: '#F3F4F6', borderRadius: 6 },
+    historyButtonText: { color: '#4B5563', fontSize: 13, fontWeight: '500' },
     deleteButton: { paddingHorizontal: 14, paddingVertical: 8 },
     deleteButtonText: { color: '#DC2626', fontSize: 13 },
 

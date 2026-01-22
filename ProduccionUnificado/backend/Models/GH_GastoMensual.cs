@@ -70,4 +70,8 @@ public class GH_GastoMensual
 
     [ForeignKey("CotizacionId")]
     public virtual GH_Cotizacion? Cotizacion { get; set; }
+    
+    // History tracking
+    public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;
+    public DateTime? FechaModificacion { get; set; }
 }

@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { produccionApi } from '../services/produccionApi';
+import { ExpenseHistoryModal } from '../components/ExpenseHistoryModal';
 
 // TABS - Same structure as SST
 const TABS = [
@@ -98,6 +99,10 @@ function GastosTab() {
 
     const [gastos, setGastos] = useState([]);
     const [resumen, setResumen] = useState(null);
+
+    // History Modal State
+    const [showHistoryModal, setShowHistoryModal] = useState(false);
+    const [selectedHistoryGasto, setSelectedHistoryGasto] = useState(null);
 
     const [showModal, setShowModal] = useState(false);
     const [editItem, setEditItem] = useState(null);
@@ -422,6 +427,9 @@ function GastosTab() {
                                     <TouchableOpacity style={styles.editCardButton} onPress={() => handleEdit(gasto)}>
                                         <Text style={styles.editCardButtonText}>✏️ Editar</Text>
                                     </TouchableOpacity>
+                                    <TouchableOpacity style={styles.historyButton} onPress={() => { setSelectedHistoryGasto(gasto); setShowHistoryModal(true); }}>
+                                        <Text style={styles.historyButtonText}>🕒 Historial</Text>
+                                    </TouchableOpacity>
                                     <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(gasto.id)}>
                                         <Text style={styles.deleteButtonText}>🗑️ Eliminar</Text>
                                     </TouchableOpacity>
@@ -431,6 +439,13 @@ function GastosTab() {
                     )}
                 </ScrollView>
             )}
+
+            {/* Add/Edit Modal - EXACT SST STYLE */}
+            <ExpenseHistoryModal
+                visible={showHistoryModal}
+                onClose={() => setShowHistoryModal(false)}
+                gasto={selectedHistoryGasto}
+            />
 
             {/* Add/Edit Modal - EXACT SST STYLE */}
             <Modal visible={showModal} animationType="slide" transparent onRequestClose={() => setShowModal(false)}>
@@ -1757,6 +1772,17 @@ const styles = StyleSheet.create({
     },
     editCardButtonText: {
         color: '#2563EB',
+        fontSize: 13,
+        fontWeight: '500',
+    },
+    historyButton: {
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        backgroundColor: '#F3F4F6',
+        borderRadius: 6,
+    },
+    historyButtonText: {
+        color: '#4B5563',
         fontSize: 13,
         fontWeight: '500',
     },

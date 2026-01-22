@@ -459,7 +459,9 @@ public class SSTController : ControllerBase
                 g.FechaCompra,
                 g.Nota,
                 g.ArchivoFactura,
-                g.ArchivoFacturaNombre
+                g.ArchivoFacturaNombre,
+                g.FechaCreacion,
+                g.FechaModificacion
             })
             .ToListAsync();
 
@@ -542,6 +544,7 @@ public class SSTController : ControllerBase
     [HttpPost("gastos")]
     public async Task<ActionResult<SST_GastoMensual>> CreateGasto([FromBody] SST_GastoMensual gasto)
     {
+        gasto.FechaCreacion = DateTime.UtcNow;
         _context.SST_GastosMensuales.Add(gasto);
         await _context.SaveChangesAsync();
         return Ok(new { id = gasto.Id });
@@ -555,6 +558,11 @@ public class SSTController : ControllerBase
     {
         if (id != gasto.Id) return BadRequest();
 
+        // Preserve FechaCreacion
+        var existingEntry = await _context.SST_GastosMensuales.AsNoTracking().FirstOrDefaultAsync(g => g.Id == id);
+        if (existingEntry != null) gasto.FechaCreacion = existingEntry.FechaCreacion;
+
+        gasto.FechaModificacion = DateTime.UtcNow;
         _context.Entry(gasto).State = EntityState.Modified;
         await _context.SaveChangesAsync();
         return NoContent();

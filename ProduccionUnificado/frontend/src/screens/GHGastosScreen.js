@@ -24,6 +24,7 @@ import * as ghApi from '../services/ghApi';
 // jsPDF uses dynamic import to avoid Android TextDecoder crash
 import * as FileSystem from 'expo-file-system/legacy';
 import { Asset } from 'expo-asset';
+import { ExpenseHistoryModal } from '../components/ExpenseHistoryModal';
 
 const TABS = [
     { key: 'gastos', label: 'Captura de Gastos', icon: '💰' },
@@ -106,6 +107,10 @@ function GastosTab() {
         archivoNombre: ''
     });
     const [saving, setSaving] = useState(false);
+
+    // History Modal State
+    const [showHistoryModal, setShowHistoryModal] = useState(false);
+    const [selectedHistoryGasto, setSelectedHistoryGasto] = useState(null);
 
     const anios = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
 
@@ -580,6 +585,12 @@ function GastosTab() {
                                         <Text style={styles.editCardButtonText}>✏️ Editar</Text>
                                     </TouchableOpacity>
                                     <TouchableOpacity
+                                        style={styles.historyButton}
+                                        onPress={() => { setSelectedHistoryGasto(gasto); setShowHistoryModal(true); }}
+                                    >
+                                        <Text style={styles.historyButtonText}>🕒 Historial</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
                                         style={styles.deleteButton}
                                         onPress={() => handleDelete(gasto.id)}
                                     >
@@ -815,6 +826,12 @@ function GastosTab() {
                     </View>
                 </View>
             </Modal>
+
+            <ExpenseHistoryModal
+                visible={showHistoryModal}
+                onClose={() => setShowHistoryModal(false)}
+                gasto={selectedHistoryGasto}
+            />
         </View >
     );
 }
@@ -2553,6 +2570,17 @@ const styles = StyleSheet.create({
     },
     editCardButtonText: {
         color: '#2563EB',
+        fontSize: 13,
+        fontWeight: '500',
+    },
+    historyButton: {
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        backgroundColor: '#F3F4F6',
+        borderRadius: 6,
+    },
+    historyButtonText: {
+        color: '#4B5563',
         fontSize: 13,
         fontWeight: '500',
     },

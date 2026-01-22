@@ -73,4 +73,8 @@ public class Talleres_Gasto
 
     [ForeignKey("TipoRecargoId")]
     public virtual Produccion_TipoRecargo? TipoRecargo { get; set; }
+    
+    // History tracking
+    public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;
+    public DateTime? FechaModificacion { get; set; }
 }
