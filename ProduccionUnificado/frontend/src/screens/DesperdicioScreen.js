@@ -113,15 +113,20 @@ const DesperdicioScreen = () => {
             if (res.ok) {
                 Alert.alert('Éxito', 'Desperdicio registrado');
                 setModalRegistroVisible(false);
+
+                // Actualizar filtro a la fecha del registro guardado para verlo inmediatamente
+                setSelectedFecha(newRegistro.fecha);
+
+                // Resetear form
                 setNewRegistro({
-                    maquinaId: selectedMaquina || '',
+                    maquinaId: '',
                     usuarioId: '',
                     fecha: new Date(),
                     ordenProduccion: '',
                     codigoDesperdicioId: '',
                     cantidad: ''
                 });
-                loadRegistros();
+                // loadRegistros se llamará automáticamente por el useEffect al cambiar selectedFecha
             } else {
                 Alert.alert('Error', 'No se pudo guardar el registro');
             }
