@@ -2228,6 +2228,11 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                                             </View>
                                         </View>
                                         <Text style={styles.historialDescripcion}>{m.trabajoRealizado || 'Sin descripción'}</Text>
+                                        {m.observaciones && (
+                                            <Text style={{ fontSize: 12, color: '#666', fontStyle: 'italic', marginTop: 4, marginBottom: 8 }}>
+                                                💬 {m.observaciones}
+                                            </Text>
+                                        )}
                                         <View style={styles.historialFooter}>
                                             <Text style={styles.historialTecnico}>👤 {m.tecnico || 'N/A'}</Text>
                                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>

@@ -21,6 +21,7 @@ public class NovedadDto
 {
     public string TipoNovedad { get; set; } = string.Empty;
     public string? FotoBase64 { get; set; }
+    public string? FotoUrl { get; set; } // URL de foto existente a preservar
     public string? Descripcion { get; set; }
     public int CantidadDefectuosa { get; set; } = 0;
 }

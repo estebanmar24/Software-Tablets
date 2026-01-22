@@ -177,72 +177,81 @@ public class ProduccionController : ControllerBase
     [HttpPost("mensual")]
     public async Task<IActionResult> GuardarProduccionMensual([FromBody] List<ProduccionDiariaDto> registros)
     {
-        if (registros == null || !registros.Any())
+        try
         {
-            return BadRequest("No hay registros para guardar");
-        }
-
-        // Obtener el mes/año/máquina del primer registro para determinar qué borrar
-        var primerRegistro = registros.First();
-        var fecha = DateTime.Parse(primerRegistro.Fecha);
-        var mes = fecha.Month;
-        var anio = fecha.Year;
-        var maquinaId = primerRegistro.MaquinaId;
-
-        // Borrar registros existentes del mes/año/máquina para sincronización completa
-        var existentes = await _context.ProduccionDiaria
-            .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio && p.MaquinaId == maquinaId)
-            .ToListAsync();
-
-        if (existentes.Any())
-        {
-            _context.ProduccionDiaria.RemoveRange(existentes);
-        }
-
-        // Insertar nuevos registros
-        foreach (var dto in registros)
-        {
-            var fechaRegistro = DateTime.Parse(dto.Fecha);
-            var horaInicio = TimeSpan.Parse(dto.HoraInicio ?? "00:00:00");
-            var horaFin = TimeSpan.Parse(dto.HoraFin ?? "00:00:00");
-
-            var produccion = new ProduccionDiaria
+            if (registros == null || !registros.Any())
             {
-                Fecha = fechaRegistro,
-                UsuarioId = dto.UsuarioId,
-                MaquinaId = dto.MaquinaId,
-                HoraInicio = horaInicio,
-                HoraFin = horaFin,
-                HorasOperativas = dto.HorasOperativas,
-                RendimientoFinal = dto.RendimientoFinal,
-                Cambios = dto.Cambios,
-                TiempoPuestaPunto = dto.TiempoPuestaPunto,
-                TirosDiarios = (int)dto.TirosDiarios,
-                TotalHorasProductivas = dto.TotalHorasProductivas,
-                PromedioHoraProductiva = dto.PromedioHoraProductiva,
-                ValorTiroSnapshot = dto.ValorTiroSnapshot,
-                ValorAPagar = dto.ValorAPagar,
-                HorasMantenimiento = dto.HorasMantenimiento,
-                HorasDescanso = dto.HorasDescanso,
-                HorasOtrosAux = dto.HorasOtrosAux,
-                TiempoFaltaTrabajo = dto.TiempoFaltaTrabajo,
-                TiempoReparacion = dto.TiempoReparacion,
-                TiempoOtroMuerto = dto.TiempoOtroMuerto,
-                ReferenciaOP = dto.ReferenciaOP,
-                Novedades = dto.Novedades,
-                Desperdicio = dto.Desperdicio,
-                DiaLaborado = dto.DiaLaborado,
-                // Calcular totales auxiliares y muertos
-                TotalHorasAuxiliares = dto.HorasMantenimiento + dto.HorasDescanso + dto.HorasOtrosAux,
-                TotalTiemposMuertos = dto.TiempoFaltaTrabajo + dto.TiempoReparacion + dto.TiempoOtroMuerto,
-                TotalHoras = dto.TotalHorasProductivas + dto.HorasMantenimiento + dto.HorasDescanso + dto.HorasOtrosAux + dto.TiempoFaltaTrabajo + dto.TiempoReparacion + dto.TiempoOtroMuerto
-            };
-            _context.ProduccionDiaria.Add(produccion);
+                return BadRequest("No hay registros para guardar");
+            }
+
+            // Obtener el mes/año/máquina del primer registro para determinar qué borrar
+            var primerRegistro = registros.First();
+            var fecha = DateTime.Parse(primerRegistro.Fecha);
+            var mes = fecha.Month;
+            var anio = fecha.Year;
+            var maquinaId = primerRegistro.MaquinaId;
+
+            // Borrar registros existentes del mes/año/máquina para sincronización completa
+            var existentes = await _context.ProduccionDiaria
+                .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio && p.MaquinaId == maquinaId)
+                .ToListAsync();
+
+            if (existentes.Any())
+            {
+                _context.ProduccionDiaria.RemoveRange(existentes);
+            }
+
+            // Insertar nuevos registros
+            foreach (var dto in registros)
+            {
+                var fechaRegistro = DateTime.Parse(dto.Fecha);
+                var horaInicio = TimeSpan.TryParse(dto.HoraInicio, out var hi) ? hi : TimeSpan.Zero;
+                var horaFin = TimeSpan.TryParse(dto.HoraFin, out var hf) ? hf : TimeSpan.Zero;
+
+                var produccion = new ProduccionDiaria
+                {
+                    Fecha = fechaRegistro,
+                    UsuarioId = dto.UsuarioId,
+                    MaquinaId = dto.MaquinaId,
+                    HoraInicio = horaInicio,
+                    HoraFin = horaFin,
+                    HorasOperativas = dto.HorasOperativas,
+                    RendimientoFinal = dto.RendimientoFinal,
+                    Cambios = dto.Cambios,
+                    TiempoPuestaPunto = dto.TiempoPuestaPunto,
+                    TirosDiarios = (int)dto.TirosDiarios,
+                    TotalHorasProductivas = dto.TotalHorasProductivas,
+                    PromedioHoraProductiva = dto.PromedioHoraProductiva,
+                    ValorTiroSnapshot = dto.ValorTiroSnapshot,
+                    ValorAPagar = dto.ValorAPagar,
+                    HorasMantenimiento = dto.HorasMantenimiento,
+                    HorasDescanso = dto.HorasDescanso,
+                    HorasOtrosAux = dto.HorasOtrosAux,
+                    TiempoFaltaTrabajo = dto.TiempoFaltaTrabajo,
+                    TiempoReparacion = dto.TiempoReparacion,
+                    TiempoOtroMuerto = dto.TiempoOtroMuerto,
+                    ReferenciaOP = dto.ReferenciaOP ?? "",
+                    Novedades = dto.Novedades ?? "",
+                    Desperdicio = dto.Desperdicio,
+                    DiaLaborado = dto.DiaLaborado,
+                    // Calcular totales auxiliares y muertos
+                    TotalHorasAuxiliares = dto.HorasMantenimiento + dto.HorasDescanso + dto.HorasOtrosAux,
+                    TotalTiemposMuertos = dto.TiempoFaltaTrabajo + dto.TiempoReparacion + dto.TiempoOtroMuerto,
+                    TotalHoras = dto.TotalHorasProductivas + dto.HorasMantenimiento + dto.HorasDescanso + dto.HorasOtrosAux + dto.TiempoFaltaTrabajo + dto.TiempoReparacion + dto.TiempoOtroMuerto
+                };
+                _context.ProduccionDiaria.Add(produccion);
+            }
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = $"Se guardaron {registros.Count} registros exitosamente." });
         }
-
-        await _context.SaveChangesAsync();
-
-        return Ok(new { message = $"Se guardaron {registros.Count} registros exitosamente." });
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error en GuardarProduccionMensual: {ex.Message}");
+            Console.WriteLine($"StackTrace: {ex.StackTrace}");
+            return StatusCode(500, new { error = ex.Message, details = ex.InnerException?.Message });
+        }
     }
 
     [HttpGet("gastos")]

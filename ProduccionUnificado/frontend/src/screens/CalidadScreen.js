@@ -480,6 +480,8 @@ export default function CalidadScreen({ navigation }) {
             const novedadesValidas = novedades.filter(n => n.tipoNovedad).map(n => ({
                 tipoNovedad: n.tipoNovedad,
                 fotoBase64: n.fotoBase64,
+                // Si hay fotoUri existente (del servidor) pero no fotoBase64 nuevo, enviar la URL para preservarla
+                fotoUrl: (!n.fotoBase64 && n.fotoUri) ? n.fotoUri : null,
                 descripcion: n.descripcion,
                 cantidadDefectuosa: parseInt(n.cantidadDefectuosa) || 0
             }));

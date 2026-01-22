@@ -178,6 +178,7 @@ public class CalidadController : ControllerBase
 
             if (!string.IsNullOrEmpty(novedadDto.FotoBase64))
             {
+                // Nueva foto en base64 - guardar normalmente
                 try
                 {
                     var fileName = $"{Guid.NewGuid()}.jpg";
@@ -197,6 +198,37 @@ public class CalidadController : ControllerBase
                 catch (Exception ex)
                 {
                     Console.WriteLine($"Error guardando foto: {ex.Message}");
+                }
+            }
+            else if (!string.IsNullOrEmpty(novedadDto.FotoUrl))
+            {
+                // Foto existente - extraer nombre del archivo de la URL y usar la ruta existente
+                try
+                {
+                    // La URL viene como algo como: http://192.168.100.227:5144/fotos-calidad/xxx.jpg
+                    // O como: fotos-calidad/xxx.jpg
+                    var fileName = Path.GetFileName(new Uri(novedadDto.FotoUrl, UriKind.RelativeOrAbsolute).AbsolutePath);
+                    if (string.IsNullOrEmpty(fileName))
+                    {
+                        fileName = novedadDto.FotoUrl.Split('/').LastOrDefault() ?? "";
+                    }
+                    
+                    var existingPath = Path.Combine(fotosDir, fileName);
+                    
+                    if (System.IO.File.Exists(existingPath))
+                    {
+                        // La foto existe, reutilizarla
+                        novedad.FotoPath = existingPath;
+                        Console.WriteLine($"Foto preservada: {existingPath}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Foto no encontrada: {existingPath}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error preservando foto existente: {ex.Message}");
                 }
             }
 
