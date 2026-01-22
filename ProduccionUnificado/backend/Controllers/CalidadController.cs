@@ -241,7 +241,7 @@ public class CalidadController : ControllerBase
     }
 
     [HttpDelete("encuestas/{id}")]
-    public async Task<IActionResult> EliminarEncuesta(int id)
+    public async Task<IActionResult> EliminarEncuesta(int id, [FromQuery] bool preserveFotos = false)
     {
         try
         {
@@ -252,22 +252,29 @@ public class CalidadController : ControllerBase
             if (encuesta == null)
                 return NotFound(new { message = $"Encuesta con ID {id} no encontrada" });
 
-            // Eliminar fotos del disco
-            foreach (var novedad in encuesta.Novedades)
+            // Solo eliminar fotos del disco si NO se preservan (borrado real, no actualización)
+            if (!preserveFotos)
             {
-                if (!string.IsNullOrEmpty(novedad.FotoPath) && System.IO.File.Exists(novedad.FotoPath))
+                foreach (var novedad in encuesta.Novedades)
                 {
-                    try 
-                    { 
-                        System.IO.File.Delete(novedad.FotoPath);
-                        Console.WriteLine($"Foto eliminada: {novedad.FotoPath}");
-                    }
-                    catch (Exception ex)
+                    if (!string.IsNullOrEmpty(novedad.FotoPath) && System.IO.File.Exists(novedad.FotoPath))
                     {
-                        // Log el error pero continúa con la eliminación
-                        Console.WriteLine($"Error eliminando foto {novedad.FotoPath}: {ex.Message}");
+                        try 
+                        { 
+                            System.IO.File.Delete(novedad.FotoPath);
+                            Console.WriteLine($"Foto eliminada: {novedad.FotoPath}");
+                        }
+                        catch (Exception ex)
+                        {
+                            // Log el error pero continúa con la eliminación
+                            Console.WriteLine($"Error eliminando foto {novedad.FotoPath}: {ex.Message}");
+                        }
                     }
                 }
+            }
+            else
+            {
+                Console.WriteLine($"Preservando fotos para encuesta {id} (es una actualización)");
             }
 
             // Eliminar la encuesta (las novedades se eliminarán en cascada)

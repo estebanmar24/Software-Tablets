@@ -494,7 +494,8 @@ export default function CalidadScreen({ navigation }) {
             };
 
             if (editingId) {
-                await axios.delete(`${API_BASE_URL}/calidad/encuestas/${editingId}`);
+                // preserveFotos=true indica que NO debe borrar los archivos físicos
+                await axios.delete(`${API_BASE_URL}/calidad/encuestas/${editingId}?preserveFotos=true`);
             }
 
             await axios.post(`${API_BASE_URL}/calidad/encuestas`, data);
