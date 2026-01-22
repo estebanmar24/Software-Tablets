@@ -16,6 +16,7 @@ import SSTGastosScreen from '../screens/SSTGastosScreen';
 import GHGastosScreen from '../screens/GHGastosScreen';
 import ProduccionGastosScreen from '../screens/ProduccionGastosScreen';
 import TalleresGastosScreen from '../screens/TalleresGastosScreen';
+import DesperdicioScreen from '../screens/DesperdicioScreen';
 
 // Theme Provider
 import { ThemeProvider, useTheme } from '../contexts/ThemeContext';
@@ -26,10 +27,11 @@ interface AdminDashboardProps {
     displayName?: string;
 }
 
-type TabName = 'captura' | 'tablero' | 'historial' | 'maquinas' | 'operarios' | 'cartas' | 'calidad';
+type TabName = 'captura' | 'desperdicio' | 'tablero' | 'historial' | 'maquinas' | 'operarios' | 'cartas' | 'calidad';
 
 const allTabs: { key: TabName; label: string; icon: string; roles: string[] }[] = [
     { key: 'captura', label: 'Captura Mensual', icon: '📝', roles: ['admin', 'produccion'] },
+    { key: 'desperdicio', label: 'Desperdicio', icon: '🗑️', roles: ['admin', 'produccion'] },
     { key: 'tablero', label: 'Tablero Semáforos', icon: '🚦', roles: ['admin', 'produccion'] },
     { key: 'historial', label: 'Historial', icon: '📋', roles: ['admin'] },
     { key: 'maquinas', label: 'Config Máquinas', icon: '⚙️', roles: ['admin', 'talleres'] },
@@ -153,6 +155,8 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
         switch (activeTab) {
             case 'captura':
                 return <CaptureGridScreen navigation={mockNavigation} />;
+            case 'desperdicio':
+                return <DesperdicioScreen />;
             case 'tablero':
                 return <DashboardScreen navigation={mockNavigation} />;
             case 'historial':

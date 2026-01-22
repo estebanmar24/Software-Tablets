@@ -25,6 +25,10 @@ public class AppDbContext : DbContext
     public DbSet<HistorialMantenimiento> HistorialMantenimientos { get; set; }
     public DbSet<LicenciaEquipo> LicenciasEquipos { get; set; }
 
+    // Desperdicio Management
+    public DbSet<CodigoDesperdicio> CodigosDesperdicio { get; set; }
+    public DbSet<RegistroDesperdicio> RegistrosDesperdicio { get; set; }
+
     // SST Budget and Expense Management
     public DbSet<SST_Rubro> SST_Rubros { get; set; }
     public DbSet<SST_TipoServicio> SST_TiposServicio { get; set; }
@@ -310,5 +314,26 @@ public class AppDbContext : DbContext
             .HasIndex(p => new { p.RubroId, p.Anio, p.Mes })
             .IsUnique();
 
+        // Desperdicio Tables Configuration
+        modelBuilder.Entity<CodigoDesperdicio>().ToTable("CodigosDesperdicio");
+        modelBuilder.Entity<RegistroDesperdicio>().ToTable("RegistrosDesperdicio");
+
+        modelBuilder.Entity<RegistroDesperdicio>()
+            .HasOne(r => r.CodigoDesperdicio)
+            .WithMany()
+            .HasForeignKey(r => r.CodigoDesperdicioId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<RegistroDesperdicio>()
+            .HasOne(r => r.Maquina)
+            .WithMany()
+            .HasForeignKey(r => r.MaquinaId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<RegistroDesperdicio>()
+            .HasOne(r => r.Usuario)
+            .WithMany()
+            .HasForeignKey(r => r.UsuarioId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

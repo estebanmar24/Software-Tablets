@@ -140,9 +140,13 @@ export default function CaptureGridScreen({ navigation }) {
 
         try {
             console.log(`Cargando datos Maq:${maquinaIdToLoad} Op:${opToLoad}`);
-            const res = await getProduccionDetalles(mes, anio, maquinaIdToLoad, opToLoad);
+            const [res, resDesp] = await Promise.all([
+                getProduccionDetalles(mes, anio, maquinaIdToLoad, opToLoad),
+                axios.get(`${API_URL}/desperdicio/reporte?maquinaId=${maquinaIdToLoad}&mes=${mes}&anio=${anio}`).catch(e => ({ data: {} }))
+            ]);
 
             let dbData = res.data || [];
+            const desperdicios = resDesp.data || {};
 
             const newGrid = DAYS.map((d, idx) => {
                 const record = dbData.find(item => {
@@ -150,6 +154,12 @@ export default function CaptureGridScreen({ navigation }) {
                     const dayFromDb = parseInt(fechaStr.split('-')[2], 10);
                     return dayFromDb === d;
                 });
+
+                // Prioridad: Desperdicio del módulo nuevo > Desperdicio guardado en ProduccionDiaria
+                // Si hay desperdicio en módulo nuevo, mostrarlo. Si no, mostrar el antiguo (compatibilidad)
+                const despValor = desperdicios[d] !== undefined
+                    ? formatForDisplay(desperdicios[d])
+                    : (record ? formatForDisplay(record.desperdicio) : '');
 
                 if (record) {
                     return {
@@ -169,7 +179,7 @@ export default function CaptureGridScreen({ navigation }) {
                         faltaTrabajo: formatForDisplay(record.tiempoFaltaTrabajo),
                         reparacion: formatForDisplay(record.tiempoReparacion),
                         otroMuerto: formatForDisplay(record.tiempoOtroMuerto),
-                        desperdicio: formatForDisplay(record.desperdicio),
+                        desperdicio: despValor,
                         referenciaOP: record.referenciaOP || '',
                         novedades: record.novedades || ''
                     };
@@ -181,7 +191,7 @@ export default function CaptureGridScreen({ navigation }) {
                         operarioId: null,
                         horaInicio: '', horaFin: '', rFinal: '', horasOp: '', cambios: '', puestaPunto: '',
                         mantenimiento: '', descansos: '', otrosAux: '', faltaTrabajo: '', reparacion: '',
-                        otroMuerto: '', desperdicio: '', referenciaOP: '', novedades: ''
+                        otroMuerto: '', desperdicio: despValor, referenciaOP: '', novedades: ''
                     };
                 }
             });
@@ -226,24 +236,47 @@ export default function CaptureGridScreen({ navigation }) {
         setSelectedMaquina(maquinaId);
 
         try {
-            const res = await getProduccionPorMaquina(mes, anio, maquinaId);
+            const [res, resDesp] = await Promise.all([
+                getProduccionPorMaquina(mes, anio, maquinaId),
+                axios.get(`${API_URL}/desperdicio/reporte?maquinaId=${maquinaId}&mes=${mes}&anio=${anio}`).catch(e => ({ data: {} }))
+            ]);
             const dbData = res.data;
+            const desperdicios = resDesp.data || {};
 
-            if (!dbData || dbData.length === 0) {
+            if ((!dbData || dbData.length === 0) && Object.keys(desperdicios).length === 0) {
                 Alert.alert("No hay datos guardados para esta máquina");
+                // Resetear grid pero con la máquina seleccionada
+                const emptyGrid = DAYS.map((d, idx) => ({
+                    rowId: idx + 1,
+                    day: d,
+                    maquinaId: maquinaId,
+                    operarioId: null,
+                    horaInicio: '', horaFin: '', rFinal: '', horasOp: '', cambios: '', puestaPunto: '',
+                    mantenimiento: '', descansos: '', otrosAux: '', faltaTrabajo: '', reparacion: '',
+                    otroMuerto: '', desperdicio: '', referenciaOP: '', novedades: ''
+                }));
+                // Si hay desperdicios pero no producción, llenarlos
+                if (Object.keys(desperdicios).length > 0) {
+                    DAYS.forEach(d => {
+                        if (desperdicios[d]) emptyGrid[d - 1].desperdicio = formatForDisplay(desperdicios[d]);
+                    });
+                }
+                setGridData(emptyGrid);
                 return;
             }
 
             let tempRowId = 1;
             const newGrid = DAYS.flatMap(d => {
-                const dayRecords = dbData.filter(r => {
+                const dayRecords = dbData ? dbData.filter(r => {
                     const fechaStr = r.fecha.split('T')[0];
                     const dayFromDb = parseInt(fechaStr.split('-')[2], 10);
                     return dayFromDb === d;
-                });
+                }) : [];
+
+                const despValor = desperdicios[d] !== undefined ? formatForDisplay(desperdicios[d]) : '';
 
                 if (dayRecords.length > 0) {
-                    return dayRecords.map(record => ({
+                    return dayRecords.map((record, rIdx) => ({
                         rowId: tempRowId++,
                         day: d,
                         maquinaId: maquinaId,
@@ -260,7 +293,8 @@ export default function CaptureGridScreen({ navigation }) {
                         faltaTrabajo: formatForDisplay(record.tiempoFaltaTrabajo),
                         reparacion: formatForDisplay(record.tiempoReparacion),
                         otroMuerto: formatForDisplay(record.tiempoOtroMuerto),
-                        desperdicio: formatForDisplay(record.desperdicio),
+                        // Solo asignar desperdicio al primer registro del día para no duplicar visualmente si hay múltiples operarios
+                        desperdicio: rIdx === 0 && despValor ? despValor : (record.desperdicio ? formatForDisplay(record.desperdicio) : ''),
                         referenciaOP: record.referenciaOP || '',
                         novedades: record.novedades || ''
                     }));
@@ -272,7 +306,7 @@ export default function CaptureGridScreen({ navigation }) {
                         operarioId: null,
                         horaInicio: '', horaFin: '', rFinal: '', horasOp: '', cambios: '', puestaPunto: '',
                         mantenimiento: '', descansos: '', otrosAux: '', faltaTrabajo: '', reparacion: '',
-                        otroMuerto: '', desperdicio: '', referenciaOP: '', novedades: ''
+                        otroMuerto: '', desperdicio: despValor, referenciaOP: '', novedades: ''
                     }];
                 }
             });
