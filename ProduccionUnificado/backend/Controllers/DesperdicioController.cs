@@ -58,6 +58,22 @@ public class DesperdicioController : ControllerBase
         }
     }
 
+    [HttpGet("fix-nullable")]
+    public IActionResult FixNullable()
+    {
+        try
+        {
+            // Alterar tabla para permitir NULL en CodigoDesperdicioId
+            var sql = @"ALTER TABLE ""RegistrosDesperdicio"" ALTER COLUMN ""CodigoDesperdicioId"" DROP NOT NULL;";
+            _context.Database.ExecuteSqlRaw(sql);
+            return Ok("Columna CodigoDesperdicioId ahora permite NULL");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, $"Error fixing nullable: {ex.Message}");
+        }
+    }
+
     // ==========================================
     // CÓDIGOS DE DESPERDICIO
     // ==========================================
@@ -137,6 +153,7 @@ public class DesperdicioController : ControllerBase
         var query = _context.RegistrosDesperdicio
             .Include(r => r.CodigoDesperdicio)
             .Include(r => r.Usuario)
+            .Include(r => r.Maquina)
             .AsQueryable();
 
         if (maquinaId.HasValue)
@@ -155,13 +172,14 @@ public class DesperdicioController : ControllerBase
             {
                 r.Id,
                 r.MaquinaId,
+                MaquinaNombre = r.Maquina!.Nombre,
                 r.UsuarioId,
                 UsuarioNombre = r.Usuario!.Nombre,
                 r.Fecha,
                 r.OrdenProduccion,
                 r.CodigoDesperdicioId,
-                Codigo = r.CodigoDesperdicio!.Codigo,
-                Descripcion = r.CodigoDesperdicio!.Descripcion, // Fix warning CS8602 con ! o ?
+                Codigo = r.CodigoDesperdicio != null ? r.CodigoDesperdicio.Codigo : "S/C",
+                Descripcion = r.CodigoDesperdicio != null ? r.CodigoDesperdicio.Descripcion : "Sin Categoría",
                 r.Cantidad,
                 r.FechaRegistro
             })

@@ -69,16 +69,18 @@ const DesperdicioScreen = () => {
         // Permitir carga sin máquina (trae todos los del día)
         setLoading(true);
         try {
-            // Usar fecha local para evitar problemas de zona horaria UTC
-            const year = selectedFecha.getFullYear();
-            const month = String(selectedFecha.getMonth() + 1).padStart(2, '0');
-            const day = String(selectedFecha.getDate()).padStart(2, '0');
-            const dateStr = `${year}-${month}-${day}`;
-
-            let url = `${API_URL}/desperdicio?fecha=${dateStr}`;
-            if (selectedMaquina) {
-                url += `&maquinaId=${selectedMaquina}`;
+            // Solo formatear fecha si está seleccionada
+            let dateStr = '';
+            if (selectedFecha) {
+                const year = selectedFecha.getFullYear();
+                const month = String(selectedFecha.getMonth() + 1).padStart(2, '0');
+                const day = String(selectedFecha.getDate()).padStart(2, '0');
+                dateStr = `${year}-${month}-${day}`;
             }
+
+            let url = `${API_URL}/desperdicio?`;
+            if (dateStr) url += `fecha=${dateStr}&`;
+            if (selectedMaquina) url += `maquinaId=${selectedMaquina}`;
 
             const res = await fetch(url);
             if (res.ok) {
@@ -92,14 +94,17 @@ const DesperdicioScreen = () => {
     };
 
     const handleSaveRegistro = async () => {
-        if (!newRegistro.maquinaId || !newRegistro.usuarioId || !newRegistro.codigoDesperdicioId || !newRegistro.cantidad) {
-            Alert.alert('Error', 'Todos los campos son obligatorios');
+        // Código ahora es opcional. Solo Maquina, Usuario y Cantidad obligatorios.
+        if (!newRegistro.maquinaId || !newRegistro.usuarioId || !newRegistro.cantidad) {
+            Alert.alert('Error', 'Máquina, Operario y Cantidad son obligatorios');
             return;
         }
 
         try {
             const body = {
                 ...newRegistro,
+                // Si viene vacío "", enviar null
+                codigoDesperdicioId: newRegistro.codigoDesperdicioId ? parseInt(newRegistro.codigoDesperdicioId) : null,
                 cantidad: parseFloat(newRegistro.cantidad),
                 fecha: newRegistro.fecha.toISOString()
             };
@@ -285,6 +290,7 @@ const DesperdicioScreen = () => {
                         <View style={{ flex: 1 }}>
                             <Text>OP: {item.ordenProduccion || 'N/A'}</Text>
                             <Text>Máq: {item.maquinaNombre}</Text>
+                            <Text>Oper: {item.usuarioNombre}</Text>
                             <Text>Fecha: {formatDate(new Date(item.fecha))}</Text>
                         </View>
                         <View style={{ alignItems: 'flex-end' }}>
