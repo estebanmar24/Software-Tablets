@@ -397,7 +397,9 @@ public class GHController : ControllerBase
                 g.FechaCompra,
                 g.Nota,
                 g.ArchivoFactura,
-                g.ArchivoFacturaNombre
+                g.ArchivoFacturaNombre,
+                g.FechaCreacion,
+                g.FechaModificacion
             })
             .ToListAsync();
 
@@ -487,6 +489,7 @@ public class GHController : ControllerBase
     [HttpPost("gastos")]
     public async Task<ActionResult<GH_GastoMensual>> CreateGasto([FromBody] GH_GastoMensual gasto)
     {
+        gasto.FechaCreacion = DateTime.UtcNow;
         _context.GH_GastosMensuales.Add(gasto);
         await _context.SaveChangesAsync();
         return Ok(new { id = gasto.Id });
@@ -496,6 +499,12 @@ public class GHController : ControllerBase
     public async Task<IActionResult> UpdateGasto(int id, [FromBody] GH_GastoMensual gasto)
     {
         if (id != gasto.Id) return BadRequest();
+        
+        // Preserve FechaCreacion
+        var existingEntry = await _context.GH_GastosMensuales.AsNoTracking().FirstOrDefaultAsync(g => g.Id == id);
+        if (existingEntry != null) gasto.FechaCreacion = existingEntry.FechaCreacion;
+        
+        gasto.FechaModificacion = DateTime.UtcNow;
         _context.Entry(gasto).State = EntityState.Modified;
         await _context.SaveChangesAsync();
         return NoContent();

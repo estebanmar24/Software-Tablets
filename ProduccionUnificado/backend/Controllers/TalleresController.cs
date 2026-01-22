@@ -165,6 +165,7 @@ public class TalleresController : ControllerBase
 
         try 
         {
+            gasto.FechaCreacion = DateTime.UtcNow;
             _context.Talleres_Gastos.Add(gasto);
             await _context.SaveChangesAsync();
             return Ok(new { id = gasto.Id });
@@ -194,7 +195,12 @@ public class TalleresController : ControllerBase
             return BadRequest($"Validation Failed: {errors}");
         }
 
-        _context.Entry(gasto).State = EntityState.Modified;
+        // Preserve FechaCreacion
+    var existingEntry = await _context.Talleres_Gastos.AsNoTracking().FirstOrDefaultAsync(g => g.Id == id);
+    if (existingEntry != null) gasto.FechaCreacion = existingEntry.FechaCreacion;
+    
+    gasto.FechaModificacion = DateTime.UtcNow;
+    _context.Entry(gasto).State = EntityState.Modified;
         await _context.SaveChangesAsync();
         return NoContent();
     }
@@ -263,7 +269,9 @@ public class TalleresController : ControllerBase
                 TipoHoraPorcentaje = g.TipoHora != null ? g.TipoHora.Porcentaje : 0,
                 g.TipoRecargoId,
                 TipoRecargoNombre = g.TipoRecargo != null ? g.TipoRecargo.Nombre : "",
-                TipoRecargoPorcentaje = g.TipoRecargo != null ? g.TipoRecargo.Porcentaje : 0
+                TipoRecargoPorcentaje = g.TipoRecargo != null ? g.TipoRecargo.Porcentaje : 0,
+                g.FechaCreacion,
+                g.FechaModificacion
             })
             .ToListAsync();
 

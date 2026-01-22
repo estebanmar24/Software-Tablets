@@ -46,4 +46,8 @@ public class Produccion_Gasto
     // Invoice fields (required for non-Horas Extras rubros)
     public string? NumeroFactura { get; set; }
     public string? FacturaPdfUrl { get; set; }
+    
+    // History tracking
+    public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;
+    public DateTime? FechaModificacion { get; set; }
 }

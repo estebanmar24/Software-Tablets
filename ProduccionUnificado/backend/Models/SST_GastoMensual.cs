@@ -62,4 +62,8 @@ public class SST_GastoMensual
 
     [ForeignKey("ProveedorId")]
     public virtual SST_Proveedor? Proveedor { get; set; }
+    
+    // History tracking
+    public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;
+    public DateTime? FechaModificacion { get; set; }
 }

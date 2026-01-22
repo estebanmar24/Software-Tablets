@@ -340,6 +340,7 @@ public class ProduccionController : ControllerBase
         }
 
         gasto.Fecha = gasto.Fecha.ToUniversalTime(); // Postgres timestamp handling
+        gasto.FechaCreacion = DateTime.UtcNow;
         _context.Produccion_Gastos.Add(gasto);
         await _context.SaveChangesAsync();
 
@@ -352,6 +353,12 @@ public class ProduccionController : ControllerBase
         if (id != gasto.Id) return BadRequest();
 
         gasto.Fecha = gasto.Fecha.ToUniversalTime();
+
+        // Preserve FechaCreacion
+        var existingEntry = await _context.Produccion_Gastos.AsNoTracking().FirstOrDefaultAsync(g => g.Id == id);
+        if (existingEntry != null) gasto.FechaCreacion = existingEntry.FechaCreacion;
+
+        gasto.FechaModificacion = DateTime.UtcNow;
         _context.Entry(gasto).State = EntityState.Modified;
 
         try
