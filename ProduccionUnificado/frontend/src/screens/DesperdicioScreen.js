@@ -15,7 +15,7 @@ const DesperdicioScreen = () => {
 
     // Filtros
     const [selectedMaquina, setSelectedMaquina] = useState('');
-    const [selectedFecha, setSelectedFecha] = useState(new Date());
+    const [selectedFecha, setSelectedFecha] = useState(null);
 
     // Modales
     const [modalConfigVisible, setModalConfigVisible] = useState(false);
@@ -217,14 +217,37 @@ const DesperdicioScreen = () => {
 
     return (
         <View style={styles.container}>
-            {/* Header / Botones Superiores (Filtros ocultos a petición) */}
+            {/* Header / Botones Superiores */}
             <View style={styles.header}>
-                {/* 
                 <View style={styles.filterRow}>
-                    <Text style={styles.label}>Máquina:</Text>
-                    ...
-                </View> 
-                */}
+                    <Text style={styles.label}>Fecha:</Text>
+                    {selectedFecha ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            {Platform.OS === 'web' ? (
+                                <input
+                                    type="date"
+                                    value={selectedFecha.toISOString().split('T')[0]}
+                                    onChange={(e) => {
+                                        if (!e.target.value) { setSelectedFecha(null); return; }
+                                        const d = new Date(e.target.value);
+                                        const localDate = new Date(d.getTime() + d.getTimezoneOffset() * 60000);
+                                        setSelectedFecha(localDate);
+                                    }}
+                                    style={{ padding: 5, borderRadius: 4, border: '1px solid #ccc', marginRight: 10 }}
+                                />
+                            ) : (
+                                <Text style={{ marginRight: 10 }}>{formatDate(selectedFecha)}</Text>
+                            )}
+                            <TouchableOpacity onPress={() => setSelectedFecha(null)} style={{ backgroundColor: '#dc3545', padding: 5, borderRadius: 4 }}>
+                                <Text style={{ color: 'white', fontSize: 12 }}>X Ver Todos</Text>
+                            </TouchableOpacity>
+                        </View>
+                    ) : (
+                        <TouchableOpacity onPress={() => setSelectedFecha(new Date())} style={{ backgroundColor: '#007bff', padding: 5, borderRadius: 4 }}>
+                            <Text style={{ color: 'white', fontSize: 12 }}>📅 Filtrar por Fecha</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
 
                 <View style={styles.buttonRow}>
                     <TouchableOpacity
@@ -238,7 +261,7 @@ const DesperdicioScreen = () => {
                         onPress={() => {
                             setNewRegistro(prev => ({
                                 ...prev,
-                                maquinaId: '', // Resetear máquina al abrir para obligar selección
+                                maquinaId: '',
                                 fecha: new Date()
                             }));
                             setModalRegistroVisible(true);
