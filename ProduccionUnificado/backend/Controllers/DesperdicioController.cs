@@ -74,6 +74,21 @@ public class DesperdicioController : ControllerBase
         }
     }
 
+    [HttpGet("add-nota-column")]
+    public IActionResult AddNotaColumn()
+    {
+        try
+        {
+            var sql = @"ALTER TABLE ""RegistrosDesperdicio"" ADD COLUMN IF NOT EXISTS ""Nota"" TEXT;";
+            _context.Database.ExecuteSqlRaw(sql);
+            return Ok("Columna Nota agregada a RegistrosDesperdicio");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, $"Error agregando columna Nota: {ex.Message}");
+        }
+    }
+
     // ==========================================
     // CÓDIGOS DE DESPERDICIO
     // ==========================================
@@ -181,6 +196,7 @@ public class DesperdicioController : ControllerBase
                 Codigo = r.CodigoDesperdicio != null ? r.CodigoDesperdicio.Codigo : "S/C",
                 Descripcion = r.CodigoDesperdicio != null ? r.CodigoDesperdicio.Descripcion : "Sin Categoría",
                 r.Cantidad,
+                r.Nota,
                 r.FechaRegistro
             })
             .ToListAsync();
@@ -229,6 +245,26 @@ public class DesperdicioController : ControllerBase
         if (registro == null) return NotFound();
 
         _context.RegistrosDesperdicio.Remove(registro);
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    [HttpPut("{id}")]
+    public async Task<IActionResult> ActualizarRegistro(int id, RegistroDesperdicio registro)
+    {
+        if (id != registro.Id) return BadRequest("ID no coincide");
+
+        var existente = await _context.RegistrosDesperdicio.FindAsync(id);
+        if (existente == null) return NotFound();
+
+        existente.MaquinaId = registro.MaquinaId;
+        existente.UsuarioId = registro.UsuarioId;
+        existente.Fecha = registro.Fecha;
+        existente.OrdenProduccion = registro.OrdenProduccion;
+        existente.CodigoDesperdicioId = registro.CodigoDesperdicioId;
+        existente.Cantidad = registro.Cantidad;
+        existente.Nota = registro.Nota;
+
         await _context.SaveChangesAsync();
         return NoContent();
     }

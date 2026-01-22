@@ -20,10 +20,11 @@ public class RegistroDesperdicio
     public DateTime Fecha { get; set; }
     public string? OrdenProduccion { get; set; }
     
-    public int CodigoDesperdicioId { get; set; }
+    public int? CodigoDesperdicioId { get; set; }
     [ForeignKey("CodigoDesperdicioId")]
     public CodigoDesperdicio? CodigoDesperdicio { get; set; }
     
     public decimal Cantidad { get; set; }
+    public string? Nota { get; set; }
     public DateTime FechaRegistro { get; set; } = DateTime.Now;
 }

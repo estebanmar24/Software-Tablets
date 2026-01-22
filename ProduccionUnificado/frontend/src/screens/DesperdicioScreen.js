@@ -23,12 +23,14 @@ const DesperdicioScreen = () => {
 
     // Estado para nuevo registro
     const [newRegistro, setNewRegistro] = useState({
+        id: null,
         maquinaId: '',
         usuarioId: '',
         fecha: new Date(),
         ordenProduccion: '',
         codigoDesperdicioId: '',
-        cantidad: ''
+        cantidad: '',
+        nota: ''
     });
 
     // Estado para gestión de códigos
@@ -100,23 +102,47 @@ const DesperdicioScreen = () => {
             return;
         }
 
+        if (isNaN(newRegistro.fecha.getTime())) {
+            Alert.alert('Error', 'Fecha inválida');
+            return;
+        }
+
         try {
             const body = {
-                ...newRegistro,
-                // Si viene vacío "", enviar null
+                maquinaId: parseInt(newRegistro.maquinaId),
+                usuarioId: parseInt(newRegistro.usuarioId),
+                ordenProduccion: newRegistro.ordenProduccion,
                 codigoDesperdicioId: newRegistro.codigoDesperdicioId ? parseInt(newRegistro.codigoDesperdicioId) : null,
                 cantidad: parseFloat(newRegistro.cantidad),
-                fecha: newRegistro.fecha.toISOString()
+                fecha: newRegistro.fecha.toISOString(),
+                nota: newRegistro.nota
             };
 
-            const res = await fetch(`${API_URL}/desperdicio`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
-            });
+            console.log("PAYLOAD:", JSON.stringify(body)); // DEBUG
+
+            if (newRegistro.id) {
+                body.id = newRegistro.id;
+            }
+
+            let res;
+            if (newRegistro.id) {
+                // UPDATE (PUT)
+                res = await fetch(`${API_URL}/desperdicio/${newRegistro.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+            } else {
+                // CREATE (POST)
+                res = await fetch(`${API_URL}/desperdicio`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+            }
 
             if (res.ok) {
-                Alert.alert('Éxito', 'Desperdicio registrado');
+                Alert.alert('Éxito', newRegistro.id ? 'Desperdicio actualizado' : 'Desperdicio registrado');
                 setModalRegistroVisible(false);
 
                 // Actualizar filtro a la fecha del registro guardado para verlo inmediatamente
@@ -124,20 +150,45 @@ const DesperdicioScreen = () => {
 
                 // Resetear form
                 setNewRegistro({
+                    id: null,
                     maquinaId: '',
                     usuarioId: '',
                     fecha: new Date(),
                     ordenProduccion: '',
                     codigoDesperdicioId: '',
-                    cantidad: ''
+                    cantidad: '',
+                    nota: ''
                 });
                 // loadRegistros se llamará automáticamente por el useEffect al cambiar selectedFecha
             } else {
-                Alert.alert('Error', 'No se pudo guardar el registro');
+                const txt = await res.text();
+                Alert.alert('Error', `No se pudo guardar: ${txt}`);
             }
         } catch (error) {
+            console.error(error);
             Alert.alert('Error', 'Error de conexión');
         }
+    };
+
+    const handleEditRegistro = (item) => {
+        // Parsear fecha
+        const date = new Date(item.fecha);
+        // Ajustar zona horaria local manualmente si viene UTC
+        // const localDate = new Date(date.getTime() + date.getTimezoneOffset() * 60000); 
+        // El backend devuelve DateTime, el navegador lo parsea como local o UTC según formato.
+        // Asumimos que viene ISO y new Date lo maneja.
+
+        setNewRegistro({
+            id: item.id,
+            maquinaId: item.maquinaId,
+            usuarioId: item.usuarioId,
+            fecha: date,
+            ordenProduccion: item.ordenProduccion || '',
+            codigoDesperdicioId: item.codigoDesperdicioId || '',
+            cantidad: item.cantidad.toString(),
+            nota: item.nota || ''
+        });
+        setModalRegistroVisible(true);
     };
 
     const handleDeleteRegistro = async (id) => {
@@ -217,6 +268,7 @@ const DesperdicioScreen = () => {
 
     // Render helpers
     const formatDate = (date) => {
+        if (!date || isNaN(date.getTime())) return '';
         return date.toISOString().split('T')[0];
     };
 
@@ -231,10 +283,11 @@ const DesperdicioScreen = () => {
                             {Platform.OS === 'web' ? (
                                 <input
                                     type="date"
-                                    value={selectedFecha.toISOString().split('T')[0]}
+                                    value={selectedFecha && !isNaN(selectedFecha.getTime()) ? selectedFecha.toISOString().split('T')[0] : ''}
                                     onChange={(e) => {
                                         if (!e.target.value) { setSelectedFecha(null); return; }
                                         const d = new Date(e.target.value);
+                                        if (isNaN(d.getTime())) return;
                                         const localDate = new Date(d.getTime() + d.getTimezoneOffset() * 60000);
                                         setSelectedFecha(localDate);
                                     }}
@@ -264,11 +317,16 @@ const DesperdicioScreen = () => {
                     <TouchableOpacity
                         style={[styles.button, styles.addButton]}
                         onPress={() => {
-                            setNewRegistro(prev => ({
-                                ...prev,
+                            setNewRegistro({
+                                id: null,
                                 maquinaId: '',
-                                fecha: new Date()
-                            }));
+                                usuarioId: '',
+                                fecha: selectedFecha || new Date(),
+                                ordenProduccion: '',
+                                codigoDesperdicioId: '',
+                                cantidad: '',
+                                nota: ''
+                            });
                             setModalRegistroVisible(true);
                         }}
                     >
@@ -282,23 +340,29 @@ const DesperdicioScreen = () => {
                 data={registros}
                 keyExtractor={item => item.id.toString()}
                 renderItem={({ item }) => (
-                    <View style={styles.row}>
-                        <View style={{ flex: 1 }}>
-                            <Text style={styles.rowCode}>{item.codigo}</Text>
-                            <Text style={styles.rowDesc}>{item.descripcion}</Text>
+                    <View style={{ borderBottomWidth: 1, borderBottomColor: '#eee', paddingVertical: 8 }}>
+                        <View style={styles.row}>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.rowCode}>{item.codigo}</Text>
+                                <Text style={styles.rowDesc}>{item.descripcion}</Text>
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text>OP: {item.ordenProduccion || 'N/A'}</Text>
+                                <Text>Máq: {item.maquinaNombre}</Text>
+                                <Text>Oper: {item.usuarioNombre}</Text>
+                                <Text>Fecha: {formatDate(new Date(item.fecha))}</Text>
+                            </View>
+                            <View style={{ alignItems: 'flex-end' }}>
+                                <Text style={styles.rowCant}>{item.cantidad}</Text>
+                                <TouchableOpacity onPress={() => handleEditRegistro(item)} style={{ marginBottom: 5 }}>
+                                    <Text style={[styles.deleteText, { color: '#007bff' }]}>✏️ Editar</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={() => handleDeleteRegistro(item.id)}>
+                                    <Text style={styles.deleteText}>🗑️ Eliminar</Text>
+                                </TouchableOpacity>
+                            </View>
                         </View>
-                        <View style={{ flex: 1 }}>
-                            <Text>OP: {item.ordenProduccion || 'N/A'}</Text>
-                            <Text>Máq: {item.maquinaNombre}</Text>
-                            <Text>Oper: {item.usuarioNombre}</Text>
-                            <Text>Fecha: {formatDate(new Date(item.fecha))}</Text>
-                        </View>
-                        <View style={{ alignItems: 'flex-end' }}>
-                            <Text style={styles.rowCant}>{item.cantidad}</Text>
-                            <TouchableOpacity onPress={() => handleDeleteRegistro(item.id)}>
-                                <Text style={styles.deleteText}>Eliminar</Text>
-                            </TouchableOpacity>
-                        </View>
+                        {item.nota ? <Text style={{ fontSize: 12, color: '#666', fontStyle: 'italic', marginLeft: 10 }}>Nota: {item.nota}</Text> : null}
                     </View>
                 )}
                 ListEmptyComponent={<Text style={styles.empty}>No hay registros recientes.</Text>}
@@ -359,7 +423,7 @@ const DesperdicioScreen = () => {
             <Modal visible={modalRegistroVisible} animationType="slide" transparent>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>Registrar Desperdicio</Text>
+                        <Text style={styles.modalTitle}>{newRegistro.id ? 'Editar Desperdicio' : 'Registrar Desperdicio'}</Text>
 
                         {/* Siempre mostrar selector de máquina ya que se ocultó afuera */}
                         <Text style={styles.label}>Máquina</Text>
@@ -394,6 +458,7 @@ const DesperdicioScreen = () => {
                                     value={formatDate(newRegistro.fecha)}
                                     onChange={(e) => {
                                         const d = new Date(e.target.value);
+                                        if (isNaN(d.getTime())) return;
                                         // Ajustar zona horaria si es necesario, o usar string directo
                                         // Simple date parse
                                         setNewRegistro({ ...newRegistro, fecha: new Date(d.getTime() + d.getTimezoneOffset() * 60000) });
@@ -431,12 +496,20 @@ const DesperdicioScreen = () => {
                             onChangeText={t => setNewRegistro({ ...newRegistro, cantidad: t })}
                         />
 
-                        <Text style={styles.label}>Orden Producción</Text>
                         <TextInput
                             style={styles.input}
                             placeholder="OP..."
                             value={newRegistro.ordenProduccion}
                             onChangeText={t => setNewRegistro({ ...newRegistro, ordenProduccion: t })}
+                        />
+
+                        <Text style={styles.label}>Nota (Opcional)</Text>
+                        <TextInput
+                            style={[styles.input, { height: 60 }]}
+                            placeholder="Nota adicional..."
+                            multiline
+                            value={newRegistro.nota}
+                            onChangeText={t => setNewRegistro({ ...newRegistro, nota: t })}
                         />
 
                         <View style={styles.modalButtons}>
@@ -450,7 +523,7 @@ const DesperdicioScreen = () => {
                     </View>
                 </View>
             </Modal>
-        </View>
+        </View >
     );
 };
 
