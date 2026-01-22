@@ -37,16 +37,19 @@ const DesperdicioScreen = () => {
 
     useEffect(() => {
         loadInitialData();
+        loadRegistros(); // Cargar registros del día al inicio
     }, []);
 
     useEffect(() => {
-        if (selectedMaquina) {
-            loadRegistros();
-        }
+        // Recargar si cambian filtros (aunque máquina está oculta por ahora)
+        loadRegistros();
     }, [selectedMaquina, selectedFecha]);
 
     const loadInitialData = async () => {
         try {
+            // Intentar inicializar DB por si faltan tablas (Hack para error 500)
+            await fetch(`${API_URL}/desperdicio/init`).catch(e => console.log("Init OK/Skip"));
+
             const [resMaq, resUsu, resCod] = await Promise.all([
                 fetch(`${API_URL}/maquinas`),
                 fetch(`${API_URL}/usuarios`),
@@ -63,11 +66,20 @@ const DesperdicioScreen = () => {
     };
 
     const loadRegistros = async () => {
-        if (!selectedMaquina) return;
+        // Permitir carga sin máquina (trae todos los del día)
         setLoading(true);
         try {
-            const dateStr = selectedFecha.toISOString().split('T')[0];
-            const url = `${API_URL}/desperdicio?maquinaId=${selectedMaquina}&fecha=${dateStr}`;
+            // Usar fecha local para evitar problemas de zona horaria UTC
+            const year = selectedFecha.getFullYear();
+            const month = String(selectedFecha.getMonth() + 1).padStart(2, '0');
+            const day = String(selectedFecha.getDate()).padStart(2, '0');
+            const dateStr = `${year}-${month}-${day}`;
+
+            let url = `${API_URL}/desperdicio?fecha=${dateStr}`;
+            if (selectedMaquina) {
+                url += `&maquinaId=${selectedMaquina}`;
+            }
+
             const res = await fetch(url);
             if (res.ok) {
                 setRegistros(await res.json());
@@ -132,8 +144,8 @@ const DesperdicioScreen = () => {
 
     // Gestión de Códigos
     const handleSaveCodigo = async () => {
-        if (!newCodigo.codigo || !newCodigo.descripcion) {
-            Alert.alert('Error', 'Código y Descripción son obligatorios');
+        if (!newCodigo.codigo) { // Descripción ahora es opcional
+            Alert.alert('Error', 'El Código es obligatorio');
             return;
         }
 
@@ -143,12 +155,19 @@ const DesperdicioScreen = () => {
                 : `${API_URL}/desperdicio/codigos`;
 
             const method = editingCodigoId ? 'PUT' : 'POST';
-            const body = editingCodigoId ? { ...newCodigo, id: editingCodigoId } : newCodigo;
+
+            // Construir body limpio para evitar errores de deserialización (fechas, campos extra)
+            const payload = {
+                id: editingCodigoId ? parseInt(editingCodigoId) : 0,
+                codigo: newCodigo.codigo,
+                descripcion: newCodigo.descripcion,
+                activo: newCodigo.activo !== undefined ? newCodigo.activo : true
+            };
 
             const res = await fetch(url, {
                 method,
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
+                body: JSON.stringify(payload)
             });
 
             if (res.ok) {
@@ -193,37 +212,14 @@ const DesperdicioScreen = () => {
 
     return (
         <View style={styles.container}>
-            {/* Header / Filtros */}
+            {/* Header / Botones Superiores (Filtros ocultos a petición) */}
             <View style={styles.header}>
+                {/* 
                 <View style={styles.filterRow}>
                     <Text style={styles.label}>Máquina:</Text>
-                    <View style={styles.pickerContainer}>
-                        <Picker
-                            selectedValue={selectedMaquina}
-                            onValueChange={(v) => setSelectedMaquina(v)}
-                            style={styles.picker}
-                        >
-                            <Picker.Item label="Seleccionar Máquina..." value="" />
-                            {maquinas.map(m => (
-                                <Picker.Item key={m.id} label={m.nombre} value={m.id} />
-                            ))}
-                        </Picker>
-                    </View>
-                </View>
-
-                <View style={styles.filterRow}>
-                    <Text style={styles.label}>Fecha:</Text>
-                    {Platform.OS === 'web' ? (
-                        <input
-                            type="date"
-                            value={formatDate(selectedFecha)}
-                            onChange={(e) => setSelectedFecha(new Date(e.target.value))}
-                            style={styles.webInput}
-                        />
-                    ) : (
-                        <Text>Implement Mobile DatePicker</Text>
-                    )}
-                </View>
+                    ...
+                </View> 
+                */}
 
                 <View style={styles.buttonRow}>
                     <TouchableOpacity
@@ -235,7 +231,11 @@ const DesperdicioScreen = () => {
                     <TouchableOpacity
                         style={[styles.button, styles.addButton]}
                         onPress={() => {
-                            setNewRegistro(prev => ({ ...prev, maquinaId: selectedMaquina, fecha: selectedFecha }));
+                            setNewRegistro(prev => ({
+                                ...prev,
+                                maquinaId: '', // Resetear máquina al abrir para obligar selección
+                                fecha: new Date()
+                            }));
                             setModalRegistroVisible(true);
                         }}
                     >
@@ -244,7 +244,7 @@ const DesperdicioScreen = () => {
                 </View>
             </View>
 
-            {/* Lista de Registros */}
+            {/* Lista de Registros (Mostrar alerta si no hay filtros, o mostrar los de hoy) */}
             <FlatList
                 data={registros}
                 keyExtractor={item => item.id.toString()}
@@ -256,20 +256,21 @@ const DesperdicioScreen = () => {
                         </View>
                         <View style={{ flex: 1 }}>
                             <Text>OP: {item.ordenProduccion || 'N/A'}</Text>
-                            <Text>Operario: {item.usuarioNombre}</Text>
+                            <Text>Máq: {item.maquinaNombre}</Text>
+                            <Text>Fecha: {formatDate(new Date(item.fecha))}</Text>
                         </View>
                         <View style={{ alignItems: 'flex-end' }}>
-                            <Text style={styles.rowCant}>{item.cantidad} Kg</Text>
+                            <Text style={styles.rowCant}>{item.cantidad}</Text>
                             <TouchableOpacity onPress={() => handleDeleteRegistro(item.id)}>
                                 <Text style={styles.deleteText}>Eliminar</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
                 )}
-                ListEmptyComponent={<Text style={styles.empty}>No hay registros para esta fecha/máquina.</Text>}
+                ListEmptyComponent={<Text style={styles.empty}>No hay registros recientes.</Text>}
             />
 
-            {/* MODAL CONFIGURACIÓN CÓDIGOS */}
+            {/* MODAL CONFIGURACIÓN CÓDIGOS ... (sin cambios) */}
             <Modal visible={modalConfigVisible} animationType="slide" transparent>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
@@ -326,26 +327,18 @@ const DesperdicioScreen = () => {
                     <View style={styles.modalContent}>
                         <Text style={styles.modalTitle}>Registrar Desperdicio</Text>
 
-                        {selectedMaquina ? (
-                            <View style={styles.readOnlyField}>
-                                <Text style={styles.readOnlyLabel}>Máquina: </Text>
-                                <Text style={styles.readOnlyValue}>{maquinas.find(m => m.id == selectedMaquina)?.nombre || selectedMaquina}</Text>
-                            </View>
-                        ) : (
-                            <>
-                                <Text style={styles.label}>Máquina</Text>
-                                <Picker
-                                    selectedValue={newRegistro.maquinaId}
-                                    onValueChange={(v) => setNewRegistro({ ...newRegistro, maquinaId: v })}
-                                    style={styles.picker}
-                                >
-                                    <Picker.Item label="Seleccionar..." value="" />
-                                    {maquinas.map(m => (
-                                        <Picker.Item key={m.id} label={m.nombre} value={m.id} />
-                                    ))}
-                                </Picker>
-                            </>
-                        )}
+                        {/* Siempre mostrar selector de máquina ya que se ocultó afuera */}
+                        <Text style={styles.label}>Máquina</Text>
+                        <Picker
+                            selectedValue={newRegistro.maquinaId}
+                            onValueChange={(v) => setNewRegistro({ ...newRegistro, maquinaId: v })}
+                            style={styles.picker}
+                        >
+                            <Picker.Item label="Seleccionar..." value="" />
+                            {maquinas.map(m => (
+                                <Picker.Item key={m.id} label={m.nombre} value={m.id} />
+                            ))}
+                        </Picker>
 
                         <Text style={styles.label}>Operario</Text>
                         <Picker
@@ -362,9 +355,24 @@ const DesperdicioScreen = () => {
                         {Platform.OS === 'web' ? (
                             <View style={{ marginBottom: 10 }}>
                                 <Text style={styles.label}>Fecha</Text>
-                                <View style={[styles.input, { backgroundColor: '#e9ecef', justifyContent: 'center' }]}>
-                                    <Text style={{ color: '#555' }}>{formatDate(newRegistro.fecha)}</Text>
-                                </View>
+                                <input
+                                    type="date"
+                                    value={formatDate(newRegistro.fecha)}
+                                    onChange={(e) => {
+                                        const d = new Date(e.target.value);
+                                        // Ajustar zona horaria si es necesario, o usar string directo
+                                        // Simple date parse
+                                        setNewRegistro({ ...newRegistro, fecha: new Date(d.getTime() + d.getTimezoneOffset() * 60000) });
+                                    }}
+                                    style={{
+                                        padding: 8,
+                                        borderRadius: 4,
+                                        border: '1px solid #ddd',
+                                        fontSize: 16,
+                                        width: '100%',
+                                        backgroundColor: 'white' // Asegurar fondo blanco para editable
+                                    }}
+                                />
                             </View>
                         ) : null}
 
@@ -380,10 +388,10 @@ const DesperdicioScreen = () => {
                             ))}
                         </Picker>
 
-                        <Text style={styles.label}>Cantidad (Kg)</Text>
+                        <Text style={styles.label}>Cantidad</Text>
                         <TextInput
                             style={styles.input}
-                            placeholder="0.00"
+                            placeholder="0"
                             keyboardType="numeric"
                             value={newRegistro.cantidad}
                             onChangeText={t => setNewRegistro({ ...newRegistro, cantidad: t })}

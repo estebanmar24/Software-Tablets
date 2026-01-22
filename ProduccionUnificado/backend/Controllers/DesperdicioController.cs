@@ -17,6 +17,48 @@ public class DesperdicioController : ControllerBase
     }
 
     // ==========================================
+    // UTILIDADES
+    // ==========================================
+
+    [HttpGet("init")]
+    public IActionResult InitDb()
+    {
+        try
+        {
+            // Script PostgreSQL para crear tablas si no existen
+            var sqlCodigo = @"
+                CREATE TABLE IF NOT EXISTS ""CodigosDesperdicio"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""Codigo"" TEXT NOT NULL,
+                    ""Descripcion"" TEXT,
+                    ""Activo"" BOOLEAN NOT NULL DEFAULT TRUE,
+                    ""FechaCreacion"" TIMESTAMP NOT NULL DEFAULT NOW()
+                );";
+
+            var sqlRegistro = @"
+                CREATE TABLE IF NOT EXISTS ""RegistrosDesperdicio"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""MaquinaId"" INTEGER NOT NULL,
+                    ""UsuarioId"" INTEGER NOT NULL,
+                    ""CodigoDesperdicioId"" INTEGER NOT NULL,
+                    ""OrdenProduccion"" TEXT,
+                    ""Cantidad"" DECIMAL NOT NULL,
+                    ""Fecha"" TIMESTAMP NOT NULL,
+                    ""FechaRegistro"" TIMESTAMP NOT NULL DEFAULT NOW()
+                );";
+
+            _context.Database.ExecuteSqlRaw(sqlCodigo);
+            _context.Database.ExecuteSqlRaw(sqlRegistro);
+            
+            return Ok("Tablas CodigosDesperdicio y RegistrosDesperdicio verificadas/creadas (PostgreSQL)");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, $"Error inicializando DB: {ex.Message}");
+        }
+    }
+
+    // ==========================================
     // CÓDIGOS DE DESPERDICIO
     // ==========================================
 
@@ -119,7 +161,7 @@ public class DesperdicioController : ControllerBase
                 r.OrdenProduccion,
                 r.CodigoDesperdicioId,
                 Codigo = r.CodigoDesperdicio!.Codigo,
-                Descripcion = r.CodigoDesperdicio.Descripcion,
+                Descripcion = r.CodigoDesperdicio!.Descripcion, // Fix warning CS8602 con ! o ?
                 r.Cantidad,
                 r.FechaRegistro
             })
