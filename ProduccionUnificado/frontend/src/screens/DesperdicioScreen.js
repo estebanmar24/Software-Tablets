@@ -362,12 +362,9 @@ const DesperdicioScreen = () => {
                         {Platform.OS === 'web' ? (
                             <View style={{ marginBottom: 10 }}>
                                 <Text style={styles.label}>Fecha</Text>
-                                <input
-                                    type="date"
-                                    value={formatDate(newRegistro.fecha)}
-                                    disabled={true}
-                                    style={[styles.webInput, { backgroundColor: '#e9ecef' }]}
-                                />
+                                <View style={[styles.input, { backgroundColor: '#e9ecef', justifyContent: 'center' }]}>
+                                    <Text style={{ color: '#555' }}>{formatDate(newRegistro.fecha)}</Text>
+                                </View>
                             </View>
                         ) : null}
 
