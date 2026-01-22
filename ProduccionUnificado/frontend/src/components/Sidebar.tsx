@@ -144,7 +144,7 @@ export function Sidebar({
                     style={styles.logo}
                     resizeMode="contain"
                 />
-                <Text style={{ fontSize: 10, color: '#718096', marginTop: 4 }}>v1.2.0 - History 📚</Text>
+                <Text style={{ fontSize: 10, color: '#718096', marginTop: 4 }}>v1.2.1 - Fix Crash 🚑</Text>
             </View>
 
             {/* Toggle Button for Phones */}
