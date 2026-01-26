@@ -105,6 +105,29 @@ function GastosTab() {
     const [resumenAnual, setResumenAnual] = useState(null);
     const [presupuestoInfo, setPresupuestoInfo] = useState(null);
 
+    // Filters for Main List
+    const [filterRubro, setFilterRubro] = useState('');
+    const [filterFecha, setFilterFecha] = useState('');
+
+    const filteredGastos = useMemo(() => {
+        return gastos.filter(g => {
+            if (filterRubro && g.rubroId?.toString() !== filterRubro) return false;
+            if (filterFecha) {
+                if (filterFecha.length === 10) {
+                    const parts = filterFecha.split('/');
+                    if (parts.length === 3) {
+                        const searchDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+                        if (!g.fecha.startsWith(searchDate)) return false;
+                    }
+                } else {
+                    const formattedDate = formatDate(g.fecha);
+                    if (!formattedDate.includes(filterFecha)) return false;
+                }
+            }
+            return true;
+        });
+    }, [gastos, filterRubro, filterFecha]);
+
     // History Modal State
     const [showHistoryModal, setShowHistoryModal] = useState(false);
     const [selectedHistoryGasto, setSelectedHistoryGasto] = useState(null);
@@ -388,6 +411,41 @@ function GastosTab() {
                 </View>
             </View>
 
+
+            {/* Main List Filters */}
+            <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingBottom: 10, gap: 10, alignItems: 'center', backgroundColor: '#F9FAFB', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' }}>
+                <Text style={{ fontWeight: 'bold', color: '#374151', minWidth: 60 }}>Filtrar:</Text>
+
+                <TextInput
+                    style={{
+                        flex: 1, backgroundColor: 'white', borderWidth: 1, borderColor: '#D1D5DB',
+                        borderRadius: 6, paddingVertical: 8, paddingHorizontal: 10, fontSize: 14, height: 40
+                    }}
+                    placeholder="dd/mm/aaaa"
+                    value={filterFecha}
+                    onChangeText={(t) => {
+                        if (t.length === 2 && filterFecha.length === 1) t += '/';
+                        if (t.length === 5 && filterFecha.length === 4) t += '/';
+                        if (t.length <= 10) setFilterFecha(t);
+                    }}
+                    keyboardType="numeric"
+                />
+
+                <View style={{
+                    flex: 1.5, backgroundColor: 'white', borderWidth: 1, borderColor: '#D1D5DB',
+                    borderRadius: 6, height: 40, justifyContent: 'center'
+                }}>
+                    <Picker
+                        selectedValue={filterRubro}
+                        onValueChange={setFilterRubro}
+                        style={{ height: 40, width: '100%', borderWidth: 0 }}
+                    >
+                        <Picker.Item label="Todos los Rubros" value="" />
+                        {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
+                    </Picker>
+                </View>
+            </View>
+
             <View style={styles.summaryContainer}>
                 <View style={[styles.summaryCard, styles.presupuestoCard]}>
                     <Text style={styles.summaryLabel}>Presupuesto</Text>
@@ -409,10 +467,10 @@ function GastosTab() {
 
             {loading ? <ActivityIndicator size="large" color="#2563EB" style={styles.loading} /> : (
                 <ScrollView style={styles.listContainer}>
-                    {gastos.length === 0 ? (
-                        <View style={styles.emptyState}><Text style={styles.emptyText}>No hay gastos registrados</Text></View>
+                    {filteredGastos.length === 0 ? (
+                        <View style={styles.emptyState}><Text style={styles.emptyText}>No hay gastos registrados (con estos filtros)</Text></View>
                     ) : (
-                        gastos.map(gasto => (
+                        filteredGastos.map(gasto => (
                             <View key={gasto.id} style={styles.gastoCard}>
                                 <View style={styles.gastoHeader}>
                                     <Text style={styles.gastoTipo}>{gasto.rubroNombre || gasto.Rubro?.nombre || gasto.Rubro?.Nombre || 'Sin Rubro'}</Text>
