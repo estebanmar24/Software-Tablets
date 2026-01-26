@@ -3,7 +3,7 @@
  * EXACT visual copy of ProduccionGastosScreen with Talleres-specific logic.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
@@ -681,143 +681,304 @@ function GastosTab() {
 function GraficasTab() {
     const [loading, setLoading] = useState(true);
     const [anio, setAnio] = useState(new Date().getFullYear());
-    const [mes, setMes] = useState(new Date().getMonth() + 1);
-    const [dataAnual, setDataAnual] = useState(null);
-    const [dataMensual, setDataMensual] = useState({});
-    const [dataMesActual, setDataMesActual] = useState(null);
-    const [cantidadRegistros, setCantidadRegistros] = useState(0);
+    const [mesSeleccionado, setMesSeleccionado] = useState(new Date().getMonth() + 1);
+    const [graficasData, setGraficasData] = useState(null);
+    const [allGastos, setAllGastos] = useState([]);
 
     const anios = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
 
     const loadData = useCallback(async () => {
-        setLoading(true);
         try {
-            // 1. Load specific month data for cards and rubro chart
-            const mesData = await talleresApi.getGraficas(anio, mes);
-            setDataMesActual(mesData);
+            setLoading(true);
+            let dataGraf, dataGastos;
 
-            // 1.1 Load actual records count
-            try {
-                const gastosList = await talleresApi.getGastos(anio, mes);
-                setCantidadRegistros(gastosList?.length || 0);
-            } catch (err) {
-                console.error('Error loading gastos count:', err);
-                setCantidadRegistros(0);
-            }
-
-            // 2. Load annual data for context
-            const anualData = await talleresApi.getGraficasAnual(anio);
-            setDataAnual(anualData);
-
-            // 3. Load all months for the summary table
-            const mData = {};
-            for (let i = 1; i <= 12; i++) {
+            if (mesSeleccionado) {
+                [dataGraf, dataGastos] = await Promise.all([
+                    talleresApi.getGraficas(anio, mesSeleccionado),
+                    talleresApi.getGastos(anio, mesSeleccionado)
+                ]);
+            } else {
+                dataGraf = await talleresApi.getGraficasAnual(anio);
                 try {
-                    const res = await talleresApi.getGraficas(anio, i);
-                    if (res) mData[i] = res;
-                } catch (e) { }
+                    dataGastos = await talleresApi.getGastos(anio, 0);
+                } catch (e) {
+                    dataGastos = [];
+                }
             }
-            setDataMensual(mData);
-        } catch (e) { console.error(e); }
-        finally { setLoading(false); }
-    }, [anio, mes]);
+
+            setGraficasData(dataGraf);
+            setAllGastos(Array.isArray(dataGastos) ? dataGastos : (dataGastos?.gastos || []));
+        } catch (error) {
+            console.error('Error loading data:', error);
+            setAllGastos([]);
+        } finally {
+            setLoading(false);
+        }
+    }, [anio, mesSeleccionado]);
 
     useEffect(() => { loadData(); }, [loadData]);
 
+    const [detailModalVisible, setDetailModalVisible] = useState(false);
+    const [detailTitle, setDetailTitle] = useState('');
+    const [detailGastos, setDetailGastos] = useState([]);
+    const [filterStart, setFilterStart] = useState('');
+    const [filterEnd, setFilterEnd] = useState('');
+
+    const displayedGastos = useMemo(() => {
+        if (!filterStart && !filterEnd) return detailGastos;
+        const parseDate = (d) => {
+            if (!d || d.length !== 10) return null;
+            const p = d.split('/');
+            if (p.length < 3) return null;
+            return new Date(`${p[2]}-${p[1]}-${p[0]}`);
+        };
+        const s = parseDate(filterStart);
+        const e = parseDate(filterEnd);
+        return detailGastos.filter(g => {
+            const gd = new Date(g.fecha); gd.setHours(0, 0, 0, 0);
+            if (s && gd < s) return false;
+            if (e && gd > e) return false;
+            return true;
+        });
+    }, [detailGastos, filterStart, filterEnd]);
+
+    const handleOpenDetail = (type, id, name) => {
+        setDetailTitle(name);
+        setFilterStart('');
+        setFilterEnd('');
+        setDetailModalVisible(true);
+
+        try {
+            let filtered = [];
+            const checkId = (item, propBase, targetId) => {
+                const valDirect = item[propBase + 'Id'];
+                const valNested = item[propBase]?.id;
+                return valDirect == targetId || valNested == targetId;
+            };
+
+            const esNomina = (g) => {
+                const rName = (g.rubroNombre || g.Rubro?.nombre || '').toLowerCase();
+                return g.tipoHoraId || g.tipoRecargoId ||
+                    rName.includes('hora') || rName.includes('recargo') || rName.includes('nomina') || rName.includes('salario') || rName.includes('personal');
+            };
+
+            if (type === 'rubro') {
+                filtered = allGastos.filter(g => {
+                    if (id && checkId(g, 'rubro', id)) return true;
+                    const gName = (g.rubroNombre || g.Rubro?.nombre || '').toLowerCase();
+                    return gName === String(name).toLowerCase();
+                });
+            } else if (type === 'proveedor') {
+                filtered = allGastos.filter(g => checkId(g, 'proveedor', id) && !esNomina(g));
+            } else if (type === 'personal') {
+                filtered = allGastos.filter(g => checkId(g, 'personal', id));
+            }
+
+            if (filtered.length === 0 && name) {
+                const targetName = String(name).toLowerCase().trim();
+                filtered = allGastos.filter(g => {
+                    let gName = '';
+                    if (type === 'rubro') gName = g.rubroNombre || g.Rubro?.nombre;
+                    else if (type === 'proveedor') gName = g.proveedorNombre || g.Proveedor?.nombre;
+                    else if (type === 'personal') gName = g.personalNombre || g.Personal?.nombre;
+
+                    if (!gName) return false;
+                    return gName.toLowerCase().trim() === targetName;
+                });
+            }
+
+            filtered.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+            setDetailGastos(filtered);
+        } catch (err) {
+            console.error('Error filtering details:', err);
+            setDetailGastos([]);
+        }
+    };
+
     if (loading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#2563EB" /></View>;
 
-    const totalPresupuesto = dataMesActual?.totalPresupuesto || 0;
-    const totalGastado = dataMesActual?.totalGastado || 0;
-    const totalRestante = dataMesActual?.totalRestante || 0;
-    const porcentajeEjecutado = totalPresupuesto > 0 ? Math.round((totalGastado / totalPresupuesto) * 100) : 0;
+    const data = graficasData || { totalGastado: 0, porRubro: [], porProveedor: [], porUsuario: [], resumenMensual: [] };
+    const totalRegistrosReal = allGastos.length;
 
-    // Build monthly summary array for the table
-    const resumenTablaMensual = MESES.map(m => {
-        const d = dataMensual[m.value] || {};
-        return {
-            mes: m.value,
-            mesNombre: m.label,
-            totalPresupuesto: d.totalPresupuesto || 0,
-            totalGastado: d.totalGastado || 0,
-            restante: (d.totalPresupuesto || 0) - (d.totalGastado || 0)
-        };
-    });
+    const normalizedPorRubro = (data.porRubro || []).map(r => ({
+        ...r,
+        nombre: r.nombre || r.rubro,
+        total: r.total || r.gastado
+    }));
 
     return (
         <View style={styles.contentContainer}>
             <View style={styles.header}>
-                <Text style={styles.title}>📊 Análisis de Gastos</Text>
+                <Text style={styles.title}>📊 Análisis de Gastos Talleres</Text>
                 <View style={styles.filters}>
                     <Picker selectedValue={anio} onValueChange={setAnio} style={styles.picker}>
                         {anios.map(a => <Picker.Item key={a} label={a.toString()} value={a} />)}
                     </Picker>
-                    <Picker selectedValue={mes} onValueChange={setMes} style={styles.picker}>
+                    <Picker selectedValue={mesSeleccionado} onValueChange={setMesSeleccionado} style={styles.picker}>
+                        <Picker.Item label="Todo el Año" value={null} />
                         {MESES.map(m => <Picker.Item key={m.value} label={m.label} value={m.value} />)}
                     </Picker>
                 </View>
             </View>
 
             <ScrollView style={styles.listContainer}>
-                {/* Dashboard Summary Cards */}
-                <View style={grafStyles.dashboardRow}>
-                    <View style={[grafStyles.summaryCardSmall, { backgroundColor: '#EFF6FF' }]}>
-                        <Text style={grafStyles.cardLabel}>💰 Presupuesto</Text>
-                        <Text style={[grafStyles.cardValue, { color: '#1E40AF' }]}>{formatCurrency(totalPresupuesto)}</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 }}>
+                    <View style={[styles.summaryCard, { flex: 1, backgroundColor: '#EFF6FF', minWidth: 150 }]}>
+                        <Text style={styles.summaryLabel}>💰 Presupuesto</Text>
+                        <Text style={[styles.summaryValue, { color: '#1E40AF' }]}>
+                            {formatCurrency(data.totalPresupuesto || 0)}
+                        </Text>
                     </View>
-                    <View style={[grafStyles.summaryCardSmall, { backgroundColor: '#D1FAE5' }]}>
-                        <Text style={grafStyles.cardLabel}>📊 Gastado</Text>
-                        <Text style={[grafStyles.cardValue, { color: '#059669' }]}>{formatCurrency(totalGastado)}</Text>
+                    <View style={[styles.summaryCard, { flex: 1, backgroundColor: '#D1FAE5', minWidth: 150 }]}>
+                        <Text style={styles.summaryLabel}>📊 Gastado</Text>
+                        <Text style={[styles.summaryValue, { color: '#059669' }]}>
+                            {formatCurrency(data.totalGastado || 0)}
+                        </Text>
                     </View>
-                    <View style={[grafStyles.summaryCardSmall, { backgroundColor: '#FEF3C7' }]}>
-                        <Text style={grafStyles.cardLabel}>✅ Restante</Text>
-                        <Text style={[grafStyles.cardValue, { color: '#D97706' }]}>{formatCurrency(totalRestante)}</Text>
+                    <View style={[styles.summaryCard, { flex: 1, backgroundColor: '#FEF3C7', minWidth: 150 }]}>
+                        <Text style={styles.summaryLabel}>✅ Restante</Text>
+                        <Text style={[styles.summaryValue, { color: '#D97706' }]}>
+                            {formatCurrency((data.totalPresupuesto || 0) - (data.totalGastado || 0))}
+                        </Text>
                     </View>
-                    <View style={[grafStyles.summaryCardSmall, { backgroundColor: '#F3F4F6' }]}>
-                        <Text style={grafStyles.cardLabel}>📋 Registros</Text>
-                        <Text style={[grafStyles.cardValue, { color: '#374151' }]}>{cantidadRegistros}</Text>
+                    <View style={[styles.summaryCard, { flex: 1, backgroundColor: '#F3F4F6', minWidth: 150 }]}>
+                        <Text style={styles.summaryLabel}>📋 Registros</Text>
+                        <Text style={[styles.summaryValue, { color: '#374151' }]}>{totalRegistrosReal}</Text>
                     </View>
                 </View>
 
-                {/* Ejecución Anual Completo - Progress Bar */}
-                <View style={grafStyles.chartSection}>
-                    <Text style={grafStyles.sectionTitle}>Ejecución Mensual</Text>
-                    <View style={grafStyles.progressBarContainer}>
-                        <View style={[grafStyles.progressBar, {
-                            width: `${Math.min(100, porcentajeEjecutado)}%`,
-                            backgroundColor: porcentajeEjecutado > 100 ? '#DC2626' : '#10B981'
-                        }]} />
+                <Modal visible={detailModalVisible} animationType="slide" transparent onRequestClose={() => setDetailModalVisible(false)}>
+                    <View style={styles.modalOverlay}>
+                        <View style={styles.modalContent}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                                <Text style={styles.modalTitle}>Detalle: {detailTitle}</Text>
+                                <TouchableOpacity onPress={() => setDetailModalVisible(false)} style={{ padding: 5 }}>
+                                    <Text style={{ fontSize: 20, color: '#666' }}>✕</Text>
+                                </TouchableOpacity>
+                            </View>
+
+                            <View style={{ flexDirection: 'row', gap: 10, padding: 8, backgroundColor: '#F3F4F6', borderRadius: 8, marginBottom: 10 }}>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#666' }}>Desde:</Text>
+                                    <TextInput
+                                        style={{ backgroundColor: 'white', borderRadius: 4, paddingHorizontal: 5, height: 35, fontSize: 12, borderWidth: 1, borderColor: '#DDD' }}
+                                        placeholder="DD/MM/AAAA"
+                                        placeholderTextColor="#999"
+                                        value={filterStart}
+                                        onChangeText={(t) => {
+                                            if (t.length === 2 && filterStart.length === 1) t += '/';
+                                            if (t.length === 5 && filterStart.length === 4) t += '/';
+                                            if (t.length <= 10) setFilterStart(t);
+                                        }}
+                                        keyboardType="numeric"
+                                    />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#666' }}>Hasta:</Text>
+                                    <TextInput
+                                        style={{ backgroundColor: 'white', borderRadius: 4, paddingHorizontal: 5, height: 35, fontSize: 12, borderWidth: 1, borderColor: '#DDD' }}
+                                        placeholder="DD/MM/AAAA"
+                                        placeholderTextColor="#999"
+                                        value={filterEnd}
+                                        onChangeText={(t) => {
+                                            if (t.length === 2 && filterEnd.length === 1) t += '/';
+                                            if (t.length === 5 && filterEnd.length === 4) t += '/';
+                                            if (t.length <= 10) setFilterEnd(t);
+                                        }}
+                                        keyboardType="numeric"
+                                    />
+                                </View>
+                            </View>
+
+                            {displayedGastos.length === 0 ? (
+                                <Text style={styles.emptyText}>No se encontraron registros en el rango.</Text>
+                            ) : (
+                                <ScrollView style={{ maxHeight: 400 }}>
+                                    {displayedGastos.map(g => (
+                                        <View key={g.id} style={{
+                                            backgroundColor: '#F9FAFB',
+                                            padding: 12,
+                                            marginBottom: 8,
+                                            borderRadius: 8,
+                                            borderLeftWidth: 3,
+                                            borderLeftColor: '#2563EB'
+                                        }}>
+                                            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                                                <Text style={{ fontWeight: 'bold', color: '#374151' }}>{new Date(g.fecha).toLocaleDateString()}</Text>
+                                                <Text style={{ fontWeight: 'bold', color: '#059669' }}>{formatCurrency(g.precio)}</Text>
+                                            </View>
+                                            <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>
+                                                {g.tipoHoraNombre || g.tipoRecargoNombre || g.rubroNombre || g.Rubro?.nombre || 'Gasto General'}
+                                            </Text>
+
+                                            {g.personalId && (
+                                                <Text style={{ fontSize: 12, color: '#4B5563', marginTop: 2 }}>👤 {g.personalNombre || g.Personal?.nombre}</Text>
+                                            )}
+                                            {g.proveedorId && (
+                                                <Text style={{ fontSize: 12, color: '#4B5563', marginTop: 2 }}>🏢 {g.proveedorNombre || g.Proveedor?.nombre}</Text>
+                                            )}
+
+                                            {g.observaciones && <Text style={{ fontSize: 12, fontStyle: 'italic', marginTop: 4 }}>"{g.observaciones}"</Text>}
+                                            {g.facturaPdfUrl && <Text style={{ fontSize: 12, color: '#2563EB', marginTop: 2 }}>📄 Tiene Factura PDF</Text>}
+                                            {g.numeroOP && <Text style={{ fontSize: 12, color: '#4B5563', marginTop: 2 }}>📋 OP: {g.numeroOP}</Text>}
+                                        </View>
+                                    ))}
+                                </ScrollView>
+                            )}
+
+                            <TouchableOpacity
+                                style={[styles.cancelButton, { marginTop: 15, alignSelf: 'flex-end' }]}
+                                onPress={() => setDetailModalVisible(false)}
+                            >
+                                <Text style={styles.cancelButtonText}>Cerrar</Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
-                    <Text style={grafStyles.progressText}>{porcentajeEjecutado}% ejecutado</Text>
+                </Modal>
+
+                <View style={{ marginBottom: 20, backgroundColor: 'white', padding: 15, borderRadius: 8, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5, elevation: 2 }}>
+                    <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 10, color: '#1F2937' }}>{mesSeleccionado ? 'Ejecución Mensual' : 'Ejecución Anual'}</Text>
+                    <View style={{ height: 20, backgroundColor: '#E5E7EB', borderRadius: 10, overflow: 'hidden' }}>
+                        <View style={{
+                            width: `${Math.min(100, ((data.totalGastado || 0) / Math.max(1, data.totalPresupuesto || 1)) * 100)}%`,
+                            height: '100%',
+                            backgroundColor: ((data.totalGastado || 0) > (data.totalPresupuesto || 0)) ? '#DC2626' : '#10B981'
+                        }} />
+                    </View>
+                    <Text style={{ textAlign: 'right', marginTop: 5, fontSize: 12, color: '#666' }}>
+                        {Math.round(((data.totalGastado || 0) / Math.max(1, data.totalPresupuesto || 1)) * 100)}% ejecutado
+                    </Text>
                 </View>
 
-                {/* Gastos por Rubro (Mensual) vs Presupuesto */}
-                {dataMesActual?.porRubro?.length > 0 && (
-                    <View style={grafStyles.chartSection}>
-                        <Text style={grafStyles.sectionTitle}>📁 Desempeño por Rubro (Mensual)</Text>
-                        {dataMesActual.porRubro.map((item, idx) => {
-                            const rubroPorcentaje = (item.presupuesto > 0) ? Math.round((item.gastado / item.presupuesto) * 100) : (item.gastado > 0 ? 101 : 0);
-                            const isExceeded = item.gastado > item.presupuesto && item.presupuesto > 0;
-                            const isZeroBudgetWithGasto = item.presupuesto === 0 && item.gastado > 0;
+                {normalizedPorRubro.length > 0 && (
+                    <View style={{ marginBottom: 20 }}>
+                        <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 15, color: '#111827' }}>📁 Desempeño por Rubro</Text>
+                        {normalizedPorRubro.map((item, idx) => {
+                            const rubroPorcentaje = (item.presupuesto > 0) ? Math.round((item.total / item.presupuesto) * 100) : (item.total > 0 ? 101 : 0);
+                            const isExceeded = item.total > item.presupuesto && item.presupuesto > 0;
+                            const isZeroBudgetWithGasto = item.presupuesto === 0 && item.total > 0;
 
                             return (
-                                <View key={idx} style={grafStyles.rubroReportRow}>
-                                    <View style={grafStyles.rubroReportHeader}>
-                                        <Text style={grafStyles.rubroReportName}>{item.rubro}</Text>
-                                        <Text style={[grafStyles.rubroReportStatus, (isExceeded || isZeroBudgetWithGasto) ? { color: '#DC2626' } : { color: '#059669' }]}>
-                                            {formatCurrency(item.gastado)} / {formatCurrency(item.presupuesto)}
+                                <View key={idx} style={{ marginBottom: 15, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', paddingBottom: 10 }}>
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
+                                        <TouchableOpacity onPress={() => handleOpenDetail('rubro', item.id, item.nombre)}>
+                                            <Text style={{ fontWeight: '600', color: '#1E40AF', textDecorationLine: 'underline' }}>
+                                                {item.nombre} 👆
+                                            </Text>
+                                        </TouchableOpacity>
+                                        <Text style={{ fontSize: 12, fontWeight: 'bold', color: (isExceeded || isZeroBudgetWithGasto) ? '#DC2626' : '#059669' }}>
+                                            {formatCurrency(item.total)} / {formatCurrency(item.presupuesto)}
                                         </Text>
                                     </View>
-                                    <View style={grafStyles.rubroProgressBarContainer}>
-                                        <View style={[
-                                            grafStyles.rubroProgressBar,
-                                            {
-                                                width: `${Math.min(100, rubroPorcentaje)}%`,
-                                                backgroundColor: (isExceeded || isZeroBudgetWithGasto) ? '#DC2626' : '#3B82F6'
-                                            }
-                                        ]} />
+                                    <View style={{ height: 8, backgroundColor: '#E5E7EB', borderRadius: 4, overflow: 'hidden' }}>
+                                        <View style={{
+                                            width: `${Math.min(100, rubroPorcentaje)}%`,
+                                            height: '100%',
+                                            backgroundColor: (isExceeded || isZeroBudgetWithGasto) ? '#DC2626' : '#3B82F6'
+                                        }} />
                                     </View>
                                     {(isExceeded || isZeroBudgetWithGasto) && (
-                                        <Text style={grafStyles.rubroWarningText}>⚠️ Superó presupuesto por {formatCurrency(item.gastado - item.presupuesto)}</Text>
+                                        <Text style={{ fontSize: 10, color: '#DC2626', marginTop: 2 }}>⚠️ Superó presupuesto</Text>
                                     )}
                                 </View>
                             );
@@ -825,30 +986,12 @@ function GraficasTab() {
                     </View>
                 )}
 
-                {/* Resumen Mensual Table */}
-                <View style={grafStyles.chartSection}>
-                    <Text style={grafStyles.sectionTitle}>📅 Resumen Mensual</Text>
-                    <View style={grafStyles.tableHeader}>
-                        <Text style={[grafStyles.tableCell, grafStyles.tableCellHeader, { flex: 2 }]}>Mes</Text>
-                        <Text style={[grafStyles.tableCell, grafStyles.tableCellHeader]}>Presupuesto</Text>
-                        <Text style={[grafStyles.tableCell, grafStyles.tableCellHeader]}>Gastado</Text>
-                        <Text style={[grafStyles.tableCell, grafStyles.tableCellHeader]}>Restante</Text>
-                    </View>
-                    {resumenTablaMensual.map((mesItem, idx) => (
-                        <View key={idx} style={[grafStyles.tableRow, idx % 2 === 0 && grafStyles.tableRowAlt]}>
-                            <Text style={[grafStyles.tableCell, { flex: 2 }]}>{mesItem.mesNombre}</Text>
-                            <Text style={grafStyles.tableCell}>{formatCurrency(mesItem.totalPresupuesto)}</Text>
-                            <Text style={[grafStyles.tableCell, { color: '#059669' }]}>{formatCurrency(mesItem.totalGastado)}</Text>
-                            <Text style={[grafStyles.tableCell, { color: mesItem.restante >= 0 ? '#059669' : '#DC2626' }]}>
-                                {formatCurrency(mesItem.restante)}
-                            </Text>
-                        </View>
-                    ))}
-                </View>
             </ScrollView>
         </View>
     );
 }
+
+
 
 // ===================== RUBROS TAB =====================
 function RubrosTab() {
