@@ -146,28 +146,43 @@ public class ProduccionController : ControllerBase
     [HttpDelete("borrar")]
     public async Task<IActionResult> BorrarProduccion(int mes, int anio, int? usuarioId = null, int? maquinaId = null)
     {
+        // 1. Borrar de ProduccionDiaria
         var query = _context.ProduccionDiaria.Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio);
+
+        // Queries para TiemposProceso y RegistrosDesperdicio
+        var queryTiempos = _context.TiemposProceso.Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio);
+        var queryDesperdicios = _context.RegistrosDesperdicio.Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio);
 
         if (usuarioId.HasValue)
         {
             query = query.Where(p => p.UsuarioId == usuarioId.Value);
+            queryTiempos = queryTiempos.Where(p => p.UsuarioId == usuarioId.Value);
+            queryDesperdicios = queryDesperdicios.Where(p => p.UsuarioId == usuarioId.Value);
         }
 
         if (maquinaId.HasValue)
         {
             query = query.Where(p => p.MaquinaId == maquinaId.Value);
+            queryTiempos = queryTiempos.Where(p => p.MaquinaId == maquinaId.Value);
+            queryDesperdicios = queryDesperdicios.Where(p => p.MaquinaId == maquinaId.Value);
         }
 
         var records = await query.ToListAsync();
-        if (!records.Any())
+        var tiempos = await queryTiempos.ToListAsync();
+        var desperdicios = await queryDesperdicios.ToListAsync();
+
+        if (!records.Any() && !tiempos.Any())
         {
             return NotFound("No se encontraron registros para borrar con los filtros proporcionados.");
         }
 
         _context.ProduccionDiaria.RemoveRange(records);
+        _context.TiemposProceso.RemoveRange(tiempos);
+        _context.RegistrosDesperdicio.RemoveRange(desperdicios);
+
         await _context.SaveChangesAsync();
 
-        return Ok(new { message = $"Se eliminaron {records.Count} registros." });
+        return Ok(new { message = $"Se eliminaron {records.Count} de resumen, {tiempos.Count} detalles y {desperdicios.Count} desperdicios." });
     }
 
     /// <summary>

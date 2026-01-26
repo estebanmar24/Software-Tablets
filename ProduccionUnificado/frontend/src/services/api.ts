@@ -6,6 +6,7 @@ import {
     ProduccionDia,
     RegistrarTiempoRequest,
     TiempoProceso,
+    Horario,
 } from '../types';
 
 // Configurar la URL base de la API
@@ -43,6 +44,12 @@ export async function getMaquinas(): Promise<Maquina[]> {
 export async function getOrdenes(): Promise<OrdenProduccion[]> {
     const response = await fetch(`${API_BASE_URL}/ordenes`);
     return handleResponse<OrdenProduccion[]>(response);
+}
+
+// Obtener lista de horarios/turnos
+export async function getHorarios(): Promise<Horario[]> {
+    const response = await fetch(`${API_BASE_URL}/horarios`);
+    return handleResponse<Horario[]>(response);
 }
 
 // Obtener producción del día
@@ -133,4 +140,17 @@ export async function deleteUser(id: number): Promise<void> {
     });
     if (response.status === 204) return;
     return handleResponse<void>(response);
+}
+export async function getCodigosDesperdicio(): Promise<import('../types').CodigoDesperdicio[]> {
+    const response = await fetch(`${BASE_URL}/desperdicio/codigos/activos`);
+    return handleResponse<import('../types').CodigoDesperdicio[]>(response);
+}
+
+export async function registrarDesperdicio(data: import('../types').RegistroDesperdicioRequest): Promise<any> {
+    const response = await fetch(`${BASE_URL}/desperdicio`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+    });
+    return handleResponse<any>(response);
 }

@@ -13,6 +13,7 @@ const DesperdicioScreen = () => {
     const [usuarios, setUsuarios] = useState([]);
     const [codigos, setCodigos] = useState([]);
     const [registros, setRegistros] = useState([]);
+    const [relaciones, setRelaciones] = useState([]); // [{ maquinaId, usuarioId }]
     const [loading, setLoading] = useState(false);
     const [generatingPdf, setGeneratingPdf] = useState(false);
 
@@ -23,6 +24,7 @@ const DesperdicioScreen = () => {
     const [selectedMaquina, setSelectedMaquina] = useState('');
     const [selectedFecha, setSelectedFecha] = useState(null);
     const [selectedUsuario, setSelectedUsuario] = useState(''); // Nuevo filtro
+    const [selectedCodigo, setSelectedCodigo] = useState(''); // Nuevo Filtro
     const [selectedOP, setSelectedOP] = useState(''); // Nuevo filtro
 
     // Modales
@@ -53,22 +55,24 @@ const DesperdicioScreen = () => {
     useEffect(() => {
         // Recargar si cambian filtros
         loadRegistros();
-    }, [selectedMaquina, selectedFecha, selectedUsuario, selectedOP]);
+    }, [selectedMaquina, selectedFecha, selectedUsuario, selectedOP, selectedCodigo]);
 
     const loadInitialData = async () => {
         try {
             // Intentar inicializar DB por si faltan tablas (Hack para error 500)
             await fetch(`${API_URL}/desperdicio/init`).catch(e => console.log("Init OK/Skip"));
 
-            const [resMaq, resUsu, resCod] = await Promise.all([
+            const [resMaq, resUsu, resCod, resRel] = await Promise.all([
                 fetch(`${API_URL}/maquinas`),
                 fetch(`${API_URL}/usuarios`),
-                fetch(`${API_URL}/desperdicio/codigos`)
+                fetch(`${API_URL}/desperdicio/codigos`),
+                fetch(`${API_URL}/desperdicio/relaciones`)
             ]);
 
             if (resMaq.ok) setMaquinas(await resMaq.json());
             if (resUsu.ok) setUsuarios(await resUsu.json());
             if (resCod.ok) setCodigos(await resCod.json());
+            if (resRel.ok) setRelaciones(await resRel.json());
         } catch (error) {
             console.error(error);
             Alert.alert('Error', 'Error cargando datos iniciales');
@@ -92,6 +96,7 @@ const DesperdicioScreen = () => {
             if (dateStr) url += `fecha=${dateStr}&`;
             if (selectedMaquina) url += `maquinaId=${selectedMaquina}&`;
             if (selectedUsuario) url += `usuarioId=${selectedUsuario}&`;
+            if (selectedCodigo) url += `codigoDesperdicioId=${selectedCodigo}&`;
             if (selectedOP) url += `ordenProduccion=${selectedOP}&`;
 
             const res = await fetch(url);
@@ -276,6 +281,28 @@ const DesperdicioScreen = () => {
         }
     };
 
+    // Helper cascade filter
+    const getFilteredMaquinas = () => {
+        // Si hay usuario seleccionado, mostrar solo sus máquinas
+        if (!selectedUsuario) return maquinas;
+        const validIds = relaciones
+            .filter(r => r.usuarioId == selectedUsuario)
+            .map(r => r.maquinaId);
+        // Si no hay historial, no filtramos (o podríamos mostrar vacío)
+        if (validIds.length === 0) return maquinas;
+        return maquinas.filter(m => validIds.includes(m.id));
+    };
+
+    const getFilteredUsuarios = () => {
+        // Si hay máquina seleccionada, mostrar solo sus operarios
+        if (!selectedMaquina) return usuarios;
+        const validIds = relaciones
+            .filter(r => r.maquinaId == selectedMaquina)
+            .map(r => r.usuarioId);
+        if (validIds.length === 0) return usuarios;
+        return usuarios.filter(u => validIds.includes(u.id));
+    };
+
     // Render helpers
     const formatDate = (date) => {
         if (!date || isNaN(date.getTime())) return '';
@@ -345,15 +372,22 @@ const DesperdicioScreen = () => {
             }
 
             // Summary Stats
-            const totalItems = registros.length;
-            const totalCantidad = registros.reduce((sum, r) => sum + r.cantidad, 0);
+
+
+            // Table
+            // Filtrar y Ordenar por Fecha Ascendente (Oldest first)
+            const registrosOrdenados = [...registros].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+            // Summary Stats
+            const totalItems = registrosOrdenados.length;
+            const totalCantidad = registrosOrdenados.reduce((sum, r) => sum + r.cantidad, 0);
 
             doc.setFontSize(10);
             doc.text(`Total Registros: ${totalItems}   |   Total Cantidad: ${totalCantidad.toFixed(2)}`, 14, 50);
 
-            // Table
+            // Table Body
             const columns = ['Fecha', 'Máquina', 'Operario', 'Código', 'OP', 'Cant', 'Nota'];
-            const data = registros.map(r => [
+            const data = registrosOrdenados.map(r => [
                 formatDate(new Date(r.fecha)),
                 r.maquinaNombre,
                 r.usuarioNombre,
@@ -376,26 +410,83 @@ const DesperdicioScreen = () => {
                 }
             });
 
-            // Resumen por Código (Gráfica Simple simulada con barras de texto o tabla pequeña)
-            let finalY = doc.lastAutoTable.finalY + 15;
+            let finalY = doc.lastAutoTable.finalY + 10;
 
-            // Agrupar por código
-            const group = {};
-            registros.forEach(r => {
-                const k = r.codigo;
-                if (!group[k]) group[k] = 0;
-                group[k] += r.cantidad;
-            });
-            const summaryData = Object.keys(group).map(k => [k, group[k].toFixed(2)]);
+            // --- RESUMENES ---
+            // Helper Grouping function
+            const getGroupData = (keySelector) => {
+                const group = {};
+                registrosOrdenados.forEach(r => {
+                    const k = keySelector(r) || 'Desconocido';
+                    if (!group[k]) group[k] = 0;
+                    group[k] += r.cantidad;
+                });
+                return Object.keys(group).map(k => [k, group[k].toFixed(2)]);
+            };
 
+            const summaryCode = getGroupData(r => r.codigo);
+            const summaryOp = getGroupData(r => r.usuarioNombre);
+            const summaryMaq = getGroupData(r => r.maquinaNombre);
+
+            // Mover a nueva pagina si queda poco espacio
+            if (finalY > doc.internal.pageSize.getHeight() - 60) {
+                doc.addPage();
+                finalY = 20;
+            }
+
+            // Resumen por Código
             doc.text('Resumen por Código:', 14, finalY);
             autoTable(doc, {
-                head: [['Código', 'Total Cantidad']],
-                body: summaryData,
+                head: [['Código', 'Total']],
+                body: summaryCode,
                 startY: finalY + 5,
                 theme: 'grid',
                 styles: { fontSize: 8 },
-                tableWidth: 80
+                tableWidth: 80,
+                margin: { left: 14 }
+            });
+
+            // Posicionar siguiente tabla a la derecha o abajo
+            // Vamos a ponerlos en fila si caben, sino abajo. 
+            // Para simplicidad, los pondremos verticalmente uno tras otro, o en grid si se desea.
+            // Requirement "tambien el total por op, y tambien el total por maquina".
+
+            finalY = doc.lastAutoTable.finalY + 10;
+
+            // Check page break
+            if (finalY > doc.internal.pageSize.getHeight() - 60) {
+                doc.addPage();
+                finalY = 20;
+            }
+
+            doc.text('Resumen por Operario:', 14, finalY);
+            autoTable(doc, {
+                head: [['Operario', 'Total']],
+                body: summaryOp,
+                startY: finalY + 5,
+                theme: 'grid',
+                styles: { fontSize: 8 },
+                tableWidth: 100,
+                margin: { left: 14 }
+            });
+
+            finalY = doc.lastAutoTable.finalY + 10;
+
+            // Check page break
+            if (finalY > doc.internal.pageSize.getHeight() - 60) {
+                doc.addPage();
+                finalY = 20;
+            }
+
+            doc.text('Resumen por Máquina:', 14, finalY);
+            autoTable(doc, {
+                head: [['Máquina', 'Total']],
+                body: summaryMaq,
+                startY: finalY + 5,
+                theme: 'grid',
+                styles: { fontSize: 8 },
+                tableWidth: 100,
+                margin: { left: 14 }
             });
 
             doc.save(`reporte_desperdicios_${new Date().getTime()}.pdf`);
@@ -455,7 +546,7 @@ const DesperdicioScreen = () => {
                             style={{ height: 30, width: 150, padding: 0 }}
                         >
                             <Picker.Item label="Todas" value="" />
-                            {maquinas.map(m => (
+                            {getFilteredMaquinas().map(m => (
                                 <Picker.Item key={m.id} label={m.nombre} value={m.id} />
                             ))}
                         </Picker>
@@ -470,8 +561,23 @@ const DesperdicioScreen = () => {
                             style={{ height: 30, width: 150, padding: 0 }}
                         >
                             <Picker.Item label="Todos" value="" />
-                            {usuarios.map(u => (
+                            {getFilteredUsuarios().map(u => (
                                 <Picker.Item key={u.id} label={u.nombre} value={u.id} />
+                            ))}
+                        </Picker>
+                    </View>
+
+                    {/* Filtro Código */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={[styles.label, { marginBottom: 0, marginRight: 5 }]}>Cod:</Text>
+                        <Picker
+                            selectedValue={selectedCodigo}
+                            onValueChange={(v) => setSelectedCodigo(v)}
+                            style={{ height: 30, width: 120, padding: 0 }}
+                        >
+                            <Picker.Item label="Todos" value="" />
+                            {codigos.map(c => (
+                                <Picker.Item key={c.id} label={c.codigo} value={c.id} />
                             ))}
                         </Picker>
                     </View>

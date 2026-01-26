@@ -12,6 +12,7 @@ public interface ITiempoProcesoService
     Task<List<UsuarioDto>> GetUsuariosAsync();
     Task<List<MaquinaDto>> GetMaquinasAsync();
     Task<List<OrdenProduccionDto>> GetOrdenesProduccionAsync();
+    Task<List<HorarioDto>> GetHorariosAsync();
     Task<ProduccionDiaDto> GetProduccionDiaAsync(DateTime fecha, int? maquinaId, int? usuarioId);
     Task<TiempoProcesoDto> RegistrarTiempoAsync(RegistrarTiempoRequest request);
     Task<bool> LimpiarDatosDelDiaAsync(DateTime fecha, int? maquinaId, int? usuarioId);
@@ -87,7 +88,22 @@ public class TiempoProcesoService : ITiempoProcesoService
             .ToListAsync();
     }
 
+    public async Task<List<HorarioDto>> GetHorariosAsync()
+    {
+        return await _context.Horarios
+            .Where(h => h.Activo)
+            .OrderBy(h => h.Id)
+            .Select(h => new HorarioDto
+            {
+                Id = h.Id,
+                Codigo = h.Codigo,
+                Nombre = h.Nombre
+            })
+            .ToListAsync();
+    }
+
     public async Task<ProduccionDiaDto> GetProduccionDiaAsync(DateTime fecha, int? maquinaId, int? usuarioId)
+
     {
         var query = _context.TiemposProceso
             .Include(t => t.Actividad)
@@ -135,43 +151,44 @@ public class TiempoProcesoService : ITiempoProcesoService
 
     public async Task<List<TiempoProcesoDto>> GetHistorialDetalladoAsync(DateTime fechaInicio, DateTime fechaFin, int? maquinaId, int? usuarioId)
     {
-        // Consultar ProduccionDiaria en lugar de TiemposProceso para unificar con Captura Mensual
-        var query = _context.ProduccionDiaria
-            .Include(p => p.Usuario)
-            .Include(p => p.Maquina)
-            .Where(p => p.Fecha.Date >= fechaInicio.Date && p.Fecha.Date <= fechaFin.Date);
+        // Consultar TiemposProceso para obtener el detalle REAL de todas las actividades
+        var query = _context.TiemposProceso
+            .Include(t => t.Actividad)
+            .Include(t => t.Usuario)
+            .Include(t => t.Maquina)
+            .Include(t => t.OrdenProduccion)
+            .Where(t => t.Fecha.Date >= fechaInicio.Date && t.Fecha.Date <= fechaFin.Date);
 
         if (maquinaId.HasValue)
-            query = query.Where(p => p.MaquinaId == maquinaId.Value);
+            query = query.Where(t => t.MaquinaId == maquinaId.Value);
 
         if (usuarioId.HasValue)
-            query = query.Where(p => p.UsuarioId == usuarioId.Value);
+            query = query.Where(t => t.UsuarioId == usuarioId.Value);
 
         var data = await query
-            .OrderByDescending(p => p.Fecha)
-            .ThenByDescending(p => p.HoraInicio)
+            .OrderByDescending(t => t.Fecha)
+            .ThenByDescending(t => t.HoraInicio)
             .ToListAsync();
 
-        // Proyectar en memoria para usar formateo de strings
-        return data.Select(p => new TiempoProcesoDto
+        return data.Select(t => new TiempoProcesoDto
         {
-            Id = p.Id,
-            Fecha = p.Fecha,
-            HoraInicio = p.HoraInicio?.ToString("hh\\:mm\\:ss") ?? "00:00:00",
-            HoraFin = p.HoraFin?.ToString("hh\\:mm\\:ss") ?? "00:00:00",
-            Duracion = TimeSpan.FromHours((double)p.TotalHoras).ToString("hh\\:mm\\:ss"),
-            UsuarioId = p.UsuarioId,
-            UsuarioNombre = p.Usuario?.Nombre ?? string.Empty,
-            MaquinaId = p.MaquinaId,
-            MaquinaNombre = p.Maquina?.Nombre ?? string.Empty,
-            OrdenProduccionId = null,
-            OrdenProduccionNumero = p.ReferenciaOP ?? string.Empty,
-            ActividadId = 0,
-            ActividadNombre = "Producción", // Resumen diario consolidado
-            ActividadCodigo = "02",
-            Tiros = (int)p.TirosDiarios,
-            Desperdicio = (int)p.Desperdicio,
-            Observaciones = p.Novedades ?? string.Empty
+            Id = t.Id,
+            Fecha = t.Fecha,
+            HoraInicio = t.HoraInicio.ToString("HH:mm:ss"),
+            HoraFin = t.HoraFin.ToString("HH:mm:ss"),
+            Duracion = TimeSpan.FromTicks(t.Duracion).ToString(@"hh\:mm\:ss"),
+            UsuarioId = t.UsuarioId,
+            UsuarioNombre = t.Usuario?.Nombre ?? string.Empty,
+            MaquinaId = t.MaquinaId,
+            MaquinaNombre = t.Maquina?.Nombre ?? string.Empty,
+            OrdenProduccionId = t.OrdenProduccionId,
+            OrdenProduccionNumero = t.OrdenProduccion?.Numero ?? string.Empty,
+            ActividadId = t.ActividadId,
+            ActividadNombre = t.Actividad?.Nombre ?? "Desconocida", 
+            ActividadCodigo = t.Actividad?.Codigo ?? "",
+            Tiros = t.Tiros,
+            Desperdicio = t.Desperdicio,
+            Observaciones = t.Observaciones ?? string.Empty
         }).ToList();
     }
 
@@ -216,8 +233,13 @@ public class TiempoProcesoService : ITiempoProcesoService
             ActividadId = request.ActividadId,
             Tiros = request.Tiros,
             Desperdicio = request.Desperdicio,
-            Observaciones = request.Observaciones // Mapear observaciones si vienen en el request (aunque no estaba en el DTO original, debo checar)
+            Observaciones = request.Observaciones,
+            HorarioId = request.HorarioId  // Turno de trabajo
         };
+
+        try {
+             System.IO.File.AppendAllText("debug_log.txt", $"[{DateTime.Now}] RegistrarTiempo - HorarioId Request: {request.HorarioId}, Maquina: {request.MaquinaId}\n");
+        } catch {}
 
         _context.TiemposProceso.Add(tiempoProceso);
         await _context.SaveChangesAsync();
@@ -359,6 +381,22 @@ public class TiempoProcesoService : ITiempoProcesoService
             // Revert back using TimeOfDay since properties are DateTime
             diario.HoraInicio = tiempos.Min(t => t.HoraInicio).TimeOfDay;
             diario.HoraFin = tiempos.Max(t => t.HoraFin).TimeOfDay;
+            
+            // Obtener el HorarioId del primer registro que tenga uno asignado
+            var primerHorario = tiempos.FirstOrDefault(t => t.HorarioId.HasValue);
+            
+            try {
+                var logMsg = $"[{DateTime.Now}] UpdateProdDiaria - Fecha: {fecha}, Maq: {maquinaId}, Usu: {usuarioId}, Tiempos: {tiempos.Count}, PrimerHorario: {primerHorario?.HorarioId}\n";
+                System.IO.File.AppendAllText("debug_log.txt", logMsg);
+            } catch {}
+
+            if (primerHorario != null)
+            {
+                diario.HorarioId = primerHorario.HorarioId;
+                try {
+                    System.IO.File.AppendAllText("debug_log.txt", $"[{DateTime.Now}] Asignando HorarioId {diario.HorarioId} a ProduccionDiaria\n");
+                } catch {}
+            }
         }
 
         // 3. Reiniciar contadores
@@ -383,32 +421,47 @@ public class TiempoProcesoService : ITiempoProcesoService
         diario.EsHorarioLaboral = false;
 
         // 3.1 Calcular Cambios de OP (cuenta transiciones entre diferentes OPs)
-        // Incluye comparación con la última OP del día anterior
-        // Ejemplo: Si ayer terminó con 7075 y hoy empieza con 7076, cuenta como 1 cambio
-        var tiemposOrdenados = tiempos
-            .Where(t => t.OrdenProduccionId.HasValue)
+        // REGLAS:
+        // 1. Solo contar cambios si ocurren durante actividades de Producción (Codigo "02")
+        // 2. La OP 460 (General) NO cuenta para cambios (es neutra)
+        
+        // Filtrar solo tiempos de producción
+        var tiemposProduccion = tiempos
+            .Where(t => t.OrdenProduccion != null && t.Actividad?.Codigo == "02")
             .OrderBy(t => t.HoraInicio)
             .ToList();
-        
-        int cambios = 0;
-        
-        // Buscar la última OP del día anterior para este operario/máquina
+
+        // Obtener la última OP del día anterior que sea de producción y NO sea 460
         var fechaAyer = fecha.AddDays(-1);
         var ultimoRegistroAyer = await _context.TiemposProceso
-            .Where(t => t.Fecha == fechaAyer && t.MaquinaId == maquinaId && t.UsuarioId == usuarioId && t.OrdenProduccionId.HasValue)
+            .Include(t => t.OrdenProduccion) // Necesario para checar el número
+            .Include(t => t.Actividad)       // Necesario para checar si fue producción
+            .Where(t => t.Fecha == fechaAyer 
+                        && t.MaquinaId == maquinaId 
+                        && t.UsuarioId == usuarioId 
+                        && t.OrdenProduccionId.HasValue
+                        && t.Actividad.Codigo == "02"
+                        && t.OrdenProduccion.Numero != "460")
             .OrderByDescending(t => t.HoraFin)
             .FirstOrDefaultAsync();
         
-        int? opAnterior = ultimoRegistroAyer?.OrdenProduccionId;
+        int cambios = 0;
+        int? opAnteriorId = ultimoRegistroAyer?.OrdenProduccionId;
         
-        foreach (var t in tiemposOrdenados)
+        foreach (var t in tiemposProduccion)
         {
-            if (opAnterior.HasValue && t.OrdenProduccionId != opAnterior)
+            // Si la OP actual es 460, la ignoramos completamente para el conteo de cambios
+            if (t.OrdenProduccion!.Numero == "460") continue;
+
+            if (opAnteriorId.HasValue && t.OrdenProduccionId != opAnteriorId)
             {
                 cambios++;
             }
-            opAnterior = t.OrdenProduccionId;
+            
+            // Actualizamos la OP anterior (solo si no es 460, que ya filtramos arriba con el continue)
+            opAnteriorId = t.OrdenProduccionId;
         }
+        
         diario.Cambios = cambios;
 
         decimal horasProd = 0;

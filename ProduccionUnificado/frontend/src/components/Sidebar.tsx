@@ -1,20 +1,23 @@
 import { View, Text, StyleSheet, Image, TextInput, TouchableOpacity, ScrollView, StyleProp, ViewStyle, FlatList } from 'react-native';
 import React, { useState, useEffect } from 'react';
 // import { Picker } from '@react-native-picker/picker'; // Reemplazado por CustomDropdown
-import { Usuario, Maquina, OrdenProduccion, Actividad } from '../types';
+import { Usuario, Maquina, OrdenProduccion, Actividad, Horario } from '../types';
 
 interface SidebarProps {
     usuarios: Usuario[];
     maquinas: Maquina[];
     ordenes: OrdenProduccion[];
+    horarios: Horario[];
     selectedUsuario: number | null;
     selectedMaquina: number | null;
     selectedOrden: number | null;
+    selectedHorario: number | null;
     selectedActividad: Actividad | null;
     observaciones: string;
     onUsuarioChange: (id: number | null) => void;
     onMaquinaChange: (id: number | null) => void;
     onOrdenChange: (id: number | null) => void;
+    onHorarioChange: (id: number | null) => void;
     onObservacionesChange: (text: string) => void;
     onAdminPress?: () => void;
     style?: StyleProp<ViewStyle>;
@@ -91,14 +94,17 @@ export function Sidebar({
     usuarios,
     maquinas,
     ordenes,
+    horarios,
     selectedUsuario,
     selectedMaquina,
     selectedOrden,
+    selectedHorario,
     selectedActividad,
     observaciones,
     onUsuarioChange,
     onMaquinaChange,
     onOrdenChange,
+    onHorarioChange,
     onObservacionesChange,
     onAdminPress,
     style,
@@ -144,7 +150,7 @@ export function Sidebar({
                     style={styles.logo}
                     resizeMode="contain"
                 />
-                <Text style={{ fontSize: 10, color: '#718096', marginTop: 4 }}>v1.2.9 - PDF Reports 📄</Text>
+                <Text style={{ fontSize: 10, color: '#718096', marginTop: 4 }}>v1.4.1 - Quality View Update 🔍</Text>
             </View>
 
             {/* Toggle Button for Phones */}
@@ -184,12 +190,21 @@ export function Sidebar({
                             />
 
                             <CustomDropdown
+                                label="Horario"
+                                items={horarios}
+                                selectedValue={selectedHorario}
+                                onValueChange={onHorarioChange}
+                                placeholder="Seleccionar horario"
+                            />
+
+                            <CustomDropdown
                                 label="Operario"
                                 items={usuarios}
                                 selectedValue={selectedUsuario}
                                 onValueChange={onUsuarioChange}
                                 placeholder="Seleccionar operario"
                             />
+
 
                             <Text style={styles.label}>Orden de Producción</Text>
                             <View>

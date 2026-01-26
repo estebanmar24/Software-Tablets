@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, RefreshControl, ScrollView, TextInput, Image, ActivityIndicator, Keyboard, Modal, Dimensions, Platform } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
 import axios from 'axios';
 import { API_URL as API_BASE_URL } from '../services/productionApi';
 
@@ -144,9 +145,21 @@ export default function CalidadScreen({ navigation }) {
                 axios.get(`${API_BASE_URL}/calidad/estados`),
             ]);
             setUsuarios(usuariosRes.data);
-            setMaquinas(maquinasRes.data);
+            // Agregar "Manual/Terminados" exclusivamente para Encuestas de Calidad
+            const maquinasConManual = [
+                ...maquinasRes.data,
+                { id: -1, nombre: 'Manual/Terminados' }
+            ];
+            setMaquinas(maquinasConManual);
             setProcesos(procesosRes.data);
-            setTiposNovedad(novedadesRes.data);
+            // Agregar opciones adicionales de novedad
+            const novedadesExtendidas = [
+                ...novedadesRes.data,
+                'Otros',
+                'Daño mecánico',
+                'Daño eléctrico'
+            ];
+            setTiposNovedad(novedadesExtendidas);
             setEstados(estadosRes.data);
         } catch (error) {
             console.error('Error cargando datos:', error);
@@ -166,6 +179,12 @@ export default function CalidadScreen({ navigation }) {
     // Mapeo máquina -> proceso basado en el nombre de la máquina
     const getProcesoForMaquina = (maquinaId) => {
         if (!maquinaId) return '';
+
+        // Caso especial: Manual/Terminados
+        if (maquinaId === -1 || maquinaId === '-1') {
+            return 'Manual/Terminados';
+        }
+
         // Usar == para manejar tipos mixtos (string vs number)
         const maquina = maquinas.find(m => String(m.id) === String(maquinaId));
         if (!maquina) {
@@ -373,18 +392,37 @@ export default function CalidadScreen({ navigation }) {
     const tomarFoto = async (index) => {
         Keyboard.dismiss();
         try {
-            const { status } = await ImagePicker.requestCameraPermissionsAsync();
-            if (status !== 'granted') {
+            // Solicitar permisos de cámara y galería
+            const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
+            if (cameraStatus !== 'granted') {
                 Alert.alert('Permiso denegado', 'Se necesita acceso a la cámara');
                 return;
             }
+
+            const { status: mediaStatus } = await MediaLibrary.requestPermissionsAsync();
+            if (mediaStatus !== 'granted') {
+                console.log('Permiso de galería denegado, la foto no se guardará en galería');
+            }
+
             const result = await ImagePicker.launchCameraAsync({
                 mediaTypes: ImagePicker.MediaTypeOptions.Images,
                 allowsEditing: true, aspect: [4, 3], quality: 0.7, base64: true,
             });
+
             if (!result.canceled && result.assets[0]) {
-                actualizarNovedad(index, 'fotoBase64', result.assets[0].base64);
-                actualizarNovedad(index, 'fotoUri', result.assets[0].uri);
+                const asset = result.assets[0];
+                actualizarNovedad(index, 'fotoBase64', asset.base64);
+                actualizarNovedad(index, 'fotoUri', asset.uri);
+
+                // Guardar la foto en la galería del dispositivo
+                if (mediaStatus === 'granted' && asset.uri) {
+                    try {
+                        await MediaLibrary.saveToLibraryAsync(asset.uri);
+                        console.log('Foto guardada en galería');
+                    } catch (saveError) {
+                        console.log('No se pudo guardar en galería:', saveError);
+                    }
+                }
             }
         } catch (error) {
             console.error('Error tomando foto:', error);

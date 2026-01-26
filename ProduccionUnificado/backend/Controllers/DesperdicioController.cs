@@ -163,7 +163,7 @@ public class DesperdicioController : ControllerBase
     // ==========================================
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<object>>> GetRegistros(int? maquinaId, DateTime? fecha, int? usuarioId, string? ordenProduccion)
+    public async Task<ActionResult<IEnumerable<object>>> GetRegistros(int? maquinaId, DateTime? fecha, int? usuarioId, string? ordenProduccion, int? codigoDesperdicioId)
     {
         var query = _context.RegistrosDesperdicio
             .Include(r => r.CodigoDesperdicio)
@@ -184,6 +184,11 @@ public class DesperdicioController : ControllerBase
         if (usuarioId.HasValue)
         {
             query = query.Where(r => r.UsuarioId == usuarioId.Value);
+        }
+
+        if (codigoDesperdicioId.HasValue)
+        {
+            query = query.Where(r => r.CodigoDesperdicioId == codigoDesperdicioId.Value);
         }
 
         if (!string.IsNullOrEmpty(ordenProduccion))
@@ -214,6 +219,18 @@ public class DesperdicioController : ControllerBase
         return Ok(registros);
     }
 
+    [HttpGet("relaciones")]
+    public async Task<ActionResult<object>> GetRelaciones()
+    {
+        // Obtener relaciones unicas para filtrado en cascada
+        var relaciones = await _context.RegistrosDesperdicio
+            .Select(r => new { r.MaquinaId, r.UsuarioId })
+            .Distinct()
+            .ToListAsync();
+
+        return Ok(relaciones);
+    }
+
     [HttpGet("total")]
     public async Task<ActionResult<decimal>> GetTotalDesperdicio(int maquinaId, DateTime fecha)
     {
@@ -225,14 +242,15 @@ public class DesperdicioController : ControllerBase
     }
 
     [HttpGet("reporte")]
-    public async Task<ActionResult<Dictionary<int, decimal>>> GetReporteMensual(int maquinaId, int mes, int anio)
+    public async Task<ActionResult<Dictionary<string, decimal>>> GetReporteMensual(int maquinaId, int mes, int anio)
     {
         var registros = await _context.RegistrosDesperdicio
             .Where(r => r.MaquinaId == maquinaId && r.Fecha.Month == mes && r.Fecha.Year == anio)
             .ToListAsync();
 
+        // Group by day AND operator for proper per-row distribution
         var reporte = registros
-            .GroupBy(r => r.Fecha.Day)
+            .GroupBy(r => $"{r.Fecha.Day}_{r.UsuarioId}")
             .ToDictionary(g => g.Key, g => g.Sum(r => r.Cantidad));
 
         return Ok(reporte);

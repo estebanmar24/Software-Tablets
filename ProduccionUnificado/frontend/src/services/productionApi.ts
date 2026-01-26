@@ -4,7 +4,21 @@
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
 // Wrapper to make fetch responses compatible with axios { data } structure
 async function axiosWrapper<T>(url: string, options?: RequestInit): Promise<{ data: T }> {
-    const response = await fetch(url, options);
+    const noCacheHeaders = {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+    };
+
+    const finalOptions = {
+        ...options,
+        headers: {
+            ...noCacheHeaders,
+            ...options?.headers
+        }
+    };
+
+    const response = await fetch(url, finalOptions);
     if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
     }
@@ -62,16 +76,16 @@ export const getResumen = (mes: number, anio: number) =>
     axiosWrapper<any>(`${API_BASE_URL}/produccion/resumen?mes=${mes}&anio=${anio}`);
 
 export const getProduccionDetalles = (mes: number, anio: number, maquinaId: number, usuarioId: number) =>
-    axiosWrapper<any[]>(`${API_BASE_URL}/produccion/detalles?mes=${mes}&anio=${anio}&maquinaId=${maquinaId}&usuarioId=${usuarioId}`);
+    axiosWrapper<any[]>(`${API_BASE_URL}/produccion/detalles?mes=${mes}&anio=${anio}&maquinaId=${maquinaId}&usuarioId=${usuarioId}&_t=${Date.now()}`);
 
 export const getOperariosConDatos = (mes: number, anio: number) =>
-    axiosWrapper<any[]>(`${API_BASE_URL}/produccion/operarios-con-datos?mes=${mes}&anio=${anio}`);
+    axiosWrapper<any[]>(`${API_BASE_URL}/produccion/operarios-con-datos?mes=${mes}&anio=${anio}&_t=${Date.now()}`);
 
 export const getMaquinasConDatos = (mes: number, anio: number) =>
-    axiosWrapper<any[]>(`${API_BASE_URL}/produccion/maquinas-con-datos?mes=${mes}&anio=${anio}`);
+    axiosWrapper<any[]>(`${API_BASE_URL}/produccion/maquinas-con-datos?mes=${mes}&anio=${anio}&_t=${Date.now()}`);
 
 export const getProduccionPorMaquina = (mes: number, anio: number, maquinaId: number) =>
-    axiosWrapper<any[]>(`${API_BASE_URL}/produccion/detalles-maquina?mes=${mes}&anio=${anio}&maquinaId=${maquinaId}`);
+    axiosWrapper<any[]>(`${API_BASE_URL}/produccion/detalles-maquina?mes=${mes}&anio=${anio}&maquinaId=${maquinaId}&_t=${Date.now()}`);
 
 export const borrarProduccion = (mes: number, anio: number, usuarioId?: number, maquinaId?: number) => {
     let url = `${API_BASE_URL}/produccion/borrar?mes=${mes}&anio=${anio}`;

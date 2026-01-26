@@ -68,6 +68,7 @@ public class RegistrarTiempoRequest
     public int Tiros { get; set; }
     public int Desperdicio { get; set; }
     public string? Observaciones { get; set; }
+    public int? HorarioId { get; set; }  // Turno de trabajo
 }
 
 public class ProduccionDiaDto

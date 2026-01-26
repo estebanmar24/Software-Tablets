@@ -127,6 +127,38 @@ public static class DbInitializer
                     ""Observaciones"" TEXT NULL
                 );
 
+                -- CORRECCIÓN DE DATOS EXISTENTES (Forzar actualización)
+                -- 1. Corregir código 11 -> 14 (Otros tiempos)
+                UPDATE ""Actividades"" 
+                SET ""Codigo"" = '14', ""Nombre"" = 'Otros tiempos', ""Orden"" = 8, ""Observaciones"" = 'Calibración, cambios, reunion'
+                WHERE ""Codigo"" = '11';
+
+                -- 2. Asegurar que el código 14 tenga el nombre correcto (por si ya existía como 14 pero con otro nombre)
+                UPDATE ""Actividades"" 
+                SET ""Nombre"" = 'Otros tiempos', ""Observaciones"" = 'Calibración, cambios, reunion'
+                WHERE ""Codigo"" = '14';
+
+                -- 3. Corregir código 08 (Otro Tiempo Muerto)
+                UPDATE ""Actividades"" 
+                SET ""Nombre"" = 'Otro Tiempo Muerto', ""Observaciones"" = 'Falta de Material, Imprevistos'
+                WHERE ""Codigo"" = '08';
+
+                -- 4. Corregir código 13 (Falta de Trabajo)
+                UPDATE ""Actividades"" 
+                SET ""Nombre"" = 'Falta de Trabajo', ""Observaciones"" = 'Sin órdenes asignadas'
+                WHERE ""Codigo"" = '13';
+
+                -- 5. Corregir código 10 (Mantenimiento y Aseo)
+                UPDATE ""Actividades"" 
+                SET ""Nombre"" = 'Mantenimiento y Aseo', ""Observaciones"" = 'Mantenimiento preventivo'
+                WHERE ""Codigo"" = '10';
+
+                -- 6. Corregir código 03 (Reparación)
+                UPDATE ""Actividades"" 
+                SET ""Nombre"" = 'Reparación', ""Observaciones"" = 'Reparación de fallas o averías'
+                WHERE ""Codigo"" = '03';
+
+                -- Insertar si no existen (mismo bloque de antes, por seguridad)
                 INSERT INTO ""Actividades"" (""Codigo"", ""Nombre"", ""EsProductiva"", ""Orden"", ""Observaciones"")
                 SELECT * FROM (VALUES
                     ('01', 'Puesta a Punto', CAST(0 AS BOOLEAN), 1, 'Preparación inicial de la máquina'),
@@ -138,9 +170,9 @@ public static class DbInitializer
                     ('13', 'Falta de Trabajo', CAST(0 AS BOOLEAN), 7, 'Sin órdenes asignadas'),
                     ('14', 'Otros tiempos', CAST(0 AS BOOLEAN), 8, 'Calibración, cambios, reunion')
                 ) AS v(""Codigo"", ""Nombre"", ""EsProductiva"", ""Orden"", ""Observaciones"")
-                WHERE NOT EXISTS (SELECT 1 FROM ""Actividades"");
+                WHERE NOT EXISTS (SELECT 1 FROM ""Actividades"" WHERE ""Codigo"" = v.""Codigo"");
             ");
-            Console.WriteLine("[DB INIT] Actividades checked/created.");
+            Console.WriteLine("[DB INIT] Actividades checked/updated/created.");
         }
         catch (Exception ex) { Log($"Actividades Error: {ex.Message}"); }
 
@@ -192,6 +224,89 @@ public static class DbInitializer
             Console.WriteLine("[DB INIT] TiempoProcesos checked/created.");
         }
         catch (Exception ex) { Log($"TiempoProcesos Error: {ex.Message}"); }
+
+        // DESPERDICIOS DETALLADOS
+        try
+        {
+            context.Database.ExecuteSqlRaw(@"
+                CREATE TABLE IF NOT EXISTS ""CodigosDesperdicio"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""Codigo"" TEXT NOT NULL,
+                    ""Descripcion"" TEXT NOT NULL,
+                    ""Activo"" BOOLEAN NOT NULL DEFAULT TRUE,
+                    ""FechaCreacion"" TIMESTAMP NOT NULL DEFAULT NOW()
+                );
+
+                CREATE TABLE IF NOT EXISTS ""RegistrosDesperdicio"" (
+                    ""Id"" BIGSERIAL PRIMARY KEY,
+                    ""MaquinaId"" INTEGER NOT NULL,
+                    ""UsuarioId"" INTEGER NOT NULL,
+                    ""CodigoDesperdicioId"" INTEGER NOT NULL REFERENCES ""CodigosDesperdicio""(""Id""),
+                    ""OrdenProduccion"" TEXT,
+                    ""Cantidad"" DECIMAL(18,2) NOT NULL,
+                    ""Fecha"" TIMESTAMP NOT NULL DEFAULT NOW(),
+                    ""Nota"" TEXT,
+                    ""TiempoId"" BIGINT NULL REFERENCES ""TiempoProcesos""(""Id"") ON DELETE SET NULL
+                );
+
+                INSERT INTO ""CodigosDesperdicio"" (""Codigo"", ""Descripcion"", ""Activo"")
+                SELECT * FROM (VALUES
+                    ('01', 'Arranque', true),
+                    ('02', 'Troquelado', true),
+                    ('03', 'Impresión', true),
+                    ('04', 'Falla Material', true),
+                    ('05', 'Corte', true),
+                    ('06', 'Empaque', true),
+                    ('07', 'Laminado', true),
+                    ('99', 'Otros', true)
+                ) AS v(""Codigo"", ""Descripcion"", ""Activo"")
+                WHERE NOT EXISTS (SELECT 1 FROM ""CodigosDesperdicio"");
+            ");
+            Console.WriteLine("[DB INIT] Desperdicio Tables checked/created/seeded.");
+        }
+        catch (Exception ex) { Log($"Desperdicio Init Error: {ex.Message}"); }
+
+        // HORARIOS (Turnos de trabajo)
+        try
+        {
+            context.Database.ExecuteSqlRaw(@"
+                CREATE TABLE IF NOT EXISTS ""Horarios"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""Codigo"" TEXT NOT NULL,
+                    ""Nombre"" TEXT NOT NULL,
+                    ""InicioSemana"" TIME NOT NULL,
+                    ""FinSemana"" TIME NOT NULL,
+                    ""InicioSabado"" TIME NOT NULL DEFAULT '08:00:00',
+                    ""FinSabado"" TIME NOT NULL DEFAULT '12:00:00',
+                    ""Activo"" BOOLEAN NOT NULL DEFAULT TRUE
+                );
+
+                INSERT INTO ""Horarios"" (""Codigo"", ""Nombre"", ""InicioSemana"", ""FinSemana"", ""InicioSabado"", ""FinSabado"")
+                SELECT * FROM (VALUES
+                    ('1', '6am - 2pm', '06:00:00'::TIME, '14:00:00'::TIME, '08:00:00'::TIME, '12:00:00'::TIME),
+                    ('2', '7am - 4pm', '07:00:00'::TIME, '16:00:00'::TIME, '08:00:00'::TIME, '12:00:00'::TIME),
+                    ('3', '8am - 12pm', '08:00:00'::TIME, '12:00:00'::TIME, '08:00:00'::TIME, '12:00:00'::TIME),
+                    ('4', '2pm - 10pm', '14:00:00'::TIME, '22:00:00'::TIME, '08:00:00'::TIME, '12:00:00'::TIME)
+                ) AS v(""Codigo"", ""Nombre"", ""InicioSemana"", ""FinSemana"", ""InicioSabado"", ""FinSabado"")
+                WHERE NOT EXISTS (SELECT 1 FROM ""Horarios"");
+
+                -- Corregir nombres existentes (si ya fueron creados con nombres largos)
+                UPDATE ""Horarios"" SET ""Nombre"" = '6am - 2pm' WHERE ""Codigo"" = '1';
+                UPDATE ""Horarios"" SET ""Nombre"" = '7am - 4pm' WHERE ""Codigo"" = '2';
+                UPDATE ""Horarios"" SET ""Nombre"" = '8am - 12pm' WHERE ""Codigo"" = '3';
+                UPDATE ""Horarios"" SET ""Nombre"" = '2pm - 10pm' WHERE ""Codigo"" = '4';
+
+                -- Agregar columna HorarioId a TiempoProcesos si no existe
+                ALTER TABLE ""TiempoProcesos"" ADD COLUMN IF NOT EXISTS ""HorarioId"" INTEGER NULL;
+
+                -- Agregar columna HorarioId a ProduccionDiaria si no existe
+                ALTER TABLE ""ProduccionDiaria"" ADD COLUMN IF NOT EXISTS ""HorarioId"" INTEGER NULL;
+            ");
+            Console.WriteLine("[DB INIT] Horarios checked/created/seeded.");
+        }
+        catch (Exception ex) { Log($"Horarios Init Error: {ex.Message}"); }
+
+
         
         // PRODUCCION DIARIA (Verificación de existencia)
         try

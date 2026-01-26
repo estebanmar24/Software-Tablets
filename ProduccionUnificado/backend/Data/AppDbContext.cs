@@ -29,6 +29,9 @@ public class AppDbContext : DbContext
     public DbSet<CodigoDesperdicio> CodigosDesperdicio { get; set; }
     public DbSet<RegistroDesperdicio> RegistrosDesperdicio { get; set; }
 
+    // Horarios/Turnos
+    public DbSet<Horario> Horarios { get; set; }
+
     // SST Budget and Expense Management
     public DbSet<SST_Rubro> SST_Rubros { get; set; }
     public DbSet<SST_TipoServicio> SST_TiposServicio { get; set; }

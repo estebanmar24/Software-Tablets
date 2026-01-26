@@ -116,4 +116,8 @@ public class ProduccionDiaria
     /// </summary>
     [Column(TypeName = "decimal(18, 2)")]
     public decimal ValorAPagarBonificable { get; set; }
+    
+    // Horario/Turno del operario
+    public int? HorarioId { get; set; }
+    public Horario? Horario { get; set; }
 }

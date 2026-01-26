@@ -29,4 +29,5 @@ public class ProduccionDiariaDto
     public string? Novedades { get; set; }
     public decimal Desperdicio { get; set; }
     public int DiaLaborado { get; set; } = 1;
+    public int? HorarioId { get; set; }  // Turno de trabajo
 }

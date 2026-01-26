@@ -10,6 +10,7 @@ import { Sidebar } from './src/components/Sidebar';
 import { TimerHeader } from './src/components/TimerHeader';
 import { ActivitySelector } from './src/components/ActivitySelector';
 import { ProductionCard } from './src/components/ProductionCard';
+import { WasteModal } from './src/components/WasteModal';
 import { DailyTotals } from './src/components/DailyTotals';
 import { ActivityHistory } from './src/components/ActivityHistory';
 import { useTimer } from './src/hooks/useTimer';
@@ -19,6 +20,9 @@ import {
   Maquina,
   OrdenProduccion,
   TiempoProceso,
+  CodigoDesperdicio,
+  RegistroDesperdicioRequest,
+  Horario,
 } from './src/types';
 import * as api from './src/services/api';
 
@@ -130,8 +134,10 @@ export default function App() {
   const [selectedUsuario, setSelectedUsuario] = useState<number | null>(null);
   const [selectedMaquina, setSelectedMaquina] = useState<number | null>(null);
   const [selectedOrden, setSelectedOrden] = useState<number | null>(null);
+  const [selectedHorario, setSelectedHorario] = useState<number | null>(null);
   const [opSearchText, setOpSearchText] = useState('');
   const [selectedActividad, setSelectedActividad] = useState<Actividad | null>(null);
+  const [horarios, setHorarios] = useState<Horario[]>([]);
 
   // Estados de producción acumulada (durante la actividad actual)
   const [tirosAcumulados, setTirosAcumulados] = useState(0);
@@ -150,6 +156,7 @@ export default function App() {
       if (saved) {
         if (saved.selectedUsuarioId) setSelectedUsuario(saved.selectedUsuarioId);
         if (saved.selectedMaquinaId) setSelectedMaquina(saved.selectedMaquinaId);
+        if (saved.selectedHorarioId) setSelectedHorario(saved.selectedHorarioId);
         if (saved.selectedActividad) setSelectedActividad(saved.selectedActividad);
         // NOTE: OP is intentionally NOT restored on page reload (user preference)
         // if (saved.selectedOrden) setSelectedOrden(saved.selectedOrden);
@@ -182,6 +189,11 @@ export default function App() {
     // Need access to timer.startTime, so this effect must be defined AFTER timer is instantiated (which is line 14 originally).
   }, []);
   const [desperdicioTotalDia, setDesperdicioTotalDia] = useState(0);
+
+  // Estado para modal de desperdicios detallados
+  const [isWasteModalOpen, setIsWasteModalOpen] = useState(false);
+  const [wasteRecords, setWasteRecords] = useState<RegistroDesperdicioRequest[]>([]);
+  const [codigosDesperdicio, setCodigosDesperdicio] = useState<CodigoDesperdicio[]>([]);
 
   // Hook del cronómetro
   const timer = useTimer();
@@ -221,6 +233,7 @@ export default function App() {
     saveState({
       selectedUsuarioId: selectedUsuario,
       selectedMaquinaId: selectedMaquina,
+      selectedHorarioId: selectedHorario,
       selectedActividad: selectedActividad,
       selectedOrden: selectedOrden,
       opSearchText,
@@ -230,7 +243,7 @@ export default function App() {
       timerStartTime: timer.startTime ? timer.startTime.toISOString() : null
     });
   }, [
-    selectedUsuario, selectedMaquina, selectedActividad, selectedOrden,
+    selectedUsuario, selectedMaquina, selectedHorario, selectedActividad, selectedOrden,
     opSearchText, observaciones, tirosAcumulados, desperdicioAcumulado,
     timer.startTime, isRestored
   ]);
@@ -247,16 +260,20 @@ export default function App() {
 
   const loadCatalogs = async () => {
     try {
-      const [actividadesData, usuariosData, maquinasData, ordenesData] =
+      const [actividadesData, usuariosData, maquinasData, ordenesData, codigosData, horariosData] =
         await Promise.all([
           api.getActividades(),
           api.getUsuarios(),
           api.getMaquinas(),
           api.getOrdenes(),
+          api.getCodigosDesperdicio(),
+          api.getHorarios(),
         ]);
 
       setActividades(actividadesData);
       setUsuarios(usuariosData);
+      setCodigosDesperdicio(codigosData);
+      setHorarios(horariosData);
 
       // Map API data (PascalCase) to Frontend Interface (camelCase)
       const mappedMaquinas = (maquinasData as any[]).map(m => ({
@@ -362,12 +379,12 @@ export default function App() {
   };
 
   // Verificar si se puede iniciar el cronómetro
-  const canStart = selectedActividad !== null && selectedMaquina !== null && selectedUsuario !== null;
+  const canStart = selectedActividad !== null && selectedMaquina !== null && selectedUsuario !== null && selectedHorario !== null;
 
   // Manejadores de eventos
   const handleStart = () => {
     if (!canStart) {
-      showAlert('Datos incompletos', 'Debe seleccionar máquina, operario y actividad antes de iniciar.');
+      showAlert('Datos incompletos', 'Debe seleccionar máquina, horario, operario y actividad antes de iniciar.');
       return;
     }
 
@@ -384,6 +401,22 @@ export default function App() {
   };
 
   const handleStop = async () => {
+    // Validar: Para Producción (02), es OBLIGATORIO ingresar tiros > 0
+    if (selectedActividad?.codigo === '02' || selectedActividad?.nombre === 'Producción') {
+      if (tirosAcumulados <= 0) {
+        showAlert('Tiros Requeridos', '⚠️ Debe ingresar la cantidad de tiros producidos antes de terminar el proceso.');
+        return; // Detener la acción de parar
+      }
+    }
+
+    // Validar: Para Reparación (03), es OBLIGATORIO ingresar observaciones
+    if (selectedActividad?.codigo === '03' || selectedActividad?.nombre === 'Reparación') {
+      if (!observaciones || observaciones.trim().length === 0) {
+        showAlert('Observación Requerida', '⚠️ Para terminar una Reparación, debe ingresar obligatoriamente qué se hizo en el campo de "Observaciones".');
+        return;
+      }
+    }
+
     const { duration, startTime, endTime } = timer.stop();
 
     // Crear registro para el historial
@@ -436,12 +469,34 @@ export default function App() {
         desperdicio: nuevoRegistro.desperdicio,
         referenciaOP: opSearchText,
         observaciones: observaciones,
+        horarioId: selectedHorario || undefined,  // Turno de trabajo
       };
       console.log('=== GUARDANDO EN BD ===');
       console.log('Payload:', JSON.stringify(payload, null, 2));
 
-      const result = await api.registrarTiempo(payload);
-      console.log('Guardado exitoso:', result);
+      const savedRecord = await api.registrarTiempo(payload);
+      console.log('Guardado exitoso:', savedRecord);
+
+      // Guardar registros detallados de desperdicio si existen
+      if (wasteRecords.length > 0) {
+        try {
+          console.log('Guardando detalles de desperdicio:', wasteRecords.length);
+          await Promise.all(wasteRecords.map(record =>
+            api.registrarDesperdicio({
+              ...record,
+              tiempoId: savedRecord.id
+            })
+          ));
+          console.log('Detalles de desperdicio guardados correctamente');
+        } catch (wasteError) {
+          console.error("Error guardando detalles de desperdicio:", wasteError);
+          // No bloqueamos el éxito global, pero avisamos
+          Alert.alert("Advertencia", "El tiempo se guardó, pero hubo un error guardando los detalles de desperdicio.");
+        }
+      }
+
+      // Limpiar registros temporales
+      setWasteRecords([]);
 
       // NO limpiar OP para que persista entre procesos
       // setOpSearchText('');
@@ -459,8 +514,13 @@ export default function App() {
     setTirosAcumulados((prev) => prev + value);
   };
 
-  const handleAddDesperdicio = (value: number) => {
-    setDesperdicioAcumulado((prev) => prev + value);
+  // Funciones para WasteModal
+  const handleOpenWasteModal = () => setIsWasteModalOpen(true);
+  const handleCloseWasteModal = () => setIsWasteModalOpen(false);
+
+  const handleAddWaste = (record: RegistroDesperdicioRequest) => {
+    setWasteRecords((prev) => [...prev, record]);
+    setDesperdicioAcumulado((prev) => prev + record.cantidad);
   };
 
   const handleClearData = async () => {
@@ -613,14 +673,17 @@ export default function App() {
         usuarios={usuarios}
         maquinas={maquinas}
         ordenes={ordenes}
+        horarios={horarios}
         selectedUsuario={selectedUsuario}
         selectedMaquina={selectedMaquina}
         selectedOrden={selectedOrden}
+        selectedHorario={selectedHorario}
         selectedActividad={selectedActividad}
         observaciones={observaciones}
         onUsuarioChange={setSelectedUsuario}
         onMaquinaChange={setSelectedMaquina}
         onOrdenChange={setSelectedOrden}
+        onHorarioChange={setSelectedHorario}
         onObservacionesChange={setObservaciones}
         onAdminPress={() => setCurrentView('login')}
         scrollEnabled={!isMobile} // Disable internal scroll on mobile
@@ -653,7 +716,7 @@ export default function App() {
               actividades={actividades}
               handleSelectActividad={handleSelectActividad}
               handleAddTiros={handleAddTiros}
-              handleAddDesperdicio={handleAddDesperdicio}
+              onOpenWasteModal={handleOpenWasteModal}
               historial={historial}
               // handleClearData removed as the button was removed from the component
               tirosTotales={tirosTotalesDia + tirosAcumulados}
@@ -673,7 +736,7 @@ export default function App() {
             actividades={actividades}
             handleSelectActividad={handleSelectActividad}
             handleAddTiros={handleAddTiros}
-            handleAddDesperdicio={handleAddDesperdicio}
+            onOpenWasteModal={handleOpenWasteModal}
             historial={historial}
             handleClearData={handleClearData}
             tirosTotales={tirosTotalesDia + tirosAcumulados}
@@ -683,12 +746,31 @@ export default function App() {
           />
         )}
       </View>
+      <WasteModal
+        visible={isWasteModalOpen}
+        onClose={handleCloseWasteModal}
+        onAdd={(codigoId, cantidad) => {
+          // Crear objeto registro
+          if (!selectedMaquina || !selectedUsuario) return;
+
+          const record: RegistroDesperdicioRequest = {
+            maquinaId: selectedMaquina,
+            usuarioId: selectedUsuario,
+            codigoDesperdicioId: codigoId,
+            cantidad: cantidad,
+            fecha: new Date().toISOString(), // Fecha local UTC o similar
+            ordenProduccion: opSearchText || undefined
+          };
+          handleAddWaste(record);
+        }}
+        codigos={codigosDesperdicio}
+      />
     </MainWrapper>
   );
 }
 
 // Extracted Content Component to avoid duplication logic
-const Content = ({ timer, selectedActividad, canStart, handleStart, handleStop, isMobile, actividades, handleSelectActividad, handleAddTiros, handleAddDesperdicio, historial, handleClearData, tirosTotales, desperdicioTotal, metaDia, valorPorTiro }: any) => (
+const Content = ({ timer, selectedActividad, canStart, handleStart, handleStop, isMobile, actividades, handleSelectActividad, handleAddTiros, onOpenWasteModal, historial, handleClearData, tirosTotales, desperdicioTotal, metaDia, valorPorTiro }: any) => (
   <View style={!isMobile ? { minHeight: '100%', padding: 20 } : {}}>
     {/* Header con cronómetro */}
     <TimerHeader
@@ -717,7 +799,7 @@ const Content = ({ timer, selectedActividad, canStart, handleStart, handleStop, 
         {(selectedActividad?.codigo === '02' || selectedActividad?.nombre === 'Producción') && (
           <ProductionCard
             onAddTiros={handleAddTiros}
-            onAddDesperdicio={handleAddDesperdicio}
+            onOpenWasteModal={onOpenWasteModal}
             disabled={!timer.isRunning}
           />
         )}

@@ -3,13 +3,12 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, Platform, Alert } 
 
 interface ProductionCardProps {
     onAddTiros: (value: number) => void;
-    onAddDesperdicio: (value: number) => void;
+    onOpenWasteModal: () => void;
     disabled?: boolean;
 }
 
-export function ProductionCard({ onAddTiros, onAddDesperdicio, disabled = false }: ProductionCardProps) {
+export function ProductionCard({ onAddTiros, onOpenWasteModal, disabled = false }: ProductionCardProps) {
     const [tirosInput, setTirosInput] = useState('');
-    const [desperdicioInput, setDesperdicioInput] = useState('');
 
     const handleAddTiros = () => {
         if (disabled) return;
@@ -17,15 +16,6 @@ export function ProductionCard({ onAddTiros, onAddDesperdicio, disabled = false 
         if (!isNaN(value) && value > 0) {
             onAddTiros(value);
             setTirosInput('');
-        }
-    };
-
-    const handleAddDesperdicio = () => {
-        if (disabled) return;
-        const value = parseInt(desperdicioInput, 10);
-        if (!isNaN(value) && value > 0) {
-            onAddDesperdicio(value);
-            setDesperdicioInput('');
         }
     };
 
@@ -66,37 +56,14 @@ export function ProductionCard({ onAddTiros, onAddDesperdicio, disabled = false 
                 </View>
             </View>
 
-            <View style={styles.section}>
-                <Text style={[styles.label, disabled && styles.textDisabled]}>Desperdicio</Text>
-                <View style={styles.inputContainer}>
-                    <TextInput
-                        style={[
-                            styles.input,
-                            disabled && styles.inputDisabled,
-                            // @ts-ignore
-                            Platform.OS === 'web' && { outlineWidth: 0 }
-                        ]}
-                        value={desperdicioInput}
-                        onChangeText={(text) => {
-                            if (/^\d*$/.test(text)) {
-                                setDesperdicioInput(text);
-                            } else {
-                                Alert.alert("Error", "Solo se permiten números enteros");
-                            }
-                        }}
-                        keyboardType="numeric"
-                        placeholder="0"
-                        placeholderTextColor={disabled ? "#CBD5E0" : "#A0AEC0"}
-                        editable={!disabled}
-                    />
-                    <TouchableOpacity
-                        style={[styles.addButton, styles.addButtonScrap, disabled && styles.buttonDisabled]}
-                        onPress={handleAddDesperdicio}
-                        disabled={disabled}
-                    >
-                        <Text style={styles.addButtonText}>Agregar</Text>
-                    </TouchableOpacity>
-                </View>
+            <View style={[styles.section, { marginTop: 10 }]}>
+                <TouchableOpacity
+                    style={[styles.wasteButton, disabled && styles.buttonDisabled]}
+                    onPress={onOpenWasteModal}
+                    disabled={disabled}
+                >
+                    <Text style={styles.wasteButtonText}>AGREGAR DESPERDICIO</Text>
+                </TouchableOpacity>
             </View>
         </View>
     );
@@ -177,6 +144,18 @@ const styles = StyleSheet.create({
     addButtonText: {
         color: '#FFFFFF',
         fontWeight: '600',
+        fontSize: 14,
+    },
+    wasteButton: {
+        backgroundColor: '#E53E3E', // Rojo intenso
+        borderRadius: 8,
+        padding: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    wasteButtonText: {
+        color: 'white',
+        fontWeight: 'bold',
         fontSize: 14,
     },
 });

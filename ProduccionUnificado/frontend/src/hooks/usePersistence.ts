@@ -7,6 +7,7 @@ const STORAGE_KEY = '@produccion_app_state_v1';
 export interface PersistedState {
     selectedUsuarioId: number | null;
     selectedMaquinaId: number | null;
+    selectedHorarioId: number | null;
     selectedActividad: Actividad | null;
     selectedOrden: number | null;
     opSearchText: string;
@@ -43,6 +44,7 @@ export const usePersistence = () => {
                         ...state,
                         selectedUsuarioId: null,
                         selectedMaquinaId: null,
+                        selectedHorarioId: null,
                         selectedActividad: null,
                         selectedOrden: null,
                         timerStartTime: null

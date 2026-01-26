@@ -1,0 +1,3 @@
+[25/01/2026 3:42:55 p. m.] RegistrarTiempo - HorarioId Request: 1, Maquina: 23
+[25/01/2026 3:42:55 p. m.] UpdateProdDiaria - Fecha: 25/01/2026 12:00:00 a. m., Maq: 23, Usu: 1, Tiempos: 1, PrimerHorario: 1
+[25/01/2026 3:42:55 p. m.] Asignando HorarioId 1 a ProduccionDiaria

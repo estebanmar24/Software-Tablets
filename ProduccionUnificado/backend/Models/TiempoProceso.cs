@@ -23,5 +23,8 @@ public class TiempoProceso
     public int Tiros { get; set; }
     public int Desperdicio { get; set; }
     public string? Observaciones { get; set; }
+    
+    // Horario/Turno del operario
+    public int? HorarioId { get; set; }
+    public Horario? Horario { get; set; }
 }
-

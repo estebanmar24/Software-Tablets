@@ -21,6 +21,7 @@ export default function CaptureGridScreen({ navigation }) {
     // Lists
     const [maquinas, setMaquinas] = useState([]);
     const [usuarios, setUsuarios] = useState([]);
+    const [horarios, setHorarios] = useState([]);
 
     // Grid Data
     const [gridData, setGridData] = useState([]);
@@ -83,9 +84,14 @@ export default function CaptureGridScreen({ navigation }) {
 
     const loadLists = async () => {
         try {
-            const [m, u] = await Promise.all([getMaquinasActivas(), getUsuarios()]);
+            const [m, u, h] = await Promise.all([
+                getMaquinasActivas(),
+                getUsuarios(),
+                axios.get(`${API_URL}/tiempoproceso/horarios`)
+            ]);
             setMaquinas(m.data);
             setUsuarios(u.data);
+            setHorarios(h.data || []);
             setSelectedMaquina(null);
             if (u.data.length > 0) setSelectedOperario(u.data[0].id);
         } catch (e) {
@@ -100,6 +106,7 @@ export default function CaptureGridScreen({ navigation }) {
             day: d,
             maquinaId: null,
             operarioId: null,
+            horarioId: null,
             horaInicio: '',
             horaFin: '',
             rFinal: '',
@@ -155,18 +162,20 @@ export default function CaptureGridScreen({ navigation }) {
                     return dayFromDb === d;
                 });
 
-                // Prioridad: Desperdicio del módulo nuevo > Desperdicio guardado en ProduccionDiaria
-                // Si hay desperdicio en módulo nuevo, mostrarlo. Si no, mostrar el antiguo (compatibilidad)
-                const despValor = desperdicios[d] !== undefined
-                    ? formatForDisplay(desperdicios[d])
+                // Buscar desperdicio por clave compuesta day_operatorId
+                const despKey = record ? `${d}_${record.usuarioId}` : null;
+                const despValor = despKey && desperdicios[despKey] !== undefined
+                    ? formatForDisplay(desperdicios[despKey])
                     : (record ? formatForDisplay(record.desperdicio) : '');
 
                 if (record) {
+                    console.log(`[DEBUGGRID] Day ${d}: record found. HorarioId:`, record.horarioId, "Pascal:", record.HorarioId);
                     return {
                         rowId: idx + 1,
                         day: d,
                         maquinaId: maquinaIdToLoad,
                         operarioId: record.usuarioId,
+                        horarioId: record.horarioId || record.HorarioId || null,
                         horaInicio: record.horaInicio?.substring(0, 5) || '',
                         horaFin: record.horaFin?.substring(0, 5) || '',
                         rFinal: formatForDisplay(record.rendimientoFinal),
@@ -189,9 +198,10 @@ export default function CaptureGridScreen({ navigation }) {
                         day: d,
                         maquinaId: maquinaIdToLoad,
                         operarioId: null,
+                        horarioId: null,
                         horaInicio: '', horaFin: '', rFinal: '', horasOp: '', cambios: '', puestaPunto: '',
                         mantenimiento: '', descansos: '', otrosAux: '', faltaTrabajo: '', reparacion: '',
-                        otroMuerto: '', desperdicio: despValor, referenciaOP: '', novedades: ''
+                        otroMuerto: '', desperdicio: '', referenciaOP: '', novedades: ''
                     };
                 }
             });
@@ -273,31 +283,40 @@ export default function CaptureGridScreen({ navigation }) {
                     return dayFromDb === d;
                 }) : [];
 
+                // Desperdicio ahora viene agrupado por "day_operatorId" desde el backend
                 const despValor = desperdicios[d] !== undefined ? formatForDisplay(desperdicios[d]) : '';
 
                 if (dayRecords.length > 0) {
-                    return dayRecords.map((record, rIdx) => ({
-                        rowId: tempRowId++,
-                        day: d,
-                        maquinaId: maquinaId,
-                        operarioId: record.usuarioId,
-                        horaInicio: record.horaInicio?.substring(0, 5) || '',
-                        horaFin: record.horaFin?.substring(0, 5) || '',
-                        rFinal: formatForDisplay(record.rendimientoFinal),
-                        horasOp: formatForDisplay(record.horasOperativas),
-                        cambios: record.cambios?.toString() || '',
-                        puestaPunto: formatForDisplay(record.tiempoPuestaPunto),
-                        mantenimiento: formatForDisplay(record.horasMantenimiento),
-                        descansos: formatForDisplay(record.horasDescanso),
-                        otrosAux: formatForDisplay(record.horasOtrosAux),
-                        faltaTrabajo: formatForDisplay(record.tiempoFaltaTrabajo),
-                        reparacion: formatForDisplay(record.tiempoReparacion),
-                        otroMuerto: formatForDisplay(record.tiempoOtroMuerto),
-                        // Solo asignar desperdicio al primer registro del día para no duplicar visualmente si hay múltiples operarios
-                        desperdicio: rIdx === 0 && despValor ? despValor : (record.desperdicio ? formatForDisplay(record.desperdicio) : ''),
-                        referenciaOP: record.referenciaOP || '',
-                        novedades: record.novedades || ''
-                    }));
+                    return dayRecords.map((record, rIdx) => {
+                        // Buscar desperdicio por clave compuesta day_operatorId
+                        const despKey = `${d}_${record.usuarioId}`;
+                        const despOperador = desperdicios[despKey] !== undefined
+                            ? formatForDisplay(desperdicios[despKey])
+                            : (record.desperdicio ? formatForDisplay(record.desperdicio) : '');
+
+                        return {
+                            rowId: tempRowId++,
+                            day: d,
+                            maquinaId: maquinaId,
+                            operarioId: record.usuarioId,
+                            horaInicio: record.horaInicio?.substring(0, 5) || '',
+                            horaFin: record.horaFin?.substring(0, 5) || '',
+                            rFinal: formatForDisplay(record.rendimientoFinal),
+                            horasOp: formatForDisplay(record.horasOperativas),
+                            cambios: record.cambios?.toString() || '',
+                            puestaPunto: formatForDisplay(record.tiempoPuestaPunto),
+                            mantenimiento: formatForDisplay(record.horasMantenimiento),
+                            descansos: formatForDisplay(record.horasDescanso),
+                            otrosAux: formatForDisplay(record.horasOtrosAux),
+                            faltaTrabajo: formatForDisplay(record.tiempoFaltaTrabajo),
+                            reparacion: formatForDisplay(record.tiempoReparacion),
+                            otroMuerto: formatForDisplay(record.tiempoOtroMuerto),
+                            // Desperdicio por operario individual
+                            desperdicio: despOperador,
+                            referenciaOP: record.referenciaOP || '',
+                            novedades: record.novedades || ''
+                        };
+                    });
                 } else {
                     return [{
                         rowId: tempRowId++,
@@ -648,6 +667,7 @@ export default function CaptureGridScreen({ navigation }) {
                     Fecha: dateStr,
                     UsuarioId: day.operarioId,
                     MaquinaId: parseInt(selectedMaquina),
+                    HorarioId: day.horarioId || null,
                     HoraInicio: fmtTime(day.horaInicio),
                     HoraFin: fmtTime(day.horaFin),
                     HorasOperativas: parseNumberInput(day.horasOp),
@@ -900,6 +920,7 @@ export default function CaptureGridScreen({ navigation }) {
                     <View style={[styles.row, styles.headerRow, { backgroundColor: colors.headerBackground }]}>
                         <Text style={[styles.cell, { width: 30 }]}>D</Text>
                         <Text style={[styles.cell, { width: 150 }]}>Operario</Text>
+                        <Text style={[styles.cell, { width: 100 }]}>Horario</Text>
                         <Text style={[styles.cell, styles.timeCell]}>Inicio</Text>
                         <Text style={[styles.cell, styles.timeCell]}>Fin</Text>
                         <Text style={[styles.cell]}>R. Final</Text>
@@ -969,6 +990,17 @@ export default function CaptureGridScreen({ navigation }) {
                                             <Picker.Item label="--" value="" />
                                             {usuarios.map(u => <Picker.Item key={u.id} label={u.nombre} value={u.id} />)}
                                         </Picker>
+                                    </View>
+                                    <View style={[styles.pickerCell, { width: 100 }]}>
+                                        <Picker selectedValue={day.horarioId ? String(day.horarioId) : ''} enabled={!!selectedMaquina} onValueChange={(v) => updateDay(index, 'horarioId', v ? parseInt(v) : null)} style={styles.pickerSmall}>
+                                            <Picker.Item label="--" value="" />
+                                            {horarios.map(h => <Picker.Item key={h.id} label={h.nombre} value={String(h.id)} />)}
+                                        </Picker>
+                                        {(day.horarioId !== null && day.horarioId !== undefined) && (
+                                            <Text style={{ fontSize: 8, color: 'blue', position: 'absolute', bottom: 0, right: 0 }}>
+                                                ID:{day.horarioId}
+                                            </Text>
+                                        )}
                                     </View>
                                     <TextInput style={[styles.cell, styles.timeCell]} value={day.horaInicio} onChangeText={t => handleTimeInput(index, 'horaInicio', t)} editable={!!selectedMaquina} />
                                     <TextInput style={[styles.cell, styles.timeCell]} value={day.horaFin} onChangeText={t => handleTimeInput(index, 'horaFin', t)} editable={!!selectedMaquina} />

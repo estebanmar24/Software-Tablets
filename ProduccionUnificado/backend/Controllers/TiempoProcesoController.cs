@@ -56,6 +56,16 @@ public class TiempoProcesoController : ControllerBase
     }
 
     /// <summary>
+    /// Obtiene la lista de horarios/turnos disponibles
+    /// </summary>
+    [HttpGet("horarios")]
+    public async Task<ActionResult<List<HorarioDto>>> GetHorarios()
+    {
+        var horarios = await _service.GetHorariosAsync();
+        return Ok(horarios);
+    }
+
+    /// <summary>
     /// Obtiene la producción y historial del día
     /// </summary>
     [HttpGet("produccion-dia")]

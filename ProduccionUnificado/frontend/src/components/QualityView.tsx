@@ -55,6 +55,15 @@ export default function QualityView() {
     const [modalVisible, setModalVisible] = useState(false);
     const [loadingDetail, setLoadingDetail] = useState(false);
 
+    // Estado para modal de imagen grande
+    const [imageModalVisible, setImageModalVisible] = useState(false);
+    const [enlargedImageUri, setEnlargedImageUri] = useState<string | null>(null);
+
+    const openImageModal = (uri: string) => {
+        setEnlargedImageUri(uri);
+        setImageModalVisible(true);
+    };
+
     const meses = [
         { id: 1, nombre: 'Enero' }, { id: 2, nombre: 'Febrero' }, { id: 3, nombre: 'Marzo' },
         { id: 4, nombre: 'Abril' }, { id: 5, nombre: 'Mayo' }, { id: 6, nombre: 'Junio' },
@@ -412,11 +421,17 @@ export default function QualityView() {
                                             {nov.descripcion ? <Text style={styles.noveltyText}>{nov.descripcion}</Text> : null}
 
                                             {nov.fotoUrl ? (
-                                                <Image
-                                                    source={{ uri: nov.fotoUrl.startsWith('http') ? nov.fotoUrl : `${SERVER_URL}/${nov.fotoUrl}` }}
-                                                    style={styles.noveltyImage}
-                                                    resizeMode="contain"
-                                                />
+                                                <TouchableOpacity
+                                                    onPress={() => openImageModal(nov.fotoUrl!.startsWith('http') ? nov.fotoUrl! : `${SERVER_URL}/${nov.fotoUrl}`)}
+                                                    activeOpacity={0.8}
+                                                >
+                                                    <Image
+                                                        source={{ uri: nov.fotoUrl.startsWith('http') ? nov.fotoUrl : `${SERVER_URL}/${nov.fotoUrl}` }}
+                                                        style={styles.noveltyImage}
+                                                        resizeMode="contain"
+                                                    />
+                                                    <Text style={styles.clickToEnlarge}>🔍 Click para ampliar</Text>
+                                                </TouchableOpacity>
                                             ) : null}
                                         </View>
                                     ))
@@ -432,6 +447,36 @@ export default function QualityView() {
                         </View>
                     </View>
                 </View>
+            </Modal>
+
+            {/* Modal para imagen ampliada */}
+            <Modal
+                animationType="fade"
+                transparent={true}
+                visible={imageModalVisible}
+                onRequestClose={() => setImageModalVisible(false)}
+            >
+                <TouchableOpacity
+                    style={styles.imageModalOverlay}
+                    activeOpacity={1}
+                    onPress={() => setImageModalVisible(false)}
+                >
+                    <View style={styles.imageModalContent}>
+                        {enlargedImageUri && (
+                            <Image
+                                source={{ uri: enlargedImageUri }}
+                                style={styles.enlargedImage}
+                                resizeMode="contain"
+                            />
+                        )}
+                        <TouchableOpacity
+                            style={styles.closeImageBtn}
+                            onPress={() => setImageModalVisible(false)}
+                        >
+                            <Text style={styles.closeImageBtnText}>✕ Cerrar</Text>
+                        </TouchableOpacity>
+                    </View>
+                </TouchableOpacity>
             </Modal>
         </View>
     );
@@ -752,5 +797,40 @@ const styles = StyleSheet.create({
     closeModalBtnText: {
         color: '#fff',
         fontWeight: 'bold',
+    },
+    clickToEnlarge: {
+        textAlign: 'center',
+        fontSize: 12,
+        color: '#2196F3',
+        marginTop: 5,
+        fontStyle: 'italic',
+    },
+    imageModalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.9)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    imageModalContent: {
+        width: '95%',
+        height: '90%',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    enlargedImage: {
+        width: '100%',
+        height: '85%',
+    },
+    closeImageBtn: {
+        marginTop: 20,
+        backgroundColor: '#fff',
+        paddingVertical: 12,
+        paddingHorizontal: 30,
+        borderRadius: 25,
+    },
+    closeImageBtnText: {
+        color: '#333',
+        fontWeight: 'bold',
+        fontSize: 16,
     },
 });

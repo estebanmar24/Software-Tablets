@@ -68,4 +68,28 @@ export interface RegistrarTiempoRequest {
   desperdicio: number;
   referenciaOP?: string;
   observaciones?: string;
+  horarioId?: number;  // Turno de trabajo
+}
+
+export interface CodigoDesperdicio {
+  id: number;
+  codigo: string;
+  descripcion: string;
+}
+
+export interface Horario {
+  id: number;
+  codigo: string;
+  nombre: string;
+}
+
+export interface RegistroDesperdicioRequest {
+  maquinaId: number;
+  usuarioId: number;
+  codigoDesperdicioId: number;
+  ordenProduccion?: string;
+  cantidad: number;
+  fecha: string;
+  nota?: string;
+  tiempoId?: number;
 }

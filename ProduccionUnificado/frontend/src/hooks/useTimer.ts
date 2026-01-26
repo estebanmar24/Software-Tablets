@@ -1,4 +1,5 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 
 interface UseTimerReturn {
     seconds: number;
@@ -19,6 +20,10 @@ export function useTimer(): UseTimerReturn {
     const [isPaused, setIsPaused] = useState(false);
     const [startTime, setStartTime] = useState<Date | null>(null);
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
+    // Ref to track start time for real-time calculation
+    const startTimeRef = useRef<Date | null>(null);
+    // Ref to track accumulated time when paused
+    const pausedSecondsRef = useRef<number>(0);
 
     const formatTime = (totalSeconds: number): string => {
         const hours = Math.floor(totalSeconds / 3600);
@@ -36,26 +41,55 @@ export function useTimer(): UseTimerReturn {
             .padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`;
     };
 
+    // Calculate elapsed time based on start time (works even after background)
+    const calculateElapsed = useCallback(() => {
+        if (!startTimeRef.current) return pausedSecondsRef.current;
+        const elapsed = Math.floor((Date.now() - startTimeRef.current.getTime()) / 1000);
+        return pausedSecondsRef.current + elapsed;
+    }, []);
+
+    // Listen for app state changes to recalculate time when returning from background
+    useEffect(() => {
+        const handleAppStateChange = (nextAppState: AppStateStatus) => {
+            if (nextAppState === 'active' && isRunning && !isPaused && startTimeRef.current) {
+                // Recalculate elapsed time when app comes back to foreground
+                const elapsed = calculateElapsed();
+                setSeconds(elapsed);
+            }
+        };
+
+        const subscription = AppState.addEventListener('change', handleAppStateChange);
+        return () => {
+            subscription?.remove();
+        };
+    }, [isRunning, isPaused, calculateElapsed]);
+
     const start = useCallback((resumeTime?: Date) => {
         if (isRunning && !resumeTime) return;
 
         const now = resumeTime || new Date();
         setStartTime(now);
+        startTimeRef.current = now;
+        pausedSecondsRef.current = 0;
         setIsRunning(true);
         setIsPaused(false);
 
-        // Calculate initial seconds if resuming
+        // Calculate initial seconds if resuming from a saved time
         if (resumeTime) {
             const diffInSeconds = Math.floor((new Date().getTime() - resumeTime.getTime()) / 1000);
             setSeconds(diffInSeconds);
+            pausedSecondsRef.current = 0;
+            startTimeRef.current = resumeTime;
         }
 
         if (intervalRef.current) clearInterval(intervalRef.current);
 
+        // Use time-based calculation instead of incrementing
         intervalRef.current = setInterval(() => {
-            setSeconds((prev) => prev + 1);
+            const elapsed = calculateElapsed();
+            setSeconds(elapsed);
         }, 1000);
-    }, [isRunning]);
+    }, [isRunning, calculateElapsed]);
 
     const pause = useCallback(() => {
         if (!isRunning || isPaused) return;
@@ -64,17 +98,24 @@ export function useTimer(): UseTimerReturn {
             clearInterval(intervalRef.current);
             intervalRef.current = null;
         }
+        // Save accumulated time when pausing
+        pausedSecondsRef.current = calculateElapsed();
+        startTimeRef.current = null;
         setIsPaused(true);
-    }, [isRunning, isPaused]);
+    }, [isRunning, isPaused, calculateElapsed]);
 
     const resume = useCallback(() => {
         if (!isRunning || !isPaused) return;
 
         setIsPaused(false);
+        // Start new timer from now, keeping accumulated seconds
+        startTimeRef.current = new Date();
+
         intervalRef.current = setInterval(() => {
-            setSeconds((prev) => prev + 1);
+            const elapsed = calculateElapsed();
+            setSeconds(elapsed);
         }, 1000);
-    }, [isRunning, isPaused]);
+    }, [isRunning, isPaused, calculateElapsed]);
 
     const stop = useCallback(() => {
         if (intervalRef.current) {
@@ -91,6 +132,8 @@ export function useTimer(): UseTimerReturn {
         setIsPaused(false);
         setSeconds(0);
         setStartTime(null);
+        startTimeRef.current = null;
+        pausedSecondsRef.current = 0;
 
         return {
             duration,
@@ -108,6 +151,8 @@ export function useTimer(): UseTimerReturn {
         setIsRunning(false);
         setIsPaused(false);
         setStartTime(null);
+        startTimeRef.current = null;
+        pausedSecondsRef.current = 0;
     }, []);
 
     return {
