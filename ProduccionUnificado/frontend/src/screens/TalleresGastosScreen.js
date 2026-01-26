@@ -415,53 +415,53 @@ function GastosTab() {
                         {MESES.map(m => <Picker.Item key={m.value} label={m.label} value={m.value} />)}
                     </Picker>
                 </View>
-            </View>
 
+                {/* Filters moved to Header (Right Aligned) */}
+                <View style={styles.advancedFilters}>
+                    <Text style={styles.filterLabel}>Filtrar por:</Text>
 
-            {/* Main List Filters */}
-            <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingBottom: 15, gap: 15, alignItems: 'center', backgroundColor: '#F9FAFB', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' }}>
-                <Text style={{ fontWeight: 'bold', color: '#374151', fontSize: 14 }}>Filtrar:</Text>
+                    <View style={styles.filterItem}>
+                        {Platform.OS === 'web' ? (
+                            <input
+                                type="date"
+                                value={filterFecha}
+                                onChange={(e) => setFilterFecha(e.target.value)}
+                                style={{
+                                    height: 35, border: 'none', borderRadius: 0, padding: '0 8px', fontSize: 13, fontFamily: 'inherit', color: '#374151',
+                                    outline: 'none', backgroundColor: 'transparent', minWidth: 130
+                                }}
+                            />
+                        ) : (
+                            <TextInput
+                                style={styles.filterInput}
+                                placeholder="dd/mm/aaaa"
+                                placeholderTextColor="#9CA3AF"
+                                value={filterFecha}
+                                onChangeText={(t) => {
+                                    if (t.length === 2 && filterFecha.length === 1) t += '/';
+                                    if (t.length === 5 && filterFecha.length === 4) t += '/';
+                                    if (t.length <= 10) setFilterFecha(t);
+                                }}
+                                keyboardType="numeric"
+                            />
+                        )}
+                        {filterFecha ? (
+                            <TouchableOpacity onPress={() => setFilterFecha('')} style={styles.clearFilterBtn}>
+                                <Text style={styles.clearFilterText}>✕</Text>
+                            </TouchableOpacity>
+                        ) : null}
+                    </View>
 
-                {Platform.OS === 'web' ? (
-                    <input
-                        type="date"
-                        value={filterFecha}
-                        onChange={(e) => setFilterFecha(e.target.value)}
-                        style={{
-                            flex: 1, height: 40, border: '1px solid #D1D5DB', borderRadius: 8, padding: '0 12px', fontSize: 14, fontFamily: 'inherit', color: '#374151',
-                            outline: 'none', boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-                        }}
-                    />
-                ) : (
-                    <TextInput
-                        style={{
-                            flex: 1, backgroundColor: 'white', borderWidth: 1, borderColor: '#D1D5DB',
-                            borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12, fontSize: 14, height: 40
-                        }}
-                        placeholder="dd/mm/aaaa"
-                        placeholderTextColor="#9CA3AF"
-                        value={filterFecha}
-                        onChangeText={(t) => {
-                            if (t.length === 2 && filterFecha.length === 1) t += '/';
-                            if (t.length === 5 && filterFecha.length === 4) t += '/';
-                            if (t.length <= 10) setFilterFecha(t);
-                        }}
-                        keyboardType="numeric"
-                    />
-                )}
-
-                <View style={{
-                    flex: 1.5, backgroundColor: 'white', borderWidth: 1, borderColor: '#D1D5DB',
-                    borderRadius: 8, height: 40, justifyContent: 'center', overflow: 'hidden'
-                }}>
-                    <Picker
-                        selectedValue={filterRubro}
-                        onValueChange={setFilterRubro}
-                        style={{ height: 40, width: '100%', borderWidth: 0, backgroundColor: 'transparent' }}
-                    >
-                        <Picker.Item label="Todos los Rubros" value="" />
-                        {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
-                    </Picker>
+                    <View style={styles.filterItem}>
+                        <Picker
+                            selectedValue={filterRubro}
+                            onValueChange={setFilterRubro}
+                            style={Platform.OS === 'web' ? { height: 35, width: 160, border: 'none', backgroundColor: 'transparent', outline: 'none', fontSize: 13 } : styles.filterPicker}
+                        >
+                            <Picker.Item label="Todos los Rubros" value="" />
+                            {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
+                        </Picker>
+                    </View>
                 </View>
             </View>
 
@@ -1454,6 +1454,14 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: '#152A45',
     },
+    // New Styles from Production
+    advancedFilters: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    filterLabel: { fontWeight: 'bold', color: '#4B5563', marginRight: 5, fontSize: 13 },
+    filterItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 4, borderWidth: 1, borderColor: '#D1D5DB', overflow: 'hidden' },
+    filterInput: { height: 35, paddingHorizontal: 10, minWidth: 100, backgroundColor: '#fff', fontSize: 13 },
+    filterPicker: { height: 35, width: 160, borderWidth: 0, backgroundColor: 'transparent' }, // Compact picker
+    clearFilterBtn: { padding: 5, paddingHorizontal: 8 },
+    clearFilterText: { color: '#9CA3AF', fontWeight: 'bold' },
     tab: {
         flexDirection: 'row',
         alignItems: 'center',
