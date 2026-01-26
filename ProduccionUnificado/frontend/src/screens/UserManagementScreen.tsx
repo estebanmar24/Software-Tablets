@@ -27,6 +27,7 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
 
     const rolesDisponibles = [
         { label: 'Administrador Master', value: 'admin' },
+        { label: 'Cuadro Master (Solo Vista)', value: 'master' },
         { label: 'Control Calidad', value: 'calidad' },
         { label: 'Gerente Producción', value: 'produccion' },
         { label: 'Seguridad y Salud', value: 'sst' },

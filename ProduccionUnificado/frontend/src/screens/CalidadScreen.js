@@ -157,7 +157,8 @@ export default function CalidadScreen({ navigation }) {
                 ...novedadesRes.data,
                 'Otros',
                 'Daño mecánico',
-                'Daño eléctrico'
+                'Daño eléctrico',
+                'Planchas defectuosas'
             ];
             setTiposNovedad(novedadesExtendidas);
             setEstados(estadosRes.data);

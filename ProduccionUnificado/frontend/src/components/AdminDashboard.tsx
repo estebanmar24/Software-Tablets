@@ -30,14 +30,14 @@ interface AdminDashboardProps {
 type TabName = 'captura' | 'desperdicio' | 'tablero' | 'historial' | 'maquinas' | 'operarios' | 'cartas' | 'calidad';
 
 const allTabs: { key: TabName; label: string; icon: string; roles: string[] }[] = [
-    { key: 'captura', label: 'Captura Mensual', icon: '📝', roles: ['admin', 'produccion'] },
-    { key: 'desperdicio', label: 'Desperdicio', icon: '🗑️', roles: ['admin', 'produccion'] },
-    { key: 'tablero', label: 'Tablero Semáforos', icon: '🚦', roles: ['admin', 'produccion'] },
-    { key: 'historial', label: 'Historial', icon: '📋', roles: ['admin'] },
-    { key: 'maquinas', label: 'Config Máquinas', icon: '⚙️', roles: ['admin', 'talleres'] },
-    { key: 'operarios', label: 'Operarios', icon: '👥', roles: ['admin', 'gh'] },
-    { key: 'calidad', label: 'Calidad', icon: '✅', roles: ['admin', 'calidad'] },
-    { key: 'cartas', label: 'Cartas', icon: '📄', roles: ['admin'] },
+    { key: 'captura', label: 'Captura Mensual', icon: '📝', roles: ['admin', 'master', 'produccion'] },
+    { key: 'desperdicio', label: 'Desperdicio', icon: '🗑️', roles: ['admin', 'master', 'produccion'] },
+    { key: 'tablero', label: 'Tablero Semáforos', icon: '🚦', roles: ['admin', 'master', 'produccion'] },
+    { key: 'historial', label: 'Historial', icon: '📋', roles: ['admin', 'master'] },
+    { key: 'maquinas', label: 'Config Máquinas', icon: '⚙️', roles: ['admin', 'master', 'talleres'] },
+    { key: 'operarios', label: 'Operarios', icon: '👥', roles: ['admin', 'master', 'gh'] },
+    { key: 'calidad', label: 'Calidad', icon: '✅', roles: ['admin', 'master', 'calidad'] },
+    { key: 'cartas', label: 'Cartas', icon: '📄', roles: ['admin', 'master'] },
 ];
 
 /**
@@ -377,7 +377,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
         Alert.alert('Próximamente', `El módulo "${moduleName}" estará disponible pronto.`);
     };
 
-    const isMasterEnabled = userRoles.includes('admin');
+    const isMasterEnabled = userRoles.includes('admin') || userRoles.includes('master');
     const isCalidadEnabled = userRoles.includes('admin') || userRoles.includes('calidad');
     const isProduccionEnabled = userRoles.includes('admin') || userRoles.includes('produccion');
     const isTalleresEnabled = userRoles.includes('admin') || userRoles.includes('talleres');
