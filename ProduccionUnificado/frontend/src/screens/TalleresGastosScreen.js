@@ -109,20 +109,26 @@ function GastosTab() {
     const [filterRubro, setFilterRubro] = useState('');
     const [filterFecha, setFilterFecha] = useState('');
 
+
     const filteredGastos = useMemo(() => {
         return gastos.filter(g => {
             if (filterRubro && g.rubroId?.toString() !== filterRubro) return false;
             if (filterFecha) {
-                if (filterFecha.length === 10) {
+                // Support standard ISO date from web input (yyyy-mm-dd) or manual typing (dd/mm/yyyy)
+                let searchDate = '';
+                if (filterFecha.includes('-')) {
+                    searchDate = filterFecha; // yyyy-mm-dd
+                } else if (filterFecha.includes('/')) {
                     const parts = filterFecha.split('/');
-                    if (parts.length === 3) {
-                        const searchDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-                        if (!g.fecha.startsWith(searchDate)) return false;
-                    }
+                    if (parts.length === 3) searchDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
                 } else {
+                    // Partial match for typing
                     const formattedDate = formatDate(g.fecha);
                     if (!formattedDate.includes(filterFecha)) return false;
+                    return true;
                 }
+
+                if (searchDate && !g.fecha.startsWith(searchDate)) return false;
             }
             return true;
         });
@@ -413,32 +419,45 @@ function GastosTab() {
 
 
             {/* Main List Filters */}
-            <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingBottom: 10, gap: 10, alignItems: 'center', backgroundColor: '#F9FAFB', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' }}>
-                <Text style={{ fontWeight: 'bold', color: '#374151', minWidth: 60 }}>Filtrar:</Text>
+            <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingBottom: 15, gap: 15, alignItems: 'center', backgroundColor: '#F9FAFB', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' }}>
+                <Text style={{ fontWeight: 'bold', color: '#374151', fontSize: 14 }}>Filtrar:</Text>
 
-                <TextInput
-                    style={{
-                        flex: 1, backgroundColor: 'white', borderWidth: 1, borderColor: '#D1D5DB',
-                        borderRadius: 6, paddingVertical: 8, paddingHorizontal: 10, fontSize: 14, height: 40
-                    }}
-                    placeholder="dd/mm/aaaa"
-                    value={filterFecha}
-                    onChangeText={(t) => {
-                        if (t.length === 2 && filterFecha.length === 1) t += '/';
-                        if (t.length === 5 && filterFecha.length === 4) t += '/';
-                        if (t.length <= 10) setFilterFecha(t);
-                    }}
-                    keyboardType="numeric"
-                />
+                {Platform.OS === 'web' ? (
+                    <input
+                        type="date"
+                        value={filterFecha}
+                        onChange={(e) => setFilterFecha(e.target.value)}
+                        style={{
+                            flex: 1, height: 40, border: '1px solid #D1D5DB', borderRadius: 8, padding: '0 12px', fontSize: 14, fontFamily: 'inherit', color: '#374151',
+                            outline: 'none', boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                        }}
+                    />
+                ) : (
+                    <TextInput
+                        style={{
+                            flex: 1, backgroundColor: 'white', borderWidth: 1, borderColor: '#D1D5DB',
+                            borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12, fontSize: 14, height: 40
+                        }}
+                        placeholder="dd/mm/aaaa"
+                        placeholderTextColor="#9CA3AF"
+                        value={filterFecha}
+                        onChangeText={(t) => {
+                            if (t.length === 2 && filterFecha.length === 1) t += '/';
+                            if (t.length === 5 && filterFecha.length === 4) t += '/';
+                            if (t.length <= 10) setFilterFecha(t);
+                        }}
+                        keyboardType="numeric"
+                    />
+                )}
 
                 <View style={{
                     flex: 1.5, backgroundColor: 'white', borderWidth: 1, borderColor: '#D1D5DB',
-                    borderRadius: 6, height: 40, justifyContent: 'center'
+                    borderRadius: 8, height: 40, justifyContent: 'center', overflow: 'hidden'
                 }}>
                     <Picker
                         selectedValue={filterRubro}
                         onValueChange={setFilterRubro}
-                        style={{ height: 40, width: '100%', borderWidth: 0 }}
+                        style={{ height: 40, width: '100%', borderWidth: 0, backgroundColor: 'transparent' }}
                     >
                         <Picker.Item label="Todos los Rubros" value="" />
                         {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
