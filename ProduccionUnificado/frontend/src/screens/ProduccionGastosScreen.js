@@ -3,7 +3,7 @@
  * EXACT copy of SST/GH visual styling with Production-specific logic.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
@@ -99,6 +99,12 @@ function GastosTab() {
 
     const [gastos, setGastos] = useState([]);
     const [resumen, setResumen] = useState(null);
+
+    // FILTROS AVANZADOS
+    const [filterFecha, setFilterFecha] = useState('');
+    const [filterRubroId, setFilterRubroId] = useState('');
+    const [filterUsuarioId, setFilterUsuarioId] = useState(''); // Dinámico para HE/Recargos
+    const [filterMaquinaId, setFilterMaquinaId] = useState(''); // Dinámico para Mantenimiento
 
     // History Modal State
     const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -343,6 +349,50 @@ function GastosTab() {
     const porRubro = resumen?.porRubro || {};
     const rubroKeys = Object.keys(porRubro);
 
+    // --- LÓGICA DE FILTRADO DINÁMICO ---
+
+    // 1. Obtener Rubros que TIENEN gastos en el mes actual
+    const availableRubros = rubros.filter(r =>
+        gastos.some(g => g.rubroId === r.id)
+    );
+
+    // 2. Determinar qué filtros secundarios mostrar según el Rubro seleccionado
+    const selectedFilterRubro = rubros.find(r => r.id.toString() === filterRubroId);
+    const showUserFilter = selectedFilterRubro && ['horas extras', 'recargo', 'salarios'].includes(selectedFilterRubro.nombre.toLowerCase());
+    const showMachineFilter = selectedFilterRubro && ['mantenimiento', 'repuesto'].includes(selectedFilterRubro.nombre.toLowerCase());
+
+    // 3. Obtener opciones para filtros secundarios (solo los que tienen datos)
+    const availableUsers = showUserFilter ? usuarios.filter(u =>
+        gastos.some(g => g.rubroId.toString() === filterRubroId && g.usuarioId === u.id)
+    ) : [];
+
+    const availableMachines = showMachineFilter ? maquinas.filter(m =>
+        gastos.some(g => g.rubroId.toString() === filterRubroId && g.maquinaId === m.id)
+    ) : [];
+
+    // 4. Aplicar filtros
+    const filteredGastos = gastos.filter(g => {
+        // Filtro Fecha
+        if (filterFecha && !g.fecha.startsWith(filterFecha)) return false;
+
+        // Filtro Rubro
+        if (filterRubroId && g.rubroId.toString() !== filterRubroId) return false;
+
+        // Filtro Usuario (Dinámico)
+        if (showUserFilter && filterUsuarioId && g.usuarioId?.toString() !== filterUsuarioId) return false;
+
+        // Filtro Máquina (Dinámico)
+        if (showMachineFilter && filterMaquinaId && g.maquinaId?.toString() !== filterMaquinaId) return false;
+
+        return true;
+    });
+
+    // Limpiar filtros secundarios si cambia el rubro
+    useEffect(() => {
+        setFilterUsuarioId('');
+        setFilterMaquinaId('');
+    }, [filterRubroId]);
+
     return (
         <View style={styles.contentContainer}>
             {/* Header - EXACT SST STYLE */}
@@ -354,6 +404,87 @@ function GastosTab() {
                     <Picker selectedValue={mes} onValueChange={setMes} style={styles.picker}>
                         {MESES.map(m => <Picker.Item key={m.value} label={m.label} value={m.value} />)}
                     </Picker>
+                </View>
+
+                {/* FILTROS AVANZADOS */}
+                <View style={styles.advancedFilters}>
+                    <Text style={styles.filterLabel}>Filtrar por:</Text>
+
+                    {/* Filtro Fecha */}
+                    <View style={styles.filterItem}>
+                        {Platform.OS === 'web' ? (
+                            <input
+                                type="date"
+                                value={filterFecha}
+                                onChange={(e) => setFilterFecha(e.target.value)}
+                                style={{
+                                    height: 40,
+                                    border: '1px solid #ccc',
+                                    borderRadius: 4,
+                                    padding: '0 10px',
+                                    backgroundColor: '#fff'
+                                }}
+                            />
+                        ) : (
+                            <TextInput
+                                style={styles.filterInput}
+                                placeholder="YYYY-MM-DD"
+                                value={filterFecha}
+                                onChangeText={setFilterFecha}
+                            />
+                        )}
+                        {filterFecha ? (
+                            <TouchableOpacity onPress={() => setFilterFecha('')} style={styles.clearFilterBtn}>
+                                <Text style={styles.clearFilterText}>✕</Text>
+                            </TouchableOpacity>
+                        ) : null}
+                    </View>
+
+                    {/* Filtro Rubro */}
+                    <View style={styles.filterItem}>
+                        <Picker
+                            selectedValue={filterRubroId}
+                            onValueChange={setFilterRubroId}
+                            style={styles.filterPicker}
+                        >
+                            <Picker.Item label="Todos los Rubros" value="" />
+                            {availableRubros.map(r => (
+                                <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />
+                            ))}
+                        </Picker>
+                    </View>
+
+                    {/* Filtro Dinámico: Usuario */}
+                    {showUserFilter && (
+                        <View style={styles.filterItem}>
+                            <Picker
+                                selectedValue={filterUsuarioId}
+                                onValueChange={setFilterUsuarioId}
+                                style={styles.filterPicker}
+                            >
+                                <Picker.Item label="Todos los Operarios" value="" />
+                                {availableUsers.map(u => (
+                                    <Picker.Item key={u.id} label={u.nombre} value={u.id.toString()} />
+                                ))}
+                            </Picker>
+                        </View>
+                    )}
+
+                    {/* Filtro Dinámico: Máquina */}
+                    {showMachineFilter && (
+                        <View style={styles.filterItem}>
+                            <Picker
+                                selectedValue={filterMaquinaId}
+                                onValueChange={setFilterMaquinaId}
+                                style={styles.filterPicker}
+                            >
+                                <Picker.Item label="Todas las Máquinas" value="" />
+                                {availableMachines.map(m => (
+                                    <Picker.Item key={m.id} label={m.nombre} value={m.id.toString()} />
+                                ))}
+                            </Picker>
+                        </View>
+                    )}
                 </View>
             </View>
 
@@ -383,12 +514,16 @@ function GastosTab() {
                 <ActivityIndicator size="large" color="#2563EB" style={styles.loading} />
             ) : (
                 <ScrollView style={styles.listContainer}>
-                    {gastos.length === 0 ? (
+                    {filteredGastos.length === 0 ? (
                         <View style={styles.emptyState}>
-                            <Text style={styles.emptyText}>No hay gastos registrados para este período</Text>
+                            <Text style={styles.emptyText}>
+                                {gastos.length > 0
+                                    ? 'No hay gastos que coincidan con los filtros'
+                                    : 'No hay gastos registrados para este período'}
+                            </Text>
                         </View>
                     ) : (
-                        gastos.map(gasto => (
+                        filteredGastos.map(gasto => (
                             <View key={gasto.id} style={styles.gastoCard}>
                                 <View style={styles.gastoHeader}>
                                     <Text style={styles.gastoTipo}>{gasto.rubro?.nombre || 'Sin Rubro'}</Text>
@@ -690,24 +825,134 @@ function GraficasTab() {
     const [anio, setAnio] = useState(new Date().getFullYear());
     const [mesSeleccionado, setMesSeleccionado] = useState(null); // null = anual
     const [graficasData, setGraficasData] = useState(null);
+    const [allGastos, setAllGastos] = useState([]); // Almacenar todos los gastos para conteo y detalle
 
     const anios = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
 
     const loadData = useCallback(async () => {
         try {
             setLoading(true);
-            const data = await produccionApi.getGraficas(anio, mesSeleccionado);
-            setGraficasData(data);
-        } catch (error) { console.error('Error:', error); }
-        finally { setLoading(false); }
+            // Cargar gráficas y lista plana de gastos en paralelo (para conteo real y detalles)
+            const [dataGraf, dataGastos] = await Promise.all([
+                produccionApi.getGraficas(anio, mesSeleccionado),
+                produccionApi.getGastos(anio, mesSeleccionado)
+            ]);
+
+            setGraficasData(dataGraf);
+            // Asegurar que allGastos sea un array plano
+            setAllGastos(Array.isArray(dataGastos) ? dataGastos : (dataGastos.gastos || []));
+
+        } catch (error) {
+            console.error('Error loading data:', error);
+            // Fallback parcial
+            setAllGastos([]);
+        } finally {
+            setLoading(false);
+        }
     }, [anio, mesSeleccionado]);
 
     useEffect(() => { loadData(); }, [loadData]);
 
+    // DETALLE INTERACTIVO
+    const [detailModalVisible, setDetailModalVisible] = useState(false);
+    const [detailTitle, setDetailTitle] = useState('');
+    const [detailGastos, setDetailGastos] = useState([]);
+
+    // Filtros Modal
+    const [filterStart, setFilterStart] = useState('');
+    const [filterEnd, setFilterEnd] = useState('');
+
+    const displayedGastos = useMemo(() => {
+        if (!filterStart && !filterEnd) return detailGastos;
+        const parseDate = (d) => {
+            if (!d || d.length !== 10) return null;
+            const p = d.split('/');
+            if (p.length < 3) return null;
+            return new Date(`${p[2]}-${p[1]}-${p[0]}`);
+        };
+        const s = parseDate(filterStart);
+        const e = parseDate(filterEnd);
+        return detailGastos.filter(g => {
+            const gd = new Date(g.fecha); gd.setHours(0, 0, 0, 0);
+            if (s && gd < s) return false;
+            if (e && gd > e) return false;
+            return true;
+        });
+    }, [detailGastos, filterStart, filterEnd]);
+
+    const handleOpenDetail = (type, id, name) => {
+        setDetailTitle(name);
+        setFilterStart('');
+        setFilterEnd('');
+        setDetailModalVisible(true);
+
+        try {
+            let filtered = [];
+
+            // Helper robusto para comparar IDs (soporta propiedad plana 'rubroId' o objeto anidado 'rubro.id')
+            const checkId = (item, propBase, targetId) => {
+                const valDirect = item[propBase + 'Id'];
+                const valNested = item[propBase]?.id;
+                // Usamos == para permitir coincidencias '15' == 15
+                return valDirect == targetId || valNested == targetId;
+            };
+
+            // Detectar si es nómina inspeccionando el objeto rubro anidado o propiedades de tipo
+            const esNomina = (g) => {
+                const rName = (g.rubro?.nombre || '').toLowerCase();
+                // Si tiene tipoHora/Recargo definido, o el nombre del rubro sugiere nómina
+                return g.tipoHora || g.tipoRecargo ||
+                    rName.includes('hora') || rName.includes('recargo') || rName.includes('nomina') || rName.includes('salario');
+            };
+
+            if (type === 'rubro') {
+                filtered = allGastos.filter(g => checkId(g, 'rubro', id));
+            } else if (type === 'proveedor') {
+                // Proveedores: Coincidir ID Y asegurar que no parezca nómina
+                filtered = allGastos.filter(g => checkId(g, 'proveedor', id) && !esNomina(g));
+            } else if (type === 'usuario') {
+                // Usuarios (Horas Extras): Coincidir ID Y asegurar que SÍ parezca nómina (o sea hora extra)
+                filtered = allGastos.filter(g => checkId(g, 'usuario', id) && esNomina(g));
+            }
+
+            // FALLBACK: Si no encontramos nada por ID, intentamos por NOMBRE.
+            // Esto cubre casos donde el ID de la gráfica (DTO) no coincida con el ID del gasto, o si venía nulo.
+            if (filtered.length === 0 && name) {
+                const targetName = String(name).toLowerCase().trim();
+                filtered = allGastos.filter(g => {
+                    let gName = '';
+                    if (type === 'rubro') gName = g.rubro?.nombre;
+                    else if (type === 'proveedor') gName = g.proveedor?.nombre;
+                    else if (type === 'usuario') gName = g.usuario?.nombre;
+
+                    if (!gName) return false;
+                    const match = gName.toLowerCase().trim() === targetName;
+
+                    // Mantener restricciones de nómina incluso en fallback por nombre
+                    if (!match) return false;
+                    if (type === 'proveedor' && esNomina(g)) return false;
+                    if (type === 'usuario' && !esNomina(g)) return false;
+
+                    return true;
+                });
+            }
+
+            // Ordenar por fecha descendente
+            filtered.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+            setDetailGastos(filtered);
+        } catch (err) {
+            console.error('Error filtering details:', err);
+            setDetailGastos([]);
+        }
+    };
+
     if (loading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#2563EB" /></View>;
 
-    // Default empty data structure (like SST shows when no data)
+    // Default empty data structure
     const data = graficasData || { totalGastado: 0, porRubro: [], porProveedor: [], porUsuario: [], resumenMensual: [] };
+
+    // Corrección Contador Registros: Usar la longitud real de gastos cargados
+    const totalRegistrosReal = allGastos.length;
 
     return (
         <View style={styles.contentContainer}>
@@ -725,7 +970,7 @@ function GraficasTab() {
             </View>
 
             <ScrollView style={styles.listContainer}>
-                {/* Dashboard Summary Cards - SST Style */}
+                {/* Dashboard Summary Cards */}
                 <View style={grafStyles.dashboardRow}>
                     <View style={[grafStyles.summaryCardSmall, { backgroundColor: '#EFF6FF' }]}>
                         <Text style={grafStyles.cardLabel}>💰 Presupuesto</Text>
@@ -748,10 +993,118 @@ function GraficasTab() {
                     <View style={[grafStyles.summaryCardSmall, { backgroundColor: '#F3F4F6' }]}>
                         <Text style={grafStyles.cardLabel}>📋 Registros</Text>
                         <Text style={[grafStyles.cardValue, { color: '#374151' }]}>
-                            {(data.porRubro?.reduce((sum, r) => sum + 1, 0) || 0)}
+                            {totalRegistrosReal}
                         </Text>
                     </View>
                 </View>
+
+                {/* MODAL DE DETALLE */}
+                <Modal visible={detailModalVisible} animationType="slide" transparent onRequestClose={() => setDetailModalVisible(false)}>
+                    <View style={styles.modalOverlay}>
+                        <View style={styles.modalContent}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                                <Text style={styles.modalTitle}>Detalle: {detailTitle}</Text>
+                                <TouchableOpacity onPress={() => setDetailModalVisible(false)} style={{ padding: 5 }}>
+                                    <Text style={{ fontSize: 20, color: '#666' }}>✕</Text>
+                                </TouchableOpacity>
+                            </View>
+
+                            {/* FILTROS DE FECHA */}
+                            <View style={{ flexDirection: 'row', gap: 10, padding: 8, backgroundColor: '#F3F4F6', borderRadius: 8, marginBottom: 10 }}>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#666' }}>Desde:</Text>
+                                    <TextInput
+                                        style={{ backgroundColor: 'white', borderRadius: 4, paddingHorizontal: 5, height: 35, fontSize: 12, borderWidth: 1, borderColor: '#DDD' }}
+                                        placeholder="DD/MM/AAAA"
+                                        placeholderTextColor="#999"
+                                        value={filterStart}
+                                        onChangeText={(t) => {
+                                            if (t.length === 2 && filterStart.length === 1) t += '/';
+                                            if (t.length === 5 && filterStart.length === 4) t += '/';
+                                            if (t.length <= 10) setFilterStart(t);
+                                        }}
+                                        keyboardType="numeric"
+                                    />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#666' }}>Hasta:</Text>
+                                    <TextInput
+                                        style={{ backgroundColor: 'white', borderRadius: 4, paddingHorizontal: 5, height: 35, fontSize: 12, borderWidth: 1, borderColor: '#DDD' }}
+                                        placeholder="DD/MM/AAAA"
+                                        placeholderTextColor="#999"
+                                        value={filterEnd}
+                                        onChangeText={(t) => {
+                                            if (t.length === 2 && filterEnd.length === 1) t += '/';
+                                            if (t.length === 5 && filterEnd.length === 4) t += '/';
+                                            if (t.length <= 10) setFilterEnd(t);
+                                        }}
+                                        keyboardType="numeric"
+                                    />
+                                </View>
+                            </View>
+
+                            {displayedGastos.length === 0 ? (
+                                <Text style={styles.emptyText}>No se encontraron registros en el rango seleccionado.</Text>
+                            ) : (
+                                <ScrollView style={{ maxHeight: 400 }}>
+                                    {displayedGastos.map(g => (
+                                        <View key={g.id} style={{
+                                            backgroundColor: '#F9FAFB',
+                                            padding: 12,
+                                            marginBottom: 8,
+                                            borderRadius: 8,
+                                            borderLeftWidth: 3,
+                                            borderLeftColor: '#2563EB'
+                                        }}>
+                                            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                                                <Text style={{ fontWeight: 'bold', color: '#374151' }}>{new Date(g.fecha).toLocaleDateString()}</Text>
+                                                <Text style={{ fontWeight: 'bold', color: '#059669' }}>{new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(g.precio)}</Text>
+                                            </View>
+
+                                            <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>
+                                                {g.tipoHora?.nombre || g.tipoRecargo?.nombre || g.rubro?.nombre || 'Gasto General'}
+                                            </Text>
+
+                                            {/* INFO EXTRA DE USUARIO Y PROVEEDOR */}
+                                            {g.usuario?.nombre && (
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                                                    <Text style={{ fontSize: 12 }}>👤 </Text>
+                                                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#4B5563' }}>{g.usuario.nombre}</Text>
+                                                </View>
+                                            )}
+                                            {g.proveedor?.nombre && (
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                                                    <Text style={{ fontSize: 12 }}>🏢 </Text>
+                                                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#4B5563' }}>{g.proveedor.nombre}</Text>
+                                                </View>
+                                            )}
+                                            {g.maquina?.nombre && (
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                                                    <Text style={{ fontSize: 12 }}>⚙️ </Text>
+                                                    <Text style={{ fontSize: 12, color: '#4B5563' }}>{g.maquina.nombre}</Text>
+                                                </View>
+                                            )}
+
+                                            {g.nota && <Text style={{ fontSize: 12, fontStyle: 'italic', marginTop: 4, color: '#666' }}>"{g.nota}"</Text>}
+
+                                            <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+                                                {g.facturaPdfUrl && <Text style={{ fontSize: 11, color: '#2563EB', fontWeight: 'bold' }}>📄 Factura PDF</Text>}
+                                                {g.numeroOP && <Text style={{ fontSize: 11, color: '#6B7280' }}>📋 OP: {g.numeroOP}</Text>}
+                                            </View>
+                                        </View>
+                                    ))}
+                                </ScrollView>
+                            )}
+
+                            <TouchableOpacity
+                                style={[styles.cancelButton, { marginTop: 15, alignSelf: 'flex-end' }]}
+                                onPress={() => setDetailModalVisible(false)}
+                            >
+                                <Text style={styles.cancelButtonText}>Cerrar</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </Modal>
 
                 {/* Ejecución Anual Completo - Progress Bar */}
                 <View style={grafStyles.chartSection}>
@@ -779,7 +1132,11 @@ function GraficasTab() {
                             return (
                                 <View key={idx} style={grafStyles.rubroReportRow}>
                                     <View style={grafStyles.rubroReportHeader}>
-                                        <Text style={grafStyles.rubroReportName}>{item.nombre}</Text>
+                                        <TouchableOpacity onPress={() => handleOpenDetail('rubro', item.id, item.nombre)}>
+                                            <Text style={[grafStyles.rubroReportName, { textDecorationLine: 'underline', color: '#1E40AF' }]}>
+                                                {item.nombre} 👆
+                                            </Text>
+                                        </TouchableOpacity>
                                         <Text style={[grafStyles.rubroReportStatus, (isExceeded || isZeroBudgetWithGasto) ? { color: '#DC2626' } : { color: '#059669' }]}>
                                             {formatCurrency(item.gastado)} / {formatCurrency(item.presupuesto)}
                                         </Text>
@@ -811,7 +1168,11 @@ function GraficasTab() {
                             const width = (item.total / maxVal) * 100;
                             return (
                                 <View key={idx} style={grafStyles.barRow}>
-                                    <Text style={grafStyles.barLabel} numberOfLines={1}>{item.nombre}</Text>
+                                    <TouchableOpacity onPress={() => handleOpenDetail('rubro', item.id, item.nombre)}>
+                                        <Text style={[grafStyles.barLabel, { textDecorationLine: 'underline', color: '#2563EB' }]} numberOfLines={1}>
+                                            {item.nombre}
+                                        </Text>
+                                    </TouchableOpacity>
                                     <View style={grafStyles.barContainer}>
                                         <View style={[grafStyles.bar, { width: `${width}%`, backgroundColor: '#3B82F6' }]} />
                                     </View>
@@ -831,7 +1192,11 @@ function GraficasTab() {
                             const width = (item.total / maxVal) * 100;
                             return (
                                 <View key={idx} style={grafStyles.barRow}>
-                                    <Text style={grafStyles.barLabel} numberOfLines={1}>{item.nombre}</Text>
+                                    <TouchableOpacity onPress={() => handleOpenDetail('proveedor', item.id, item.nombre)}>
+                                        <Text style={[grafStyles.barLabel, { textDecorationLine: 'underline', color: '#2563EB' }]} numberOfLines={1}>
+                                            {item.nombre}
+                                        </Text>
+                                    </TouchableOpacity>
                                     <View style={grafStyles.barContainer}>
                                         <View style={[grafStyles.bar, { width: `${width}%`, backgroundColor: '#10B981' }]} />
                                     </View>
@@ -851,7 +1216,11 @@ function GraficasTab() {
                             const width = (item.total / maxVal) * 100;
                             return (
                                 <View key={idx} style={grafStyles.barRow}>
-                                    <Text style={grafStyles.barLabel} numberOfLines={1}>{item.nombre}</Text>
+                                    <TouchableOpacity onPress={() => handleOpenDetail('usuario', item.id, item.nombre)}>
+                                        <Text style={[grafStyles.barLabel, { textDecorationLine: 'underline', color: '#2563EB' }]} numberOfLines={1}>
+                                            {item.nombre}
+                                        </Text>
+                                    </TouchableOpacity>
                                     <View style={grafStyles.barContainer}>
                                         <View style={[grafStyles.bar, { width: `${width}%`, backgroundColor: '#8B5CF6' }]} />
                                     </View>
@@ -1642,6 +2011,51 @@ const styles = StyleSheet.create({
     picker: {
         width: 110,
         height: 40,
+    },
+    // Nuevos estilos para filtros avanzados
+    advancedFilters: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 10,
+        marginTop: 15,
+        paddingTop: 10,
+        borderTopWidth: 1,
+        borderTopColor: '#E5E7EB',
+        alignItems: 'center',
+    },
+    filterLabel: {
+        fontWeight: 'bold',
+        color: '#4B5563',
+        marginRight: 5,
+    },
+    filterItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#fff',
+        borderRadius: 5,
+        borderWidth: 1,
+        borderColor: '#D1D5DB',
+        overflow: 'hidden',
+    },
+    filterPicker: {
+        height: 40,
+        width: 180,
+        borderWidth: 0,
+        backgroundColor: 'transparent',
+    },
+    filterInput: {
+        height: 40,
+        paddingHorizontal: 10,
+        minWidth: 120,
+        backgroundColor: '#fff',
+    },
+    clearFilterBtn: {
+        padding: 5,
+        marginRight: 5,
+    },
+    clearFilterText: {
+        color: '#9CA3AF',
+        fontWeight: 'bold',
     },
     // SUMMARY - EXACT SST COLORS
     summaryContainer: {
