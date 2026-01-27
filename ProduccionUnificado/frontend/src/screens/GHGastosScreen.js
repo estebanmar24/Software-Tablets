@@ -114,6 +114,34 @@ function GastosTab() {
 
     const anios = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
 
+    // Filters (MATCHING TALLERES/PRODUCCION STYLE)
+    const [filterRubro, setFilterRubro] = useState('');
+    const [filterFecha, setFilterFecha] = useState('');
+
+    const filteredGastos = useMemo(() => {
+        return gastos.filter(g => {
+            if (filterRubro && g.rubroId?.toString() !== filterRubro) return false;
+
+            if (filterFecha) {
+                let searchDate = '';
+                if (filterFecha.includes('-')) {
+                    searchDate = filterFecha; // yyyy-mm-dd
+                } else if (filterFecha.includes('/')) {
+                    const parts = filterFecha.split('/');
+                    if (parts.length === 3) searchDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+                } else {
+                    // Partial match for typing (dd/mm/yyyy)
+                    const formattedDate = formatDate(g.fechaCompra);
+                    if (!formattedDate.includes(filterFecha)) return false;
+                    return true;
+                }
+                if (searchDate && g.fechaCompra && !g.fechaCompra.startsWith(searchDate)) return false;
+            }
+            return true;
+        });
+    }, [gastos, filterRubro, filterFecha]);
+
+
     const loadMasterData = useCallback(async () => {
         try {
             const [rubrosData, tiposData, proveedoresData] = await Promise.all([
@@ -469,7 +497,7 @@ function GastosTab() {
 
     return (
         <View style={styles.contentContainer}>
-            {/* Header */}
+            {/* Header with Filters */}
             <View style={styles.header}>
                 <View style={styles.filters}>
                     <Picker
@@ -490,6 +518,54 @@ function GastosTab() {
                             <Picker.Item key={m.value} label={m.label} value={m.value} />
                         ))}
                     </Picker>
+                </View>
+
+                {/* Advanced Filters (Right Aligned) */}
+                <View style={styles.advancedFilters}>
+                    <Text style={styles.filterLabel}>Filtrar por:</Text>
+
+                    <View style={styles.filterItem}>
+                        {Platform.OS === 'web' ? (
+                            <input
+                                type="date"
+                                value={filterFecha}
+                                onChange={(e) => setFilterFecha(e.target.value)}
+                                style={{
+                                    height: 35, border: 'none', borderRadius: 0, padding: '0 8px', fontSize: 13, fontFamily: 'inherit', color: '#374151',
+                                    outline: 'none', backgroundColor: 'transparent', minWidth: 130
+                                }}
+                            />
+                        ) : (
+                            <TextInput
+                                style={styles.filterInput}
+                                placeholder="dd/mm/aaaa"
+                                placeholderTextColor="#9CA3AF"
+                                value={filterFecha}
+                                onChangeText={(t) => {
+                                    if (t.length === 2 && filterFecha.length === 1) t += '/';
+                                    if (t.length === 5 && filterFecha.length === 4) t += '/';
+                                    if (t.length <= 10) setFilterFecha(t);
+                                }}
+                                keyboardType="numeric"
+                            />
+                        )}
+                        {filterFecha ? (
+                            <TouchableOpacity onPress={() => setFilterFecha('')} style={styles.clearFilterBtn}>
+                                <Text style={styles.clearFilterText}>✕</Text>
+                            </TouchableOpacity>
+                        ) : null}
+                    </View>
+
+                    <View style={styles.filterItem}>
+                        <Picker
+                            selectedValue={filterRubro}
+                            onValueChange={setFilterRubro}
+                            style={Platform.OS === 'web' ? { height: 35, width: 160, border: 'none', backgroundColor: 'transparent', outline: 'none', fontSize: 13 } : styles.filterPicker}
+                        >
+                            <Picker.Item label="Todos los Rubros" value="" />
+                            {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
+                        </Picker>
+                    </View>
                 </View>
             </View>
 
@@ -521,12 +597,12 @@ function GastosTab() {
                 <ActivityIndicator size="large" color="#2563EB" style={styles.loading} />
             ) : (
                 <ScrollView style={styles.listContainer}>
-                    {gastos.length === 0 ? (
+                    {filteredGastos.length === 0 ? (
                         <View style={styles.emptyState}>
-                            <Text style={styles.emptyText}>No hay gastos registrados para este período</Text>
+                            <Text style={styles.emptyText}>No hay gastos registrados (con estos filtros)</Text>
                         </View>
                     ) : (
-                        gastos.map(gasto => (
+                        filteredGastos.map(gasto => (
                             <View key={gasto.id} style={styles.gastoCard}>
                                 <View style={styles.gastoHeader}>
                                     <Text style={styles.gastoTipo}>{gasto.tipoServicioNombre}</Text>
@@ -1361,6 +1437,68 @@ function GraficasTab() {
 
     const anios = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
 
+    // INTERACTIVE DETAILS
+    const [showDetailModal, setShowDetailModal] = useState(false);
+    const [detailType, setDetailType] = useState(null); // 'tipo', 'rubro', 'proveedor'
+    const [selectedDetailItem, setSelectedDetailItem] = useState(null);
+    const [detailFilterDate, setDetailFilterDate] = useState('');
+
+    const handleDetailClick = (type, item) => {
+        setDetailType(type);
+        setSelectedDetailItem(item);
+        setDetailFilterDate('');
+        setShowDetailModal(true);
+    };
+
+    const getFilteredDetailGastos = () => {
+        if (!selectedDetailItem) return [];
+        let filtered = allGastosRaw;
+
+        // Filter by Month (if global filter is active)
+        if (mesSeleccionado) {
+            filtered = filtered.filter(g => g.mes === parseInt(mesSeleccionado));
+        }
+
+        // Filter by Category
+        if (detailType === 'tipo') {
+            filtered = filtered.filter(g => g.tipoServicioId === selectedDetailItem.id);
+        } else if (detailType === 'rubro') {
+            // For Rubro, item is { nombre, valor } or similar from map
+            // Need to match rubroNombre
+            const name = selectedDetailItem.nombre || selectedDetailItem[0]; // Handle array destructuring or object
+            filtered = filtered.filter(g => g.rubroNombre === name);
+        } else if (detailType === 'proveedor') {
+            const name = selectedDetailItem[0]; // Tuple [name, value]
+            filtered = filtered.filter(g => g.proveedorNombre === name);
+        }
+
+        // Filter by Date (Modal Filter)
+        if (detailFilterDate) {
+            let searchDate = '';
+            if (detailFilterDate.includes('-')) {
+                searchDate = detailFilterDate;
+            } else if (detailFilterDate.includes('/')) {
+                const parts = detailFilterDate.split('/');
+                if (parts.length === 3) searchDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+            } else {
+                const formatted = formatDate(new Date().toISOString()); // Dummy call to access formatDate? No, formatDate is in Props? No, local helper.
+                // Need to fix scope. formatDate is defined in GastosTab, NOT here.
+                // Define local helper here or move it up.
+            }
+            // Simple string match for YYYY-MM-DD
+            if (searchDate) filtered = filtered.filter(g => g.fechaCompra.startsWith(searchDate));
+        }
+
+        return filtered.sort((a, b) => new Date(b.fechaCompra) - new Date(a.fechaCompra));
+    };
+
+    const formatDateLocal = (dateStr) => {
+        if (!dateStr) return '';
+        const d = new Date(dateStr);
+        return d.toLocaleDateString('es-CO');
+    };
+
+
     const loadData = useCallback(async () => {
         try {
             setLoading(true);
@@ -1799,9 +1937,9 @@ function GraficasTab() {
                                 const isZeroBudgetWithGasto = item.presupuesto === 0 && item.gastado > 0;
 
                                 return (
-                                    <View key={idx} style={grafStyles.rubroReportRow}>
+                                    <TouchableOpacity key={idx} style={grafStyles.rubroReportRow} onPress={() => handleDetailClick('tipo', item)}>
                                         <View style={grafStyles.rubroReportHeader}>
-                                            <Text style={grafStyles.rubroReportName}>{item.nombre}</Text>
+                                            <Text style={grafStyles.rubroReportName}>{item.nombre} 👆</Text>
                                             <Text style={[grafStyles.rubroReportStatus, (isExceeded || isZeroBudgetWithGasto) ? { color: '#DC2626' } : { color: '#059669' }]}>
                                                 {formatCurrency(item.gastado)} / {formatCurrency(item.presupuesto)}
                                             </Text>
@@ -1818,7 +1956,7 @@ function GraficasTab() {
                                         {(isExceeded || isZeroBudgetWithGasto) && (
                                             <Text style={grafStyles.rubroWarningText}>⚠️ Superó presupuesto por {formatCurrency(item.gastado - item.presupuesto)}</Text>
                                         )}
-                                    </View>
+                                    </TouchableOpacity>
                                 );
                             })}
                         </View>
@@ -1884,34 +2022,102 @@ function GraficasTab() {
                         </View>
                     )}
 
-                    {/* Monthly Summary Table (Only in Annual view) */}
-                    {!mesSeleccionado && (
-                        <View style={grafStyles.chartSection}>
-                            <Text style={grafStyles.sectionTitle}>📅 Resumen Mensual</Text>
-                            <View style={grafStyles.tableHeader}>
-                                <Text style={[grafStyles.tableCell, grafStyles.tableCellHeader, { flex: 2 }]}>Mes</Text>
-                                <Text style={[grafStyles.tableCell, grafStyles.tableCellHeader]}>Presupuesto</Text>
-                                <Text style={[grafStyles.tableCell, grafStyles.tableCellHeader]}>Gastado</Text>
-                                <Text style={[grafStyles.tableCell, grafStyles.tableCellHeader]}>Restante</Text>
-                            </View>
-                            {gastosTotales.map((mes, idx) => (
-                                <View key={idx} style={[grafStyles.tableRow, idx % 2 === 0 && grafStyles.tableRowAlt]}>
-                                    <Text style={[grafStyles.tableCell, { flex: 2 }]}>{ghApi.getMesNombre(idx + 1)}</Text>
-                                    <Text style={grafStyles.tableCell}>{formatCurrency(mes.totalPresupuesto || 0)}</Text>
-                                    <Text style={grafStyles.tableCell}>{formatCurrency(mes.totalGastado || 0)}</Text>
-                                    <Text style={[
-                                        grafStyles.tableCell,
-                                        { color: (mes.totalPresupuesto - mes.totalGastado) >= 0 ? '#059669' : '#DC2626' }
-                                    ]}>
-                                        {formatCurrency((mes.totalPresupuesto || 0) - (mes.totalGastado || 0))}
-                                    </Text>
-                                </View>
-                            ))}
-                        </View>
+                </View>
                     )}
-                </>
+
+            {/* DETAIL MODAL */}
+            <Modal visible={showDetailModal} transparent animationType="fade" onRequestClose={() => setShowDetailModal(false)}>
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
+                    <View style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 20, width: '90%', maxHeight: '80%', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4, elevation: 5 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+                            <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#1F2937', flex: 1 }}>
+                                {detailType === 'tipo' ? 'Servicio: ' : detailType === 'rubro' ? 'Rubro: ' : 'Proveedor: '}
+                                {selectedDetailItem?.nombre || selectedDetailItem?.[0]}
+                            </Text>
+                            <TouchableOpacity onPress={() => setShowDetailModal(false)} style={{ padding: 5 }}>
+                                <Text style={{ fontSize: 20, color: '#6B7280' }}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Date Filter in Modal */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15, backgroundColor: '#F3F4F6', padding: 8, borderRadius: 8 }}>
+                            <Text style={{ marginRight: 10, fontWeight: '500', color: '#4B5563' }}>Filtrar Fecha:</Text>
+                            {Platform.OS === 'web' ? (
+                                <input
+                                    type="date"
+                                    value={detailFilterDate}
+                                    onChange={(e) => setDetailFilterDate(e.target.value)}
+                                    style={{ border: '1px solid #D1D5DB', borderRadius: 6, padding: '4px 8px' }}
+                                />
+                            ) : (
+                                <TextInput
+                                    style={{ backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, width: 120 }}
+                                    placeholder="YYYY-MM-DD"
+                                    value={detailFilterDate}
+                                    onChangeText={setDetailFilterDate}
+                                />
+                            )}
+                            {detailFilterDate ? (
+                                <TouchableOpacity onPress={() => setDetailFilterDate('')} style={{ marginLeft: 8 }}>
+                                    <Text style={{ color: '#DC2626', fontWeight: 'bold' }}>Borrar</Text>
+                                </TouchableOpacity>
+                            ) : null}
+                        </View>
+
+                        <ScrollView>
+                            {getFilteredDetailGastos().length === 0 ? (
+                                <Text style={{ textAlign: 'center', color: '#6B7280', marginVertical: 20 }}>No se encontraron gastos.</Text>
+                            ) : (
+                                getFilteredDetailGastos().map(g => (
+                                    <View key={g.id} style={{ borderBottomWidth: 1, borderBottomColor: '#E5E7EB', paddingVertical: 10 }}>
+                                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                                            <Text style={{ fontWeight: 'bold', color: '#1F2937' }}>{formatCurrency(g.precio)}</Text>
+                                            <Text style={{ color: '#6B7280', fontSize: 12 }}>{formatDateLocal(g.fechaCompra)}</Text>
+                                        </View>
+                                        <Text style={{ color: '#4B5563', fontSize: 13, marginTop: 2 }}>🏢 {g.proveedorNombre}</Text>
+                                        <Text style={{ color: '#4B5563', fontSize: 13 }}>📄 Fac: {g.numeroFactura}</Text>
+                                        {g.nota && <Text style={{ color: '#6B7280', fontSize: 12, fontStyle: 'italic', marginTop: 2 }}>{g.nota}</Text>}
+                                    </View>
+                                ))
+                            )}
+                        </ScrollView>
+
+                        <TouchableOpacity
+                            style={{ marginTop: 15, backgroundColor: '#E5E7EB', padding: 12, borderRadius: 8, alignItems: 'center' }}
+                            onPress={() => setShowDetailModal(false)}
+                        >
+                            <Text style={{ fontWeight: 'bold', color: '#374151' }}>Cerrar</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            {mesSeleccionado === '' && (
+                <View style={grafStyles.chartSection}>
+                    <Text style={grafStyles.sectionTitle}>📅 Resumen Mensual</Text>
+                    <View style={grafStyles.tableHeader}>
+                        <Text style={[grafStyles.tableCell, grafStyles.tableCellHeader, { flex: 2 }]}>Mes</Text>
+                        <Text style={[grafStyles.tableCell, grafStyles.tableCellHeader]}>Presupuesto</Text>
+                        <Text style={[grafStyles.tableCell, grafStyles.tableCellHeader]}>Gastado</Text>
+                        <Text style={[grafStyles.tableCell, grafStyles.tableCellHeader]}>Restante</Text>
+                    </View>
+                    {gastosTotales.map((mes, idx) => (
+                        <View key={idx} style={[grafStyles.tableRow, idx % 2 === 0 && grafStyles.tableRowAlt]}>
+                            <Text style={[grafStyles.tableCell, { flex: 2 }]}>{ghApi.getMesNombre(idx + 1)}</Text>
+                            <Text style={grafStyles.tableCell}>{formatCurrency(mes.totalPresupuesto || 0)}</Text>
+                            <Text style={grafStyles.tableCell}>{formatCurrency(mes.totalGastado || 0)}</Text>
+                            <Text style={[
+                                grafStyles.tableCell,
+                                { color: (mes.totalPresupuesto - mes.totalGastado) >= 0 ? '#059669' : '#DC2626' }
+                            ]}>
+                                {formatCurrency((mes.totalPresupuesto || 0) - (mes.totalGastado || 0))}
+                            </Text>
+                        </View>
+                    ))}
+                </View>
             )}
-        </ScrollView>
+
+        </ScrollView >
     );
 }
 
@@ -2379,6 +2585,15 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: '#E5E7EB',
     },
+    // New Styles for Filters
+    advancedFilters: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    filterLabel: { fontWeight: 'bold', color: '#4B5563', marginRight: 5, fontSize: 13 },
+    filterItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 4, borderWidth: 1, borderColor: '#D1D5DB', overflow: 'hidden' },
+    filterInput: { height: 35, paddingHorizontal: 10, minWidth: 100, backgroundColor: '#fff', fontSize: 13 },
+    filterPicker: { height: 35, width: 160, borderWidth: 0, backgroundColor: 'transparent' },
+    clearFilterBtn: { padding: 5, paddingHorizontal: 8 },
+    clearFilterText: { color: '#9CA3AF', fontWeight: 'bold' },
+
     headerLogo: {
         width: 140,
         height: 70,
