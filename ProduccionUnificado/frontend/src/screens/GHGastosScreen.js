@@ -1444,60 +1444,101 @@ function GraficasTab() {
 
     const anios = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
 
-    // INTERACTIVE DETAILS
+    // INTERACTIVE DETAILS (Ported from Talleres)
     const [showDetailModal, setShowDetailModal] = useState(false);
-    const [detailType, setDetailType] = useState(null); // 'tipo', 'rubro', 'proveedor'
-    const [selectedDetailItem, setSelectedDetailItem] = useState(null);
-    const [detailFilterDate, setDetailFilterDate] = useState('');
+    const [detailTitle, setDetailTitle] = useState('');
+    const [detailGastos, setDetailGastos] = useState([]);
+    const [filterStart, setFilterStart] = useState('');
+    const [filterEnd, setFilterEnd] = useState('');
+
+    const displayedDetailGastos = useMemo(() => {
+        if (!filterStart && !filterEnd) return detailGastos;
+
+        const parseDate = (d) => {
+            if (!d || d.length !== 10) return null;
+            if (d.includes('-')) return new Date(d); // Already YYYY-MM-DD
+            const p = d.split('/');
+            if (p.length < 3) return null;
+            return new Date(`${p[2]}-${p[1]}-${p[0]}`);
+        };
+
+        const s = parseDate(filterStart);
+        const e = parseDate(filterEnd);
+
+        return detailGastos.filter(g => {
+            const gd = new Date(g.fechaCompra); gd.setHours(0, 0, 0, 0); // GH uses fechaCompra
+            if (s && gd < s) return false;
+            if (e && gd > e) return false;
+            return true;
+        });
+    }, [detailGastos, filterStart, filterEnd]);
 
     const handleDetailClick = (type, item) => {
-        setDetailType(type);
-        setSelectedDetailItem(item);
-        setDetailFilterDate('');
+        const name = item.nombre || item[0]; // item can be {nombre...} or [nombre, valor]
+        const id = item.id; // May be undefined for tuple types
+
+        setDetailTitle(name);
+        setFilterStart('');
+        setFilterEnd('');
         setShowDetailModal(true);
-    };
 
-    const getFilteredDetailGastos = () => {
-        if (!selectedDetailItem) return [];
-        let filtered = allGastosRaw;
+        console.log('DEBUG Detail Click:', { type, id, name, totalRaw: allGastosRaw.length });
 
-        // Filter by Month (if global filter is active)
-        if (mesSeleccionado) {
-            filtered = filtered.filter(g => g.mes === parseInt(mesSeleccionado));
-        }
+        try {
+            let filtered = [];
+            // Helper for flexible ID check (from Talleres logic)
+            const checkId = (obj, prop, target) => {
+                if (!target) return false;
+                return obj[prop] == target;
+            };
 
-        // Filter by Category
-        if (detailType === 'tipo') {
-            // Use loose equality (==) to handle potential string/number mismatches
-            filtered = filtered.filter(g => g.tipoServicioId == selectedDetailItem.id);
-        } else if (detailType === 'rubro') {
-            // For Rubro, item is { nombre, valor } or similar from map
-            // Need to match rubroNombre
-            const name = selectedDetailItem.nombre || selectedDetailItem[0]; // Handle array destructuring or object
-            filtered = filtered.filter(g => g.rubroNombre === name);
-        } else if (detailType === 'proveedor') {
-            const name = selectedDetailItem[0]; // Tuple [name, value]
-            filtered = filtered.filter(g => g.proveedorNombre == name); // Loose just in case
-        }
-
-        // Filter by Date (Modal Filter)
-        if (detailFilterDate) {
-            let searchDate = '';
-            if (detailFilterDate.includes('-')) {
-                searchDate = detailFilterDate;
-            } else if (detailFilterDate.includes('/')) {
-                const parts = detailFilterDate.split('/');
-                if (parts.length === 3) searchDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-            } else {
-                const formatted = formatDate(new Date().toISOString()); // Dummy call to access formatDate? No, formatDate is in Props? No, local helper.
-                // Need to fix scope. formatDate is defined in GastosTab, NOT here.
-                // Define local helper here or move it up.
+            if (type === 'tipo') { // Tipo de Servicio
+                filtered = allGastosRaw.filter(g => {
+                    if (id && g.tipoServicioId == id) return true;
+                    return g.tipoServicioNombre === name;
+                });
+            } else if (type === 'rubro') {
+                filtered = allGastosRaw.filter(g => {
+                    // GH Rubro check. item is usually {id, nombre} or [nombre, val]
+                    // If tuple, we only have name.
+                    if (id && g.rubroId == id) return true;
+                    return g.rubroNombre === name;
+                });
+            } else if (type === 'proveedor') {
+                filtered = allGastosRaw.filter(g => {
+                    if (id && g.proveedorId == id) return true;
+                    return g.proveedorNombre === name;
+                });
             }
-            // Simple string match for YYYY-MM-DD
-            if (searchDate) filtered = filtered.filter(g => g.fechaCompra.startsWith(searchDate));
-        }
 
-        return filtered.sort((a, b) => new Date(b.fechaCompra) - new Date(a.fechaCompra));
+            // Fallback filtering if ID failed but name exists
+            if (filtered.length === 0 && name) {
+                console.log('DEBUG: Fallback filter by name', name);
+                const targetName = String(name).toLowerCase().trim();
+                filtered = allGastosRaw.filter(g => {
+                    let gName = '';
+                    if (type === 'tipo') gName = g.tipoServicioNombre;
+                    else if (type === 'rubro') gName = g.rubroNombre;
+                    else if (type === 'proveedor') gName = g.proveedorNombre;
+
+                    return gName && gName.toLowerCase().trim() === targetName;
+                });
+            }
+
+            // Month Filter (Global) must apply?
+            // User likely expects "Annual Dashboard" -> All year details.
+            // "Monthly Dashboard" -> Month details.
+            if (mesSeleccionado) {
+                filtered = filtered.filter(g => g.mes === parseInt(mesSeleccionado));
+            }
+
+            filtered.sort((a, b) => new Date(b.fechaCompra) - new Date(a.fechaCompra));
+            console.log('DEBUG Detail Filtered Count:', filtered.length);
+            setDetailGastos(filtered);
+        } catch (err) {
+            console.error('Error filtering details:', err);
+            setDetailGastos([]);
+        }
     };
 
     const formatDateLocal = (dateStr) => {
@@ -2033,58 +2074,74 @@ function GraficasTab() {
                 </>
             )}
 
-            {/* DETAIL MODAL */}
-            <Modal visible={showDetailModal} transparent animationType="fade" onRequestClose={() => setShowDetailModal(false)}>
+            {/* DETAIL MODAL (Talleres Style) */}
+            <Modal visible={showDetailModal} transparent animationType="slide" onRequestClose={() => setShowDetailModal(false)}>
                 <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
                     <View style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 20, width: '90%', maxHeight: '80%', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4, elevation: 5 }}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
-                            <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#1F2937', flex: 1 }}>
-                                {detailType === 'tipo' ? 'Servicio: ' : detailType === 'rubro' ? 'Rubro: ' : 'Proveedor: '}
-                                {selectedDetailItem?.nombre || selectedDetailItem?.[0]}
-                            </Text>
+                            <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#1F2937', flex: 1 }}>Detalle: {detailTitle}</Text>
                             <TouchableOpacity onPress={() => setShowDetailModal(false)} style={{ padding: 5 }}>
                                 <Text style={{ fontSize: 20, color: '#6B7280' }}>✕</Text>
                             </TouchableOpacity>
                         </View>
 
-                        {/* Date Filter in Modal */}
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15, backgroundColor: '#F3F4F6', padding: 8, borderRadius: 8 }}>
-                            <Text style={{ marginRight: 10, fontWeight: '500', color: '#4B5563' }}>Filtrar Fecha:</Text>
-                            {Platform.OS === 'web' ? (
-                                <input
-                                    type="date"
-                                    value={detailFilterDate}
-                                    onChange={(e) => setDetailFilterDate(e.target.value)}
-                                    style={{ border: '1px solid #D1D5DB', borderRadius: 6, padding: '4px 8px' }}
-                                />
-                            ) : (
-                                <TextInput
-                                    style={{ backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, width: 120 }}
-                                    placeholder="YYYY-MM-DD"
-                                    value={detailFilterDate}
-                                    onChangeText={setDetailFilterDate}
-                                />
-                            )}
-                            {detailFilterDate ? (
-                                <TouchableOpacity onPress={() => setDetailFilterDate('')} style={{ marginLeft: 8 }}>
-                                    <Text style={{ color: '#DC2626', fontWeight: 'bold' }}>Borrar</Text>
-                                </TouchableOpacity>
-                            ) : null}
+                        {/* Date Filters Row */}
+                        <View style={{ flexDirection: 'row', gap: 10, padding: 8, backgroundColor: '#F3F4F6', borderRadius: 8, marginBottom: 10 }}>
+                            <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#666' }}>Desde:</Text>
+                                {Platform.OS === 'web' ? (
+                                    <input type="date" value={filterStart} onChange={e => setFilterStart(e.target.value)} style={{ width: '100%', border: '1px solid #DDD', borderRadius: 4, padding: 4 }} />
+                                ) : (
+                                    <TextInput
+                                        style={{ backgroundColor: 'white', borderRadius: 4, paddingHorizontal: 5, height: 35, fontSize: 12, borderWidth: 1, borderColor: '#DDD' }}
+                                        placeholder="DD/MM/AAAA"
+                                        value={filterStart}
+                                        onChangeText={setFilterStart}
+                                    />
+                                )}
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#666' }}>Hasta:</Text>
+                                {Platform.OS === 'web' ? (
+                                    <input type="date" value={filterEnd} onChange={e => setFilterEnd(e.target.value)} style={{ width: '100%', border: '1px solid #DDD', borderRadius: 4, padding: 4 }} />
+                                ) : (
+                                    <TextInput
+                                        style={{ backgroundColor: 'white', borderRadius: 4, paddingHorizontal: 5, height: 35, fontSize: 12, borderWidth: 1, borderColor: '#DDD' }}
+                                        placeholder="DD/MM/AAAA"
+                                        value={filterEnd}
+                                        onChangeText={setFilterEnd}
+                                    />
+                                )}
+                            </View>
                         </View>
 
-                        <ScrollView>
-                            {getFilteredDetailGastos().length === 0 ? (
-                                <Text style={{ textAlign: 'center', color: '#6B7280', marginVertical: 20 }}>No se encontraron gastos.</Text>
+                        <ScrollView style={{ maxHeight: 400 }}>
+                            {displayedDetailGastos.length === 0 ? (
+                                <Text style={{ textAlign: 'center', color: '#6B7280', marginVertical: 20 }}>No se encontraron registros.</Text>
                             ) : (
-                                getFilteredDetailGastos().map(g => (
-                                    <View key={g.id} style={{ borderBottomWidth: 1, borderBottomColor: '#E5E7EB', paddingVertical: 10 }}>
+                                displayedDetailGastos.map(g => (
+                                    <View key={g.id} style={{
+                                        backgroundColor: '#F9FAFB',
+                                        padding: 12,
+                                        marginBottom: 8,
+                                        borderRadius: 8,
+                                        borderLeftWidth: 3,
+                                        borderLeftColor: '#2563EB'
+                                    }}>
                                         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                                            <Text style={{ fontWeight: 'bold', color: '#1F2937' }}>{formatCurrency(g.precio)}</Text>
-                                            <Text style={{ color: '#6B7280', fontSize: 12 }}>{formatDateLocal(g.fechaCompra)}</Text>
+                                            <Text style={{ fontWeight: 'bold', color: '#374151' }}>{formatDateLocal(g.fechaCompra)}</Text>
+                                            <Text style={{ fontWeight: 'bold', color: '#059669' }}>{formatCurrency(g.precio)}</Text>
                                         </View>
-                                        <Text style={{ color: '#4B5563', fontSize: 13, marginTop: 2 }}>🏢 {g.proveedorNombre}</Text>
-                                        <Text style={{ color: '#4B5563', fontSize: 13 }}>📄 Fac: {g.numeroFactura}</Text>
-                                        {g.nota && <Text style={{ color: '#6B7280', fontSize: 12, fontStyle: 'italic', marginTop: 2 }}>{g.nota}</Text>}
+                                        <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>
+                                            {g.tipoServicioNombre || g.rubroNombre || 'Gasto'}
+                                        </Text>
+
+                                        {g.proveedorNombre && (
+                                            <Text style={{ fontSize: 12, color: '#4B5563', marginTop: 2 }}>🏢 {g.proveedorNombre}</Text>
+                                        )}
+                                        <Text style={{ fontSize: 12, color: '#4B5563', marginTop: 2 }}>📄 Fac: {g.numeroFactura}</Text>
+
+                                        {g.nota && <Text style={{ fontSize: 12, fontStyle: 'italic', marginTop: 4 }}>"{g.nota}"</Text>}
                                     </View>
                                 ))
                             )}
