@@ -1468,7 +1468,8 @@ function GraficasTab() {
 
         // Filter by Category
         if (detailType === 'tipo') {
-            filtered = filtered.filter(g => g.tipoServicioId === selectedDetailItem.id);
+            // Use loose equality (==) to handle potential string/number mismatches
+            filtered = filtered.filter(g => g.tipoServicioId == selectedDetailItem.id);
         } else if (detailType === 'rubro') {
             // For Rubro, item is { nombre, valor } or similar from map
             // Need to match rubroNombre
@@ -1476,7 +1477,7 @@ function GraficasTab() {
             filtered = filtered.filter(g => g.rubroNombre === name);
         } else if (detailType === 'proveedor') {
             const name = selectedDetailItem[0]; // Tuple [name, value]
-            filtered = filtered.filter(g => g.proveedorNombre === name);
+            filtered = filtered.filter(g => g.proveedorNombre == name); // Loose just in case
         }
 
         // Filter by Date (Modal Filter)
@@ -2197,7 +2198,8 @@ const grafStyles = StyleSheet.create({
     barLabel: {
         width: 140,
         fontSize: 12,
-        color: '#374151',
+        color: '#2563EB', // Blue to indicate clickable
+        textDecorationLine: 'underline',
     },
     barContainer: {
         flex: 1,
@@ -2244,7 +2246,7 @@ const grafStyles = StyleSheet.create({
     // Detailed Performance Styles
     rubroReportRow: { marginBottom: 16 },
     rubroReportHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-    rubroReportName: { fontSize: 13, fontWeight: 'bold', color: '#374151', flex: 1, marginRight: 8 },
+    rubroReportName: { fontSize: 13, fontWeight: 'bold', color: '#2563EB', textDecorationLine: 'underline', flex: 1, marginRight: 8 },
     rubroReportStatus: { fontSize: 11, fontWeight: '600' },
     rubroProgressBarContainer: { height: 10, backgroundColor: '#E5E7EB', borderRadius: 5, overflow: 'hidden' },
     rubroProgressBar: { height: '100%', borderRadius: 5 },
