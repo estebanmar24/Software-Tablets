@@ -3,6 +3,10 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, Activit
 import { Picker } from '@react-native-picker/picker';
 import axios from 'axios';
 import { API_URL } from '../services/productionApi';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import { Asset } from 'expo-asset';
+import { Platform } from 'react-native';
 
 const SERVER_URL = API_URL.replace('/api', '');
 
@@ -59,6 +63,17 @@ export default function QualityView() {
     const [imageModalVisible, setImageModalVisible] = useState(false);
     const [enlargedImageUri, setEnlargedImageUri] = useState<string | null>(null);
 
+    // Filter States
+    const [filterDia, setFilterDia] = useState<number | null>(null);
+    const [filterMaquina, setFilterMaquina] = useState<string | null>(null);
+    const [filterDefecto, setFilterDefecto] = useState<string | null>(null);
+    const [filterProceso, setFilterProceso] = useState<string | null>(null);
+    const [filterEstado, setFilterEstado] = useState<string | null>(null);
+    const [filterConNovedad, setFilterConNovedad] = useState<string | null>(null); // 'SI' | 'NO'
+
+
+    const [generatingPdf, setGeneratingPdf] = useState(false);
+
     const openImageModal = (uri: string) => {
         setEnlargedImageUri(uri);
         setImageModalVisible(true);
@@ -106,19 +121,89 @@ export default function QualityView() {
         }
     };
 
-    // --- DASHBOARD CALCULATIONS ---
+    // --- FILTER & CALCULATIONS ---
+    const filteredData = useMemo(() => {
+        let data = encuestas;
+
+        if (filterDia) {
+            data = data.filter(e => {
+                const day = new Date(e.fechaCreacion).getDate();
+                return day === filterDia;
+            });
+        }
+
+        if (filterMaquina) {
+            data = data.filter(e => e.maquina === filterMaquina);
+        }
+
+        if (filterDefecto) {
+            data = data.filter(e => e.tiposNovedad && e.tiposNovedad.includes(filterDefecto));
+        }
+
+        if (filterProceso) {
+            data = data.filter(e => e.proceso === filterProceso);
+        }
+
+        if (filterEstado) {
+            data = data.filter(e => e.estadoProceso === filterEstado);
+        }
+
+        if (filterConNovedad) {
+            if (filterConNovedad === 'SI') {
+                data = data.filter(e => e.totalNovedades > 0);
+            } else {
+                data = data.filter(e => e.totalNovedades === 0);
+            }
+        }
+
+        return data;
+    }, [encuestas, filterDia, filterMaquina, filterDefecto, filterProceso, filterEstado, filterConNovedad]);
+
+    // Unique Options for Filters (Cascading/Interdependent)
+    const uniqueOptions = useMemo(() => {
+        const matchesDefect = (e: EncuestaResumen, def: string | null) => !def || (e.tiposNovedad && e.tiposNovedad.includes(def));
+        const matchesDia = (e: EncuestaResumen, d: number | null) => !d || new Date(e.fechaCreacion).getDate() === d;
+        const matchesMaquina = (e: EncuestaResumen, m: string | null) => !m || e.maquina === m;
+        const matchesProceso = (e: EncuestaResumen, p: string | null) => !p || e.proceso === p;
+        const matchesEstado = (e: EncuestaResumen, st: string | null) => !st || e.estadoProceso === st;
+        const matchesNovedad = (e: EncuestaResumen, nov: string | null) => {
+            if (!nov) return true;
+            return nov === 'SI' ? e.totalNovedades > 0 : e.totalNovedades === 0;
+        };
+
+        const filterBase = (exclude: 'dia' | 'maquina' | 'defecto' | 'proceso' | 'estado' | 'conNovedad') => {
+            return encuestas.filter(e =>
+                (exclude === 'dia' || matchesDia(e, filterDia)) &&
+                (exclude === 'maquina' || matchesMaquina(e, filterMaquina)) &&
+                (exclude === 'defecto' || matchesDefect(e, filterDefecto)) &&
+                (exclude === 'proceso' || matchesProceso(e, filterProceso)) &&
+                (exclude === 'estado' || matchesEstado(e, filterEstado)) &&
+                (exclude === 'conNovedad' || matchesNovedad(e, filterConNovedad))
+            );
+        };
+
+        const dias = [...new Set(filterBase('dia').map(e => new Date(e.fechaCreacion).getDate()))].sort((a, b) => a - b);
+        const maquinas = [...new Set(filterBase('maquina').map(e => e.maquina))].sort();
+        const defectos = [...new Set(filterBase('defecto').flatMap(e => e.tiposNovedad || []))].sort();
+        const procesos = [...new Set(filterBase('proceso').map(e => e.proceso))].sort();
+        const estados = [...new Set(filterBase('estado').map(e => e.estadoProceso))].sort();
+
+        return { dias, maquinas, defectos, procesos, estados };
+    }, [encuestas, filterDia, filterMaquina, filterDefecto, filterProceso, filterEstado, filterConNovedad]);
+
+    // --- DASHBOARD CALCULATIONS (Based on Filtered Data) ---
     const stats = useMemo(() => {
-        const total = encuestas.length;
+        const total = filteredData.length;
         if (total === 0) return null;
 
-        const withDefects = encuestas.filter(e => e.totalNovedades > 0).length;
+        const withDefects = filteredData.filter(e => e.totalNovedades > 0).length;
         const clean = total - withDefects;
         const defectRate = ((withDefects / total) * 100).toFixed(1);
         const cleanRate = ((clean / total) * 100).toFixed(1);
 
         // Top Defects
         const defectCounts: Record<string, number> = {};
-        encuestas.forEach(e => {
+        filteredData.forEach(e => {
             if (e.tiposNovedad && e.tiposNovedad.length > 0) {
                 e.tiposNovedad.forEach(type => {
                     defectCounts[type] = (defectCounts[type] || 0) + 1;
@@ -133,7 +218,7 @@ export default function QualityView() {
 
         // Machine Breakdown
         const machineStats: Record<string, { total: number, defects: number }> = {};
-        encuestas.forEach(e => {
+        filteredData.forEach(e => {
             if (!machineStats[e.maquina]) {
                 machineStats[e.maquina] = { total: 0, defects: 0 };
             }
@@ -161,7 +246,264 @@ export default function QualityView() {
             topDefects,
             machineList
         };
-    }, [encuestas]);
+    }, [filteredData]);
+
+    // --- PDF GENERATION ---
+    const getBase64FromUrl = async (url: string) => {
+        if (!url) return null;
+        try {
+            if (Platform.OS === 'web') {
+                const response = await fetch(url);
+                const blob = await response.blob();
+                return new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.readAsDataURL(blob);
+                });
+            } else {
+                // Mobile
+                const cachedFile = (FileSystem as any).cacheDirectory + 'photo_' + url.split('/').pop();
+                await FileSystem.downloadAsync(url, cachedFile);
+                const base64 = await FileSystem.readAsStringAsync(cachedFile, { encoding: 'base64' });
+                return `data:image/jpeg;base64,${base64}`;
+            }
+        } catch (error: any) {
+            console.warn('Error loading image', url, error);
+            return null;
+        }
+    };
+
+    const generatePDF = async () => {
+        if (filteredData.length === 0) {
+            Alert.alert('Sin datos', 'No hay datos para generar el reporte con los filtros actuales.');
+            return;
+        }
+
+        setGeneratingPdf(true);
+        try {
+            // Dynamic import for jsPDF
+            const { jsPDF } = require('jspdf');
+            // const autoTable = require('jspdf-autotable').default; // Not used in detailed view anymore, or maybe for summary?
+
+            // Fetch Details for ALL filtered items
+            const detailsPromises = filteredData.map(async (item) => {
+                try {
+                    const response = await axios.get(`${API_URL}/calidad/encuestas/${item.id}`);
+                    return response.data;
+                } catch (e: any) {
+                    console.error("Error fetching detail for ID", item.id, e);
+                    return null;
+                }
+            });
+
+            // Wait for all details
+            const fullDetails = (await Promise.all(detailsPromises)).filter(d => d !== null);
+
+            const doc = new jsPDF();
+            const width = doc.internal.pageSize.getWidth();
+            const height = doc.internal.pageSize.getHeight();
+            let y = 15; // Start Y
+
+            // Helper: Header
+            const drawHeader = async () => {
+                // Logo
+                try {
+                    const asset = Asset.fromModule(require('../../assets/LOGO_ALEPH_IMPRESORES.jpg'));
+                    await asset.downloadAsync();
+                    let logoData = null;
+                    if (Platform.OS === 'web') {
+                        logoData = asset.uri;
+                    } else {
+                        const base64 = await FileSystem.readAsStringAsync(asset.localUri || asset.uri, { encoding: 'base64' });
+                        logoData = `data:image/jpeg;base64,${base64}`;
+                    }
+                    doc.addImage(logoData, 'JPEG', 15, 10, 50, 20);
+                } catch (e: any) { console.warn("Logo error", e); }
+
+                doc.setFontSize(16);
+                doc.setTextColor(0, 51, 102);
+                doc.text('ALEPH IMPRESORES S.A.S.', width - 15, 20, { align: 'right' });
+                doc.setFontSize(14);
+                doc.setTextColor(51, 51, 51);
+                doc.text('REPORTE DETALLADO DE CALIDAD', width - 15, 28, { align: 'right' });
+                doc.setFontSize(10);
+                doc.setTextColor(100);
+                doc.text(`Generado: ${new Date().toLocaleString()}`, width - 15, 34, { align: 'right' });
+
+                // Filters
+                doc.setFontSize(10);
+                doc.setTextColor(0);
+                let filterText = `Periodo: ${meses.find(m => m.id === Number(mes))?.nombre || mes}/${anio}`;
+                if (filterDia) filterText += ` | Día: ${filterDia}`;
+                if (filterMaquina) filterText += ` | Máq: ${filterMaquina}`;
+                if (filterProceso) filterText += ` | Proc: ${filterProceso}`;
+                if (filterEstado) filterText += ` | Est: ${filterEstado}`;
+                if (filterConNovedad) filterText += ` | ${filterConNovedad === 'SI' ? 'Con Defectos' : 'Sin Defectos'}`;
+                if (filterDefecto) filterText += ` | Def: ${filterDefecto}`;
+
+                doc.text(filterText, 15, 45);
+
+                return 55; // Next Y
+            };
+
+            y = await drawHeader();
+
+            // Summary Stats Boxes
+            if (stats) {
+                const boxWidth = (width - 40) / 3;
+                const boxHeight = 20;
+
+                // Box 1
+                doc.setDrawColor(33, 150, 243); doc.setLineWidth(0.5); doc.rect(15, y, boxWidth, boxHeight);
+                doc.setFontSize(10); doc.text('Total', 15 + boxWidth / 2, y + 6, { align: 'center' });
+                doc.setFontSize(14); doc.setFont(undefined, 'bold'); doc.text(stats.total.toString(), 15 + boxWidth / 2, y + 16, { align: 'center' });
+
+                // Box 2
+                doc.setDrawColor(76, 175, 80); doc.rect(15 + boxWidth + 5, y, boxWidth, boxHeight);
+                doc.setFontSize(10); doc.setFont(undefined, 'normal'); doc.text('OK', 15 + boxWidth + 5 + boxWidth / 2, y + 6, { align: 'center' });
+                doc.setFontSize(14); doc.setFont(undefined, 'bold'); doc.text(`${stats.clean}`, 15 + boxWidth + 5 + boxWidth / 2, y + 16, { align: 'center' });
+
+                // Box 3
+                doc.setDrawColor(244, 67, 54); doc.rect(15 + (boxWidth + 5) * 2, y, boxWidth, boxHeight);
+                doc.setFontSize(10); doc.setFont(undefined, 'normal'); doc.text('Defectos', 15 + (boxWidth + 5) * 2 + boxWidth / 2, y + 6, { align: 'center' });
+                doc.setFontSize(14); doc.setFont(undefined, 'bold'); doc.text(`${stats.withDefects}`, 15 + (boxWidth + 5) * 2 + boxWidth / 2, y + 16, { align: 'center' });
+
+                y += 30;
+            }
+
+            doc.setDrawColor(200);
+            doc.line(15, y, width - 15, y); // Separator
+            y += 10;
+
+            // Iterate Items
+            for (let i = 0; i < fullDetails.length; i++) {
+                const item = fullDetails[i];
+
+                // Check Page Break approximation (Header + Obs ~ 40pts + Photos?)
+                // Conservative check: if Y > height - 60, break
+                if (y > height - 60) {
+                    doc.addPage();
+                    y = 20;
+                }
+
+                // Item Header Background
+                doc.setFillColor(245, 247, 250);
+                doc.rect(15, y - 5, width - 30, 20, 'F');
+
+                // Line 1: Date | Machine
+                doc.setFontSize(11);
+                doc.setTextColor(0, 51, 102); // Primary Color
+                doc.setFont(undefined, 'bold');
+                doc.text(`${new Date(item.fechaCreacion).toLocaleString()} - ${item.maquina}`, 20, y);
+
+                // Line 2: Operator | OP | Process
+                y += 6;
+                doc.setFontSize(9);
+                doc.setTextColor(50);
+                doc.setFont(undefined, 'normal');
+                doc.text(`Operario: ${item.operario} | OP: ${item.ordenProduccion} | Proc: ${item.proceso}`, 20, y);
+
+                // Status Badge logic (Text)
+                const isOK = item.totalNovedades === 0 || (item.novedades && item.novedades.length === 0);
+                doc.setFont(undefined, 'bold');
+                doc.setTextColor(isOK ? 40 : 220, isOK ? 167 : 53, isOK ? 69 : 69); // Green or Red
+                doc.text(isOK ? 'CALIDAD OK' : `CON DEFECTOS (${item.novedades.length})`, width - 20, y - 6, { align: 'right' }); // Top right of box
+
+                y += 12;
+
+                // OBSERVACIONES
+                if (item.observacion) {
+                    doc.setFontSize(9);
+                    doc.setTextColor(0);
+                    doc.setFont(undefined, 'bold');
+                    doc.text('Observaciones:', 20, y);
+                    doc.setFont(undefined, 'normal');
+                    const splitObs = doc.splitTextToSize(item.observacion, width - 40);
+                    doc.text(splitObs, 45, y);
+                    y += (splitObs.length * 4) + 4;
+                }
+
+                // NOVEDADES (Defects)
+                if (item.novedades && item.novedades.length > 0) {
+                    doc.setFontSize(9);
+                    doc.setTextColor(200, 0, 0); // Red title
+                    doc.setFont(undefined, 'bold');
+                    doc.text('Hallazgos:', 20, y);
+                    y += 5;
+
+                    for (const nov of item.novedades) {
+                        if (y > height - 60) { doc.addPage(); y = 20; }
+
+                        doc.setTextColor(0);
+                        doc.setFont(undefined, 'bold');
+                        doc.text(`• ${nov.tipoNovedad}`, 25, y);
+
+                        // Desc with wrap
+                        let descHeight = 0;
+                        if (nov.descripcion) {
+                            doc.setFont(undefined, 'normal');
+                            const splitDesc = doc.splitTextToSize(`: ${nov.descripcion}`, width - 70);
+                            doc.text(splitDesc, 60, y);
+                            descHeight = splitDesc.length * 4;
+                        }
+                        y += Math.max(5, descHeight + 2);
+
+                        // PHOTO
+                        if (nov.fotoUrl) {
+                            const imgUrl = nov.fotoUrl.startsWith('http') ? nov.fotoUrl : `${SERVER_URL}/${nov.fotoUrl}`;
+                            const base64Img = await getBase64FromUrl(imgUrl);
+                            if (base64Img) {
+                                // Check space for image
+                                if (y + 50 > height - 20) { doc.addPage(); y = 20; }
+
+                                doc.addImage(base64Img, 'JPEG', 30, y, 60, 45); // Fixed size thumbnail
+                                y += 50;
+                            }
+                        }
+                    }
+                } else {
+                    // No detailed defects, but verified items
+                    // Optional: List checks (Ficha tecnica, format, etc)
+                    // For brevity, we skip unless requested.
+                }
+
+                y += 5;
+                doc.setDrawColor(230);
+                doc.line(15, y, width - 15, y); // Separator
+                y += 10;
+            }
+
+            // 5. Save/Share
+            const fileName = `Reporte_Calidad_${anio}_${mes}.pdf`;
+
+            if (Platform.OS === 'web') {
+                doc.save(fileName);
+            } else {
+                const fileUri = (FileSystem as any).documentDirectory + fileName;
+                const pdfBase64 = doc.output('datauristring').split(',')[1];
+
+                await FileSystem.writeAsStringAsync(fileUri, pdfBase64, {
+                    encoding: 'base64',
+                });
+
+                if (await Sharing.isAvailableAsync()) {
+                    await Sharing.shareAsync(fileUri, {
+                        mimeType: 'application/pdf',
+                        dialogTitle: 'Reporte Calidad',
+                        UTI: 'com.adobe.pdf'
+                    });
+                } else {
+                    Alert.alert('Guardado', `PDF guardado en: ${fileUri}`);
+                }
+            }
+
+        } catch (error: any) {
+            console.error(error);
+            Alert.alert('Error PDF', 'No se pudo generar el PDF: ' + error.message);
+        } finally {
+            setGeneratingPdf(false);
+        }
+    };
 
 
     const renderItem = ({ item }: { item: EncuestaResumen }) => (
@@ -216,6 +558,141 @@ export default function QualityView() {
                 <TouchableOpacity style={styles.refreshBtn} onPress={loadEncuestas}>
                     <Text style={styles.refreshBtnText}>Actualizar</Text>
                 </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={[styles.refreshBtn, { backgroundColor: '#4CAF50', marginLeft: 10, opacity: generatingPdf ? 0.7 : 1 }]}
+                    onPress={generatePDF}
+                    disabled={generatingPdf}
+                >
+                    {generatingPdf ? (
+                        <ActivityIndicator color="white" size="small" />
+                    ) : (
+                        <Text style={styles.refreshBtnText}>📄 PDF</Text>
+                    )}
+                </TouchableOpacity>
+            </View>
+
+            {/* SECOND ROW FILTERS - GRID LAYOUT */}
+            <View style={[styles.header, { marginTop: -5, flexWrap: 'wrap', flexDirection: 'row', gap: 10, paddingVertical: 10, alignItems: 'flex-end' }]}>
+
+                {/* 1. DIA */}
+                <View style={[styles.filterGroup, { flexGrow: 1, minWidth: 100 }]}>
+                    <Text style={[styles.label, { fontSize: 11 }]}>Día:</Text>
+                    <View style={[styles.pickerContainer, { flex: 1 }]}>
+                        <Picker
+                            selectedValue={filterDia}
+                            onValueChange={(v) => setFilterDia(v ? Number(v) : null)}
+                            style={styles.picker}
+                        >
+                            <Picker.Item label="Todos" value="" />
+                            {uniqueOptions.dias.map(d => (
+                                <Picker.Item key={d} label={d.toString()} value={d} />
+                            ))}
+                        </Picker>
+                    </View>
+                </View>
+
+                {/* 2. MAQUINA */}
+                <View style={[styles.filterGroup, { flexGrow: 1, minWidth: 160 }]}>
+                    <Text style={[styles.label, { fontSize: 11 }]}>Máquina:</Text>
+                    <View style={[styles.pickerContainer, { flex: 1 }]}>
+                        <Picker
+                            selectedValue={filterMaquina}
+                            onValueChange={(v) => setFilterMaquina(v || null)}
+                            style={styles.picker}
+                        >
+                            <Picker.Item label="Todas" value="" />
+                            {uniqueOptions.maquinas.map(m => (
+                                <Picker.Item key={m} label={m} value={m} />
+                            ))}
+                        </Picker>
+                    </View>
+                </View>
+
+                {/* 3. PROCESO */}
+                <View style={[styles.filterGroup, { flexGrow: 1, minWidth: 130 }]}>
+                    <Text style={[styles.label, { fontSize: 11 }]}>Proceso:</Text>
+                    <View style={[styles.pickerContainer, { flex: 1 }]}>
+                        <Picker
+                            selectedValue={filterProceso}
+                            onValueChange={(v) => setFilterProceso(v || null)}
+                            style={styles.picker}
+                        >
+                            <Picker.Item label="Todos" value="" />
+                            {uniqueOptions.procesos.map(p => (
+                                <Picker.Item key={p} label={p} value={p} />
+                            ))}
+                        </Picker>
+                    </View>
+                </View>
+
+                {/* 4. ESTADO */}
+                <View style={[styles.filterGroup, { flexGrow: 1, minWidth: 130 }]}>
+                    <Text style={[styles.label, { fontSize: 11 }]}>Estado:</Text>
+                    <View style={[styles.pickerContainer, { flex: 1 }]}>
+                        <Picker
+                            selectedValue={filterEstado}
+                            onValueChange={(v) => setFilterEstado(v || null)}
+                            style={styles.picker}
+                        >
+                            <Picker.Item label="Todos" value="" />
+                            {uniqueOptions.estados.map(s => (
+                                <Picker.Item key={s} label={s} value={s} />
+                            ))}
+                        </Picker>
+                    </View>
+                </View>
+
+                {/* 5. TIPO HALLAZGO (Con/Sin) */}
+                <View style={[styles.filterGroup, { flexGrow: 1, minWidth: 130 }]}>
+                    <Text style={[styles.label, { fontSize: 11 }]}>Estatus:</Text>
+                    <View style={[styles.pickerContainer, { flex: 1 }]}>
+                        <Picker
+                            selectedValue={filterConNovedad}
+                            onValueChange={(v) => setFilterConNovedad(v || null)}
+                            style={styles.picker}
+                        >
+                            <Picker.Item label="Todos" value="" />
+                            <Picker.Item label="Con Defectos" value="SI" />
+                            <Picker.Item label="Calidad OK" value="NO" />
+                        </Picker>
+                    </View>
+                </View>
+
+                {/* 6. DEFECTO ESPECIFICO */}
+                <View style={[styles.filterGroup, { flexGrow: 1, minWidth: 160 }]}>
+                    <Text style={[styles.label, { fontSize: 11 }]}>Defecto:</Text>
+                    <View style={[styles.pickerContainer, { flex: 1 }]}>
+                        <Picker
+                            selectedValue={filterDefecto}
+                            onValueChange={(v) => setFilterDefecto(v || null)}
+                            style={styles.picker}
+                            enabled={filterConNovedad !== 'NO'} // Disable if filtering for Clean
+                        >
+                            <Picker.Item label="Cualquiera" value="" />
+                            {uniqueOptions.defectos.map(d => (
+                                <Picker.Item key={d} label={d.slice(0, 20)} value={d} />
+                            ))}
+                        </Picker>
+                    </View>
+                </View>
+
+                {/* RESET BUTTON */}
+                {(filterDia || filterMaquina || filterProceso || filterEstado || filterDefecto || filterConNovedad) && (
+                    <TouchableOpacity
+                        style={[styles.refreshBtn, { backgroundColor: '#F44336', minWidth: 40, justifyContent: 'center', alignItems: 'center' }]}
+                        onPress={() => {
+                            setFilterDia(null);
+                            setFilterMaquina(null);
+                            setFilterDefecto(null);
+                            setFilterProceso(null);
+                            setFilterEstado(null);
+                            setFilterConNovedad(null);
+                        }}
+                    >
+                        <Text style={styles.refreshBtnText}>X</Text>
+                    </TouchableOpacity>
+                )}
             </View>
 
             {loading && <ActivityIndicator size="large" color="#0000ff" style={{ marginTop: 20 }} />}
@@ -235,8 +712,8 @@ export default function QualityView() {
                                         </View>
                                         <View style={[styles.card, { borderLeftColor: '#4CAF50' }]}>
                                             <Text style={styles.cardUnic}>Calidad OK</Text>
-                                            <Text style={styles.cardValue}>{stats.cleanRate}%</Text>
-                                            <Text style={styles.cardSub}>{stats.clean} encuestas</Text>
+                                            <Text style={styles.cardValue}>{stats.clean}</Text>
+                                            <Text style={styles.cardSub}>{stats.cleanRate}%</Text>
                                         </View>
                                         <View style={[styles.card, { borderLeftColor: '#F44336' }]}>
                                             <Text style={styles.cardUnic}>Con Defectos</Text>
@@ -304,11 +781,12 @@ export default function QualityView() {
                         <Text style={[styles.cellHeader, { flex: 0.5 }]}>Foto</Text>
                     </View>
 
+
                     <FlatList
-                        data={encuestas}
+                        data={filteredData}
                         renderItem={renderItem}
                         keyExtractor={(item) => item.id.toString()}
-                        ListEmptyComponent={<Text style={styles.emptyText}>No se encontraron encuestas en este periodo.</Text>}
+                        ListEmptyComponent={<Text style={styles.emptyText}>No se encontraron datos con estos filtros.</Text>}
                     />
                 </View>
             )}
