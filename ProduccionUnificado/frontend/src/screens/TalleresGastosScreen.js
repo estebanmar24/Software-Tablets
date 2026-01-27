@@ -119,15 +119,13 @@ function GastosTab() {
 
                 // Secondary Filter Logic
                 if (filterSecondary) {
-                    // Check if rubro is Nomina type to filter by Personal
-                    // We need to know context. But if filterSecondary is set, we assume user selected it from relevant dropdown
-                    // Check Personal first
-                    if (g.personalId && g.personalId.toString() === filterSecondary) return true;
-                    if (g.proveedorId && g.proveedorId.toString() === filterSecondary) return true;
+                    // Handle potential casing issues (API might return PascalCase)
+                    const pId = g.personalId || g.PersonalId;
+                    const provId = g.proveedorId || g.ProveedorId;
 
-                    // If filter is set but doesn't match either (or field is missing), return false
-                    if (g.personalId || g.proveedorId) return false; // Has ID but didn't match
-                    // If it doesn't have ID, it can't match filter
+                    if (pId && pId.toString() === filterSecondary) return true;
+                    if (provId && provId.toString() === filterSecondary) return true;
+
                     return false;
                 }
             }
