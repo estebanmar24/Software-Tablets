@@ -150,7 +150,7 @@ export function Sidebar({
                     style={styles.logo}
                     resizeMode="contain"
                 />
-                <Text style={{ fontSize: 10, color: '#718096', marginTop: 4 }}>v1.4.1 - Quality View Update 🔍</Text>
+                <Text style={{ fontSize: 10, color: '#718096', marginTop: 4 }}>v1.5.0 - SST & Calidad Update 🛠️</Text>
             </View>
 
             {/* Toggle Button for Phones */}
