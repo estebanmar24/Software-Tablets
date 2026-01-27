@@ -2022,8 +2022,8 @@ function GraficasTab() {
                         </View>
                     )}
 
-                </View>
-                    )}
+                </>
+            )}
 
             {/* DETAIL MODAL */}
             <Modal visible={showDetailModal} transparent animationType="fade" onRequestClose={() => setShowDetailModal(false)}>
