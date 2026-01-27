@@ -4,7 +4,7 @@
  * Includes Cotizaciones (Quotations) feature for price comparison
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
