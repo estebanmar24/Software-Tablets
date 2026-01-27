@@ -107,12 +107,31 @@ function GastosTab() {
 
     // Filters for Main List
     const [filterRubro, setFilterRubro] = useState('');
+    const [filterSecondary, setFilterSecondary] = useState(''); // personalId or providerId
     const [filterFecha, setFilterFecha] = useState('');
 
 
     const filteredGastos = useMemo(() => {
         return gastos.filter(g => {
-            if (filterRubro && g.rubroId?.toString() !== filterRubro) return false;
+
+            if (filterRubro) {
+                if (g.rubroId?.toString() !== filterRubro) return false;
+
+                // Secondary Filter Logic
+                if (filterSecondary) {
+                    // Check if rubro is Nomina type to filter by Personal
+                    // We need to know context. But if filterSecondary is set, we assume user selected it from relevant dropdown
+                    // Check Personal first
+                    if (g.personalId && g.personalId.toString() === filterSecondary) return true;
+                    if (g.proveedorId && g.proveedorId.toString() === filterSecondary) return true;
+
+                    // If filter is set but doesn't match either (or field is missing), return false
+                    if (g.personalId || g.proveedorId) return false; // Has ID but didn't match
+                    // If it doesn't have ID, it can't match filter
+                    return false;
+                }
+            }
+
             if (filterFecha) {
                 // Support standard ISO date from web input (yyyy-mm-dd) or manual typing (dd/mm/yyyy)
                 let searchDate = '';
@@ -461,13 +480,37 @@ function GastosTab() {
                     <View style={styles.filterItem}>
                         <Picker
                             selectedValue={filterRubro}
-                            onValueChange={setFilterRubro}
+                            onValueChange={(v) => { setFilterRubro(v); setFilterSecondary(''); }}
                             style={Platform.OS === 'web' ? { height: 35, width: 160, border: 'none', backgroundColor: 'transparent', outline: 'none', fontSize: 13 } : styles.filterPicker}
                         >
                             <Picker.Item label="Todos los Rubros" value="" />
                             {rubrosConGastos.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
                         </Picker>
                     </View>
+
+                    {/* Secondary Filter (Dynamic) */}
+                    {(() => {
+                        const selRubro = rubros.find(r => r.id.toString() === filterRubro);
+                        if (!selRubro) return null;
+
+                        const isNomina = selRubro.nombre.toLowerCase().includes('hora') || selRubro.nombre.toLowerCase().includes('recargo');
+
+                        if (isNomina) {
+                            return (
+                                <View style={styles.filterItem}>
+                                    <Picker
+                                        selectedValue={filterSecondary}
+                                        onValueChange={setFilterSecondary}
+                                        style={Platform.OS === 'web' ? { height: 35, width: 160, border: 'none', backgroundColor: 'transparent', outline: 'none', fontSize: 13 } : styles.filterPicker}
+                                    >
+                                        <Picker.Item label="Todos los Operarios" value="" />
+                                        {personal.sort((a, b) => a.nombre.localeCompare(b.nombre)).map(p => <Picker.Item key={p.id} label={p.nombre} value={p.id.toString()} />)}
+                                    </Picker>
+                                </View>
+                            );
+                        }
+                        return null;
+                    })()}
                 </View>
             </View>
 
