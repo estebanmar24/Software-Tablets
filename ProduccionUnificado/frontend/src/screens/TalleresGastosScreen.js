@@ -149,7 +149,7 @@ function GastosTab() {
             }
             return true;
         });
-    }, [gastos, filterRubro, filterFecha]);
+    }, [gastos, filterRubro, filterFecha, filterSecondary]);
 
     // FILTER RUBROS DROPDOWN (Talleres - Only show rubros with expenses in current month)
     const rubrosConGastos = useMemo(() => {
