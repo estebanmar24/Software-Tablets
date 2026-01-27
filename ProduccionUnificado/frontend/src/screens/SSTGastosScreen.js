@@ -3,7 +3,7 @@
  * SST personnel screen for recording monthly expenses and managing master data
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
@@ -70,7 +70,7 @@ export default function SSTGastosScreen({ navigation }) {
 function GastosTab() {
     const [loading, setLoading] = useState(true);
     const [anio, setAnio] = useState(new Date().getFullYear());
-    const [mes, setMes] = useState(new Date().getMonth() + 1);
+    const [mes, setMes] = useState(new Date().getMonth() + 1); // v2.1 Fixed imports
 
     // Master data
     const [rubros, setRubros] = useState([]);
@@ -526,22 +526,22 @@ function GastosTab() {
                     </View>
 
                     {/* Date Search */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', borderRadius: 8, paddingHorizontal: 8, height: 35 }}>
-                        <Text style={{ marginRight: 5, fontSize: 12, color: '#666' }}>Filtrar por:</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 4, paddingHorizontal: 8, height: 40 }}>
+                        <Text style={{ marginRight: 5, fontSize: 13, color: '#374151', fontWeight: '500' }}>Filtrar por:</Text>
                         {Platform.OS === 'web' ? (
-                            <input type="date" value={filterFecha} onChange={e => setFilterFecha(e.target.value)} style={{ border: 'none', background: 'transparent', fontSize: 12, outline: 'none' }} />
+                            <input type="date" value={filterFecha} onChange={e => setFilterFecha(e.target.value)} style={{ border: 'none', background: 'transparent', fontSize: 13, outline: 'none', color: '#1F2937', fontFamily: 'inherit' }} />
                         ) : (
-                            <TextInput style={{ width: 100, fontSize: 12, padding: 0 }} placeholder="dd/mm/aaaa" value={filterFecha} onChangeText={setFilterFecha} />
+                            <TextInput style={{ width: 100, fontSize: 13, padding: 0, color: '#1F2937' }} placeholder="dd/mm/aaaa" value={filterFecha} onChangeText={setFilterFecha} />
                         )}
-                        {filterFecha ? <TouchableOpacity onPress={() => setFilterFecha('')}><Text style={{ marginLeft: 5 }}>✕</Text></TouchableOpacity> : null}
+                        {filterFecha ? <TouchableOpacity onPress={() => setFilterFecha('')}><Text style={{ marginLeft: 5, color: '#9CA3AF' }}>✕</Text></TouchableOpacity> : null}
                     </View>
 
                     {/* Rubro Filter */}
-                    <View style={{ height: 35, backgroundColor: '#F3F4F6', borderRadius: 8, justifyContent: 'center' }}>
+                    <View style={{ height: 40, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 4, justifyContent: 'center' }}>
                         <Picker
                             selectedValue={filterRubro}
                             onValueChange={(v) => { setFilterRubro(v); setFilterTipo(''); }}
-                            style={Platform.OS === 'web' ? { height: 35, border: 'none', backgroundColor: 'transparent', outline: 'none', fontSize: 13, minWidth: 140 } : { height: 35, width: 150 }}
+                            style={Platform.OS === 'web' ? { height: 38, border: 'none', backgroundColor: 'transparent', outline: 'none', fontSize: 13, minWidth: 160, color: '#1F2937' } : { height: 40, width: 170 }}
                         >
                             <Picker.Item label="Todos los Rubros" value="" />
                             {rubrosConGastos.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
@@ -550,24 +550,23 @@ function GastosTab() {
 
                     {/* Secondary Filter (Tipo Servicio) */}
                     {filterRubro && (
-                        <View style={{ height: 35, backgroundColor: '#F3F4F6', borderRadius: 8, justifyContent: 'center' }}>
+                        <View style={{ height: 40, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 4, justifyContent: 'center' }}>
                             <Picker
                                 selectedValue={filterTipo}
                                 onValueChange={setFilterTipo}
-                                style={Platform.OS === 'web' ? { height: 35, border: 'none', backgroundColor: 'transparent', outline: 'none', fontSize: 13, minWidth: 140 } : { height: 35, width: 150 }}
+                                style={Platform.OS === 'web' ? { height: 38, border: 'none', backgroundColor: 'transparent', outline: 'none', fontSize: 13, minWidth: 160, color: '#1F2937' } : { height: 40, width: 170 }}
                             >
                                 <Picker.Item label="Todos los Tipos" value="" />
                                 {(() => {
-                                    // Get Types for this Rubro AND present in filtered gastso? Or just Types for this Rubro?
-                                    // User wants dependent filters "mantenimiento sale maquinas".
-                                    // Let's filter tipos logic: types belonging to rubro AND having expenses
-                                    // Or just types belonging to rubro.
                                     const rubroIdNum = parseInt(filterRubro);
-                                    // types for this rubro
+                                    // 1. Get types belonging to this Rubro
                                     const typesForRubro = tiposServicio.filter(t => t.rubroId === rubroIdNum);
-                                    // Optional: Filter only those with expenses logic?
-                                    // Let's do simple cascading for now: Show all types of this rubro.
-                                    return typesForRubro.map(t => <Picker.Item key={t.id} label={t.nombre} value={t.id.toString()} />);
+
+                                    // 2. Filter only those that appear in current 'gastos' list (Active Types)
+                                    const activeTypeIds = new Set(gastos.filter(g => g.rubroId === rubroIdNum).map(g => g.tipoServicioId));
+                                    const visibleTypes = typesForRubro.filter(t => activeTypeIds.has(t.id));
+
+                                    return visibleTypes.map(t => <Picker.Item key={t.id} label={t.nombre} value={t.id.toString()} />);
                                 })()}
                             </Picker>
                         </View>

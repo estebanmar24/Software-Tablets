@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, memo, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, RefreshControl, ScrollView, TextInput, Image, ActivityIndicator, Keyboard, Modal, Dimensions, Platform } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -35,9 +35,9 @@ const StableTextInput = memo(function StableTextInput({ value, onChangeText, sty
 });
 
 // Componentes helper movidos fuera para evitar re-render
-const SectionCard = memo(function SectionCard({ title, icon, children }) {
+const SectionCard = memo(function SectionCard({ title, icon, children, style }) {
     return (
-        <View style={styles.sectionCard}>
+        <View style={[styles.sectionCard, style]}>
             <View style={styles.sectionHeader}>
                 <Text style={styles.sectionIcon}>{icon}</Text>
                 <Text style={styles.sectionTitle}>{title}</Text>
@@ -47,9 +47,9 @@ const SectionCard = memo(function SectionCard({ title, icon, children }) {
     );
 });
 
-const FormField = memo(function FormField({ label, required, children }) {
+const FormField = memo(function FormField({ label, required, children, style }) {
     return (
-        <View style={styles.formField}>
+        <View style={[styles.formField, style]}>
             <Text style={styles.fieldLabel}>
                 {label} {required && <Text style={styles.required}>*</Text>}
             </Text>
@@ -83,6 +83,81 @@ const CumpleNoCumple = memo(function CumpleNoCumple({ value, onChange, label }) 
     );
 });
 
+const SearchablePicker = memo(function SearchablePicker({
+    data,
+    selectedId,
+    onSelect,
+    placeholder,
+    labelField = 'nombre',
+    valueField = 'id'
+}) {
+    const [query, setQuery] = useState('');
+    const [showList, setShowList] = useState(false);
+
+    useEffect(() => {
+        if (selectedId) {
+            const item = data.find(d => d[valueField] === selectedId);
+            if (item) setQuery(item[labelField]);
+        }
+    }, [selectedId, data, valueField, labelField]);
+
+    const filteredData = useMemo(() => {
+        if (!query) return data;
+        const lowerQ = query.toLowerCase();
+        return data.filter(item => item[labelField].toLowerCase().includes(lowerQ));
+    }, [data, query, labelField]);
+
+    const handleSelect = (item) => {
+        setQuery(item[labelField]);
+        setShowList(false);
+        onSelect(item[valueField]);
+        Keyboard.dismiss();
+    };
+
+    const handleChangeText = (text) => {
+        setQuery(text);
+        if (text === '') onSelect(null);
+        setShowList(true);
+    };
+
+    return (
+        <View style={styles.autocompleteContainer}>
+            <TextInput
+                style={styles.autocompleteInput}
+                value={query}
+                onChangeText={handleChangeText}
+                onFocus={() => setShowList(true)}
+                placeholder={placeholder}
+                placeholderTextColor="#9CA3AF"
+            />
+            {showList && (
+                <View style={styles.autocompleteListContainer}>
+                    <ScrollView style={styles.autocompleteList} nestedScrollEnabled={true} keyboardShouldPersistTaps="handled">
+                        {filteredData.length > 0 ? (
+                            filteredData.map(item => (
+                                <TouchableOpacity
+                                    key={item[valueField]}
+                                    style={styles.autocompleteItem}
+                                    onPress={() => handleSelect(item)}
+                                >
+                                    <Text style={styles.autocompleteItemText}>{item[labelField]}</Text>
+                                </TouchableOpacity>
+                            ))
+                        ) : (
+                            <View style={styles.autocompleteItem}>
+                                <Text style={styles.autocompleteItemTextDisabled}>Sin resultados</Text>
+                            </View>
+                        )}
+                    </ScrollView>
+                    <TouchableOpacity style={styles.closeSuggestionsBtn} onPress={() => setShowList(false)}>
+                        <Text style={styles.closeSuggestionsText}>Cerrar lista</Text>
+                    </TouchableOpacity>
+                </View>
+            )}
+        </View>
+    );
+});
+
 export default function CalidadScreen({ navigation }) {
     const [currentScreen, setCurrentScreen] = useState('list');
     const [editingId, setEditingId] = useState(null);
@@ -110,6 +185,7 @@ export default function CalidadScreen({ navigation }) {
     const [observacion, setObservacion] = useState('');
     const [novedades, setNovedades] = useState([{ tipoNovedad: '', fotoBase64: null, fotoUri: null, descripcion: '', cantidadDefectuosa: '' }]);
     const [saving, setSaving] = useState(false);
+    const [formKey, setFormKey] = useState(0); // Para forzar reset de inputs custom
 
     const scrollViewRef = useRef(null);
 
@@ -243,7 +319,9 @@ export default function CalidadScreen({ navigation }) {
         setCorrectoRegistroFormatos(true);
         setAprobacionArranque(true);
         setObservacion('');
+        setObservacion('');
         setNovedades([{ tipoNovedad: '', fotoBase64: null, fotoUri: null, descripcion: '', cantidadDefectuosa: '' }]);
+        setFormKey(k => k + 1);
     };
 
     const abrirFormulario = () => {
@@ -658,37 +736,31 @@ export default function CalidadScreen({ navigation }) {
             >
                 <View style={styles.formContainer}>
                     {/* Información del Operario */}
-                    <SectionCard title="Información del Personal" icon="👥">
-                        <FormField label="Operario" required>
-                            <View style={styles.pickerWrapper}>
-                                <Picker mode="dropdown"
-                                    selectedValue={operarioId}
-                                    onValueChange={setOperarioId}
-                                    style={styles.picker}
-                                    dropdownIconColor="#1E40AF"
-                                >
-                                    <Picker.Item label="-- Seleccionar --" value={null} color="#444444" />
-                                    {usuarios.map(u => <Picker.Item key={u.id} label={u.nombre} value={u.id} color="#000000" />)}
-                                </Picker>
-                            </View>
+                    <SectionCard title="Información del Personal" icon="👥" style={{ zIndex: 2000 }}>
+                        <FormField label="Operario" required style={{ zIndex: 2000 }}>
+                            {/* Reemplazado Picker por SearchablePicker */}
+                            <SearchablePicker
+                                key={`operario-${formKey}-${editingId}`}
+                                data={usuarios}
+                                selectedId={operarioId}
+                                onSelect={setOperarioId}
+                                placeholder="Escriba para buscar operario..."
+                            />
                         </FormField>
-                        <FormField label="Auxiliar">
-                            <View style={styles.pickerWrapper}>
-                                <Picker mode="dropdown"
-                                    selectedValue={auxiliarId}
-                                    onValueChange={setAuxiliarId}
-                                    style={styles.picker}
-                                    dropdownIconColor="#1E40AF"
-                                >
-                                    <Picker.Item label="-- Ninguno --" value={null} color="#444444" />
-                                    {usuarios.map(u => <Picker.Item key={u.id} label={u.nombre} value={u.id} color="#000000" />)}
-                                </Picker>
-                            </View>
+                        <FormField label="Auxiliar" style={{ zIndex: 1000 }}>
+                            {/* Reemplazado Picker por SearchablePicker */}
+                            <SearchablePicker
+                                key={`auxiliar-${formKey}-${editingId}`}
+                                data={usuarios}
+                                selectedId={auxiliarId}
+                                onSelect={setAuxiliarId}
+                                placeholder="Escriba para buscar auxiliar..."
+                            />
                         </FormField>
                     </SectionCard>
 
                     {/* Información de Producción */}
-                    <SectionCard title="Información de Producción" icon="🏭">
+                    <SectionCard title="Información de Producción" icon="🏭" style={{ zIndex: 0, elevation: 1 }}>
                         <FormField label="Número de Orden de Producción" required>
                             <StableTextInput
                                 style={styles.input}
@@ -1037,4 +1109,15 @@ const styles = StyleSheet.create({
     // Hint para ampliar
     tapToZoomHint: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.5)', paddingVertical: 6, alignItems: 'center', borderBottomLeftRadius: 10, borderBottomRightRadius: 10 },
     tapToZoomText: { color: 'white', fontSize: 12, fontWeight: '600' },
+
+    // AUTOCOMPLETE STYLES
+    autocompleteContainer: { position: 'relative', zIndex: 100 },
+    autocompleteInput: { backgroundColor: '#F9FAFB', borderRadius: 12, borderWidth: 1.5, borderColor: '#D1D5DB', padding: 14, fontSize: 16, color: '#1F2937' },
+    autocompleteListContainer: { position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: 'white', borderBottomLeftRadius: 12, borderBottomRightRadius: 12, borderWidth: 1, borderColor: '#D1D5DB', borderTopWidth: 0, maxHeight: 250, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 5, zIndex: 100 },
+    autocompleteList: { maxHeight: 200 },
+    autocompleteItem: { padding: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+    autocompleteItemText: { fontSize: 16, color: '#374151' },
+    autocompleteItemTextDisabled: { fontSize: 14, color: '#9CA3AF', fontStyle: 'italic', textAlign: 'center' },
+    closeSuggestionsBtn: { padding: 8, alignItems: 'center', backgroundColor: '#F3F4F6' },
+    closeSuggestionsText: { fontSize: 12, color: '#6B7280', fontWeight: '600' },
 });
