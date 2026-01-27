@@ -141,6 +141,13 @@ function GastosTab() {
         });
     }, [gastos, filterRubro, filterFecha]);
 
+    // FILTER RUBROS DROPDOWN (Only show rubros with expenses in current month)
+    const rubrosConGastos = useMemo(() => {
+        const idsConGastos = new Set(gastos.map(g => g.rubroId));
+        return rubros.filter(r => idsConGastos.has(r.id)).sort((a, b) => a.nombre.localeCompare(b.nombre));
+    }, [gastos, rubros]);
+
+
 
     const loadMasterData = useCallback(async () => {
         try {
@@ -563,7 +570,7 @@ function GastosTab() {
                             style={Platform.OS === 'web' ? { height: 35, width: 160, border: 'none', backgroundColor: 'transparent', outline: 'none', fontSize: 13 } : styles.filterPicker}
                         >
                             <Picker.Item label="Todos los Rubros" value="" />
-                            {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
+                            {rubrosConGastos.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
                         </Picker>
                     </View>
                 </View>
