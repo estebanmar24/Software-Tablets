@@ -44,6 +44,16 @@ export default function DashboardScreen({ navigation }) {
     const [filteredUsuarios, setFilteredUsuarios] = useState([]);
     const [filteredMaquinas, setFilteredMaquinas] = useState([]);
 
+    // VIEW FILTERS (For Dashboard Cards)
+    const [viewFilterMaquina, setViewFilterMaquina] = useState('');
+    const [viewFilterOperario, setViewFilterOperario] = useState('');
+
+    // Derived Data for View Filters
+    const [viewAvailableMaquinas, setViewAvailableMaquinas] = useState([]);
+    const [viewAvailableOperarios, setViewAvailableOperarios] = useState([]);
+    const [displayedOperarios, setDisplayedOperarios] = useState([]);
+    const [displayedMaquinas, setDisplayedMaquinas] = useState([]);
+
     useEffect(() => {
         cargarListas();
         cargarPeriodosDisponibles();
@@ -81,6 +91,59 @@ export default function DashboardScreen({ navigation }) {
             setFilteredMaquinas([]);
         }
     }, [resumen, operariosConDatos, usuarios, maquinas]);
+
+
+    // EFECTO PARA FILTROS DE VISTA (Tablero Semáforos)
+    useEffect(() => {
+        const dataOps = resumen?.resumenOperarios || [];
+        const dataMaqs = resumen?.resumenMaquinas || [];
+
+        // 1. Filtrar Data Principal
+        let filteredOps = dataOps;
+        let filteredMaqs = dataMaqs;
+
+        if (viewFilterMaquina) {
+            filteredOps = filteredOps.filter(o => o.maquinaId == viewFilterMaquina);
+            filteredMaqs = filteredMaqs.filter(m => m.maquinaId == viewFilterMaquina);
+        }
+
+        if (viewFilterOperario) {
+            filteredOps = filteredOps.filter(o => o.usuarioId == viewFilterOperario);
+            // Nota: resumenMaquinas no tiene usuarioId directo típicamente, 
+            // pero si queremos filtrar máquinas por operario, usamos las máquinas donde ese operario trabajó.
+            // Obtenemos los MaquinaIDs donde el operario tiene registros en filteredOps (que ya está filtrado por operario)
+            const validMaqIds = [...new Set(dataOps.filter(o => o.usuarioId == viewFilterOperario).map(o => o.maquinaId))];
+            filteredMaqs = filteredMaqs.filter(m => validMaqIds.includes(m.maquinaId));
+        }
+
+        setDisplayedOperarios(filteredOps);
+        setDisplayedMaquinas(filteredMaqs);
+
+        // 2. Calcular Opciones Disponibles (Linked Filtering)
+
+        // Máquinas Disponibles:
+        // Si hay Operario seleccionado: solo máquinas donde trabajó ese operario (en el resumen actual)
+        // Si NO hay Operario: todas las máquinas presentes en el resumen actual
+        let availableMaqsSource = dataOps;
+        if (viewFilterOperario) {
+            availableMaqsSource = availableMaqsSource.filter(o => o.usuarioId == viewFilterOperario);
+        }
+        const availableMaqIds = [...new Set(availableMaqsSource.map(o => o.maquinaId))];
+        const availableMaqsObjs = maquinas.filter(m => availableMaqIds.includes(m.id));
+        setViewAvailableMaquinas(availableMaqsObjs);
+
+        // Operarios Disponibles:
+        // Si hay Máquina seleccionada: solo operarios que trabajaron en esa máquina
+        // Si NO hay Máquina: todos los operarios presentes en el resumen actual
+        let availableOpsSource = dataOps;
+        if (viewFilterMaquina) {
+            availableOpsSource = availableOpsSource.filter(o => o.maquinaId == viewFilterMaquina);
+        }
+        const availableOpIds = [...new Set(availableOpsSource.map(o => o.usuarioId))];
+        const availableOpsObjs = usuarios.filter(u => availableOpIds.includes(u.id));
+        setViewAvailableOperarios(availableOpsObjs);
+
+    }, [resumen, viewFilterMaquina, viewFilterOperario, usuarios, maquinas]);
 
 
     const getBase64FromUrl = async (url) => {
@@ -1105,64 +1168,97 @@ export default function DashboardScreen({ navigation }) {
                 <Text style={[styles.header, { color: colors.text }]}>Tablero Semáforos</Text>
             </View>
 
-            {/* Top Navigation */}
-            {/* Top Navigation */}
+            {/* Combined Control Bar */}
+            <View style={[styles.controlRow, { backgroundColor: colors.card, padding: 10, borderRadius: 8, justifyContent: 'space-between', alignItems: 'flex-start' }]}>
 
+                {/* Left: Date Controls */}
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginBottom: 5 }}>
+                    {periodosDisponibles.length > 0 ? (
+                        <>
+                            <View>
+                                <Text style={[styles.label, { color: colors.text, fontSize: 10, marginBottom: 2 }]}>Año</Text>
+                                <View style={[styles.pickerContainer, { backgroundColor: colors.inputBackground, borderColor: colors.border, minWidth: 90, height: 40 }]}>
+                                    <Picker
+                                        selectedValue={anio}
+                                        onValueChange={(v) => setAnio(parseInt(v))}
+                                        style={[styles.picker, { color: colors.text, height: 40 }]}
+                                    >
+                                        {getUniquePeriods().map(a => <Picker.Item key={a} label={a.toString()} value={a} />)}
+                                    </Picker>
+                                </View>
+                            </View>
 
+                            <View>
+                                <Text style={[styles.label, { color: colors.text, fontSize: 10, marginBottom: 2 }]}>Mes</Text>
+                                <View style={[styles.pickerContainer, { backgroundColor: colors.inputBackground, borderColor: colors.border, minWidth: 120, height: 40 }]}>
+                                    <Picker
+                                        selectedValue={mes}
+                                        onValueChange={(v) => setMes(parseInt(v))}
+                                        style={[styles.picker, { color: colors.text, height: 40 }]}
+                                    >
+                                        {(getMesesParaAnio(anio).length > 0 ? getMesesParaAnio(anio) : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => ({ mes: m }))).map(p => (
+                                            <Picker.Item key={p.mes} label={getMesNombre(p.mes)} value={p.mes} />
+                                        ))}
+                                    </Picker>
+                                </View>
+                            </View>
+                        </>
+                    ) : (
+                        <View style={{ flexDirection: 'row', gap: 10 }}>
+                            <View style={[styles.pickerContainer, { width: 90 }]}><Picker selectedValue={anio} onValueChange={v => setAnio(v)}><Picker.Item label="2026" value={2026} /></Picker></View>
+                            <View style={[styles.pickerContainer, { width: 120 }]}><Picker selectedValue={mes} onValueChange={v => setMes(v)}><Picker.Item label="Enero" value={1} /></Picker></View>
+                        </View>
+                    )}
 
-            {/* Date Selection Row */}
-            <View style={styles.controlRow}>
-                {periodosDisponibles.length > 0 ? (
-                    <>
-                        <Text style={[styles.label, { color: colors.text }]}>Año:</Text>
-                        <View style={[styles.pickerContainer, { backgroundColor: colors.inputBackground, borderColor: colors.border, minWidth: 100 }]}>
+                    <TouchableOpacity style={[styles.btnReload, { height: 40, justifyContent: 'center', marginTop: 15 }]} onPress={() => { cargarResumen(); cargarPeriodosDisponibles(); cargarOperariosConDatos(); }}>
+                        <Text style={{ color: 'white' }}>🔄</Text>
+                    </TouchableOpacity>
+                </View>
+
+                {/* Right: View Filters */}
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, alignItems: 'center', justifyContent: 'flex-end' }}>
+
+                    <View>
+                        <Text style={[styles.label, { color: colors.text, fontSize: 10, marginBottom: 2 }]}>Filtro Máquina</Text>
+                        <View style={[styles.pickerContainer, { backgroundColor: colors.inputBackground, borderColor: colors.border, minWidth: 140, height: 40 }]}>
                             <Picker
-                                selectedValue={anio}
-                                onValueChange={(itemValue) => setAnio(parseInt(itemValue))}
-                                style={[styles.picker, { color: colors.text }]}
+                                selectedValue={viewFilterMaquina}
+                                onValueChange={(v) => setViewFilterMaquina(v)}
+                                style={[styles.picker, { color: colors.text, height: 40 }]}
                             >
-                                {getUniquePeriods().map(a => (
-                                    <Picker.Item key={a} label={a.toString()} value={a} />
+                                <Picker.Item label="Todas" value="" />
+                                {viewAvailableMaquinas.map(m => (
+                                    <Picker.Item key={m.id} label={m.nombre} value={m.id} />
                                 ))}
-                            </Picker>
-                        </View>
-
-                        <Text style={[styles.label, { marginLeft: 15, color: colors.text }]}>Mes:</Text>
-                        <View style={[styles.pickerContainer, { backgroundColor: colors.inputBackground, borderColor: colors.border, minWidth: 150 }]}>
-                            <Picker
-                                selectedValue={mes}
-                                onValueChange={(itemValue) => setMes(parseInt(itemValue))}
-                                style={[styles.picker, { color: colors.text }]}
-                            >
-                                {/* Show available months for selected year, or all if none found (fallback) */}
-                                {(getMesesParaAnio(anio).length > 0 ? getMesesParaAnio(anio) :
-                                    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => ({ mes: m }))
-                                ).map(p => (
-                                    <Picker.Item key={p.mes} label={getMesNombre(p.mes)} value={p.mes} />
-                                ))}
-                            </Picker>
-                        </View>
-                    </>
-                ) : (
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Text style={[styles.label, { marginRight: 5, color: colors.text }]}>Año:</Text>
-                        <View style={[styles.pickerContainer, { backgroundColor: colors.inputBackground, borderColor: colors.border, minWidth: 100 }]}>
-                            <Picker selectedValue={anio} onValueChange={(v) => setAnio(parseInt(v))} style={[styles.picker, { color: colors.text }]}>
-                                {[2024, 2025, 2026].map(a => <Picker.Item key={a} label={a.toString()} value={a} />)}
-                            </Picker>
-                        </View>
-                        <Text style={[styles.label, { marginLeft: 15, marginRight: 5, color: colors.text }]}>Mes:</Text>
-                        <View style={[styles.pickerContainer, { backgroundColor: colors.inputBackground, borderColor: colors.border, minWidth: 150 }]}>
-                            <Picker selectedValue={mes} onValueChange={(v) => setMes(parseInt(v))} style={[styles.picker, { color: colors.text }]}>
-                                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => <Picker.Item key={m} label={getMesNombre(m)} value={m} />)}
                             </Picker>
                         </View>
                     </View>
-                )}
 
-                <TouchableOpacity style={styles.btnReload} onPress={() => { cargarResumen(); cargarPeriodosDisponibles(); cargarOperariosConDatos(); }}>
-                    <Text style={{ color: 'white' }}>🔄 Recargar</Text>
-                </TouchableOpacity>
+                    <View>
+                        <Text style={[styles.label, { color: colors.text, fontSize: 10, marginBottom: 2 }]}>Filtro Operario</Text>
+                        <View style={[styles.pickerContainer, { backgroundColor: colors.inputBackground, borderColor: colors.border, minWidth: 140, height: 40 }]}>
+                            <Picker
+                                selectedValue={viewFilterOperario}
+                                onValueChange={(v) => setViewFilterOperario(v)}
+                                style={[styles.picker, { color: colors.text, height: 40 }]}
+                            >
+                                <Picker.Item label="Todos" value="" />
+                                {viewAvailableOperarios.map(u => (
+                                    <Picker.Item key={u.id} label={u.nombre} value={u.id} />
+                                ))}
+                            </Picker>
+                        </View>
+                    </View>
+
+                    {(viewFilterMaquina || viewFilterOperario) && (
+                        <TouchableOpacity
+                            style={[styles.btnReload, { backgroundColor: '#e74c3c', height: 40, justifyContent: 'center', marginTop: 15 }]}
+                            onPress={() => { setViewFilterMaquina(''); setViewFilterOperario(''); }}
+                        >
+                            <Text style={{ color: 'white' }}>🧹</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
             </View>
 
             {/* Reports Section */}
@@ -1291,13 +1387,13 @@ export default function DashboardScreen({ navigation }) {
                 loading ? <ActivityIndicator size="large" style={{ marginTop: 20 }} /> : (
                     <View>
                         <Text style={[styles.sectionHeader, { color: colors.text }]}>👷 Por Operario</Text>
-                        {(resumen?.resumenOperarios || []).length === 0 ? (
+                        {displayedOperarios.length === 0 ? (
                             <Text style={[styles.noData, { color: colors.subText }]}>No hay datos para el periodo seleccionado</Text>
                         ) : (
-                            (resumen?.resumenOperarios || []).map((item, index) => (
+                            displayedOperarios.map((item, index) => (
                                 <View key={index} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}>
                                     <Text style={[styles.cardTitle, { color: colors.text }]}>{item.operario} - {item.maquina}</Text>
-                                    <Text style={{ color: colors.text }}>Meta 75%: {item.metaBonificacion?.toFixed(0) || '0'} | Meta 100%: {item.meta100Porciento?.toFixed(0) || '0'}</Text>
+                                    <Text style={{ color: colors.text }}>Meta 100%: {item.meta100Porciento?.toFixed(0) || '0'}</Text>
                                     <Text style={{ color: colors.text }}>Tiros: {item.totalTiros}</Text>
                                     <Text style={{ color: colors.text }}>Horas Prod: {item.totalHorasProductivas?.toFixed(2)}</Text>
                                     <Text style={{ color: colors.text }}>Promedio/H: {item.promedioHoraProductiva?.toFixed(2)}</Text>
@@ -1305,20 +1401,7 @@ export default function DashboardScreen({ navigation }) {
 
                                     {/* Semáforos con porcentajes */}
                                     <View style={{ flexDirection: 'row', marginTop: 10, gap: 15 }}>
-                                        {/* Semáforo 75% */}
-                                        <View style={{ alignItems: 'center' }}>
-                                            <Text style={{ fontSize: 10, color: colors.subText, marginBottom: 3 }}>Meta 75%</Text>
-                                            <View style={{
-                                                width: 60, height: 40, borderRadius: 8,
-                                                backgroundColor: getColor((item.porcentajeRendimiento75 || 0) >= 100 ? 'Verde' : 'Rojo'),
-                                                justifyContent: 'center', alignItems: 'center',
-                                                borderWidth: 2, borderColor: '#333'
-                                            }}>
-                                                <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 14 }}>
-                                                    {Math.floor(item.porcentajeRendimiento75 || 0)}%
-                                                </Text>
-                                            </View>
-                                        </View>
+
 
                                         {/* Semáforo 100% */}
                                         <View style={{ alignItems: 'center' }}>
@@ -1340,10 +1423,10 @@ export default function DashboardScreen({ navigation }) {
                         )}
 
                         <Text style={[styles.sectionHeader, { color: colors.text }]}>🏭 Por Maquina</Text>
-                        {(resumen?.resumenMaquinas || []).length === 0 ? (
+                        {displayedMaquinas.length === 0 ? (
                             <Text style={[styles.noData, { color: colors.subText }]}>No hay datos para el periodo seleccionado</Text>
                         ) : (
-                            (resumen?.resumenMaquinas || []).map((item, index) => (
+                            displayedMaquinas.map((item, index) => (
                                 <View key={index} style={[styles.card, { backgroundColor: getColor(item.semaforoColor), borderColor: 'black', borderWidth: 2 }]}>
                                     <Text style={[styles.cardTitle, { color: '#000' }]}>{item.maquina}</Text>
                                     <Text style={{ color: '#000' }}>Tiros Totales: {item.tirosTotales}</Text>

@@ -9,47 +9,38 @@ import {
     Horario,
 } from '../types';
 
-// Configurar la URL base de la API
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
-const API_BASE_URL = `${BASE_URL}/tiempoproceso`;
+import { api } from './productionApi';
 
-// Helper para manejar respuestas
-async function handleResponse<T>(response: Response): Promise<T> {
-    if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error || 'Error en la solicitud');
-    }
-    return response.json();
-}
+const API_BASE_URL = `tiempoproceso`; // Relative to base URL in api instance
 
 // Obtener lista de actividades
 export async function getActividades(): Promise<Actividad[]> {
-    const response = await fetch(`${API_BASE_URL}/actividades`);
-    return handleResponse<Actividad[]>(response);
+    const response = await api.get<Actividad[]>(`${API_BASE_URL}/actividades`);
+    return response.data;
 }
 
 // Obtener lista de usuarios/operarios
 export async function getUsuarios(): Promise<Usuario[]> {
-    const response = await fetch(`${API_BASE_URL}/usuarios`);
-    return handleResponse<Usuario[]>(response);
+    const response = await api.get<Usuario[]>(`${API_BASE_URL}/usuarios`);
+    return response.data;
 }
 
 // Obtener lista de máquinas
 export async function getMaquinas(): Promise<Maquina[]> {
-    const response = await fetch(`${API_BASE_URL}/maquinas`);
-    return handleResponse<Maquina[]>(response);
+    const response = await api.get<Maquina[]>(`${API_BASE_URL}/maquinas`);
+    return response.data;
 }
 
 // Obtener lista de órdenes de producción
 export async function getOrdenes(): Promise<OrdenProduccion[]> {
-    const response = await fetch(`${API_BASE_URL}/ordenes`);
-    return handleResponse<OrdenProduccion[]>(response);
+    const response = await api.get<OrdenProduccion[]>(`${API_BASE_URL}/ordenes`);
+    return response.data;
 }
 
 // Obtener lista de horarios/turnos
 export async function getHorarios(): Promise<Horario[]> {
-    const response = await fetch(`${API_BASE_URL}/horarios`);
-    return handleResponse<Horario[]>(response);
+    const response = await api.get<Horario[]>(`${API_BASE_URL}/horarios`);
+    return response.data;
 }
 
 // Obtener producción del día
@@ -63,22 +54,16 @@ export async function getProduccionDia(
     if (maquinaId !== undefined && maquinaId !== null) params.append('maquinaId', maquinaId.toString());
     if (usuarioId !== undefined && usuarioId !== null) params.append('usuarioId', usuarioId.toString());
 
-    const response = await fetch(`${API_BASE_URL}/produccion-dia?${params}`);
-    return handleResponse<ProduccionDia>(response);
+    const response = await api.get<ProduccionDia>(`${API_BASE_URL}/produccion-dia`, { params: { fecha, maquinaId, usuarioId } });
+    return response.data;
 }
 
 // Registrar tiempo de actividad
 export async function registrarTiempo(
     request: RegistrarTiempoRequest
 ): Promise<TiempoProceso> {
-    const response = await fetch(`${API_BASE_URL}/registrar`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(request),
-    });
-    return handleResponse<TiempoProceso>(response);
+    const response = await api.post<TiempoProceso>(`${API_BASE_URL}/registrar`, request);
+    return response.data;
 }
 
 // Limpiar datos del día
@@ -92,65 +77,40 @@ export async function limpiarDatos(
     if (maquinaId) params.append('maquinaId', maquinaId.toString());
     if (usuarioId) params.append('usuarioId', usuarioId.toString());
 
-    const response = await fetch(`${API_BASE_URL}/limpiar?${params}`, {
-        method: 'DELETE',
-    });
-    await handleResponse<{ message: string }>(response);
+    await api.delete(`${API_BASE_URL}/limpiar`, { params: { fecha, maquinaId, usuarioId } });
 }
 
 // Login
 export async function adminLogin(username: string, password: string): Promise<{ token: string; role: string; username: string; nombreMostrar: string }> {
-    const response = await fetch(`${BASE_URL}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-    });
-    return handleResponse(response);
+    const response = await api.post(`auth/login`, { username, password });
+    return response.data;
 }
 
 // === GESTIÓN DE USUARIOS (CRUD) ===
 
 export async function getUsers(): Promise<any[]> {
-    const response = await fetch(`${BASE_URL}/adminusuarios`);
-    return handleResponse<any[]>(response);
+    const response = await api.get(`adminusuarios`);
+    return response.data;
 }
 
 export async function createUser(user: any): Promise<any> {
-    const response = await fetch(`${BASE_URL}/adminusuarios`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(user),
-    });
-    return handleResponse<any>(response);
+    const response = await api.post(`adminusuarios`, user);
+    return response.data;
 }
 
 export async function updateUser(id: number, user: any): Promise<void> {
-    const response = await fetch(`${BASE_URL}/adminusuarios/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(user),
-    });
-    if (response.status === 204) return;
-    return handleResponse<void>(response);
+    await api.put(`/adminusuarios/${id}`, user);
 }
 
 export async function deleteUser(id: number): Promise<void> {
-    const response = await fetch(`${BASE_URL}/adminusuarios/${id}`, {
-        method: 'DELETE',
-    });
-    if (response.status === 204) return;
-    return handleResponse<void>(response);
+    await api.delete(`/adminusuarios/${id}`);
 }
 export async function getCodigosDesperdicio(): Promise<import('../types').CodigoDesperdicio[]> {
-    const response = await fetch(`${BASE_URL}/desperdicio/codigos/activos`);
-    return handleResponse<import('../types').CodigoDesperdicio[]>(response);
+    const response = await api.get(`desperdicio/codigos/activos`);
+    return response.data;
 }
 
 export async function registrarDesperdicio(data: import('../types').RegistroDesperdicioRequest): Promise<any> {
-    const response = await fetch(`${BASE_URL}/desperdicio`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-    });
-    return handleResponse<any>(response);
+    const response = await api.post(`desperdicio`, data);
+    return response.data;
 }

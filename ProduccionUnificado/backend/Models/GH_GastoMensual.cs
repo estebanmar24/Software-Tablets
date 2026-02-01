@@ -74,4 +74,9 @@ public class GH_GastoMensual
     // History tracking
     public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;
     public DateTime? FechaModificacion { get; set; }
+
+    // Creator Tracking
+    public int? CreadoPorId { get; set; }
+    [ForeignKey("CreadoPorId")]
+    public virtual AdminUsuario? CreadoPor { get; set; }
 }

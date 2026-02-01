@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, ActivityIndicator, Platform } from 'react-native';
 import { adminLogin } from '../services/api';
+import { setToken } from '../services/authStorage';
 import { MaterialIcons } from '@expo/vector-icons';
 
 interface AdminLoginProps {
@@ -25,7 +26,8 @@ export function AdminLogin({ onLoginSuccess, onBack }: AdminLoginProps) {
         setError('');
 
         try {
-            const data = await adminLogin(username, password);
+            const data = await adminLogin(username.trim(), password.trim());
+            await setToken(data.token);
             onLoginSuccess(data.role, data.nombreMostrar);
         } catch (err: any) {
             setError(err.message || 'Error de autenticación');
@@ -63,6 +65,7 @@ export function AdminLogin({ onLoginSuccess, onBack }: AdminLoginProps) {
                             style={styles.passwordInput}
                             secureTextEntry={!showPassword}
                             value={password}
+                            autoCapitalize="none"
                             onChangeText={(text) => {
                                 setPassword(text);
                                 setError('');

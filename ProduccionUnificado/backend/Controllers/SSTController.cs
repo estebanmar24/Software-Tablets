@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
+using Microsoft.AspNetCore.Authorization;
 
 namespace TiempoProcesos.API.Controllers;
 
@@ -9,6 +10,7 @@ namespace TiempoProcesos.API.Controllers;
 /// Controller for SST (Salud y Seguridad en el Trabajo) Budget and Expense Management.
 /// Handles Rubros, TiposServicio, Proveedores, Presupuestos, and Gastos.
 /// </summary>
+// [Authorize]
 [ApiController]
 [Route("api/sst")]
 public class SSTController : ControllerBase
@@ -436,6 +438,7 @@ public class SSTController : ControllerBase
             .Include(g => g.Rubro)
             .Include(g => g.TipoServicio)
             .Include(g => g.Proveedor)
+            .Include(g => g.CreadoPor) // Include Creator
             .Where(g => g.Anio == anio);
 
         if (mes.HasValue)
@@ -460,8 +463,11 @@ public class SSTController : ControllerBase
                 g.Nota,
                 g.ArchivoFactura,
                 g.ArchivoFacturaNombre,
+                // Deleted duplicates
                 g.FechaCreacion,
-                g.FechaModificacion
+                g.FechaModificacion,
+                g.CreadoPorId,
+                CreadoPorNombre = g.CreadoPor != null ? g.CreadoPor.NombreMostrar : ""
             })
             .ToListAsync();
 
@@ -544,6 +550,13 @@ public class SSTController : ControllerBase
     [HttpPost("gastos")]
     public async Task<ActionResult<SST_GastoMensual>> CreateGasto([FromBody] SST_GastoMensual gasto)
     {
+        // Set Creator
+        var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == "Id");
+        if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int adminId))
+        {
+            gasto.CreadoPorId = adminId;
+        }
+
         gasto.FechaCreacion = DateTime.UtcNow;
         _context.SST_GastosMensuales.Add(gasto);
         await _context.SaveChangesAsync();

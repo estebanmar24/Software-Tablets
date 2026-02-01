@@ -40,4 +40,44 @@ public class DevUtilsController : ControllerBase
             hash = newHash
         });
     }
+    [HttpGet("debug-data")]
+    public async Task<IActionResult> GetDebugData()
+    {
+        try
+        {
+            var sql = @"
+                DO $$ 
+                BEGIN 
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Usuarios' AND column_name = 'EsPorHoras') THEN 
+                        ALTER TABLE ""Usuarios"" ADD COLUMN ""EsPorHoras"" BOOLEAN DEFAULT FALSE; 
+                    END IF; 
+                END $$;
+                SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'Usuarios';
+            ";
+
+            var result = new List<Dictionary<string, object>>();
+            using (var command = _context.Database.GetDbConnection().CreateCommand())
+            {
+                command.CommandText = sql;
+                _context.Database.OpenConnection();
+                using (var reader = await command.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        var row = new Dictionary<string, object>();
+                        for (var i = 0; i < reader.FieldCount; i++)
+                        {
+                            row[reader.GetName(i)] = reader.GetValue(i);
+                        }
+                        result.Add(row);
+                    }
+                }
+            }
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
 }

@@ -806,6 +806,42 @@ namespace TiempoProcesos.API.Migrations
                     b.ToTable("HistorialMantenimientos", (string)null);
                 });
 
+            modelBuilder.Entity("TiempoProcesos.API.Models.Horario", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Codigo")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<TimeSpan>("FinSabado")
+                        .HasColumnType("interval");
+
+                    b.Property<TimeSpan>("FinSemana")
+                        .HasColumnType("interval");
+
+                    b.Property<TimeSpan>("InicioSabado")
+                        .HasColumnType("interval");
+
+                    b.Property<TimeSpan>("InicioSemana")
+                        .HasColumnType("interval");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Horarios");
+                });
+
             modelBuilder.Entity("TiempoProcesos.API.Models.LicenciaEquipo", b =>
                 {
                     b.Property<int>("Id")
@@ -954,6 +990,9 @@ namespace TiempoProcesos.API.Migrations
                     b.Property<TimeSpan?>("HoraInicio")
                         .HasColumnType("interval");
 
+                    b.Property<int?>("HorarioId")
+                        .HasColumnType("integer");
+
                     b.Property<decimal>("HorasDescanso")
                         .HasColumnType("decimal(10, 2)");
 
@@ -1026,6 +1065,8 @@ namespace TiempoProcesos.API.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("HorarioId");
+
                     b.HasIndex("MaquinaId");
 
                     b.HasIndex("UsuarioId");
@@ -1089,6 +1130,9 @@ namespace TiempoProcesos.API.Migrations
                     b.Property<decimal?>("CantidadHoras")
                         .HasColumnType("numeric");
 
+                    b.Property<int?>("CreadoPorId")
+                        .HasColumnType("integer");
+
                     b.Property<string>("FacturaPdfUrl")
                         .HasColumnType("text");
 
@@ -1135,6 +1179,8 @@ namespace TiempoProcesos.API.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CreadoPorId");
 
                     b.HasIndex("MaquinaId");
 
@@ -1840,6 +1886,9 @@ namespace TiempoProcesos.API.Migrations
                     b.Property<DateTime>("HoraInicio")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<int?>("HorarioId")
+                        .HasColumnType("integer");
+
                     b.Property<int>("MaquinaId")
                         .HasColumnType("integer");
 
@@ -1858,6 +1907,8 @@ namespace TiempoProcesos.API.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ActividadId");
+
+                    b.HasIndex("HorarioId");
 
                     b.HasIndex("MaquinaId");
 
@@ -2045,6 +2096,10 @@ namespace TiempoProcesos.API.Migrations
 
             modelBuilder.Entity("TiempoProcesos.API.Models.ProduccionDiaria", b =>
                 {
+                    b.HasOne("TiempoProcesos.API.Models.Horario", "Horario")
+                        .WithMany()
+                        .HasForeignKey("HorarioId");
+
                     b.HasOne("TiempoProcesos.API.Models.Maquina", "Maquina")
                         .WithMany()
                         .HasForeignKey("MaquinaId")
@@ -2056,6 +2111,8 @@ namespace TiempoProcesos.API.Migrations
                         .HasForeignKey("UsuarioId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Horario");
 
                     b.Navigation("Maquina");
 
@@ -2083,6 +2140,10 @@ namespace TiempoProcesos.API.Migrations
 
             modelBuilder.Entity("TiempoProcesos.API.Models.Produccion_Gasto", b =>
                 {
+                    b.HasOne("TiempoProcesos.API.Models.AdminUsuario", "CreadoPor")
+                        .WithMany()
+                        .HasForeignKey("CreadoPorId");
+
                     b.HasOne("TiempoProcesos.API.Models.Maquina", "Maquina")
                         .WithMany()
                         .HasForeignKey("MaquinaId");
@@ -2108,6 +2169,8 @@ namespace TiempoProcesos.API.Migrations
                     b.HasOne("TiempoProcesos.API.Models.Usuario", "Usuario")
                         .WithMany()
                         .HasForeignKey("UsuarioId");
+
+                    b.Navigation("CreadoPor");
 
                     b.Navigation("Maquina");
 
@@ -2324,6 +2387,10 @@ namespace TiempoProcesos.API.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("TiempoProcesos.API.Models.Horario", "Horario")
+                        .WithMany()
+                        .HasForeignKey("HorarioId");
+
                     b.HasOne("TiempoProcesos.API.Models.Maquina", "Maquina")
                         .WithMany()
                         .HasForeignKey("MaquinaId")
@@ -2342,6 +2409,8 @@ namespace TiempoProcesos.API.Migrations
                         .IsRequired();
 
                     b.Navigation("Actividad");
+
+                    b.Navigation("Horario");
 
                     b.Navigation("Maquina");
 

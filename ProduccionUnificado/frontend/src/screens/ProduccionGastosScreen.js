@@ -17,6 +17,9 @@ import {
     Platform,
     Image
 } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import { Asset } from 'expo-asset';
 import { Picker } from '@react-native-picker/picker';
 import { produccionApi } from '../services/produccionApi';
 import { ExpenseHistoryModal } from '../components/ExpenseHistoryModal';
@@ -49,6 +52,18 @@ const formatDate = (dateString) => {
     if (!dateString) return '';
     return new Date(dateString).toLocaleDateString('es-CO');
 };
+
+const logoSource = require('../../assets/LOGO_ALEPH_IMPRESORES.jpg'); // Asegúrate de tener este logo
+const getBase64FromUrl = async (url) => {
+    const data = await fetch(url);
+    const blob = await data.blob();
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = () => resolve(reader.result);
+    });
+};
+
 
 export default function ProduccionGastosScreen() {
     const [activeTab, setActiveTab] = useState('gastos');
@@ -464,7 +479,7 @@ function GastosTab() {
                             >
                                 <Picker.Item label="Todos los Operarios" value="" />
                                 {availableUsers.map(u => (
-                                    <Picker.Item key={u.id} label={u.nombre} value={u.id.toString()} />
+                                    <Picker.Item key={u.id} label={`${u.nombre}${u.esPorHoras ? ' (Por Horas)' : ''}`} value={u.id.toString()} />
                                 ))}
                             </Picker>
                         </View>
@@ -531,6 +546,7 @@ function GastosTab() {
                                 </View>
                                 <Text style={styles.gastoRubro}>
                                     {gasto.tipoHora?.nombre || gasto.tipoRecargo?.nombre || 'General'}
+                                    {gasto.creadoPor?.nombreMostrar ? ` - Registrado por: ${gasto.creadoPor.nombreMostrar}` : ''}
                                 </Text>
                                 <View style={styles.gastoDetails}>
                                     {gasto.usuario && <Text style={styles.gastoDetail}>🏢 {gasto.usuario.nombre}</Text>}
@@ -601,7 +617,7 @@ function GastosTab() {
                                 <View style={styles.pickerContainer}>
                                     <Picker selectedValue={formData.usuarioId} onValueChange={(v) => setFormData(p => ({ ...p, usuarioId: v }))}>
                                         <Picker.Item label="Seleccione..." value="" />
-                                        {usuarios.map(u => <Picker.Item key={u.id} label={u.nombre} value={u.id.toString()} />)}
+                                        {usuarios.map(u => <Picker.Item key={u.id} label={`${u.nombre}${u.esPorHoras ? ' (Por Horas)' : ''}`} value={u.id.toString()} />)}
                                     </Picker>
                                 </View>
                                 {isHorasExtras && (<>
@@ -609,7 +625,7 @@ function GastosTab() {
                                     <View style={styles.pickerContainer}>
                                         <Picker selectedValue={formData.tipoHoraId} onValueChange={(v) => setFormData(p => ({ ...p, tipoHoraId: v }))}>
                                             <Picker.Item label="Seleccione..." value="" />
-                                            {tiposHora.map(t => <Picker.Item key={t.id} label={`${t.nombre} (${t.porcentaje}%)`} value={t.id.toString()} />)}
+                                            {tiposHora.map(t => <Picker.Item key={t.id} label={`${t.nombre} (x${t.factor})`} value={t.id.toString()} />)}
                                         </Picker>
                                     </View>
                                 </>)}
@@ -618,7 +634,7 @@ function GastosTab() {
                                     <View style={styles.pickerContainer}>
                                         <Picker selectedValue={formData.tipoRecargoId} onValueChange={(v) => setFormData(p => ({ ...p, tipoRecargoId: v }))}>
                                             <Picker.Item label="Seleccione..." value="" />
-                                            {tiposRecargo.map(t => <Picker.Item key={t.id} label={`${t.nombre} (${t.porcentaje}%)`} value={t.id.toString()} />)}
+                                            {tiposRecargo.map(t => <Picker.Item key={t.id} label={`${t.nombre} (x${t.factor})`} value={t.id.toString()} />)}
                                         </Picker>
                                     </View>
                                 </>)}
@@ -954,10 +970,223 @@ function GraficasTab() {
     // Corrección Contador Registros: Usar la longitud real de gastos cargados
     const totalRegistrosReal = allGastos.length;
 
+    const generateReport = async () => {
+        if (!allGastos.length) { Alert.alert('Aviso', 'No hay datos para generar reporte'); return; }
+        setLoading(true);
+        try {
+            const jsPDF = (await import('jspdf')).default;
+            const autoTable = (await import('jspdf-autotable')).default;
+
+            const doc = new jsPDF();
+            const pageWidth = doc.internal.pageSize.width;
+            const margin = 15;
+
+            // Logo
+            // Logo Handling - Web & Native Compatible
+            try {
+                let logoUri = null;
+                if (Platform.OS === 'web') {
+                    logoUri = logoSource;
+                    if (typeof logoSource === 'object' && logoSource.uri) logoUri = logoSource.uri;
+                } else {
+                    const asset = Asset.fromModule(logoSource);
+                    await asset.downloadAsync();
+                    logoUri = asset.localUri || asset.uri;
+                }
+
+                if (logoUri) {
+                    const base64Logo = await getBase64FromUrl(logoUri);
+                    doc.addImage(base64Logo, 'PNG', margin, 10, 30, 15);
+                }
+            } catch (e) { console.error('Error adding logo:', e); }
+
+            // Title
+            doc.setFontSize(16);
+            doc.setTextColor(31, 41, 55);
+            doc.text(`Informe de Gastos - Producción Global`, pageWidth / 2, 20, { align: 'center' });
+            doc.setFontSize(10);
+            doc.text(`Periodo: ${mesSeleccionado ? MESES.find(m => m.value === mesSeleccionado)?.label : 'Año Completo'} - ${anio}`, pageWidth / 2, 26, { align: 'center' });
+            doc.text(`Fecha GeneraciÃ³n: ${new Date().toLocaleDateString()}`, pageWidth / 2, 31, { align: 'center' });
+
+            // KPIs
+            const kpiData = [[
+                formatCurrency(data.resumenMensual?.reduce((sum, m) => sum + (m.totalPresupuesto || 0), 0) || 0),
+                formatCurrency(data.totalGastado || 0),
+                formatCurrency((data.resumenMensual?.reduce((sum, m) => sum + (m.totalPresupuesto || 0), 0) || 0) - (data.totalGastado || 0)),
+                `${(data.resumenMensual?.reduce((sum, m) => sum + (m.totalPresupuesto || 0), 0) || 0) > 0 ? Math.round(((data.totalGastado || 0) / (data.resumenMensual?.reduce((sum, m) => sum + (m.totalPresupuesto || 0), 0) || 1)) * 100) : 0}% Ejecutado`
+            ]];
+
+            autoTable(doc, {
+                startY: 40,
+                head: [['Presupuesto Total', 'Total Ejecutado', 'Disponible', '% Ejecución']],
+                body: kpiData,
+                theme: 'plain',
+                headStyles: { fillColor: [30, 58, 95], textColor: 255, halign: 'center', fontSize: 10, fontStyle: 'bold' },
+                bodyStyles: { halign: 'center', fontSize: 10, textColor: 50 },
+                columnStyles: {
+                    2: { textColor: (data.resumenMensual?.reduce((sum, m) => sum + (m.totalPresupuesto || 0), 0) - data.totalGastado) >= 0 ? [5, 150, 105] : [220, 38, 38], fontStyle: 'bold' }
+                }
+            });
+
+            // Detailed Data Grouped by Rubro -> Provider/User
+            let finalY = doc.lastAutoTable.finalY + 10;
+            const tableRows = [];
+
+            // Group expenses by Rubro
+            const rubrosMap = {};
+            allGastos.forEach(g => {
+                const rName = g.rubro?.nombre || 'Sin Rubro';
+                if (!rubrosMap[rName]) rubrosMap[rName] = { total: 0, items: [] };
+                rubrosMap[rName].items.push(g);
+                rubrosMap[rName].total += g.precio;
+            });
+
+            // Sort Rubros by total DESC
+            const sortedRubros = Object.entries(rubrosMap).sort((a, b) => b[1].total - a[1].total);
+
+            sortedRubros.forEach(([rubroName, { total, items }]) => {
+                // Rubro Header
+                tableRows.push([
+                    { content: `[RUBRO] ${rubroName.toUpperCase()}`, colSpan: 2, styles: { fillColor: [224, 231, 255], fontStyle: 'bold', textColor: [30, 58, 95] } },
+                    { content: formatCurrency(total), styles: { fillColor: [224, 231, 255], fontStyle: 'bold', halign: 'right', textColor: [30, 58, 95] } }
+                ]);
+
+                // Sort items by Date DESC
+                items.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+
+                items.forEach(item => {
+                    const fecha = new Date(item.fecha).toLocaleDateString();
+                    // Determine "Tercero" (Proveedor or Usuario)
+                    const tercero = item.proveedor?.nombre || item.usuario?.nombre || 'General';
+                    // Determine Details (Tipo Hora, Recargo, Maquina)
+                    let detalles = '';
+                    if (item.tipoHora) detalles += item.tipoHora.nombre;
+                    if (item.tipoRecargo) detalles += (detalles ? ', ' : '') + item.tipoRecargo.nombre;
+                    if (item.maquina) detalles += (detalles ? ', ' : '') + item.maquina.nombre;
+                    if (item.numeroFactura) detalles += (detalles ? ', ' : '') + `Fac: ${item.numeroFactura}`;
+                    if (item.numeroOP) detalles += (detalles ? ', ' : '') + `OP: ${item.numeroOP}`;
+
+                    const rowDesc = `${fecha} - ${tercero}${detalles ? ` (${detalles})` : ''}`;
+
+                    tableRows.push([
+                        { content: '', styles: { cellWidth: 5 } }, // Indent
+                        { content: rowDesc, styles: { textColor: [80, 80, 80] } },
+                        { content: formatCurrency(item.precio), styles: { halign: 'right', textColor: [80, 80, 80] } }
+                    ]);
+                });
+            });
+
+            autoTable(doc, {
+                startY: finalY,
+                head: [['', 'Concepto / Proveedor / Fecha', 'Total']],
+                body: tableRows,
+                theme: 'grid',
+                headStyles: { fillColor: [240, 240, 240], textColor: 50, fontStyle: 'bold' },
+                columnStyles: {
+                    0: { cellWidth: 5 },
+                    1: { cellWidth: 'auto' },
+                    2: { cellWidth: 40, halign: 'right' }
+                },
+                styles: { fontSize: 8, cellPadding: 3 }
+            });
+
+            const filename = `Reporte_Produccion_${anio}_${mesSeleccionado || 'Anual'}.pdf`;
+
+            if (Platform.OS === 'web') {
+                doc.save(filename);
+            } else {
+                const pdfBase64 = doc.output('datauristring').split(',')[1];
+                const fileUri = FileSystem.documentDirectory + filename;
+
+                await FileSystem.writeAsStringAsync(fileUri, pdfBase64, { encoding: FileSystem.EncodingType.Base64 });
+
+                if (await Sharing.isAvailableAsync()) {
+                    await Sharing.shareAsync(fileUri);
+                } else {
+                    Alert.alert('Éxito', 'Reporte generado (compartir no disponible)');
+                }
+            }
+
+        } catch (error) {
+            console.error(error);
+            Alert.alert('Error', 'No se pudo generar el reporte PDF');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const generateCSV = async () => {
+        if (!allGastos.length) return;
+        setLoading(true);
+        try {
+            let csvContent = '\uFEFF'; // BOM
+            csvContent += "ID,Fecha,Año,Mes,Rubro,Proveedor/Operario,Maquina,Detalle(Tipo),Factura/OP,Precio,CantidadHrs,Nota,CreadoPor\n";
+
+            allGastos.forEach(g => {
+                const escape = (text) => `"${String(text || '').replace(/"/g, '""')}"`;
+                const fecha = g.fecha ? g.fecha.split('T')[0] : '';
+                const tercero = g.proveedor?.nombre || g.usuario?.nombre || '';
+
+                let detalleTipo = '';
+                if (g.tipoHora?.nombre) detalleTipo = g.tipoHora.nombre;
+                else if (g.tipoRecargo?.nombre) detalleTipo = g.tipoRecargo.nombre;
+
+                const row = [
+                    g.id,
+                    fecha,
+                    new Date(g.fecha).getFullYear(),
+                    new Date(g.fecha).getMonth() + 1,
+                    escape(g.rubro?.nombre),
+                    escape(tercero),
+                    escape(g.maquina?.nombre),
+                    escape(detalleTipo),
+                    escape(g.numeroFactura || g.numeroOP),
+                    g.precio,
+                    g.cantidadHoras || '',
+                    escape(g.nota),
+                    escape(g.creadoPor?.nombreMostrar)
+                ];
+                csvContent += row.join(",") + "\n";
+            });
+
+            const filename = `Reporte_Produccion_${anio}_${mesSeleccionado || 'Anual'}.csv`;
+
+            if (Platform.OS === 'web') {
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement("a");
+                const url = URL.createObjectURL(blob);
+                link.setAttribute("href", url);
+                link.setAttribute("download", filename);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            } else {
+                const fileUri = FileSystem.documentDirectory + filename;
+                await FileSystem.writeAsStringAsync(fileUri, csvContent, { encoding: FileSystem.EncodingType.UTF8 });
+                if (await Sharing.isAvailableAsync()) {
+                    await Sharing.shareAsync(fileUri, { mimeType: 'text/csv', dialogTitle: 'Exportar CSV' });
+                }
+            }
+
+        } catch (error) {
+            Alert.alert('Error', 'Falló exportación CSV');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <View style={styles.contentContainer}>
             <View style={styles.header}>
                 <Text style={styles.title}>📊 Análisis de Gastos Producción</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <TouchableOpacity style={grafStyles.reportButton} onPress={generateReport}>
+                        <Text style={grafStyles.reportButtonText}>📄 Generar Informe</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[grafStyles.reportButton, { backgroundColor: '#3B82F6' }]} onPress={generateCSV}>
+                        <Text style={grafStyles.reportButtonText}>📊 Exportar CSV</Text>
+                    </TouchableOpacity>
+                </View>
                 <View style={styles.filters}>
                     <Picker selectedValue={anio} onValueChange={setAnio} style={styles.picker}>
                         {anios.map(a => <Picker.Item key={a} label={a.toString()} value={a} />)}
@@ -1530,7 +1759,7 @@ function TiposHoraTab() {
     const [showModal, setShowModal] = useState(false);
     const [editItem, setEditItem] = useState(null);
     const [nombre, setNombre] = useState('');
-    const [porcentaje, setPorcentaje] = useState('');
+
     const [factor, setFactor] = useState('');
     const [saving, setSaving] = useState(false);
 
@@ -1545,8 +1774,8 @@ function TiposHoraTab() {
 
     useEffect(() => { loadData(); }, []);
 
-    const handleAdd = () => { setEditItem(null); setNombre(''); setPorcentaje(''); setFactor(''); setShowModal(true); };
-    const handleEdit = (item) => { setEditItem(item); setNombre(item.nombre); setPorcentaje(item.porcentaje?.toString() || ''); setFactor(item.factor?.toString() || ''); setShowModal(true); };
+    const handleAdd = () => { setEditItem(null); setNombre(''); setFactor(''); setShowModal(true); };
+    const handleEdit = (item) => { setEditItem(item); setNombre(item.nombre); setFactor(item.factor?.toString() || ''); setShowModal(true); };
 
     const handleSave = async () => {
         if (!nombre.trim()) { Alert.alert('Error', 'Nombre obligatorio'); return; }
@@ -1554,7 +1783,7 @@ function TiposHoraTab() {
             setSaving(true);
             const tipoData = {
                 nombre,
-                porcentaje: parseFloat(porcentaje) || 0,
+                porcentaje: 0, // Default to 0 as field is removed
                 factor: parseFloat(factor) || 1
             };
             if (editItem) {
@@ -1608,7 +1837,7 @@ function TiposHoraTab() {
                     <View key={item.id} style={styles.itemCard}>
                         <View style={styles.itemInfo}>
                             <Text style={styles.itemName}>{item.nombre}</Text>
-                            <Text style={styles.itemParent}>Porcentaje: {item.porcentaje}% | Factor: {item.factor}</Text>
+                            <Text style={styles.itemParent}>Factor: {item.factor}</Text>
                         </View>
                         <View style={styles.itemActions}>
                             <TouchableOpacity onPress={() => handleEdit(item)}><Text style={styles.editButton}>✏️</Text></TouchableOpacity>
@@ -1622,8 +1851,7 @@ function TiposHoraTab() {
                     <Text style={styles.modalTitle}>{editItem ? 'Editar' : 'Agregar'} Tipo de Hora</Text>
                     <Text style={styles.label}>Nombre *</Text>
                     <TextInput style={styles.input} value={nombre} onChangeText={setNombre} placeholder="Ej: Hora Extra Diurna" />
-                    <Text style={styles.label}>Porcentaje (%)</Text>
-                    <TextInput style={styles.input} value={porcentaje} onChangeText={setPorcentaje} keyboardType="numeric" placeholder="Ej: 25" />
+
                     <Text style={styles.label}>Factor</Text>
                     <TextInput style={styles.input} value={factor} onChangeText={setFactor} keyboardType="numeric" placeholder="Ej: 1.25" />
                     <View style={styles.modalActions}>
@@ -1645,7 +1873,8 @@ function TiposRecargoTab() {
     const [showModal, setShowModal] = useState(false);
     const [editItem, setEditItem] = useState(null);
     const [nombre, setNombre] = useState('');
-    const [porcentaje, setPorcentaje] = useState('');
+
+
     const [factor, setFactor] = useState('');
     const [saving, setSaving] = useState(false);
 
@@ -1660,8 +1889,8 @@ function TiposRecargoTab() {
 
     useEffect(() => { loadData(); }, []);
 
-    const handleAdd = () => { setEditItem(null); setNombre(''); setPorcentaje(''); setFactor(''); setShowModal(true); };
-    const handleEdit = (item) => { setEditItem(item); setNombre(item.nombre); setPorcentaje(item.porcentaje?.toString() || ''); setFactor(item.factor?.toString() || ''); setShowModal(true); };
+    const handleAdd = () => { setEditItem(null); setNombre(''); setFactor(''); setShowModal(true); };
+    const handleEdit = (item) => { setEditItem(item); setNombre(item.nombre); setFactor(item.factor?.toString() || ''); setShowModal(true); };
 
     const handleSave = async () => {
         if (!nombre.trim()) { Alert.alert('Error', 'Nombre obligatorio'); return; }
@@ -1669,7 +1898,7 @@ function TiposRecargoTab() {
             setSaving(true);
             const data = {
                 nombre,
-                porcentaje: parseFloat(porcentaje) || 0,
+                porcentaje: 0, // Default 0
                 factor: parseFloat(factor) || 0
             };
             if (editItem) {
@@ -1723,7 +1952,7 @@ function TiposRecargoTab() {
                     <View key={item.id} style={styles.itemCard}>
                         <View style={styles.itemInfo}>
                             <Text style={styles.itemName}>{item.nombre}</Text>
-                            <Text style={styles.itemParent}>Porcentaje: {item.porcentaje}% | Factor: {item.factor}</Text>
+                            <Text style={styles.itemParent}>Factor: {item.factor}</Text>
                         </View>
                         <View style={styles.itemActions}>
                             <TouchableOpacity onPress={() => handleEdit(item)}><Text style={styles.editButton}>✏️</Text></TouchableOpacity>
@@ -1737,8 +1966,7 @@ function TiposRecargoTab() {
                     <Text style={styles.modalTitle}>{editItem ? 'Editar' : 'Agregar'} Tipo de Recargo</Text>
                     <Text style={styles.label}>Nombre *</Text>
                     <TextInput style={styles.input} value={nombre} onChangeText={setNombre} placeholder="Ej: Recargo Nocturno" />
-                    <Text style={styles.label}>Porcentaje (%)</Text>
-                    <TextInput style={styles.input} value={porcentaje} onChangeText={setPorcentaje} keyboardType="numeric" placeholder="Ej: 35" />
+
                     <Text style={styles.label}>Factor</Text>
                     <TextInput style={styles.input} value={factor} onChangeText={setFactor} keyboardType="numeric" placeholder="Ej: 0.35" />
                     <View style={styles.modalActions}>
@@ -2618,6 +2846,17 @@ const grafStyles = StyleSheet.create({
     rubroProgressBarContainer: { height: 12, backgroundColor: '#E5E7EB', borderRadius: 6, overflow: 'hidden' },
     rubroProgressBar: { height: '100%', borderRadius: 6 },
     rubroWarningText: { fontSize: 11, color: '#DC2626', marginTop: 4, fontWeight: '500' },
+    reportButton: {
+        backgroundColor: '#059669',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 8,
+    },
+    reportButtonText: {
+        color: '#FFF',
+        fontWeight: 'bold',
+        fontSize: 14,
+    },
 });
 
 // ===================== COTIZACIONES TAB =====================

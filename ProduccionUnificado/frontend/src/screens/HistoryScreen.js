@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Image } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import axios from 'axios';
-import { API_URL } from '../services/productionApi';
+import { api, API_URL } from '../services/productionApi';
 // CustomNavBar removed - navigation handled by AdminDashboard
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -29,9 +29,9 @@ const HistoryScreen = ({ navigation }) => { // Recibimos navigation prop
 
     const loadLists = async () => {
         try {
-            const maquinasRes = await axios.get(`${API_URL}/maquinas`);
+            const maquinasRes = await api.get(`maquinas`);
             setMaquinas(maquinasRes.data);
-            const usuariosRes = await axios.get(`${API_URL}/usuarios`);
+            const usuariosRes = await api.get(`usuarios`);
             setOperarios(usuariosRes.data.filter(u => u.estado));
         } catch (error) {
             console.error("Error loading lists", error);
@@ -66,7 +66,7 @@ const HistoryScreen = ({ navigation }) => { // Recibimos navigation prop
             };
 
             // Use the new granular history endpoint
-            const response = await axios.get(`${API_URL}/tiempoproceso/historial`, { params });
+            const response = await api.get(`tiempoproceso/historial`, { params });
             setResults(response.data);
 
             if (!silent && response.data.length === 0) {

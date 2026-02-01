@@ -23,6 +23,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as ghApi from '../services/ghApi';
 // jsPDF uses dynamic import to avoid Android TextDecoder crash
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { Asset } from 'expo-asset';
 import { ExpenseHistoryModal } from '../components/ExpenseHistoryModal';
 
@@ -612,7 +613,10 @@ function GastosTab() {
                         filteredGastos.map(gasto => (
                             <View key={gasto.id} style={styles.gastoCard}>
                                 <View style={styles.gastoHeader}>
-                                    <Text style={styles.gastoTipo}>{gasto.tipoServicioNombre}</Text>
+                                    <Text style={styles.gastoTipo}>
+                                        {gasto.tipoServicioNombre}
+                                        {(gasto.creadoPorNombre || gasto.CreadoPorNombre) ? ` - ${gasto.creadoPorNombre || gasto.CreadoPorNombre}` : ''}
+                                    </Text>
                                     <Text style={styles.gastoPrecio}>{formatCurrency(gasto.precio)}</Text>
                                 </View>
                                 <Text style={styles.gastoRubro}>{gasto.rubroNombre}</Text>
@@ -1903,6 +1907,81 @@ function GraficasTab() {
         }
     };
 
+    const generateCSV = async () => {
+        if (!resumenVisual) return;
+        setLoading(true);
+
+        try {
+            // 1. Prepare Data
+            let dataToExport = allGastosRaw;
+            if (mesSeleccionado) {
+                dataToExport = allGastosRaw.filter(g => g.mes === parseInt(mesSeleccionado));
+            }
+
+            // 2. Create CSV Content (BOM for Excel UTF-8)
+            let csvContent = '\uFEFF';
+            csvContent += "ID,Fecha,Año,Mes,Rubro,Tipo Servicio,Proveedor,Factura,Precio,Nota,Usuario\n"; // Header
+
+            dataToExport.forEach(g => {
+                // Escape fields that might contain commas or newlines
+                const escape = (text) => {
+                    if (!text) return "";
+                    return `"${String(text).replace(/"/g, '""')}"`;
+                };
+
+                const fecha = g.fechaCompra ? g.fechaCompra.split('T')[0] : '';
+                const row = [
+                    g.id,
+                    fecha,
+                    g.anio,
+                    g.mes,
+                    escape(g.rubroNombre),
+                    escape(g.tipoServicioNombre),
+                    escape(g.proveedorNombre),
+                    escape(g.numeroFactura),
+                    g.precio, // No quotes for numbers usually, but keeping simple
+                    escape(g.nota),
+                    escape(g.creadoPorNombre || g.CreadoPorNombre)
+                ].join(",");
+                csvContent += row + "\n";
+            });
+
+            const filename = `Gastos_GH_${anio}_${mesSeleccionado ? ghApi.getMesNombre(parseInt(mesSeleccionado)) : 'Anual'}.csv`;
+
+            // 3. Save/Share
+            if (Platform.OS === 'web') {
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement("a");
+                const url = URL.createObjectURL(blob);
+                link.setAttribute("href", url);
+                link.setAttribute("download", filename);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            } else {
+                const fileUri = FileSystem.documentDirectory + filename;
+                await FileSystem.writeAsStringAsync(fileUri, csvContent, { encoding: FileSystem.EncodingType.UTF8 });
+
+                const sharingAvailable = await Sharing.isAvailableAsync();
+                if (sharingAvailable) {
+                    await Sharing.shareAsync(fileUri, {
+                        mimeType: 'text/csv',
+                        dialogTitle: 'Exportar Datos CSV'
+                    });
+                } else {
+                    Alert.alert('Éxito', `Guardado en: ${fileUri}`);
+                }
+            }
+
+        } catch (error) {
+            console.error('Error exporting CSV:', error);
+            Alert.alert('Error', 'No se pudo exportar CSV: ' + error.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     if (loading) {
         return (
             <View style={styles.loadingContainer}>
@@ -1921,6 +2000,10 @@ function GraficasTab() {
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                     <TouchableOpacity style={grafStyles.reportButton} onPress={generateReport}>
                         <Text style={grafStyles.reportButtonText}>📄 Generar Informe</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={[grafStyles.reportButton, { backgroundColor: '#3B82F6' }]} onPress={generateCSV}>
+                        <Text style={grafStyles.reportButtonText}>📊 Exportar CSV</Text>
                     </TouchableOpacity>
 
                     <View style={styles.yearSelector}>

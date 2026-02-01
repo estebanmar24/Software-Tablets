@@ -1,6 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
 // Enable legacy timestamp behavior for Npgsql (fixes "Cannot write DateTime with Kind" error)
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
@@ -13,6 +16,8 @@ builder.Services.AddControllers()
     {
         // Use camelCase for JSON property names (frontend expects esProductiva, not EsProductiva)
         options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        // Ignore circular references (fixes "A possible object cycle was detected" error)
+        options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
     });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -22,7 +27,24 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // Register services
+// Register services
 builder.Services.AddScoped<ITiempoProcesoService, TiempoProcesoService>();
+
+// Configure JWT Authentication
+// Configure JWT Authentication
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = false,
+            ValidateAudience = false,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"])),
+            ClockSkew = TimeSpan.FromMinutes(5)
+        };
+    });
 
 // Configure CORS for React Native
 builder.Services.AddCors(options =>
@@ -51,6 +73,7 @@ app.UseCors("AllowAll");
 // Servir archivos estáticos (fotos de calidad)
 app.UseStaticFiles();
 
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();

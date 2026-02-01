@@ -3,187 +3,142 @@
  * Handles all API calls for Talleres y Despachos Budget and Expense Management
  */
 
+import axios from 'axios';
+import { getToken } from './authStorage';
+
+const api = axios.create();
+/*
+api.interceptors.request.use(async (config) => {
+    const token = await getToken();
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+}, error => Promise.reject(error));
+*/
+
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
 
 // ==================== RUBROS ====================
 
 export async function getRubros() {
-    const response = await fetch(`${API_BASE_URL}/talleres/rubros`);
-    if (!response.ok) throw new Error('Error fetching rubros');
-    return response.json();
+    const response = await api.get(`${API_BASE_URL}/talleres/rubros`);
+    return response.data;
 }
 
 export async function getMaestros() {
-    const response = await fetch(`${API_BASE_URL}/produccion/maestros`);
-    if (!response.ok) throw new Error('Error fetching maestros');
-    return response.json();
+    const response = await api.get(`${API_BASE_URL}/produccion/maestros`);
+    return response.data;
 }
 
 export async function createRubro(rubro) {
-    const response = await fetch(`${API_BASE_URL}/talleres/rubros`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(rubro)
-    });
-    if (!response.ok) throw new Error(`Error creating rubro (Status: ${response.status})`);
-    return response.ok;
+    const response = await api.post(`${API_BASE_URL}/talleres/rubros`, rubro);
+    return response.data;
 }
 
 export async function updateRubro(id, rubro) {
-    const response = await fetch(`${API_BASE_URL}/talleres/rubros/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...rubro, id })
-    });
-    if (!response.ok) throw new Error('Error updating rubro');
-    return response.ok;
+    const response = await api.put(`${API_BASE_URL}/talleres/rubros/${id}`, { ...rubro, id });
+    return response.data;
 }
 
 export async function deleteRubro(id) {
-    const response = await fetch(`${API_BASE_URL}/talleres/rubros/${id}`, {
-        method: 'DELETE'
-    });
-    if (!response.ok) throw new Error('Error deleting rubro');
-    return response.ok;
+    await api.delete(`${API_BASE_URL}/talleres/rubros/${id}`);
+    return true;
 }
 
 // ==================== PROVEEDORES ====================
 
 export async function getProveedores() {
-    const response = await fetch(`${API_BASE_URL}/talleres/proveedores`);
-    if (!response.ok) throw new Error('Error fetching proveedores');
-    return response.json();
+    const response = await api.get(`${API_BASE_URL}/talleres/proveedores`);
+    return response.data;
 }
 
 export async function createProveedor(proveedor) {
-    const response = await fetch(`${API_BASE_URL}/talleres/proveedores`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(proveedor)
-    });
-    if (!response.ok) throw new Error(`Error creating proveedor (Status: ${response.status})`);
-    return response.ok;
+    const response = await api.post(`${API_BASE_URL}/talleres/proveedores`, proveedor);
+    return response.data;
 }
 
 export async function updateProveedor(id, proveedor) {
-    const response = await fetch(`${API_BASE_URL}/talleres/proveedores/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...proveedor, id })
-    });
-    if (!response.ok) throw new Error('Error updating proveedor');
-    return response.ok;
+    const response = await api.put(`${API_BASE_URL}/talleres/proveedores/${id}`, { ...proveedor, id });
+    return response.data;
 }
 
 export async function deleteProveedor(id) {
-    const response = await fetch(`${API_BASE_URL}/talleres/proveedores/${id}`, {
-        method: 'DELETE'
-    });
-    if (!response.ok) throw new Error('Error deleting proveedor');
-    return response.ok;
+    await api.delete(`${API_BASE_URL}/talleres/proveedores/${id}`);
+    return true;
 }
 
 // ==================== GASTOS ====================
 
 export async function getGastos(anio, mes) {
-    const response = await fetch(`${API_BASE_URL}/talleres/gastos?anio=${anio}&mes=${mes}`);
-    if (!response.ok) throw new Error('Error fetching gastos');
-    return response.json();
+    const response = await api.get(`${API_BASE_URL}/talleres/gastos?anio=${anio}&mes=${mes}`);
+    return response.data;
 }
 
 export async function createGasto(gasto) {
-    const response = await fetch(`${API_BASE_URL}/talleres/gastos`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(gasto)
-    });
-    if (!response.ok) throw new Error(`Error creating gasto (Status: ${response.status})`);
-    return response.ok;
+    const response = await api.post(`${API_BASE_URL}/talleres/gastos`, gasto);
+    return response.data;
 }
 
 export async function updateGasto(id, gasto) {
-    const response = await fetch(`${API_BASE_URL}/talleres/gastos/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...gasto, id })
-    });
-    if (!response.ok) throw new Error('Error updating gasto');
-    return response.ok;
+    const response = await api.put(`${API_BASE_URL}/talleres/gastos/${id}`, { ...gasto, id });
+    return response.data;
 }
 
 export async function deleteGasto(id) {
-    const response = await fetch(`${API_BASE_URL}/talleres/gastos/${id}`, {
-        method: 'DELETE'
-    });
-    if (!response.ok) throw new Error('Error deleting gasto');
-    return response.ok;
+    await api.delete(`${API_BASE_URL}/talleres/gastos/${id}`);
+    return true;
 }
 
 export async function uploadFactura(formData) {
-    const response = await fetch(`${API_BASE_URL}/talleres/upload-factura`, {
-        method: 'POST',
-        body: formData
+    const response = await api.post(`${API_BASE_URL}/talleres/upload-factura`, formData, {
+        headers: {
+            'Content-Type': 'multipart/form-data',
+        },
     });
-    if (!response.ok) throw new Error('Error uploading factura');
-    return response.json();
+    return response.data;
 }
 
 export async function getCotizaciones(anio, mes) {
     let url = `${API_BASE_URL}/talleres/cotizaciones?`;
     if (anio) url += `anio=${anio}&`;
     if (mes) url += `mes=${mes}`;
-    const response = await fetch(url);
-    return response.json();
+    const response = await api.get(url);
+    return response.data;
 }
 
 export async function createCotizacion(cotizacion) {
-    const response = await fetch(`${API_BASE_URL}/talleres/cotizaciones`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cotizacion)
-    });
-    if (!response.ok) throw new Error('Error creating cotizacion');
-    return response.json();
+    const response = await api.post(`${API_BASE_URL}/talleres/cotizaciones`, cotizacion);
+    return response.data;
 }
 
 export async function updateCotizacion(id, cotizacion) {
-    const response = await fetch(`${API_BASE_URL}/talleres/cotizaciones/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cotizacion)
-    });
-    if (!response.ok) throw new Error('Error updating cotizacion');
+    const response = await api.put(`${API_BASE_URL}/talleres/cotizaciones/${id}`, cotizacion);
     return true;
 }
 
 export async function deleteCotizacion(id) {
-    const response = await fetch(`${API_BASE_URL}/talleres/cotizaciones/${id}`, {
-        method: 'DELETE'
-    });
-    if (!response.ok) throw new Error('Error deleting cotizacion');
+    await api.delete(`${API_BASE_URL}/talleres/cotizaciones/${id}`);
     return true;
 }
 
 // ==================== GRAFICAS ====================
 
 export async function getGraficas(anio, mes) {
-    const response = await fetch(`${API_BASE_URL}/talleres/graficas/${anio}/${mes}`);
-    if (!response.ok) throw new Error('Error fetching graficas');
-    return response.json();
+    const response = await api.get(`${API_BASE_URL}/talleres/graficas/${anio}/${mes}`);
+    return response.data;
 }
 
 export async function getGraficasAnual(anio) {
-    const response = await fetch(`${API_BASE_URL}/talleres/graficas/anual/${anio}`);
-    if (!response.ok) throw new Error('Error fetching graficas anual');
-    return response.json();
+    const response = await api.get(`${API_BASE_URL}/talleres/graficas/anual/${anio}`);
+    return response.data;
 }
 
 // ==================== PRESUPUESTOS ====================
 
 export async function getPresupuestos(anio) {
-    const response = await fetch(`${API_BASE_URL}/talleres/presupuestos?anio=${anio}`);
-    if (!response.ok) throw new Error('Error fetching presupuestos');
-    return response.json();
+    const response = await api.get(`${API_BASE_URL}/talleres/presupuestos?anio=${anio}`);
+    return response.data;
 }
 
 /**
@@ -232,47 +187,27 @@ export async function getPresupuestosGrid(anio) {
 export async function setPresupuestosBulk(presupuestos) {
     // Transform incoming array if necessary, but the backend accepts [{rubroId, anio, mes, presupuesto}]
     // The UI sends { rubroId, anio, mes, presupuesto } if mapped correctly
-    const response = await fetch(`${API_BASE_URL}/talleres/presupuestos/bulk`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(presupuestos)
-    });
-    if (!response.ok) throw new Error('Error setting presupuestos bulk');
-    return response.ok;
-    return response.ok;
+    const response = await api.post(`${API_BASE_URL}/talleres/presupuestos/bulk`, presupuestos);
+    return response.data;
 }
 
 // ==================== PERSONAL ====================
 export async function getPersonal() {
-    const response = await fetch(`${API_BASE_URL}/tallerespersonal`);
-    if (!response.ok) throw new Error('Error fetching personal');
-    return response.json();
+    const response = await api.get(`${API_BASE_URL}/tallerespersonal`);
+    return response.data;
 }
 
 export async function createPersonal(personal) {
-    const response = await fetch(`${API_BASE_URL}/tallerespersonal`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(personal)
-    });
-    if (!response.ok) throw new Error('Error creating personal');
-    return response.json();
+    const response = await api.post(`${API_BASE_URL}/tallerespersonal`, personal);
+    return response.data;
 }
 
 export async function updatePersonal(id, personal) {
-    const response = await fetch(`${API_BASE_URL}/tallerespersonal/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...personal, id })
-    });
-    if (!response.ok) throw new Error('Error updating personal');
+    const response = await api.put(`${API_BASE_URL}/tallerespersonal/${id}`, { ...personal, id });
     return true;
 }
 
 export async function deletePersonal(id) {
-    const response = await fetch(`${API_BASE_URL}/tallerespersonal/${id}`, {
-        method: 'DELETE'
-    });
-    if (!response.ok) throw new Error('Error deleting personal');
+    await api.delete(`${API_BASE_URL}/tallerespersonal/${id}`);
     return true;
 }

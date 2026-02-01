@@ -1,0 +1,11 @@
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+  "title": "One or more validation errors occurred.",
+  "status": 400,
+  "errors": {
+    "id": [
+      "The value 'activas' is not valid."
+    ]
+  },
+  "traceId": "00-b5c3b642ddad79c92abe6773de747564-e8e352d3ff2bc04d-00"
+}

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, ActivityIndicator, Modal, Image, Alert, Dimensions } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import axios from 'axios';
-import { API_URL } from '../services/productionApi';
+import { api, API_URL } from '../services/productionApi';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { Asset } from 'expo-asset';
@@ -95,7 +95,7 @@ export default function QualityView() {
     const loadEncuestas = async () => {
         setLoading(true);
         try {
-            const response = await axios.get(`${API_URL}/calidad/encuestas?mes=${mes}&anio=${anio}`);
+            const response = await api.get(`calidad/encuestas?mes=${mes}&anio=${anio}`);
             setEncuestas(response.data);
         } catch (error) {
             console.error(error);
@@ -107,15 +107,15 @@ export default function QualityView() {
 
     const openDetalle = async (id: number) => {
         setLoadingDetail(true);
-        setSelectedEncuesta(null);
-        setModalVisible(true);
+        setSelectedEncuesta(null); // Clear previous selection
         try {
-            const response = await axios.get(`${API_URL}/calidad/encuestas/${id}`);
+            const response = await api.get(`calidad/encuestas/${id}`);
             setSelectedEncuesta(response.data);
+            setModalVisible(true); // Open modal only on successful load
         } catch (error) {
             console.error(error);
             Alert.alert('Error', 'No se pudo cargar el detalle de la encuesta');
-            setModalVisible(false);
+            setModalVisible(false); // Ensure modal is closed on error
         } finally {
             setLoadingDetail(false);
         }

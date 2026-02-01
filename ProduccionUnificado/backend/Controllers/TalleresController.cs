@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
 using Microsoft.AspNetCore.Hosting;
@@ -12,6 +13,7 @@ namespace TiempoProcesos.API.Controllers;
 /// Controller for Talleres y Despachos Budget and Expense Management.
 /// Handles Rubros, Proveedores, Presupuestos, Gastos, and Graficas.
 /// </summary>
+// [Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class TalleresController : ControllerBase
@@ -165,6 +167,13 @@ public class TalleresController : ControllerBase
 
         try 
         {
+            // Set Creator
+            var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == "Id");
+            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int adminId))
+            {
+                gasto.CreadoPorId = adminId;
+            }
+
             gasto.FechaCreacion = DateTime.UtcNow;
             _context.Talleres_Gastos.Add(gasto);
             await _context.SaveChangesAsync();
@@ -234,6 +243,7 @@ public class TalleresController : ControllerBase
             .Include(g => g.Personal) // Include Personal
             .Include(g => g.TipoHora) // Include TipoHora
             .Include(g => g.TipoRecargo) // Include TipoRecargo
+            .Include(g => g.CreadoPor) // Include Creator
             .AsQueryable();
 
         if (anio.HasValue)
@@ -271,7 +281,9 @@ public class TalleresController : ControllerBase
                 TipoRecargoNombre = g.TipoRecargo != null ? g.TipoRecargo.Nombre : "",
                 TipoRecargoPorcentaje = g.TipoRecargo != null ? g.TipoRecargo.Porcentaje : 0,
                 g.FechaCreacion,
-                g.FechaModificacion
+                g.FechaModificacion,
+                g.CreadoPorId,
+                CreadoPorNombre = g.CreadoPor != null ? g.CreadoPor.NombreMostrar : ""
             })
             .ToListAsync();
 

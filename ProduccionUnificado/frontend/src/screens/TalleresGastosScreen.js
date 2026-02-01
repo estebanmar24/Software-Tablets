@@ -19,6 +19,9 @@ import {
 import { Picker } from '@react-native-picker/picker';
 import * as talleresApi from '../services/talleresApi';
 import { ExpenseHistoryModal } from '../components/ExpenseHistoryModal';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import { Asset } from 'expo-asset';
 
 // TABS - Same structure as Produccion (sin Presupuesto)
 const TABS = [
@@ -539,7 +542,10 @@ function GastosTab() {
                         filteredGastos.map(gasto => (
                             <View key={gasto.id} style={styles.gastoCard}>
                                 <View style={styles.gastoHeader}>
-                                    <Text style={styles.gastoTipo}>{gasto.rubroNombre || gasto.Rubro?.nombre || gasto.Rubro?.Nombre || 'Sin Rubro'}</Text>
+                                    <Text style={styles.gastoTipo}>
+                                        {gasto.rubroNombre || gasto.Rubro?.nombre || gasto.Rubro?.Nombre || 'Sin Rubro'}
+                                        {(gasto.creadoPorNombre || gasto.CreadoPorNombre) ? ` - ${gasto.creadoPorNombre || gasto.CreadoPorNombre}` : ''}
+                                    </Text>
                                     <Text style={styles.gastoPrecio}>{formatCurrency(gasto.precio)}</Text>
                                 </View>
                                 {/* Display logic depends on type */}
@@ -930,18 +936,259 @@ function GraficasTab() {
         total: r.total || r.gastado
     }));
 
+    // Logo source for PDF
+    const logoSource = require('../../assets/LOGO_ALEPH_IMPRESORES.jpg');
+
+    const getBase64FromUrl = async (url) => {
+        if (Platform.OS !== 'web') {
+            try {
+                const base64 = await FileSystem.readAsStringAsync(url, { encoding: 'base64' });
+                return `data:image/jpeg;base64,${base64}`;
+            } catch (err) { return null; }
+        }
+        const data = await fetch(url);
+        const blob = await data.blob();
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(blob);
+            reader.onloadend = () => resolve(reader.result);
+        });
+    };
+
+    const generateReport = async () => {
+        if (!graficasData) return;
+        setLoading(true);
+        try {
+            let jsPDF, autoTable;
+            if (Platform.OS === 'web') {
+                const jsPDFModule = await import('jspdf');
+                jsPDF = jsPDFModule.jsPDF;
+                const autoTableModule = await import('jspdf-autotable');
+                autoTable = autoTableModule.default;
+            } else {
+                Alert.alert("Info", "PDF disponible solo en Web por ahora.");
+                setLoading(false);
+                return;
+            }
+
+            const doc = new jsPDF();
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const margin = 15;
+            let yPos = 20;
+
+            try {
+                const asset = Asset.fromModule(logoSource);
+                await asset.downloadAsync();
+                const base64Logo = await getBase64FromUrl(asset.uri);
+                if (base64Logo) doc.addImage(base64Logo, 'JPEG', margin, 10, 30, 30);
+            } catch (e) {
+                doc.setFontSize(18); doc.text('ALEPH', margin, 25);
+            }
+
+            doc.setFontSize(18);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(30, 58, 95);
+            doc.text(`INFORME TALLERES - ${mesSeleccionado ? MESES[mesSeleccionado - 1].label.toUpperCase() : 'ANUAL'} ${anio}`, pageWidth / 2, 20, { align: 'center' });
+
+            yPos = 50;
+
+            // KPIs
+            const kpiColumns = ['Presupuesto', 'Ejecutado', 'Disponible', '% Ejecutado', 'Registros'];
+
+            // Calculate % executed
+            const totalP = data.totalPresupuesto || 0;
+            const totalG = data.totalGastado || 0;
+            const pct = totalP > 0 ? ((totalG / totalP) * 100).toFixed(1) : '0.0';
+            const disponible = totalP - totalG;
+            const disponibleColor = disponible >= 0 ? 'Verde' : 'Rojo';
+
+            const kpiData = [[
+                formatCurrency(totalP),
+                formatCurrency(totalG),
+                `${disponibleColor}|${formatCurrency(Math.abs(disponible))}`,
+                `${pct}%`,
+                totalRegistrosReal.toString()
+            ]];
+
+            autoTable(doc, {
+                head: [kpiColumns],
+                body: kpiData,
+                startY: yPos,
+                styles: { fontSize: 10, cellPadding: 4, halign: 'center' },
+                headStyles: { fillColor: [30, 58, 95], textColor: 255, fontStyle: 'bold' },
+                didParseCell: (data) => {
+                    const raw = data.cell.raw?.toString() || '';
+                    if (raw.includes('|')) {
+                        const [color, value] = raw.split('|');
+                        data.cell.text = value;
+                        if (color === 'Verde') data.cell.styles.textColor = [40, 167, 69];
+                        else if (color === 'Rojo') data.cell.styles.textColor = [220, 53, 69];
+                    }
+                }
+            });
+
+            yPos = doc.lastAutoTable.finalY + 15;
+
+            // Detailed Table
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(0);
+            doc.text('DETALLE DE GASTOS POR RUBRO', margin, yPos);
+            yPos += 5;
+
+            // Fetch Data (Rubros definition)
+            const [allRubros] = await Promise.all([
+                talleresApi.getRubros()
+            ]);
+
+            // Grouping Logic
+            const tableRows = [];
+
+            // 1. Calculate Totals per Rubro and Filter
+            const rubrosWithTotal = allRubros.map(r => {
+                const rubroGastos = allGastos.filter(g => (g.rubroId === r.id || g.RubroId === r.id));
+                const total = rubroGastos.reduce((s, g) => s + (g.precio || 0), 0);
+                return { ...r, total, gastos: rubroGastos };
+            }).filter(r => r.total > 0 || r.gastos.length > 0).sort((a, b) => b.total - a.total);
+
+            rubrosWithTotal.forEach(rubro => {
+                // Header Row for Rubro
+                tableRows.push([
+                    { content: `[RUBRO] ${rubro.nombre.toUpperCase()}`, colSpan: 2, styles: { fillColor: [224, 231, 255], fontStyle: 'bold', textColor: [30, 58, 95] } },
+                    { content: formatCurrency(rubro.total), styles: { fillColor: [224, 231, 255], fontStyle: 'bold', halign: 'right', textColor: [30, 58, 95] } }
+                ]);
+
+                // Sort expenses by date desc
+                const sortedGastos = rubro.gastos.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+
+                sortedGastos.forEach(g => {
+                    const fecha = g.fecha ? g.fecha.split('T')[0] : '';
+                    let detalle = '';
+
+                    // Determine Detail Text
+                    if (g.personalNombre || g.Personal?.nombre) {
+                        detalle = `Personal: ${g.personalNombre || g.Personal?.nombre}`;
+                        if (g.tipoHoraNombre) detalle += ` (${g.tipoHoraNombre})`;
+                        else if (g.tipoRecargoNombre) detalle += ` (${g.tipoRecargoNombre})`;
+                    } else {
+                        detalle = `Prov: ${g.proveedorNombre || g.Proveedor?.nombre || 'N/A'}`;
+                        if (g.numeroFactura) detalle += ` - Fac: ${g.numeroFactura}`;
+                    }
+                    if (g.observaciones) detalle += `\nNota: ${g.observaciones}`;
+
+                    tableRows.push([
+                        { content: fecha, styles: { fontSize: 8, textColor: 80 } },
+                        { content: detalle, styles: { fontSize: 9, textColor: 50 } },
+                        { content: formatCurrency(g.precio), styles: { halign: 'right', fontSize: 9 } }
+                    ]);
+                });
+            });
+
+            autoTable(doc, {
+                head: [['Fecha', 'Detalle / Proveedor', 'Valor']],
+                body: tableRows,
+                startY: yPos,
+                theme: 'grid',
+                styles: { fontSize: 9, cellPadding: 3, overflow: 'linebreak' },
+                headStyles: { fillColor: [30, 58, 95], textColor: 255, fontStyle: 'bold' },
+                columnStyles: {
+                    0: { cellWidth: 25 },
+                    1: { cellWidth: 'auto' },
+                    2: { cellWidth: 35, halign: 'right' }
+                }
+            });
+
+            doc.save(`Informe_Talleres_${anio}_${mesSeleccionado || 'Anual'}.pdf`);
+            if (Platform.OS !== 'web') Alert.alert('Éxito', 'PDF generado');
+            else Alert.alert('Éxito', 'Informe PDF descargado');
+
+        } catch (e) {
+            console.error(e);
+            Alert.alert('Error', 'No se pudo generar PDF');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const generateCSV = async () => {
+        if (!allGastos.length) return;
+        setLoading(true);
+        try {
+            let csvContent = '\uFEFF';
+            csvContent += "ID,Fecha,Año,Mes,Rubro,Proveedor/Personal,Detalle,Factura/OP,Valor,Observaciones,Creado Por\n";
+
+            allGastos.forEach(g => {
+                const escape = (text) => `"${String(text || '').replace(/"/g, '""')}"`;
+                const fecha = g.fecha ? g.fecha.split('T')[0] : '';
+                const nombreTercero = g.personalNombre || g.Personal?.nombre || g.proveedorNombre || g.Proveedor?.nombre || '';
+
+                let detalleTipo = '';
+                if (g.tipoHoraNombre) detalleTipo = g.tipoHoraNombre;
+                else if (g.tipoRecargoNombre) detalleTipo = g.tipoRecargoNombre;
+
+                const row = [
+                    g.id,
+                    fecha,
+                    new Date(g.fecha).getFullYear(),
+                    new Date(g.fecha).getMonth() + 1,
+                    escape(g.rubroNombre || g.Rubro?.nombre),
+                    escape(nombreTercero),
+                    escape(detalleTipo),
+                    escape(g.numeroFactura || g.numeroOP),
+                    g.precio,
+                    escape(g.observaciones),
+                    escape(g.creadoPorNombre)
+                ].join(",");
+                csvContent += row + "\n";
+            });
+
+            const filename = `Talleres_Gastos_${anio}_${mesSeleccionado || 'Anual'}.csv`;
+
+            if (Platform.OS === 'web') {
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement("a");
+                const url = URL.createObjectURL(blob);
+                link.setAttribute("href", url);
+                link.setAttribute("download", filename);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            } else {
+                const fileUri = FileSystem.documentDirectory + filename;
+                await FileSystem.writeAsStringAsync(fileUri, csvContent, { encoding: FileSystem.EncodingType.UTF8 });
+                if (await Sharing.isAvailableAsync()) {
+                    await Sharing.shareAsync(fileUri, { mimeType: 'text/csv', dialogTitle: 'Exportar CSV' });
+                }
+            }
+        } catch (error) {
+            Alert.alert('Error', 'Falló exportación CSV');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+
     return (
         <View style={styles.contentContainer}>
             <View style={styles.header}>
                 <Text style={styles.title}>📊 Análisis de Gastos Talleres</Text>
-                <View style={styles.filters}>
-                    <Picker selectedValue={anio} onValueChange={setAnio} style={styles.picker}>
-                        {anios.map(a => <Picker.Item key={a} label={a.toString()} value={a} />)}
-                    </Picker>
-                    <Picker selectedValue={mesSeleccionado} onValueChange={setMesSeleccionado} style={styles.picker}>
-                        <Picker.Item label="Todo el Año" value={null} />
-                        {MESES.map(m => <Picker.Item key={m.value} label={m.label} value={m.value} />)}
-                    </Picker>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <TouchableOpacity style={grafStyles.reportButton} onPress={generateReport}>
+                        <Text style={grafStyles.reportButtonText}>📄 Generar Informe</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[grafStyles.reportButton, { backgroundColor: '#3B82F6' }]} onPress={generateCSV}>
+                        <Text style={grafStyles.reportButtonText}>📊 Exportar CSV</Text>
+                    </TouchableOpacity>
+
+                    <View style={styles.yearSelector}>
+                        <Picker selectedValue={anio} onValueChange={setAnio} style={{ width: 100, height: 40, marginRight: 8 }}>
+                            {anios.map(a => <Picker.Item key={a} label={a.toString()} value={a} />)}
+                        </Picker>
+                        <Picker selectedValue={mesSeleccionado} onValueChange={setMesSeleccionado} style={{ width: 130, height: 40 }}>
+                            <Picker.Item label="Todo el Año" value={null} />
+                            {MESES.map(m => <Picker.Item key={m.value} label={m.label} value={m.value} />)}
+                        </Picker>
+                    </View>
                 </View>
             </View>
 
@@ -1642,6 +1889,17 @@ const grafStyles = StyleSheet.create({
     progressBarContainer: { height: 20, backgroundColor: '#E5E7EB', borderRadius: 10, overflow: 'hidden', marginVertical: 8 },
     progressBar: { height: '100%', borderRadius: 10 },
     progressText: { textAlign: 'center', fontSize: 14, color: '#6B7280' },
+    reportButton: {
+        backgroundColor: '#059669',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 8,
+    },
+    reportButtonText: {
+        color: '#FFF',
+        fontWeight: 'bold',
+        fontSize: 14,
+    },
     // Table styles for Resumen Mensual
     tableHeader: { flexDirection: 'row', backgroundColor: '#1E3A5F', borderRadius: 4, paddingVertical: 8, marginBottom: 4 },
     tableRow: { flexDirection: 'row', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },

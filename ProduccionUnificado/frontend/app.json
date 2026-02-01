@@ -38,6 +38,9 @@
     },
     "updates": {
       "url": "https://u.expo.dev/71a1cfa6-1f65-471c-8dd0-3a4b94ce4400"
-    }
+    },
+    "plugins": [
+      "expo-secure-store"
+    ]
   }
 }

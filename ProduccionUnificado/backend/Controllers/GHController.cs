@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
+using Microsoft.AspNetCore.Authorization;
 
 namespace TiempoProcesos.API.Controllers;
 
@@ -9,6 +10,7 @@ namespace TiempoProcesos.API.Controllers;
 /// Controller for GH (Gestión Humana) Budget and Expense Management.
 /// Handles Rubros, TiposServicio, Proveedores, Cotizaciones, and Gastos.
 /// </summary>
+// [Authorize]
 [ApiController]
 [Route("api/gh")]
 public class GHController : ControllerBase
@@ -372,6 +374,7 @@ public class GHController : ControllerBase
             .Include(g => g.TipoServicio)
             .Include(g => g.Proveedor)
             .Include(g => g.Cotizacion)
+            .Include(g => g.CreadoPor) // Include Creator
             .Where(g => g.Anio == anio);
 
         if (mes.HasValue)
@@ -398,8 +401,11 @@ public class GHController : ControllerBase
                 g.Nota,
                 g.ArchivoFactura,
                 g.ArchivoFacturaNombre,
+                // Deleted duplicates
                 g.FechaCreacion,
-                g.FechaModificacion
+                g.FechaModificacion,
+                g.CreadoPorId,
+                CreadoPorNombre = g.CreadoPor != null ? g.CreadoPor.NombreMostrar : ""
             })
             .ToListAsync();
 
@@ -489,6 +495,13 @@ public class GHController : ControllerBase
     [HttpPost("gastos")]
     public async Task<ActionResult<GH_GastoMensual>> CreateGasto([FromBody] GH_GastoMensual gasto)
     {
+        // Set Creator
+        var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == "Id");
+        if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int adminId))
+        {
+            gasto.CreadoPorId = adminId;
+        }
+
         gasto.FechaCreacion = DateTime.UtcNow;
         _context.GH_GastosMensuales.Add(gasto);
         await _context.SaveChangesAsync();

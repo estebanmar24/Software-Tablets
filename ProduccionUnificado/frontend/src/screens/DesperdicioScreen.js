@@ -161,7 +161,9 @@ const DesperdicioScreen = () => {
                 setModalRegistroVisible(false);
 
                 // Actualizar filtro a la fecha del registro guardado para verlo inmediatamente
+                // Si la fecha es la misma, el useEffect no disparará, así que forzamos la recarga
                 setSelectedFecha(newRegistro.fecha);
+                loadRegistros(); // Explicit reload to ensure UI update
 
                 // Resetear form
                 setNewRegistro({
@@ -174,7 +176,6 @@ const DesperdicioScreen = () => {
                     cantidad: '',
                     nota: ''
                 });
-                // loadRegistros se llamará automáticamente por el useEffect al cambiar selectedFecha
             } else {
                 const txt = await res.text();
                 Alert.alert('Error', `No se pudo guardar: ${txt}`);
@@ -426,7 +427,79 @@ const DesperdicioScreen = () => {
 
             const summaryCode = getGroupData(r => r.codigo);
             const summaryOp = getGroupData(r => r.usuarioNombre);
-            const summaryMaq = getGroupData(r => r.maquinaNombre);
+
+            // Resumen Máquina Mensual (Independiente del filtro diario de la lista)
+            // 1. Determinar Mes/Año objetivo
+            const targetDate = selectedFecha || new Date(); // Si no hay fecha, usa hoy (mes actual)
+            const targetMonth = targetDate.getMonth() + 1;
+            const targetYear = targetDate.getFullYear();
+
+            // 2. Fetch Waste Monthly Summary (UNFILTERED by context to show Machine Month Totals)
+            const wasteByMaq = {};
+            try {
+                // We ask for GLOBAL monthly summary for all machines
+                let urlWaste = `${API_URL}/desperdicio/resumen-mensual?mes=${targetMonth}&anio=${targetYear}`;
+
+                const resWaste = await fetch(urlWaste);
+                if (resWaste.ok) {
+                    const list = await resWaste.json();
+                    list.forEach(w => {
+                        const mid = w.maquinaId !== undefined ? w.maquinaId : w.MaquinaId;
+                        const qty = w.cantidad !== undefined ? w.cantidad : w.Cantidad;
+                        const name = w.maquinaNombre !== undefined ? w.maquinaNombre : w.MaquinaNombre;
+                        if (mid !== undefined) {
+                            wasteByMaq[mid] = { nombre: name, cantidad: qty || 0 };
+                        }
+                    });
+                }
+            } catch (e) { console.log("Error fetching waste summary", e); }
+
+            // 3. Fetch Production Monthly Summary (UNFILTERED by context)
+            let prodByMaq = {}; // { id: tiros }
+            try {
+                // Use same endpoint as Dashboard to ensure consistency
+                let urlProd = `${API_URL}/produccion/resumen?mes=${targetMonth}&anio=${targetYear}`;
+
+                const resProd = await fetch(urlProd);
+                if (resProd.ok) {
+                    const data = await resProd.json();
+                    const list = data.resumenMaquinas || [];
+                    console.log("PROD SUMMARY RAW (from Dashboard):", list);
+                    list.forEach(p => {
+                        const mid = p.maquinaId !== undefined ? p.maquinaId : p.MaquinaId;
+                        // In GetResumen, the property is tirosTotales
+                        const t = p.tirosTotales !== undefined ? p.tirosTotales : p.TirosTotales;
+                        if (mid !== undefined) prodByMaq[mid] = t || 0;
+                    });
+                }
+            } catch (e) { console.log("Error fetching prod summary", e); }
+
+            // 4. Merge Data for Table (Monthly View)
+            // Iterate over ALL active machines in the system, not just those with waste/prod
+            const summaryMaqData = maquinas.map(m => {
+                const id = m.id;
+                const name = m.nombre;
+
+                const w = wasteByMaq[id] || { nombre: name, cantidad: 0 };
+                const prodTiros = prodByMaq[id] || 0;
+
+                const waste = w.cantidad;
+                const tiros = prodTiros;
+
+                // FILTER: Hide if both Total Shots and Waste are zero
+                if (tiros === 0 && waste === 0) return null;
+
+                // Avoid division by zero
+                const pct = tiros > 0 ? (waste / tiros * 100) : 0;
+
+                return [
+                    name,
+                    tiros.toLocaleString('es-CO', { maximumFractionDigits: 0 }),
+                    waste.toLocaleString('es-CO', { maximumFractionDigits: 0 }),
+                    `${pct.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`
+                ];
+            }).filter(item => item !== null).sort((a, b) => a[0].localeCompare(b[0]));
+
 
             // Mover a nueva pagina si queda poco espacio
             if (finalY > doc.internal.pageSize.getHeight() - 60) {
@@ -445,11 +518,6 @@ const DesperdicioScreen = () => {
                 tableWidth: 80,
                 margin: { left: 14 }
             });
-
-            // Posicionar siguiente tabla a la derecha o abajo
-            // Vamos a ponerlos en fila si caben, sino abajo. 
-            // Para simplicidad, los pondremos verticalmente uno tras otro, o en grid si se desea.
-            // Requirement "tambien el total por op, y tambien el total por maquina".
 
             finalY = doc.lastAutoTable.finalY + 10;
 
@@ -480,13 +548,19 @@ const DesperdicioScreen = () => {
 
             doc.text('Resumen por Máquina:', 14, finalY);
             autoTable(doc, {
-                head: [['Máquina', 'Total']],
-                body: summaryMaq,
+                head: [['Máquina', 'Tiros Totales', 'Desperdicio', '% Desp.']],
+                body: summaryMaqData,
                 startY: finalY + 5,
                 theme: 'grid',
                 styles: { fontSize: 8 },
-                tableWidth: 100,
-                margin: { left: 14 }
+                tableWidth: 160,
+                margin: { left: 14 },
+                columnStyles: {
+                    0: { cellWidth: 50 },
+                    1: { cellWidth: 30, halign: 'right' },
+                    2: { cellWidth: 30, halign: 'right' },
+                    3: { cellWidth: 30, halign: 'right' }
+                }
             });
 
             doc.save(`reporte_desperdicios_${new Date().getTime()}.pdf`);

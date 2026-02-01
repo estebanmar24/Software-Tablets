@@ -25,6 +25,7 @@ interface SidebarProps {
     isCollapsible?: boolean;
     opSearchText: string;
     onOpSearchTextChange: (text: string) => void;
+    isOpDisabled?: boolean;
 }
 
 // Dropdown personalizado para reemplazar Picker nativo
@@ -112,6 +113,7 @@ export function Sidebar({
     isCollapsible = false,
     opSearchText,
     onOpSearchTextChange,
+    isOpDisabled = false,
 }: SidebarProps) {
     const [isOpen, setIsOpen] = useState(false);
     // const [showOpList, setShowOpList] = useState(false); // Unused warning fix
@@ -150,7 +152,7 @@ export function Sidebar({
                     style={styles.logo}
                     resizeMode="contain"
                 />
-                <Text style={{ fontSize: 10, color: '#718096', marginTop: 4 }}>v1.5.0 - SST & Calidad Update 🛠️</Text>
+                <Text style={{ fontSize: 10, color: '#718096', marginTop: 4 }}>v1.5.2 - Mandatory OP Fix 🛠️</Text>
             </View>
 
             {/* Toggle Button for Phones */}
@@ -209,12 +211,16 @@ export function Sidebar({
                             <Text style={styles.label}>Orden de Producción</Text>
                             <View>
                                 <TextInput
-                                    style={styles.pickerContainer} // Reusing container style for border
-                                    placeholder="Buscar OP (Números)"
+                                    style={[
+                                        styles.pickerContainer,
+                                        isOpDisabled && { backgroundColor: '#EDF2F7', color: '#A0AEC0' }
+                                    ]} // Reusing container style for border
+                                    placeholder={isOpDisabled ? "Bloqueado" : "Buscar OP (Números)"}
                                     placeholderTextColor="#A0AEC0"
                                     value={opSearchText}
                                     keyboardType="numeric"
                                     onChangeText={handleOpSearch}
+                                    editable={!isOpDisabled}
                                 />
                                 {opSearchText !== '' && filteredOrdenes.length > 0 && (
                                     <View style={styles.autocompleteList}>
@@ -225,7 +231,6 @@ export function Sidebar({
                                                 onPress={() => selectOp(op)}
                                             >
                                                 <Text style={styles.autocompleteText}>{op.numero}</Text>
-                                                <Text style={styles.autocompleteDesc} numberOfLines={1}>{op.descripcion}</Text>
                                             </TouchableOpacity>
                                         ))}
                                     </View>

@@ -28,14 +28,11 @@ public static class HorarioLaboralHelper
         if (fecha.DayOfWeek == DayOfWeek.Sunday || EsFestivoColombia(fecha))
             return false;
 
-        // Sábado - 8:00 AM a 12:00 PM
-        if (fecha.DayOfWeek == DayOfWeek.Saturday)
-        {
-            return hora >= InicioSabado && hora <= FinSabado;
-        }
+        // Lunes a Sábado - Bonificable todo el día (siempre que no sea festivo)
+        if (fecha.DayOfWeek == DayOfWeek.Sunday || EsFestivoColombia(fecha))
+            return false;
 
-        // Lunes a Viernes - 7:00 AM a 4:00 PM
-        return hora >= InicioSemana && hora <= FinSemana;
+        return true;
     }
 
     /// <summary>

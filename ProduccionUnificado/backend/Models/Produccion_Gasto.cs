@@ -15,6 +15,11 @@ public class Produccion_Gasto
     [ForeignKey("ProveedorId")]
     public Produccion_Proveedor? Proveedor { get; set; }
 
+    // Admin who created the record
+    public int? CreadoPorId { get; set; }
+    [ForeignKey("CreadoPorId")]
+    public AdminUsuario? CreadoPor { get; set; }
+
     public int? UsuarioId { get; set; } // For Overtime (Operario)
     [ForeignKey("UsuarioId")]
     public Usuario? Usuario { get; set; }

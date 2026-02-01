@@ -10,4 +10,6 @@ public class Usuario
     public bool Activo { get; set; } = true;
     public DateTime? FechaCreacion { get; set; }
     public decimal Salario { get; set; }
+    [Column("EsPorHoras")]
+    public bool EsPorHoras { get; set; } = false;
 }

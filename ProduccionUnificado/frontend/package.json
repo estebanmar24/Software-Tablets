@@ -1,6 +1,6 @@
 {
   "name": "tiempoprocesos.app",
-  "version": "1.0.0",
+  "version": "1.5.2",
   "main": "index.ts",
   "scripts": {
     "start": "set REACT_NATIVE_PACKAGER_HOSTNAME=192.168.100.227 && expo start",
@@ -14,7 +14,7 @@
     "@react-native-picker/picker": "^2.11.4",
     "@react-navigation/bottom-tabs": "^7.8.12",
     "@react-navigation/native": "^7.1.25",
-    "axios": "^1.13.2",
+    "axios": "^1.13.4",
     "base-64": "^1.0.0",
     "buffer": "^6.0.3",
     "chart.js": "^4.5.1",
@@ -29,6 +29,7 @@
     "expo-intent-launcher": "^13.0.8",
     "expo-media-library": "~18.2.1",
     "expo-screen-orientation": "~9.0.8",
+    "expo-secure-store": "~15.0.8",
     "expo-sharing": "~14.0.8",
     "expo-status-bar": "~3.0.9",
     "expo-updates": "~29.0.16",
@@ -49,6 +50,7 @@
   "devDependencies": {
     "@types/react": "~19.1.0",
     "babel-preset-expo": "^54.0.8",
+    "eas-cli": "^16.31.0",
     "typescript": "~5.9.2"
   },
   "private": true

@@ -1,32 +1,58 @@
-// API Service for Production Screens (compatible with axios-style responses)
-// This file provides functions that match the interface expected by screens migrated from Software-Empresa-Elliot
+import axios from 'axios';
+import { getToken } from './authStorage';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
-// Wrapper to make fetch responses compatible with axios { data } structure
-async function axiosWrapper<T>(url: string, options?: RequestInit): Promise<{ data: T }> {
-    const noCacheHeaders = {
+
+export const api = axios.create({
+    baseURL: API_BASE_URL,
+    headers: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
         'Expires': '0'
-    };
-
-    const finalOptions = {
-        ...options,
-        headers: {
-            ...noCacheHeaders,
-            ...options?.headers
-        }
-    };
-
-    const response = await fetch(url, finalOptions);
-    if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
     }
-    // Handle 204 NoContent and empty responses
-    const text = await response.text();
-    const data = text ? JSON.parse(text) : null;
-    return { data };
-}
+});
+
+/*
+// Interceptor para inyectar token
+api.interceptors.request.use(async (config) => {
+    const token = await getToken();
+    console.log(`[API DEBUG] Request: ${config.method?.toUpperCase()} ${config.url}, Token: ${token ? 'PRESENT' : 'MISSING'}`);
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+}, (error) => {
+    return Promise.reject(error);
+});
+*/
+
+// Helper para mantener compatibilidad con el código existente que espera { data }
+// Axios ya devuelve { data, status, ... }, así que devolvemos la respuesta completa
+// y el caller accederá a .data como siempre.
+const axiosWrapper = async <T>(url: string, options?: any) => {
+    // Si la URL es absoluta, usarla tal cual, si no, usa baseURL
+    // Pero axios.create ya tiene baseURL.
+    // El código existente pasa URLs completas a veces: `${API_BASE_URL}/maquinas`
+    // Si pasamos url completa a axios instance, funciona.
+
+    // Mapear options.method a axios method
+    const method = options?.method || 'GET';
+    const data = options?.body ? JSON.parse(options.body) : undefined;
+    const headers = options?.headers;
+
+    try {
+        const response = await api.request<T>({
+            url,
+            method,
+            data,
+            headers
+        });
+        return { data: response.data };
+    } catch (error: any) {
+        console.error("API Error", error.message);
+        throw error;
+    }
+};
 
 export const API_URL = API_BASE_URL;
 
@@ -48,12 +74,22 @@ export const deleteMaquina = (id: number) => axiosWrapper<any>(`${API_BASE_URL}/
 });
 
 // Usuarios
-export const getUsuarios = () => axiosWrapper<any[]>(`${API_BASE_URL}/usuarios`);
-export const createUsuario = (data: any) => axiosWrapper<any>(`${API_BASE_URL}/usuarios`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-});
+export const getUsuarios = async (includeInactive = false) => {
+    try {
+        const response = await api.get(`/usuarios?includeInactive=${includeInactive}`);
+        return { data: response.data };
+    } catch (e) {
+        throw e;
+    }
+};
+export const createUsuario = async (data: any) => {
+    try {
+        const response = await api.post('/usuarios', data);
+        return { data: response.data };
+    } catch (e) {
+        throw e;
+    }
+};
 
 export const updateUsuario = (id: number, data: any) => axiosWrapper<any>(`${API_BASE_URL}/usuarios/${id}`, {
     method: 'PUT',
@@ -97,37 +133,26 @@ export const borrarProduccion = (mes: number, anio: number, usuarioId?: number, 
 export const getPeriodosDisponibles = () => axiosWrapper<any[]>(`${API_BASE_URL}/produccion/periodos-disponibles`);
 
 // Generic get for flexibility - now supports params like axios
-export const get = (url: string, options?: { params?: Record<string, any> }) => {
-    // If url starts with /, append base. Otherwise use as is?
-    // DashboardScreen uses relative paths like '/maquinas'
-    let fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+// Generic get for flexibility - now supports params like axios
+export const get = async (url: string, options?: { params?: Record<string, any> }) => {
+    // Axios request handles params correctly
+    try {
+        // Handle absolute vs relative
+        const isAbsolute = url.startsWith('http');
 
-    // Add query params if provided
-    if (options?.params) {
-        const searchParams = new URLSearchParams();
-        for (const key in options.params) {
-            if (options.params[key] !== undefined && options.params[key] !== null) {
-                searchParams.append(key, String(options.params[key]));
-            }
-        }
-        const queryString = searchParams.toString();
-        if (queryString) {
-            fullUrl += (fullUrl.includes('?') ? '&' : '?') + queryString;
-        }
-    }
-
-    return axiosWrapper<any>(fullUrl);
+        const response = await api.get(url, {
+            params: options?.params
+        });
+        return { data: response.data };
+    } catch (e) { throw e; }
 };
 
 // Generic post for flexibility
-export const post = (url: string, data?: any) => {
-    let fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
-
-    return axiosWrapper<any>(fullUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: data ? JSON.stringify(data) : undefined
-    });
+export const post = async (url: string, data?: any) => {
+    try {
+        const response = await api.post(url, data);
+        return { data: response.data };
+    } catch (e) { throw e; }
 };
 
 export default {

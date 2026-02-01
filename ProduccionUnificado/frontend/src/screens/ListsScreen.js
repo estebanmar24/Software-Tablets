@@ -1,26 +1,37 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, TextInput, Button, StyleSheet, Alert, TouchableOpacity, Modal, Platform } from 'react-native';
+import { View, Text, FlatList, TextInput, Button, StyleSheet, Alert, TouchableOpacity, Modal, Platform, Switch } from 'react-native';
 import { getUsuarios, createUsuario, updateUsuario, deleteUsuario } from '../services/productionApi';
 
 export default function ListsScreen({ navigation }) {
     const [usuarios, setUsuarios] = useState([]);
     const [newUsuario, setNewUsuario] = useState('');
+    const [newSalario, setNewSalario] = useState(''); // NEW STATE
+    const [esPorHoras, setEsPorHoras] = useState(false);
     const [loading, setLoading] = useState(false);
 
     // Edit modal state
     const [editModalVisible, setEditModalVisible] = useState(false);
     const [editingUser, setEditingUser] = useState(null);
     const [editName, setEditName] = useState('');
+    const [editSalario, setEditSalario] = useState(''); // NEW EDIT STATE
+    const [editEsPorHoras, setEditEsPorHoras] = useState(false);
+
+    const [showInactive, setShowInactive] = useState(false); // NEW STATE
 
     useEffect(() => {
         loadUsuarios();
-    }, []);
+    }, [showInactive]); // Reload when toggle changes
 
     const loadUsuarios = async () => {
         setLoading(true);
         try {
-            const res = await getUsuarios();
-            setUsuarios(res.data);
+            const res = await getUsuarios(showInactive);
+            let data = res.data;
+            // If showing inactive, we want ONLY the inactive ones, not mixed.
+            if (showInactive) {
+                data = data.filter(u => !u.activo);
+            }
+            setUsuarios(data);
         } catch (error) {
             console.error(error);
         } finally {
@@ -31,8 +42,16 @@ export default function ListsScreen({ navigation }) {
     const handleAddUsuario = async () => {
         if (!newUsuario.trim()) return;
         try {
-            await createUsuario({ nombre: newUsuario, estado: true, activo: true });
+            await createUsuario({
+                nombre: newUsuario,
+                estado: true,
+                activo: true,
+                esPorHoras: esPorHoras,
+                salario: newSalario ? parseFloat(newSalario) : 0
+            });
             setNewUsuario('');
+            setNewSalario('');
+            setEsPorHoras(false);
             loadUsuarios();
             if (Platform.OS === 'web') {
                 alert("Operario agregado");
@@ -52,6 +71,8 @@ export default function ListsScreen({ navigation }) {
     const handleEditPress = (user) => {
         setEditingUser(user);
         setEditName(user.nombre);
+        setEditSalario(user.salario ? user.salario.toString() : '');
+        setEditEsPorHoras(user.esPorHoras || false);
         setEditModalVisible(true);
     };
 
@@ -61,7 +82,9 @@ export default function ListsScreen({ navigation }) {
             await updateUsuario(editingUser.id, {
                 nombre: editName,
                 estado: editingUser.estado,
-                activo: editingUser.activo
+                activo: editingUser.activo,
+                esPorHoras: editEsPorHoras,
+                salario: editSalario ? parseFloat(editSalario) : 0
             });
             setEditModalVisible(false);
             setEditingUser(null);
@@ -78,6 +101,24 @@ export default function ListsScreen({ navigation }) {
             } else {
                 Alert.alert("Error", "No se pudo actualizar");
             }
+        }
+    };
+
+    const handleRestorePress = async (user) => {
+        try {
+            await updateUsuario(user.id, {
+                ...user,
+                activo: true
+            });
+            loadUsuarios();
+            if (Platform.OS === 'web') {
+                alert("Operario restaurado");
+            } else {
+                Alert.alert("Éxito", "Operario restaurado");
+            }
+        } catch (error) {
+            console.error('Restore usuario error:', error);
+            alert("Error al restaurar");
         }
     };
 
@@ -120,44 +161,83 @@ export default function ListsScreen({ navigation }) {
             <Text style={styles.header}>Gestión de Listas - Operarios</Text>
 
             <View style={styles.addBox}>
-                <TextInput
-                    style={styles.input}
-                    value={newUsuario}
-                    onChangeText={setNewUsuario}
-                    placeholder="Nuevo Operario"
-                />
-                <TouchableOpacity style={styles.addButton} onPress={handleAddUsuario}>
+                <View style={{ flex: 1, gap: 10 }}>
+                    <TextInput
+                        style={styles.input}
+                        value={newUsuario}
+                        onChangeText={setNewUsuario}
+                        placeholder="Nombre del operario"
+                    />
+                    <TextInput
+                        style={styles.input}
+                        value={newSalario}
+                        onChangeText={setNewSalario}
+                        placeholder="Salario (Mensual)"
+                        keyboardType="numeric"
+                    />
+                    <View style={styles.switchContainer}>
+                        <Text>Por Horas:</Text>
+                        <Switch value={esPorHoras} onValueChange={setEsPorHoras} />
+                    </View>
+                </View>
+                <TouchableOpacity style={[styles.addButton, { alignSelf: 'center' }]} onPress={handleAddUsuario}>
                     <Text style={styles.addButtonText}>AGREGAR</Text>
                 </TouchableOpacity>
             </View>
 
-            <Text style={styles.subHeader}>Operarios Activos:</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
+                <Text style={styles.subHeader}>Operarios {showInactive ? "Eliminados" : "Activos"}:</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                    <Text>Ver Papelera</Text>
+                    <Switch value={showInactive} onValueChange={setShowInactive} />
+                </View>
+            </View>
+
             <FlatList
                 data={usuarios}
                 keyExtractor={(item) => item.id.toString()}
                 renderItem={({ item }) => (
-                    <View style={styles.item}>
+                    <View style={[styles.item, !item.activo && { opacity: 0.5, backgroundColor: '#f9f9f9' }]}>
                         <View>
-                            <Text style={styles.itemText}>{item.nombre}</Text>
-                            {item.salario != null && (
+                            <Text style={styles.itemText}>
+                                {item.nombre} {item.esPorHoras ? "🕒" : ""} {!item.activo && "(Eliminado)"}
+                            </Text>
+                            {item.esPorHoras ? (
                                 <Text style={{ fontSize: 13, color: '#059669', marginTop: 2 }}>
-                                    💰 {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(item.salario)}
+                                    💰 Por Horas
                                 </Text>
+                            ) : (
+                                item.salario != null && (
+                                    <Text style={{ fontSize: 13, color: '#059669', marginTop: 2 }}>
+                                        💰 {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(item.salario)}
+                                    </Text>
+                                )
                             )}
                         </View>
                         <View style={styles.actionButtons}>
-                            <TouchableOpacity
-                                style={styles.editBtn}
-                                onPress={() => handleEditPress(item)}
-                            >
-                                <Text style={styles.btnText}>✏️</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={styles.deleteBtn}
-                                onPress={() => handleDeletePress(item)}
-                            >
-                                <Text style={styles.btnText}>🗑️</Text>
-                            </TouchableOpacity>
+                            {!item.activo ? (
+                                <TouchableOpacity
+                                    style={[styles.editBtn, { backgroundColor: '#E8F5E9' }]}
+                                    onPress={() => handleRestorePress(item)}
+                                >
+                                    <Text style={styles.btnText}>♻️</Text>
+                                </TouchableOpacity>
+                            ) : (
+                                <>
+                                    <TouchableOpacity
+                                        style={styles.editBtn}
+                                        onPress={() => handleEditPress(item)}
+                                    >
+                                        <Text style={styles.btnText}>✏️</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={styles.deleteBtn}
+                                        onPress={() => handleDeletePress(item)}
+                                    >
+                                        <Text style={styles.btnText}>🗑️</Text>
+                                    </TouchableOpacity>
+                                </>
+                            )}
                         </View>
                     </View>
                 )}
@@ -179,6 +259,18 @@ export default function ListsScreen({ navigation }) {
                             onChangeText={setEditName}
                             placeholder="Nombre del operario"
                         />
+                        <TextInput
+                            style={styles.modalInput}
+                            value={editSalario}
+                            onChangeText={setEditSalario}
+                            placeholder="Salario (Mensual)"
+                            keyboardType="numeric"
+                        />
+                        <View style={[styles.switchContainer, { marginBottom: 20 }]}>
+                            <Text style={{ fontSize: 16 }}>Por Horas:</Text>
+                            <Switch value={editEsPorHoras} onValueChange={setEditEsPorHoras} />
+                        </View>
+
                         <View style={styles.modalButtons}>
                             <TouchableOpacity
                                 style={styles.cancelBtn}
@@ -248,5 +340,6 @@ const styles = StyleSheet.create({
     cancelBtn: { padding: 12, paddingHorizontal: 20 },
     cancelBtnText: { color: '#666' },
     saveBtn: { backgroundColor: '#1976D2', padding: 12, paddingHorizontal: 20, borderRadius: 5 },
-    saveBtnText: { color: '#fff', fontWeight: 'bold' }
+    saveBtnText: { color: '#fff', fontWeight: 'bold' },
+    switchContainer: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }
 });

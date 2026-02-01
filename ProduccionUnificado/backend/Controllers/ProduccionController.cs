@@ -2,22 +2,27 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
+using TiempoProcesos.API.Services;
+using Microsoft.AspNetCore.Authorization;
 
 namespace TiempoProcesos.API.Controllers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using System.IO;
 
-[Route("api/[controller]")]
+// [Authorize]
 [ApiController]
+[Route("api/[controller]")]
 public class ProduccionController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly ITiempoProcesoService _tiempoProcesoService;
     private readonly IWebHostEnvironment _env;
 
-    public ProduccionController(AppDbContext context, IWebHostEnvironment env)
+    public ProduccionController(AppDbContext context, ITiempoProcesoService tiempoProcesoService, IWebHostEnvironment env)
     {
         _context = context;
+        _tiempoProcesoService = tiempoProcesoService;
         _env = env;
     }
 
@@ -252,7 +257,8 @@ public class ProduccionController : ControllerBase
                     // Calcular totales auxiliares y muertos
                     TotalHorasAuxiliares = dto.HorasMantenimiento + dto.HorasDescanso + dto.HorasOtrosAux,
                     TotalTiemposMuertos = dto.TiempoFaltaTrabajo + dto.TiempoReparacion + dto.TiempoOtroMuerto,
-                    TotalHoras = dto.TotalHorasProductivas + dto.HorasMantenimiento + dto.HorasDescanso + dto.HorasOtrosAux + dto.TiempoFaltaTrabajo + dto.TiempoReparacion + dto.TiempoOtroMuerto
+                    TotalHoras = dto.TotalHorasProductivas + dto.HorasMantenimiento + dto.HorasDescanso + dto.HorasOtrosAux + dto.TiempoFaltaTrabajo + dto.TiempoReparacion + dto.TiempoOtroMuerto,
+                    HorarioId = dto.HorarioId
                 };
                 _context.ProduccionDiaria.Add(produccion);
             }
@@ -269,37 +275,62 @@ public class ProduccionController : ControllerBase
         }
     }
 
+    [HttpPost("recalcular-mes")]
+    public async Task<IActionResult> RecalcularMes([FromQuery] int anio, [FromQuery] int mes)
+    {
+        try
+        {
+            await _tiempoProcesoService.RecalcularProduccionMesAsync(anio, mes);
+            return Ok(new { message = $"Recálculo completado para {mes}/{anio}" });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
     [HttpGet("gastos")]
     public async Task<ActionResult<IEnumerable<object>>> GetGastos(int anio, int? mes = null)
     {
-        var query = _context.Produccion_Gastos
-            .Include(g => g.Rubro)
-            .Include(g => g.Proveedor)
-            .Include(g => g.Usuario)
-            .Include(g => g.Maquina)
-            .Include(g => g.TipoHora)
-            .Include(g => g.TipoRecargo)
-            .Where(g => g.Anio == anio);
-
-        if (mes.HasValue)
+        try 
         {
-            query = query.Where(g => g.Mes == mes.Value);
+            var query = _context.Produccion_Gastos
+                .Include(g => g.Rubro)
+                .Include(g => g.Proveedor)
+                .Include(g => g.Usuario)
+                .Include(g => g.CreadoPor) // Include creator info
+                .Include(g => g.Maquina)
+                .Include(g => g.TipoHora)
+                .Include(g => g.TipoRecargo)
+                .Where(g => g.Anio == anio);
+
+            if (mes.HasValue)
+            {
+                query = query.Where(g => g.Mes == mes.Value);
+            }
+
+            var gastos = await query
+                .OrderByDescending(g => g.Fecha)
+                .ToListAsync();
+
+            // Calculate Summary
+            var resumen = new
+            {
+                Total = gastos.Sum(g => g.Precio),
+                PorRubro = gastos.GroupBy(g => g.Rubro?.Nombre ?? "Sin Rubro")
+                                 .Select(g => new { Rubro = g.Key, Total = g.Sum(x => x.Precio) })
+                                 .ToDictionary(k => k.Rubro, v => v.Total)
+            };
+
+            return Ok(new { gastos, resumen });
         }
-
-        var gastos = await query
-            .OrderByDescending(g => g.Fecha)
-            .ToListAsync();
-
-        // Calculate Summary
-        var resumen = new
+        catch (Exception ex)
         {
-            Total = gastos.Sum(g => g.Precio),
-            PorRubro = gastos.GroupBy(g => g.Rubro?.Nombre ?? "Sin Rubro")
-                             .Select(g => new { Rubro = g.Key, Total = g.Sum(x => x.Precio) })
-                             .ToDictionary(k => k.Rubro, v => v.Total)
-        };
-
-        return Ok(new { gastos, resumen });
+            Console.WriteLine($"[CRITICAL ERROR] GetGastos failure: {ex.Message}");
+            Console.WriteLine(ex.StackTrace);
+            if (ex.InnerException != null) Console.WriteLine($"[INNER] {ex.InnerException.Message}");
+            return StatusCode(500, new { message = "Error interno del servidor", details = ex.Message });
+        }
     }
 
     [HttpPost("gastos")]
@@ -307,6 +338,13 @@ public class ProduccionController : ControllerBase
     {
         // Basic validations
         if (gasto.RubroId <= 0) return BadRequest("Rubro es requerido");
+
+        // Set Creator
+        var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == "Id");
+        if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int adminId))
+        {
+            gasto.CreadoPorId = adminId;
+        }
 
         // Helper: Validate logic based on Rubro
         var rubro = await _context.Produccion_Rubros.FindAsync(gasto.RubroId);
@@ -361,6 +399,8 @@ public class ProduccionController : ControllerBase
 
         return Ok(gasto);
     }
+
+
 
     [HttpPut("gastos/{id}")]
     public async Task<IActionResult> UpdateGasto(int id, Produccion_Gasto gasto)
@@ -469,6 +509,71 @@ public class ProduccionController : ControllerBase
     }
 
     /// <summary>
+    /// Get production summary (Tiros) filtered by machine, date, user, and OP (string match)
+    /// Used for Waste Report percentage calculation.
+    /// Supports filtering by exact Date OR by Month/Year.
+    /// </summary>
+    [HttpGet("resumen-produccion")]
+    public async Task<ActionResult<IEnumerable<object>>> GetProduccionSummary(
+        [FromQuery] int? maquinaId, 
+        [FromQuery] DateTime? fecha, 
+        [FromQuery] int? usuarioId, 
+        [FromQuery] string? ordenProduccion,
+        [FromQuery] int? mes,
+        [FromQuery] int? anio)
+    {
+        // 1. Base query on TiemposProceso (Source valid shots)
+        var query = _context.TiemposProceso
+            .Include(t => t.OrdenProduccion)
+            .Include(t => t.Maquina)
+            .Include(t => t.Actividad)
+            .Where(t => t.Actividad.Codigo == "02") // Only Production (02) counts
+            .AsQueryable();
+
+        // 2. Apply filters
+        if (maquinaId.HasValue) 
+            query = query.Where(t => t.MaquinaId == maquinaId.Value);
+
+        if (fecha.HasValue) 
+        {
+            // Exact date priority
+            query = query.Where(t => t.Fecha.Date == fecha.Value.Date);
+        }
+        else if (mes.HasValue && anio.HasValue)
+        {
+            // Monthly filter if no exact date
+            query = query.Where(t => t.Fecha.Month == mes.Value && t.Fecha.Year == anio.Value);
+        }
+
+        if (usuarioId.HasValue) 
+            query = query.Where(t => t.UsuarioId == usuarioId.Value);
+
+        if (!string.IsNullOrEmpty(ordenProduccion)) 
+            query = query.Where(t => t.OrdenProduccion != null && t.OrdenProduccion.Numero.Contains(ordenProduccion));
+
+        // 3. Group and Sum
+
+        if (usuarioId.HasValue) 
+            query = query.Where(t => t.UsuarioId == usuarioId.Value);
+
+        if (!string.IsNullOrEmpty(ordenProduccion)) 
+            query = query.Where(t => t.OrdenProduccion != null && t.OrdenProduccion.Numero.Contains(ordenProduccion));
+
+        // 3. Group and Sum
+        var summary = await query
+            .GroupBy(t => new { t.MaquinaId, t.Maquina.Nombre })
+            .Select(g => new
+            {
+                MaquinaId = g.Key.MaquinaId,
+                MaquinaNombre = g.Key.Nombre,
+                Tiros = g.Sum(t => t.Tiros)
+            })
+            .ToListAsync();
+
+        return Ok(summary);
+    }
+
+    /// <summary>
     /// Get production summary with operators and machines data for a month
     /// </summary>
     [HttpGet("resumen")]
@@ -511,8 +616,19 @@ public class ProduccionController : ControllerBase
                 var diasOp = g.Select(p => p.Fecha.Date).Distinct().Count();
                 
                 // Use Meta100Porciento like CalificacionController
-                var meta100Porciento = maq?.Meta100Porciento ?? maq?.MetaRendimiento ?? 7500;
-                var meta100 = meta100Porciento * diasOp;
+                var meta100PorcientoBase = maq?.Meta100Porciento ?? maq?.MetaRendimiento ?? 7500;
+                
+                // Calculate meta100 iterating days to handle Half-Day Saturdays
+                decimal meta100 = 0;
+                var distinctDays = g.Select(p => p.Fecha.Date).Distinct().ToList();
+                foreach (var day in distinctDays)
+                {
+                    if (day.DayOfWeek == DayOfWeek.Saturday)
+                        meta100 += meta100PorcientoBase / 2;
+                    else
+                        meta100 += meta100PorcientoBase;
+                }
+
                 var meta75 = meta100 * 0.75m;
                 
                 var pct75 = meta75 > 0 ? (decimal)totalTiros / meta75 * 100 : 0;
@@ -563,8 +679,19 @@ public class ProduccionController : ControllerBase
                 var diasMaq = g.Select(p => p.Fecha.Date).Distinct().Count();
                 
                 // Use Meta100Porciento like CalificacionController
-                var meta100Porciento = maq?.Meta100Porciento ?? maq?.MetaRendimiento ?? 7500;
-                var meta100 = meta100Porciento * diasMaq;
+                var meta100PorcientoBase = maq?.Meta100Porciento ?? maq?.MetaRendimiento ?? 7500;
+                
+                // Calculate meta100 iterating days to handle Half-Day Saturdays
+                decimal meta100 = 0;
+                var distinctDays = g.Select(p => p.Fecha.Date).Distinct().ToList();
+                foreach (var day in distinctDays)
+                {
+                    if (day.DayOfWeek == DayOfWeek.Saturday)
+                        meta100 += meta100PorcientoBase / 2;
+                    else
+                        meta100 += meta100PorcientoBase;
+                }
+
                 var meta75 = meta100 * 0.75m;
                 
                 var pct = meta100 > 0 ? (decimal)tirosTotales / meta100 * 100 : 0;
@@ -1025,5 +1152,107 @@ public class ProduccionController : ControllerBase
         await _context.SaveChangesAsync();
         
         return NoContent();
+    }
+    // =================================================================================================
+    // MISSED ENDPOINTS FOR CAPTURE GRID SCREEN
+    // =================================================================================================
+
+    [HttpGet("maquinas-con-datos")]
+    public async Task<ActionResult<List<object>>> GetMaquinasConDatos(int mes, int anio)
+    {
+        var data = await _context.ProduccionDiaria
+            .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio)
+            .Select(p => new { p.MaquinaId, p.Maquina.Nombre })
+            .Distinct()
+            .ToListAsync();
+        return Ok(data);
+    }
+
+    [HttpGet("operarios-con-datos")]
+    public async Task<ActionResult<List<object>>> GetOperariosConDatos(int mes, int anio)
+    {
+        var data = await _context.ProduccionDiaria
+            .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio)
+            .Select(p => new { p.UsuarioId, p.Usuario.Nombre })
+            .Distinct()
+            .ToListAsync();
+        return Ok(data);
+    }
+
+    [HttpGet("detalles")]
+    public async Task<ActionResult<List<ProduccionDiaria>>> GetProduccionDetalles(int mes, int anio, int maquinaId, int usuarioId)
+    {
+        var data = await _context.ProduccionDiaria
+            .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio && p.MaquinaId == maquinaId && p.UsuarioId == usuarioId)
+            .ToListAsync();
+        return Ok(data);
+    }
+
+    [HttpGet("detalles-maquina")]
+    public async Task<ActionResult<List<ProduccionDiaria>>> GetProduccionPorMaquina(int mes, int anio, int maquinaId)
+    {
+        var data = await _context.ProduccionDiaria
+            .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio && p.MaquinaId == maquinaId)
+            .OrderBy(p => p.Fecha)
+            .ToListAsync();
+        return Ok(data);
+    }
+    
+    [HttpGet("periodos-disponibles")]
+    public async Task<ActionResult<List<object>>> GetPeriodosDisponibles()
+    {
+        var data = await _context.ProduccionDiaria
+            .Select(p => new { p.Fecha.Year, p.Fecha.Month })
+            .Distinct()
+            .OrderByDescending(x => x.Year)
+            .ThenByDescending(x => x.Month)
+            .ToListAsync();
+        var mapped = data.Select(x => new {
+            anio = x.Year,
+            mes = x.Month,
+            nombre = new DateTime(x.Year, x.Month, 1).ToString("MMMM yyyy", new System.Globalization.CultureInfo("es-CO"))
+        }).ToList();
+        return Ok(mapped);
+    }
+
+    [HttpPost("mensual")]
+    public async Task<ActionResult> SaveProduccionMensual([FromBody] List<ProduccionDiaria> registros)
+    {
+        if (registros == null || registros.Count == 0) return Ok();
+        var first = registros.First();
+        var mes = first.Fecha.Month;
+        var anio = first.Fecha.Year;
+        var maquinaId = first.MaquinaId;
+
+        using var transaction = _context.Database.BeginTransaction();
+        try
+        {
+            var existing = _context.ProduccionDiaria
+                .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio && p.MaquinaId == maquinaId);
+            _context.ProduccionDiaria.RemoveRange(existing);
+            await _context.SaveChangesAsync();
+
+            foreach (var r in registros) { r.Id = 0; r.Maquina = null; r.Usuario = null; r.Horario = null; }
+            _context.ProduccionDiaria.AddRange(registros);
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return Ok();
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            return BadRequest("Error saving monthly data: " + ex.Message);
+        }
+    }
+
+    [HttpDelete("borrar")]
+    public async Task<ActionResult> BorrarProduccion(int mes, int anio, int? maquinaId, int? usuarioId)
+    {
+        var query = _context.ProduccionDiaria.Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio);
+        if (maquinaId.HasValue) query = query.Where(p => p.MaquinaId == maquinaId.Value);
+        if (usuarioId.HasValue) query = query.Where(p => p.UsuarioId == usuarioId.Value);
+        _context.ProduccionDiaria.RemoveRange(query);
+        await _context.SaveChangesAsync();
+        return Ok();
     }
 }

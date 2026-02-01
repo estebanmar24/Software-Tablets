@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Modal, Image, FlatList, Platform } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import axios from 'axios';
-import { getMaquinasActivas, getUsuarios, saveProduccion, getProduccionDetalles, getOperariosConDatos, getMaquinasConDatos, getProduccionPorMaquina, API_URL } from '../services/productionApi';
+import { api, getMaquinasActivas, getUsuarios, saveProduccion, getProduccionDetalles, getOperariosConDatos, getMaquinasConDatos, getProduccionPorMaquina, API_URL } from '../services/productionApi';
 import { useTheme } from '../contexts/ThemeContext';
 
 const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
@@ -87,7 +87,7 @@ export default function CaptureGridScreen({ navigation }) {
             const [m, u, h] = await Promise.all([
                 getMaquinasActivas(),
                 getUsuarios(),
-                axios.get(`${API_URL}/tiempoproceso/horarios`)
+                api.get(`tiempoproceso/horarios`)
             ]);
             setMaquinas(m.data);
             setUsuarios(u.data);
@@ -595,18 +595,27 @@ export default function CaptureGridScreen({ navigation }) {
         const OtroMuerto = parseNumberInput(day.otroMuerto);
         const Desperdicio = parseNumberInput(day.desperdicio);
 
+        // Calcular Meta Rendimiento (Mitad si es Sábado)
+        const fecha = new Date(anio, mes - 1, day.day);
+        const diaSemana = fecha.getDay();
+        const esSabado = diaSemana === 6;
+
+        let MetaRendimiento = rowMaquina.metaRendimiento || 0;
+        if (esSabado) {
+            MetaRendimiento = MetaRendimiento / 2;
+        }
+
         const TirosRef = rowMaquina.tirosReferencia || 0;
         const TirosEquivalentes = (TirosRef * Cambios) + R_Final;
         const TotalHorasProd = HorasOp + PuestaPunto;
         const Promedio = TotalHorasProd > 0 ? (TirosEquivalentes / TotalHorasProd) : 0;
-        const MetaRendimiento = rowMaquina.metaRendimiento || 0;
+        // MetaRendimiento already adjusted above
 
         // Calcular diferencia de meta
         const Meta75Diff = TirosEquivalentes - MetaRendimiento;
 
         // *** NUEVO: Verificar si es festivo o domingo ***
-        const fecha = new Date(anio, mes - 1, day.day);
-        const diaSemana = fecha.getDay();
+        // fecha and diaSemana already declared above for Saturday logic
         const esFestivo = esFestivoColombia(fecha);
         const esDomingo = diaSemana === 0;
         const esNoLaborable = esFestivo || esDomingo;
@@ -651,9 +660,20 @@ export default function CaptureGridScreen({ navigation }) {
         const missingHours = [];
         const missingOperario = [];
 
+        console.log("[DEBUG] Starting handleSaveMonth");
+        console.log("[DEBUG] gridData sample:", gridData[0]);
+
         gridData.forEach((day, idx) => {
             const calcs = calculateRow(day);
-            if (calcs.TotalHoras > 0) {
+            // Determine if row has ANY content worth saving
+            const hasData = calcs.TotalHoras > 0 ||
+                (day.operarioId !== null && day.operarioId !== undefined) ||
+                (day.rFinal && parseFloat(day.rFinal) > 0) ||
+                (day.desperdicio && parseFloat(day.desperdicio) > 0) ||
+                (day.novedades && day.novedades.trim().length > 0) ||
+                (day.referenciaOP && day.referenciaOP.trim().length > 0);
+
+            if (hasData) {
                 if (!day.operarioId) {
                     missingOperario.push(`Día ${day.day}: Falta Operario`);
                     return;
@@ -731,7 +751,9 @@ export default function CaptureGridScreen({ navigation }) {
 
             // Enviar todos los datos juntos para reemplazo total (sincronización)
             // Esto asegura que si se borraron días en el grid, se borren en BD
+            console.log("[DEBUG] Sending payload to /produccion/mensual:", JSON.stringify(dataToSave, null, 2));
             await axios.post(`${API_URL}/produccion/mensual`, dataToSave);
+            console.log("[DEBUG] Save successful");
 
             setLoading(false);
             Alert.alert("Éxito", "Toda la información ha sido guardada y sincronizada.");
@@ -741,16 +763,21 @@ export default function CaptureGridScreen({ navigation }) {
 
         } catch (error) {
             setLoading(false);
-            console.error(error);
+            console.error("[DEBUG] Save error:", error);
+            if (error.response) {
+                console.error("[DEBUG] Response data:", error.response.data);
+                console.error("[DEBUG] Response status:", error.response.status);
+            }
             const msg = error.response?.data?.message || error.message || "Error desconocido";
             Alert.alert("Error", `Fallo al guardar mes: ${msg}`);
         }
     };
 
+
     const handleOpenExportModal = async () => {
         try {
-            const res = await fetch(`${API_URL}/produccion/periodos-disponibles`);
-            const data = await res.json();
+            const response = await api.get(`produccion/periodos-disponibles`);
+            const data = response.data;
             setPeriodosDisponibles(data);
             if (data.length > 0) {
                 setExportMes(data[0].mes);
@@ -762,13 +789,17 @@ export default function CaptureGridScreen({ navigation }) {
             Alert.alert("Error", "Error al cargar periodos disponibles");
         }
     };
-
     const getMesNombre = (m) => ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'][m] || '';
 
     const handleExport = async () => {
         try {
-            const res = await fetch(`${API_URL}/produccion/historial?fechaInicio=${exportAnio}-${String(exportMes).padStart(2, '0')}-01&fechaFin=${exportAnio}-${String(exportMes).padStart(2, '0')}-31`);
-            const data = await res.json();
+            const response = await api.get(`produccion/historial`, {
+                params: {
+                    fechaInicio: `${exportAnio}-${String(exportMes).padStart(2, '0')}-01`,
+                    fechaFin: `${exportAnio}-${String(exportMes).padStart(2, '0')}-31`
+                }
+            });
+            const data = response.data;
             if (!data || data.length === 0) {
                 Alert.alert("Aviso", "No hay datos para exportar");
                 return;
@@ -810,11 +841,11 @@ export default function CaptureGridScreen({ navigation }) {
             if (type === 'maquina') params.maquinaId = id;
             else params.usuarioId = id;
 
-            const query = new URLSearchParams(params).toString();
-            // Assuming string keys for params
-            const res = await fetch(`${API_URL}/Produccion/borrar?${query}`, { method: 'DELETE' });
+            const response = await api.delete(`produccion/borrar`, {
+                params: { mes, anio, ... (type === 'maquina' ? { maquinaId: id } : { usuarioId: id }) }
+            });
 
-            if (res.ok) {
+            if (response.status === 200 || response.status === 204) {
                 Alert.alert("Éxito", "Datos eliminados");
                 handleOpenDeleteModal();
                 if ((type === 'maquina' && selectedMaquina === id) || (type === 'operario' && selectedOperario === id)) {
@@ -992,7 +1023,12 @@ export default function CaptureGridScreen({ navigation }) {
                                         </Picker>
                                     </View>
                                     <View style={[styles.pickerCell, { width: 100 }]}>
-                                        <Picker selectedValue={day.horarioId ? String(day.horarioId) : ''} enabled={!!selectedMaquina} onValueChange={(v) => updateDay(index, 'horarioId', v ? parseInt(v) : null)} style={styles.pickerSmall}>
+                                        <Picker
+                                            selectedValue={day.horarioId !== null && day.horarioId !== undefined ? String(day.horarioId) : ""}
+                                            enabled={!!selectedMaquina}
+                                            onValueChange={(v) => updateDay(index, 'horarioId', v ? parseInt(v) : null)}
+                                            style={styles.pickerSmall}
+                                        >
                                             <Picker.Item label="--" value="" />
                                             {horarios.map(h => <Picker.Item key={h.id} label={h.nombre} value={String(h.id)} />)}
                                         </Picker>

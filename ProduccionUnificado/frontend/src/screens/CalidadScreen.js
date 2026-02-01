@@ -3,8 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, RefreshContr
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
-import axios from 'axios';
-import { API_URL as API_BASE_URL } from '../services/productionApi';
+import { api, API_URL as API_BASE_URL } from '../services/productionApi';
 
 // Componente TextInput estable que no pierde el foco al escribir
 const StableTextInput = memo(function StableTextInput({ value, onChangeText, style, ...props }) {
@@ -164,6 +163,7 @@ export default function CalidadScreen({ navigation }) {
     const [encuestas, setEncuestas] = useState([]);
     const [loading, setLoading] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
+    const [fetchError, setFetchError] = useState(null);
 
     const [usuarios, setUsuarios] = useState([]);
     const [maquinas, setMaquinas] = useState([]);
@@ -201,10 +201,12 @@ export default function CalidadScreen({ navigation }) {
     const cargarEncuestas = useCallback(async () => {
         try {
             setLoading(true);
-            const response = await axios.get(`${API_BASE_URL}/calidad/encuestas`);
+            setFetchError(null);
+            const response = await api.get('calidad/encuestas');
             setEncuestas(response.data);
         } catch (error) {
             console.error('Error cargando encuestas:', error);
+            setFetchError(error.response?.status === 401 ? 'Sesión expirada o inválida' : 'Error de conexión');
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -214,11 +216,11 @@ export default function CalidadScreen({ navigation }) {
     const cargarDatosFormulario = async () => {
         try {
             const [usuariosRes, maquinasRes, procesosRes, novedadesRes, estadosRes] = await Promise.all([
-                axios.get(`${API_BASE_URL}/usuarios`),
-                axios.get(`${API_BASE_URL}/maquinas`),
-                axios.get(`${API_BASE_URL}/calidad/procesos`),
-                axios.get(`${API_BASE_URL}/calidad/novedades`),
-                axios.get(`${API_BASE_URL}/calidad/estados`),
+                api.get('usuarios'),
+                api.get('maquinas'),
+                api.get('calidad/procesos'),
+                api.get('calidad/novedades'),
+                api.get('calidad/estados'),
             ]);
             setUsuarios(usuariosRes.data);
             // Agregar "Manual/Terminados" exclusivamente para Encuestas de Calidad
@@ -332,7 +334,7 @@ export default function CalidadScreen({ navigation }) {
     const editarEncuesta = async (id) => {
         try {
             setLoading(true);
-            const response = await axios.get(`${API_BASE_URL}/calidad/encuestas/${id}`);
+            const response = await api.get(`calidad/encuestas/${id}`);
             const enc = response.data;
 
             setEditingId(enc.id);
@@ -392,12 +394,9 @@ export default function CalidadScreen({ navigation }) {
 
             const url = `${API_BASE_URL}/calidad/encuestas/${id}`;
             try {
-                const response = await fetch(url, {
-                    method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }
-                });
+                const response = await api.delete(`calidad/encuestas/${id}`);
 
-                if (response.status === 204 || response.status === 200 || response.ok) {
+                if (true) { // api service throws on error, so if we're here it's 2xx or handled
                     setEncuestas(prev => prev.filter(e => e.id !== id));
                     alert('✅ Encuesta eliminada correctamente');
                     cargarEncuestas();
@@ -426,25 +425,19 @@ export default function CalidadScreen({ navigation }) {
                     onPress: async () => {
                         const url = `${API_BASE_URL}/calidad/encuestas/${id}`;
                         try {
-                            const response = await fetch(url, {
-                                method: 'DELETE',
-                                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }
-                            });
-
-                            if (response.status === 204 || response.status === 200 || response.ok) {
-                                setEncuestas(prev => prev.filter(e => e.id !== id));
-                                Alert.alert('✅ Eliminada', 'La encuesta fue eliminada correctamente', [
-                                    { text: 'OK', onPress: () => cargarEncuestas() }
-                                ]);
-                            } else if (response.status === 404) {
+                            await api.delete(`calidad/encuestas/${id}`);
+                            setEncuestas(prev => prev.filter(e => e.id !== id));
+                            Alert.alert('✅ Eliminada', 'La encuesta fue eliminada correctamente', [
+                                { text: 'OK', onPress: () => cargarEncuestas() }
+                            ]);
+                        } catch (error) {
+                            console.error('Error eliminando encuesta:', error);
+                            if (error.response?.status === 404) {
                                 setEncuestas(prev => prev.filter(e => e.id !== id));
                                 Alert.alert('⚠️ No encontrada', 'La encuesta ya fue eliminada o no existe.');
                             } else {
-                                Alert.alert('❌ Error', `Error ${response.status}: No se pudo eliminar la encuesta`);
+                                Alert.alert('❌ Error', 'No se pudo eliminar la encuesta. Verifique su conexión.');
                             }
-                        } catch (error) {
-                            console.error('Error eliminando encuesta:', error);
-                            Alert.alert('❌ Error', 'Error de conexión. Verifique que el servidor esté funcionando.');
                         }
                     }
                 }
@@ -539,7 +532,7 @@ export default function CalidadScreen({ navigation }) {
 
             if (novedad.id && novedad.fotoUri && novedad.fotoUri.startsWith('http')) {
                 try {
-                    await axios.delete(`${API_BASE_URL}/calidad/novedades/${novedad.id}/foto`);
+                    await api.delete(`calidad/novedades/${novedad.id}/foto`);
                 } catch (error) {
                     console.error('Error eliminando foto del servidor:', error);
                 }
@@ -561,7 +554,7 @@ export default function CalidadScreen({ navigation }) {
                     onPress: async () => {
                         if (novedad.id && novedad.fotoUri && novedad.fotoUri.startsWith('http')) {
                             try {
-                                await axios.delete(`${API_BASE_URL}/calidad/novedades/${novedad.id}/foto`);
+                                await api.delete(`calidad/novedades/${novedad.id}/foto`);
                             } catch (error) {
                                 console.error('Error eliminando foto del servidor:', error);
                             }
@@ -612,10 +605,10 @@ export default function CalidadScreen({ navigation }) {
 
             if (editingId) {
                 // preserveFotos=true indica que NO debe borrar los archivos físicos
-                await axios.delete(`${API_BASE_URL}/calidad/encuestas/${editingId}?preserveFotos=true`);
+                await api.delete(`calidad/encuestas/${editingId}?preserveFotos=true`);
             }
 
-            await axios.post(`${API_BASE_URL}/calidad/encuestas`, data);
+            await api.post('calidad/encuestas', data);
             Alert.alert('✅ Éxito', editingId ? 'Encuesta actualizada' : 'Encuesta guardada');
             setCurrentScreen('list');
             cargarEncuestas();
@@ -681,10 +674,26 @@ export default function CalidadScreen({ navigation }) {
         return (
             <View style={styles.container}>
                 <View style={styles.header}>
-                    <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBackBtn}>
-                        <Text style={styles.headerBackText}>← Volver</Text>
+                    <TouchableOpacity style={styles.headerBackBtn} onPress={() => navigation.goBack()}>
+                        <Text style={styles.headerBackText}>←</Text>
                     </TouchableOpacity>
-                    <Text style={styles.headerTitle}>🔍 Control de Calidad</Text>
+                    <Text style={styles.headerTitle}>Control de Calidad</Text>
+                    <TouchableOpacity
+                        style={styles.logoutBtn}
+                        onPress={async () => {
+                            Alert.alert("Sesión", "¿Desea cerrar sesión para refrescar sus credenciales?", [
+                                { text: "Cancelar", style: "cancel" },
+                                {
+                                    text: "Salir", onPress: async () => {
+                                        await removeToken();
+                                        navigation.goBack();
+                                    }
+                                }
+                            ]);
+                        }}
+                    >
+                        <Text style={styles.logoutBtnText}>Cerrar Sesión</Text>
+                    </TouchableOpacity>
                 </View>
 
                 <TouchableOpacity style={styles.newBtn} onPress={abrirFormulario}>
@@ -1005,6 +1014,12 @@ const styles = StyleSheet.create({
     headerBackBtn: { marginRight: 15, backgroundColor: 'rgba(0,0,0,0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
     headerBackText: { color: '#1F2937', fontSize: 14, fontWeight: '600' },
     headerTitle: { color: '#1F2937', fontSize: 18, fontWeight: 'bold', flex: 1 },
+
+    logoutBtn: { backgroundColor: 'rgba(239, 68, 68, 0.1)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: '#EF4444' },
+    logoutBtnText: { color: '#EF4444', fontSize: 12, fontWeight: 'bold' },
+
+    errorBanner: { backgroundColor: '#FEE2E2', margin: 16, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#F87171' },
+    errorBannerText: { color: '#B91C1C', fontSize: 14, fontWeight: '600', textAlign: 'center' },
 
     newBtn: { backgroundColor: '#10B981', margin: 16, padding: 16, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', shadowColor: '#10B981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 6 },
     newBtnIcon: { color: 'white', fontSize: 24, fontWeight: 'bold', marginRight: 8 },

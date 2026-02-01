@@ -17,8 +17,12 @@ public class UsuariosController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Usuario>>> GetUsuarios()
+    public async Task<ActionResult<IEnumerable<Usuario>>> GetUsuarios([FromQuery] bool includeInactive = false)
     {
+        if (includeInactive)
+        {
+            return await _context.Usuarios.ToListAsync();
+        }
         return await _context.Usuarios.Where(u => u.Activo).ToListAsync();
     }
 
@@ -39,6 +43,8 @@ public class UsuariosController : ControllerBase
         
         usuario.Nombre = updated.Nombre;
         usuario.Activo = updated.Activo;
+        usuario.EsPorHoras = updated.EsPorHoras;
+        usuario.Salario = updated.Salario; // ADDED
         await _context.SaveChangesAsync();
         
         return Ok(usuario);

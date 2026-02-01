@@ -77,10 +77,10 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
 
         try {
             if (isEditing && editingId) {
-                await updateUser(editingId, { role: roleString, nombreMostrar, password: password || undefined });
+                await updateUser(editingId, { role: roleString, nombreMostrar, password: password ? password.trim() : undefined });
                 Alert.alert('Éxito', 'Usuario actualizado');
             } else {
-                await createUser({ username, password, role: roleString, nombreMostrar });
+                await createUser({ username: username.trim(), password: password.trim(), role: roleString, nombreMostrar });
                 Alert.alert('Éxito', 'Usuario creado');
             }
             setModalVisible(false);
@@ -240,6 +240,7 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
                                     onChangeText={setPassword}
                                     placeholder={isEditing ? "(Dejar en blanco para no cambiar)" : "Requerida"}
                                     secureTextEntry={!showPassword}
+                                    autoCapitalize="none"
                                 />
                                 <TouchableOpacity
                                     onPress={() => setShowPassword(!showPassword)}

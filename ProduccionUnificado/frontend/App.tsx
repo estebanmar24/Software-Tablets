@@ -390,8 +390,11 @@ export default function App() {
 
     // Validar OP para Producción (02) y Puesta a Punto (01)
     // Acepta selectedOrden (de lista) O opSearchText (texto libre)
+    // NOTE: Ahora se permite vacío para otros, se pondrá 460 automáticamente al guardar si está vacía.
     const requiresOP = selectedActividad?.codigo === '01' || selectedActividad?.codigo === '02';
+
     const hasOP = selectedOrden || opSearchText.trim().length > 0;
+
     if (requiresOP && !hasOP) {
       showAlert('OP Requerida', 'Debe ingresar una Orden de Producción (OP) antes de iniciar Producción o Puesta a Punto.');
       return;
@@ -433,7 +436,7 @@ export default function App() {
       usuarioId: selectedUsuario!,
       maquinaId: selectedMaquina!,
       ordenProduccionId: selectedOrden || undefined,
-      ordenProduccionNumero: opSearchText || undefined, // Include OP number for display
+      ordenProduccionNumero: opSearchText.trim() || '460', // Default to 460 if empty
       actividadId: selectedActividad!.id,
       actividadNombre: selectedActividad!.nombre,
       actividadCodigo: selectedActividad!.codigo,
@@ -467,7 +470,7 @@ export default function App() {
         actividadId: nuevoRegistro.actividadId,
         tiros: nuevoRegistro.tiros,
         desperdicio: nuevoRegistro.desperdicio,
-        referenciaOP: opSearchText,
+        referenciaOP: opSearchText.trim() || '460', // Default to 460 if empty
         observaciones: observaciones,
         horarioId: selectedHorario || undefined,  // Turno de trabajo
       };
@@ -498,8 +501,12 @@ export default function App() {
       // Limpiar registros temporales
       setWasteRecords([]);
 
-      // NO limpiar OP para que persista entre procesos
-      // setOpSearchText('');
+
+
+      // Clear OP to force re-entry for next process
+      setOpSearchText('');
+      setSelectedOrden(null); // Also clear selected order object
+
       clearState(); // Limpiar persistencia de sesión
     } catch (error: any) {
       const errorMsg = error.response?.data?.error || error.message || 'Error desconocido';
@@ -550,6 +557,17 @@ export default function App() {
       showAlert('Cronómetro activo', 'Debe detener el cronómetro antes de cambiar de actividad.');
       return;
     }
+    // Clear OP by default when changing activity
+    setOpSearchText('');
+    setSelectedOrden(null);
+
+    // Special logic: If Descanso (04) or Reparación (03), auto-fill OP 460
+    if (actividad.codigo === '03' || actividad.codigo === '04' || actividad.nombre === 'Descanso' || actividad.nombre === 'Reparación') {
+      setOpSearchText('460');
+      // Deselect any specific order object to ensure we just use the text '460'
+      setSelectedOrden(null);
+    }
+
     setSelectedActividad(actividad);
   };
 
@@ -578,9 +596,8 @@ export default function App() {
   if (currentView === 'login') {
     return (
       <AdminLogin
-        onLoginSuccess={(role) => {
-          setAdminRole(role);
-          setCurrentView('admin');
+        onLoginSuccess={(role, nombreMostrar) => {
+          handleLoginSuccess(role, nombreMostrar);
         }}
         onBack={() => setCurrentView('timer')}
       />
@@ -691,6 +708,7 @@ export default function App() {
         style={isMobile ? { width: '100%', borderRightWidth: 0, borderBottomWidth: 1, borderBottomColor: '#E8ECF0', zIndex: 10 } : undefined}
         opSearchText={opSearchText}
         onOpSearchTextChange={setOpSearchText}
+        isOpDisabled={selectedActividad?.codigo === '03' || selectedActividad?.codigo === '04' || selectedActividad?.nombre === 'Descanso' || selectedActividad?.nombre === 'Reparación'}
       />
 
       {/* Contenido principal */}

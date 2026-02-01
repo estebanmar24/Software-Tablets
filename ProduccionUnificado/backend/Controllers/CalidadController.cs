@@ -4,8 +4,11 @@ using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
 using TiempoProcesos.API.DTOs;
 
+using Microsoft.AspNetCore.Authorization;
+
 namespace TiempoProcesos.API.Controllers;
 
+// [Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class CalidadController : ControllerBase
@@ -140,104 +143,102 @@ public class CalidadController : ControllerBase
     [HttpPost("encuestas")]
     public async Task<ActionResult<EncuestaCalidadDetalleDto>> CrearEncuesta([FromBody] CrearEncuestaCalidadDto dto)
     {
-        // Crear la encuesta
-        var encuesta = new EncuestaCalidad
+        try 
         {
-            OperarioId = dto.OperarioId,
-            AuxiliarId = dto.AuxiliarId,
-            OrdenProduccion = dto.OrdenProduccion,
-            CantidadProducir = dto.CantidadProducir,
-            MaquinaId = dto.MaquinaId,
-            Proceso = dto.Proceso,
-            CantidadEvaluada = dto.CantidadEvaluada,
-            EstadoProceso = dto.EstadoProceso,
-            TieneFichaTecnica = dto.TieneFichaTecnica,
-            CorrectoRegistroFormatos = dto.CorrectoRegistroFormatos,
-            AprobacionArranque = dto.AprobacionArranque,
-            Observacion = dto.Observacion,
-            FechaCreacion = DateTime.Now
-        };
+            Console.WriteLine($"[SAVE CALIDAD] Iniciando guardado para OP: {dto.OrdenProduccion}");
+            Console.WriteLine($"[SAVE CALIDAD] Operario: {dto.OperarioId}, Maquina: {dto.MaquinaId}, Novedades: {dto.Novedades.Count}");
 
-        _context.EncuestasCalidad.Add(encuesta);
-        await _context.SaveChangesAsync();
-
-        // Procesar novedades con fotos
-        var fotosDir = Path.Combine(_env.ContentRootPath, "wwwroot", "fotos-calidad");
-        if (!Directory.Exists(fotosDir))
-            Directory.CreateDirectory(fotosDir);
-
-        foreach (var novedadDto in dto.Novedades)
-        {
-            var novedad = new EncuestaNovedad
+            // Crear la encuesta
+            var encuesta = new EncuestaCalidad
             {
-                EncuestaId = encuesta.Id,
-                TipoNovedad = novedadDto.TipoNovedad,
-                Descripcion = novedadDto.Descripcion,
-                CantidadDefectuosa = novedadDto.CantidadDefectuosa
+                OperarioId = dto.OperarioId,
+                AuxiliarId = dto.AuxiliarId,
+                OrdenProduccion = dto.OrdenProduccion,
+                CantidadProducir = dto.CantidadProducir,
+                MaquinaId = dto.MaquinaId,
+                Proceso = dto.Proceso,
+                CantidadEvaluada = dto.CantidadEvaluada,
+                EstadoProceso = dto.EstadoProceso,
+                TieneFichaTecnica = dto.TieneFichaTecnica,
+                CorrectoRegistroFormatos = dto.CorrectoRegistroFormatos,
+                AprobacionArranque = dto.AprobacionArranque,
+                Observacion = dto.Observacion,
+                FechaCreacion = DateTime.Now
             };
 
-            if (!string.IsNullOrEmpty(novedadDto.FotoBase64))
+            _context.EncuestasCalidad.Add(encuesta);
+            await _context.SaveChangesAsync();
+            Console.WriteLine($"[SAVE CALIDAD] Encuesta creada con ID: {encuesta.Id}");
+
+            // Procesar novedades con fotos
+            var fotosDir = Path.Combine(_env.ContentRootPath, "wwwroot", "fotos-calidad");
+            if (!Directory.Exists(fotosDir))
+                Directory.CreateDirectory(fotosDir);
+
+            foreach (var novedadDto in dto.Novedades)
             {
-                // Nueva foto en base64 - guardar normalmente
-                try
+                var novedad = new EncuestaNovedad
                 {
-                    var fileName = $"{Guid.NewGuid()}.jpg";
-                    var filePath = Path.Combine(fotosDir, fileName);
-                    
-                    // Remover prefijo data:image/...;base64, si existe
-                    var base64Data = novedadDto.FotoBase64;
-                    if (base64Data.Contains(","))
-                        base64Data = base64Data.Split(',')[1];
-                    
-                    var imageBytes = Convert.FromBase64String(base64Data);
-                    
-                    await System.IO.File.WriteAllBytesAsync(filePath, imageBytes);
-                    
-                    novedad.FotoPath = filePath;
-                }
-                catch (Exception ex)
+                    EncuestaId = encuesta.Id,
+                    TipoNovedad = novedadDto.TipoNovedad,
+                    Descripcion = novedadDto.Descripcion,
+                    CantidadDefectuosa = novedadDto.CantidadDefectuosa
+                };
+
+                if (!string.IsNullOrEmpty(novedadDto.FotoBase64))
                 {
-                    Console.WriteLine($"Error guardando foto: {ex.Message}");
-                }
-            }
-            else if (!string.IsNullOrEmpty(novedadDto.FotoUrl))
-            {
-                // Foto existente - extraer nombre del archivo de la URL y usar la ruta existente
-                try
-                {
-                    // La URL viene como algo como: http://192.168.100.227:5144/fotos-calidad/xxx.jpg
-                    // O como: fotos-calidad/xxx.jpg
-                    var fileName = Path.GetFileName(new Uri(novedadDto.FotoUrl, UriKind.RelativeOrAbsolute).AbsolutePath);
-                    if (string.IsNullOrEmpty(fileName))
+                    try
                     {
-                        fileName = novedadDto.FotoUrl.Split('/').LastOrDefault() ?? "";
+                        var fileName = $"{Guid.NewGuid()}.jpg";
+                        var filePath = Path.Combine(fotosDir, fileName);
+                        
+                        var base64Data = novedadDto.FotoBase64;
+                        if (base64Data.Contains(","))
+                            base64Data = base64Data.Split(',')[1];
+                        
+                        var imageBytes = Convert.FromBase64String(base64Data);
+                        await System.IO.File.WriteAllBytesAsync(filePath, imageBytes);
+                        
+                        novedad.FotoPath = fileName; // Guardar solo el nombre o ruta relativa
+                        Console.WriteLine($"[SAVE CALIDAD] Foto guardada: {fileName}");
                     }
-                    
-                    var existingPath = Path.Combine(fotosDir, fileName);
-                    
-                    if (System.IO.File.Exists(existingPath))
+                    catch (Exception ex)
                     {
-                        // La foto existe, reutilizarla
-                        novedad.FotoPath = existingPath;
-                        Console.WriteLine($"Foto preservada: {existingPath}");
-                    }
-                    else
-                    {
-                        Console.WriteLine($"Foto no encontrada: {existingPath}");
+                        Console.WriteLine($"[SAVE CALIDAD] Error guardando foto: {ex.Message}");
                     }
                 }
-                catch (Exception ex)
+                else if (!string.IsNullOrEmpty(novedadDto.FotoUrl))
                 {
-                    Console.WriteLine($"Error preservando foto existente: {ex.Message}");
+                    try
+                    {
+                        var fileName = Path.GetFileName(new Uri(novedadDto.FotoUrl, UriKind.RelativeOrAbsolute).AbsolutePath);
+                        if (string.IsNullOrEmpty(fileName)) fileName = novedadDto.FotoUrl.Split('/').LastOrDefault() ?? "";
+                        novedad.FotoPath = fileName;
+                        Console.WriteLine($"[SAVE CALIDAD] Foto preservada: {fileName}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[SAVE CALIDAD] Error preservando foto: {ex.Message}");
+                    }
                 }
+
+                _context.EncuestaNovedades.Add(novedad);
             }
 
-            _context.EncuestaNovedades.Add(novedad);
+            await _context.SaveChangesAsync();
+            Console.WriteLine("[SAVE CALIDAD] Todo guardado exitosamente");
+
+            return CreatedAtAction(nameof(GetEncuesta), new { id = encuesta.Id }, new { id = encuesta.Id });
         }
-
-        await _context.SaveChangesAsync();
-
-        return CreatedAtAction(nameof(GetEncuesta), new { id = encuesta.Id }, new { id = encuesta.Id });
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SAVE CALIDAD ERROR] {ex.Message}");
+            Console.WriteLine($"[SAVE CALIDAD ERROR] Stack: {ex.StackTrace}");
+            if (ex.InnerException != null)
+                Console.WriteLine($"[SAVE CALIDAD ERROR] Inner: {ex.InnerException.Message}");
+            
+            return StatusCode(500, new { message = "Error interno al guardar la encuesta", details = ex.Message });
+        }
     }
 
     [HttpDelete("encuestas/{id}")]

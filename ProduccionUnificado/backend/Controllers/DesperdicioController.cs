@@ -241,6 +241,46 @@ public class DesperdicioController : ControllerBase
         return Ok(total);
     }
 
+    /// <summary>
+    /// Get monthly waste summary grouped by Machine
+    /// </summary>
+    [HttpGet("resumen-mensual")]
+    public async Task<ActionResult<IEnumerable<object>>> GetDesperdicioSummary(
+        [FromQuery] int? maquinaId,
+        [FromQuery] int? mes,
+        [FromQuery] int? anio,
+        [FromQuery] int? usuarioId,
+        [FromQuery] string? ordenProduccion)
+    {
+        var query = _context.RegistrosDesperdicio
+            .Include(r => r.Maquina)
+            .AsQueryable();
+
+        if (mes.HasValue && anio.HasValue)
+            query = query.Where(r => r.Fecha.Month == mes.Value && r.Fecha.Year == anio.Value);
+
+        if (maquinaId.HasValue)
+            query = query.Where(r => r.MaquinaId == maquinaId.Value);
+
+        if (usuarioId.HasValue)
+            query = query.Where(r => r.UsuarioId == usuarioId.Value);
+
+        if (!string.IsNullOrEmpty(ordenProduccion))
+            query = query.Where(r => r.OrdenProduccion != null && r.OrdenProduccion.Contains(ordenProduccion));
+
+        var summary = await query
+            .GroupBy(t => new { t.MaquinaId, t.Maquina.Nombre })
+            .Select(g => new
+            {
+                MaquinaId = g.Key.MaquinaId,
+                MaquinaNombre = g.Key.Nombre,
+                Cantidad = g.Sum(r => r.Cantidad)
+            })
+            .ToListAsync();
+
+        return Ok(summary);
+    }
+
     [HttpGet("reporte")]
     public async Task<ActionResult<Dictionary<string, decimal>>> GetReporteMensual(int maquinaId, int mes, int anio)
     {
