@@ -1763,6 +1763,12 @@ function TiposHoraTab() {
     const [factor, setFactor] = useState('');
     const [saving, setSaving] = useState(false);
 
+    // Excel Report State
+    const [showReportModal, setShowReportModal] = useState(false);
+    const [reportFechaInicio, setReportFechaInicio] = useState(new Date().toISOString().split('T')[0]);
+    const [reportFechaFin, setReportFechaFin] = useState(new Date().toISOString().split('T')[0]);
+    const [generatingReport, setGeneratingReport] = useState(false);
+
     const loadData = async () => {
         try {
             setLoading(true);
@@ -1822,15 +1828,143 @@ function TiposHoraTab() {
         }
     };
 
+    // Excel Report Generation
+    const handleGenerateReport = async () => {
+        if (!reportFechaInicio || !reportFechaFin) {
+            Alert.alert('Error', 'Por favor seleccione ambas fechas');
+            return;
+        }
+
+        try {
+            setGeneratingReport(true);
+
+            // Fetch both reports
+            const [horasExtras, recargos] = await Promise.all([
+                produccionApi.getHorasExtrasReport(reportFechaInicio, reportFechaFin),
+                produccionApi.getRecargosReport(reportFechaInicio, reportFechaFin)
+            ]);
+
+            // Normalize and merge data
+            const normalizedRecargos = recargos.map(r => ({
+                ...r,
+                tipoHoraNombre: r.tipoRecargoNombre // Map to common field
+            }));
+
+            const combinedData = [...horasExtras, ...normalizedRecargos];
+
+            // Sort by Date Descending
+            combinedData.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+
+            if (combinedData.length === 0) {
+                Alert.alert('Sin datos', 'No hay registros para el rango seleccionado');
+                setGeneratingReport(false);
+                return;
+            }
+
+            // Generate Excel using xlsx
+            const XLSX = await import('xlsx');
+
+            // Prepare data for Excel
+            const excelData = combinedData.map(item => ({
+                'Fecha': new Date(item.fecha).toLocaleDateString('es-CO'),
+                'Nombre Operario': item.usuarioNombre,
+                'Identificacion': item.usuarioDocumento || '',
+                'OP': item.numeroOP,
+                'Salario': item.salario ? `$ ${new Intl.NumberFormat('es-CO').format(item.salario)}` : '$ 0',
+                'Valor Hora': item.valorHora ? `$ ${new Intl.NumberFormat('es-CO').format(Math.round(item.valorHora))}` : '$ 0',
+                'Tipo': item.tipoHoraNombre, // Changed header to 'Tipo'
+                'Numero Horas': item.cantidadHoras,
+                'Factor': item.factor,
+                'Valor a Pagar': item.precio, // Keep number for Sum calculation
+                'Comentarios': item.nota || ''
+            }));
+
+            // Calculate Total
+
+            // Calculate Total
+            const totalValor = excelData.reduce((sum, item) => sum + (item['Valor a Pagar'] || 0), 0);
+
+            // Format 'Valor a Pagar' for display rows
+            const formattedData = excelData.map(item => ({
+                ...item,
+                'Valor a Pagar': `$ ${Math.round(item['Valor a Pagar']).toLocaleString('es-CO')}`
+            }));
+
+            // Add Total Row
+            formattedData.push({
+                'Fecha': '',
+                'Nombre Operario': '',
+                'Identificacion': '',
+                'OP': '',
+                'Salario': '',
+                'Valor Hora': '',
+                'Tipo': '',
+                'Numero Horas': '',
+                'Factor': 'TOTAL:',
+                'Valor a Pagar': `$ ${Math.round(totalValor).toLocaleString('es-CO')}`,
+                'Comentarios': ''
+            });
+
+            // Create workbook
+            const ws = XLSX.utils.json_to_sheet(formattedData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Reporte Unificado');
+
+            // Set column widths
+            ws['!cols'] = [
+                { wch: 12 }, // Fecha
+                { wch: 25 }, // Nombre Operario
+                { wch: 15 }, // Identificacion
+                { wch: 10 }, // OP
+                { wch: 15 }, // Salario
+                { wch: 15 }, // Valor Hora
+                { wch: 20 }, // Tipo
+                { wch: 15 }, // Numero Horas
+                { wch: 10 }, // Factor
+                { wch: 20 }, // Valor a Pagar
+                { wch: 30 }, // Comentarios
+            ];
+
+            const fileName = `HorasExtras_${reportFechaInicio}_${reportFechaFin}.xlsx`;
+
+            if (Platform.OS === 'web') {
+                // Web: Download directly
+                XLSX.writeFile(wb, fileName);
+                Alert.alert('Éxito', `Se descargó el archivo ${fileName}`);
+            } else {
+                // Mobile: Save and share
+                const wbout = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+                const uri = FileSystem.documentDirectory + fileName;
+                await FileSystem.writeAsStringAsync(uri, wbout, { encoding: FileSystem.EncodingType.Base64 });
+                await Sharing.shareAsync(uri, {
+                    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    dialogTitle: 'Compartir Reporte de Horas Extras'
+                });
+            }
+
+            setShowReportModal(false);
+        } catch (error) {
+            console.error('Error generating report:', error);
+            Alert.alert('Error', 'No se pudo generar el reporte');
+        } finally {
+            setGeneratingReport(false);
+        }
+    };
+
     if (loading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#2563EB" /></View>;
 
     return (
         <View style={styles.contentContainer}>
             <View style={styles.header}>
                 <Text style={styles.title}>⏱️ Tipos de Hora</Text>
-                <TouchableOpacity style={styles.addButtonSmall} onPress={handleAdd}>
-                    <Text style={styles.addButtonText}>+ Agregar</Text>
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <TouchableOpacity style={[styles.addButtonSmall, { backgroundColor: '#059669' }]} onPress={() => setShowReportModal(true)}>
+                        <Text style={styles.addButtonText}>📊 Reporte Excel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.addButtonSmall} onPress={handleAdd}>
+                        <Text style={styles.addButtonText}>+ Agregar</Text>
+                    </TouchableOpacity>
+                </View>
             </View>
             <ScrollView style={styles.listContainer}>
                 {items.map(item => (
@@ -1846,6 +1980,8 @@ function TiposHoraTab() {
                     </View>
                 ))}
             </ScrollView>
+
+            {/* Edit/Add Modal */}
             <Modal visible={showModal} transparent animationType="slide" onRequestClose={() => setShowModal(false)}>
                 <View style={styles.modalOverlay}><View style={styles.modalContentSmall}>
                     <Text style={styles.modalTitle}>{editItem ? 'Editar' : 'Agregar'} Tipo de Hora</Text>
@@ -1862,6 +1998,92 @@ function TiposHoraTab() {
                     </View>
                 </View></View>
             </Modal>
+
+            {/* Excel Report Modal */}
+            <Modal visible={showReportModal} transparent animationType="fade" onRequestClose={() => setShowReportModal(false)}>
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContentSmall, { maxWidth: 450, padding: 24 }]}>
+                        <Text style={[styles.modalTitle, { textAlign: 'center', marginBottom: 20 }]}>📊 Reporte de Horas Extras</Text>
+
+                        {/* Info hint */}
+                        <View style={{ backgroundColor: '#EBF8FF', padding: 12, borderRadius: 8, marginBottom: 16, borderLeftWidth: 4, borderLeftColor: '#3182CE' }}>
+                            <Text style={{ fontSize: 13, color: '#2B6CB0' }}>
+                                💡 Selecciona el rango de fechas para exportar los registros de horas extras a Excel.
+                            </Text>
+                        </View>
+
+                        <View style={{ flexDirection: 'row', gap: 16 }}>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.label, { marginBottom: 6 }]}>📅 Fecha Inicio</Text>
+                                {Platform.OS === 'web' ? (
+                                    <input
+                                        type="date"
+                                        value={reportFechaInicio}
+                                        onChange={(e) => setReportFechaInicio(e.target.value)}
+                                        style={{
+                                            padding: 12,
+                                            fontSize: 15,
+                                            borderRadius: 8,
+                                            border: '2px solid #E2E8F0',
+                                            backgroundColor: '#FFF',
+                                            width: '100%',
+                                            cursor: 'pointer',
+                                            boxSizing: 'border-box'
+                                        }}
+                                    />
+                                ) : (
+                                    <TextInput
+                                        style={styles.input}
+                                        value={reportFechaInicio}
+                                        onChangeText={setReportFechaInicio}
+                                        placeholder="YYYY-MM-DD"
+                                    />
+                                )}
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.label, { marginBottom: 6 }]}>📅 Fecha Fin</Text>
+                                {Platform.OS === 'web' ? (
+                                    <input
+                                        type="date"
+                                        value={reportFechaFin}
+                                        onChange={(e) => setReportFechaFin(e.target.value)}
+                                        style={{
+                                            padding: 12,
+                                            fontSize: 15,
+                                            borderRadius: 8,
+                                            border: '2px solid #E2E8F0',
+                                            backgroundColor: '#FFF',
+                                            width: '100%',
+                                            cursor: 'pointer',
+                                            boxSizing: 'border-box'
+                                        }}
+                                    />
+                                ) : (
+                                    <TextInput
+                                        style={styles.input}
+                                        value={reportFechaFin}
+                                        onChangeText={setReportFechaFin}
+                                        placeholder="YYYY-MM-DD"
+                                    />
+                                )}
+                            </View>
+                        </View>
+
+                        <View style={[styles.modalActions, { marginTop: 24 }]}>
+                            <TouchableOpacity style={[styles.cancelButton, { paddingHorizontal: 20 }]} onPress={() => setShowReportModal(false)}>
+                                <Text style={styles.cancelButtonText}>Cancelar</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.submitButton, { backgroundColor: '#059669', paddingHorizontal: 20 }, generatingReport && styles.submitButtonDisabled]}
+                                onPress={handleGenerateReport}
+                                disabled={generatingReport}
+                            >
+                                {generatingReport ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>📥 Generar Excel</Text>}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 }
@@ -1877,6 +2099,12 @@ function TiposRecargoTab() {
 
     const [factor, setFactor] = useState('');
     const [saving, setSaving] = useState(false);
+
+    // Excel Report State
+    const [showReportModal, setShowReportModal] = useState(false);
+    const [reportFechaInicio, setReportFechaInicio] = useState(new Date().toISOString().split('T')[0]);
+    const [reportFechaFin, setReportFechaFin] = useState(new Date().toISOString().split('T')[0]);
+    const [generatingReport, setGeneratingReport] = useState(false);
 
     const loadData = async () => {
         try {
@@ -1937,15 +2165,94 @@ function TiposRecargoTab() {
         }
     };
 
+    // Excel Report Generation for Recargos
+    const handleGenerateReport = async () => {
+        if (!reportFechaInicio || !reportFechaFin) {
+            Alert.alert('Error', 'Por favor seleccione ambas fechas');
+            return;
+        }
+
+        try {
+            setGeneratingReport(true);
+            const data = await produccionApi.getRecargosReport(reportFechaInicio, reportFechaFin);
+
+            if (data.length === 0) {
+                Alert.alert('Sin datos', 'No hay registros de recargos en el rango seleccionado');
+                return;
+            }
+
+            // Generate Excel using xlsx
+            const XLSX = await import('xlsx');
+
+            // Prepare data for Excel
+            const excelData = data.map(item => ({
+                'Fecha': new Date(item.fecha).toLocaleDateString('es-CO'),
+                'Operario': item.usuarioNombre,
+                'OP': item.numeroOP,
+                'Tipo Recargo': item.tipoRecargoNombre,
+                'Factor': item.factor,
+                'Horas': item.cantidadHoras,
+                'Valor': `$ ${Math.round(item.precio).toLocaleString('es-CO')}`,
+                'Comentario (Días)': item.nota || ''
+            }));
+
+            // Create workbook
+            const ws = XLSX.utils.json_to_sheet(excelData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Recargos');
+
+            // Set column widths
+            ws['!cols'] = [
+                { wch: 12 }, // Fecha
+                { wch: 25 }, // Operario
+                { wch: 10 }, // OP
+                { wch: 20 }, // Tipo Recargo
+                { wch: 8 },  // Factor
+                { wch: 8 },  // Horas
+                { wch: 15 }, // Valor
+                { wch: 30 }, // Comentario (Días)
+            ];
+
+            const fileName = `Recargos_${reportFechaInicio}_${reportFechaFin}.xlsx`;
+
+            if (Platform.OS === 'web') {
+                // Web: Download directly
+                XLSX.writeFile(wb, fileName);
+                Alert.alert('Éxito', `Se descargó el archivo ${fileName}`);
+            } else {
+                // Mobile: Save and share
+                const wbout = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+                const uri = FileSystem.documentDirectory + fileName;
+                await FileSystem.writeAsStringAsync(uri, wbout, { encoding: FileSystem.EncodingType.Base64 });
+                await Sharing.shareAsync(uri, {
+                    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    dialogTitle: 'Compartir Reporte de Recargos'
+                });
+            }
+
+            setShowReportModal(false);
+        } catch (error) {
+            console.error('Error generating report:', error);
+            Alert.alert('Error', 'No se pudo generar el reporte');
+        } finally {
+            setGeneratingReport(false);
+        }
+    };
+
     if (loading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#2563EB" /></View>;
 
     return (
         <View style={styles.contentContainer}>
             <View style={styles.header}>
                 <Text style={styles.title}>🌙 Tipos de Recargo</Text>
-                <TouchableOpacity style={styles.addButtonSmall} onPress={handleAdd}>
-                    <Text style={styles.addButtonText}>+ Agregar</Text>
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <TouchableOpacity style={[styles.addButtonSmall, { backgroundColor: '#7C3AED' }]} onPress={() => setShowReportModal(true)}>
+                        <Text style={styles.addButtonText}>📊 Reporte Excel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.addButtonSmall} onPress={handleAdd}>
+                        <Text style={styles.addButtonText}>+ Agregar</Text>
+                    </TouchableOpacity>
+                </View>
             </View>
             <ScrollView style={styles.listContainer}>
                 {items.map(item => (
@@ -1961,6 +2268,8 @@ function TiposRecargoTab() {
                     </View>
                 ))}
             </ScrollView>
+
+            {/* Edit/Add Modal */}
             <Modal visible={showModal} transparent animationType="slide" onRequestClose={() => setShowModal(false)}>
                 <View style={styles.modalOverlay}><View style={styles.modalContentSmall}>
                     <Text style={styles.modalTitle}>{editItem ? 'Editar' : 'Agregar'} Tipo de Recargo</Text>
@@ -1976,6 +2285,92 @@ function TiposRecargoTab() {
                         </TouchableOpacity>
                     </View>
                 </View></View>
+            </Modal>
+
+            {/* Excel Report Modal */}
+            <Modal visible={showReportModal} transparent animationType="fade" onRequestClose={() => setShowReportModal(false)}>
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContentSmall, { maxWidth: 450, padding: 24 }]}>
+                        <Text style={[styles.modalTitle, { textAlign: 'center', marginBottom: 20 }]}>📊 Reporte de Recargos</Text>
+
+                        {/* Info hint */}
+                        <View style={{ backgroundColor: '#F3E8FF', padding: 12, borderRadius: 8, marginBottom: 16, borderLeftWidth: 4, borderLeftColor: '#7C3AED' }}>
+                            <Text style={{ fontSize: 13, color: '#6B21A8' }}>
+                                💡 Selecciona el rango de fechas para exportar los registros de recargos a Excel.
+                            </Text>
+                        </View>
+
+                        <View style={{ flexDirection: 'row', gap: 16 }}>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.label, { marginBottom: 6 }]}>📅 Fecha Inicio</Text>
+                                {Platform.OS === 'web' ? (
+                                    <input
+                                        type="date"
+                                        value={reportFechaInicio}
+                                        onChange={(e) => setReportFechaInicio(e.target.value)}
+                                        style={{
+                                            padding: 12,
+                                            fontSize: 15,
+                                            borderRadius: 8,
+                                            border: '2px solid #E2E8F0',
+                                            backgroundColor: '#FFF',
+                                            width: '100%',
+                                            cursor: 'pointer',
+                                            boxSizing: 'border-box'
+                                        }}
+                                    />
+                                ) : (
+                                    <TextInput
+                                        style={styles.input}
+                                        value={reportFechaInicio}
+                                        onChangeText={setReportFechaInicio}
+                                        placeholder="YYYY-MM-DD"
+                                    />
+                                )}
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.label, { marginBottom: 6 }]}>📅 Fecha Fin</Text>
+                                {Platform.OS === 'web' ? (
+                                    <input
+                                        type="date"
+                                        value={reportFechaFin}
+                                        onChange={(e) => setReportFechaFin(e.target.value)}
+                                        style={{
+                                            padding: 12,
+                                            fontSize: 15,
+                                            borderRadius: 8,
+                                            border: '2px solid #E2E8F0',
+                                            backgroundColor: '#FFF',
+                                            width: '100%',
+                                            cursor: 'pointer',
+                                            boxSizing: 'border-box'
+                                        }}
+                                    />
+                                ) : (
+                                    <TextInput
+                                        style={styles.input}
+                                        value={reportFechaFin}
+                                        onChangeText={setReportFechaFin}
+                                        placeholder="YYYY-MM-DD"
+                                    />
+                                )}
+                            </View>
+                        </View>
+
+                        <View style={[styles.modalActions, { marginTop: 24 }]}>
+                            <TouchableOpacity style={[styles.cancelButton, { paddingHorizontal: 20 }]} onPress={() => setShowReportModal(false)}>
+                                <Text style={styles.cancelButtonText}>Cancelar</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.submitButton, { backgroundColor: '#7C3AED', paddingHorizontal: 20 }, generatingReport && styles.submitButtonDisabled]}
+                                onPress={handleGenerateReport}
+                                disabled={generatingReport}
+                            >
+                                {generatingReport ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>📥 Generar Excel</Text>}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
             </Modal>
         </View>
     );

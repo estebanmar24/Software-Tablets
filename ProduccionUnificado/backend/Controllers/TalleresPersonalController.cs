@@ -42,6 +42,7 @@ namespace TiempoProcesos.API.Controllers
             if (existing == null) return NotFound();
 
             existing.Nombre = personal.Nombre;
+            existing.Documento = personal.Documento; // ADDED
             existing.Cargo = personal.Cargo;
             existing.Salario = personal.Salario;
             

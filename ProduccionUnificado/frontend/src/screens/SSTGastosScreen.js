@@ -19,7 +19,8 @@ import {
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import * as DocumentPicker from 'expo-document-picker';
-import * as sstApi from '../services/sstApi';
+import * as sstApi from '../services/sstApi'; // Restore sstApi
+import * as ordenAseoApi from '../services/ordenAseoApi'; // Import OrdenAseo API
 // jsPDF uses dynamic import to avoid Android TextDecoder crash
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
@@ -32,7 +33,8 @@ const TABS = [
     { key: 'graficas', label: 'Gráficas', icon: '📊' },
     { key: 'rubros', label: 'Rubros', icon: '📁' },
     { key: 'servicios', label: 'Tipos de Servicio', icon: '🔧' },
-    { key: 'proveedores', label: 'Proveedores', icon: '🏢' }
+    { key: 'proveedores', label: 'Proveedores', icon: '🏢' },
+    { key: 'ordenaseo', label: 'Orden y Aseo', icon: '🧹' } // New Tab
 ];
 
 export default function SSTGastosScreen({ navigation }) {
@@ -63,6 +65,7 @@ export default function SSTGastosScreen({ navigation }) {
             {activeTab === 'rubros' && <RubrosTab />}
             {activeTab === 'servicios' && <ServiciosTab />}
             {activeTab === 'proveedores' && <ProveedoresTab />}
+            {activeTab === 'ordenaseo' && <OrdenAseoTab />}
         </View>
     );
 }
@@ -2590,6 +2593,24 @@ const grafStyles = StyleSheet.create({
         fontWeight: 'bold',
         fontSize: 14,
     },
+    // Orden Aseo Table Styles
+    row: {
+        flexDirection: 'row',
+        paddingVertical: 12,
+        paddingHorizontal: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: '#eee',
+        alignItems: 'center'
+    },
+    tableHeaderRow: {
+        backgroundColor: '#e5e7eb',
+        borderBottomWidth: 2,
+        borderBottomColor: '#d1d5db'
+    },
+    cell: {
+        fontSize: 13,
+        color: '#333'
+    },
     // Detailed Performance Styles
     rubroReportRow: { marginBottom: 16 },
     rubroReportHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
@@ -2618,7 +2639,529 @@ const grafStyles = StyleSheet.create({
     },
 });
 
+// ===================== ORDEN Y ASEO TAB =====================
+
+const PREGUNTAS_ASEO = [
+    { key: 'ImplementosAseo', label: '¿Los implementos de aseo se encuentran en su respectivo soporte y bien ubicados?' },
+    { key: 'HerramientasLugar', label: '¿Las herramientas en el lugar de trabajo están acomodadas, limpias y se encuentran en su sitio?' },
+    { key: 'TarrosRotulados', label: '¿Existen tarros debidamente rotulados y bien etiquetados?' },
+    { key: 'AreaDespejada', label: '¿El área de trabajo se encuentra despejada con los materiales debidamente identificados y en su lugar?' },
+    { key: 'RutasEvacuacion', label: '¿Las rutas de evacuación están despejadas?' },
+    { key: 'MesasTrabajo', label: '¿Las mesas de trabajo están limpias, sin elementos no permitidos?' }
+];
+
+function OrdenAseoTab() {
+    const [encuestas, setEncuestas] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [detailModalVisible, setDetailModalVisible] = useState(false);
+    const [selectedEncuesta, setSelectedEncuesta] = useState(null);
+    const [loadingDetail, setLoadingDetail] = useState(false);
+    const [generatingReport, setGeneratingReport] = useState(false); // State for report generation
+
+    const getBase64FromUrl = async (url) => {
+        const data = await fetch(url);
+        const blob = await data.blob();
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(blob);
+            reader.onloadend = () => resolve(reader.result);
+        });
+    };
+
+    const handleGenerateReport = async () => {
+        if (encuestas.length === 0) {
+            Alert.alert('Aviso', 'No hay encuestas para generar el reporte');
+            return;
+        }
+
+        setGeneratingReport(true);
+        try {
+            // 1. Prepare Data
+            const processGroups = {};
+            encuestas.forEach(enc => {
+                if (!processGroups[enc.procesoAuditado]) {
+                    processGroups[enc.procesoAuditado] = {
+                        name: enc.procesoAuditado,
+                        total: 0,
+                        cumple: 0,
+                        details: []
+                    };
+                }
+                const group = processGroups[enc.procesoAuditado];
+                group.total++;
+                // Cumplimiento: totalCumple / 6. Si totalCumple es 6, es 100%. promedio.
+                // Pero el requerimiento es "indicador por puesto".
+                // Asumiremos cumplimiento si >= 80% (5/6 es 83%). O simplemente promedio del puntaje.
+
+                // Calculamos porcentaje de esta encuesta
+                // const porcentaje = (enc.totalCumple / 6) * 100;
+                group.cumple += enc.totalCumple;
+                group.details.push(enc);
+            });
+
+            // 2. Load Libraries & Assets
+            let jsPDF, autoTable;
+            if (Platform.OS === 'web') {
+                jsPDF = (await import('jspdf')).jsPDF;
+                autoTable = (await import('jspdf-autotable')).default;
+            } else {
+                jsPDF = (await import('jspdf')).jsPDF;
+                autoTable = (await import('jspdf-autotable')).default;
+            }
+
+            let logoBase64 = null;
+            try {
+                const asset = Asset.fromModule(require('../../assets/LOGO_ALEPH_IMPRESORES.jpg'));
+                await asset.downloadAsync();
+                logoBase64 = await getBase64FromUrl(asset.uri);
+            } catch (e) { console.log('Logo load error', e); }
+
+            // 3. Generate PDF
+            const doc = new jsPDF();
+            const pageWidth = doc.internal.pageSize.getWidth();
+
+            // Header
+            if (logoBase64) doc.addImage(logoBase64, 'JPEG', 15, 10, 40, 20);
+
+            doc.setFontSize(10);
+            doc.text(new Date().toLocaleDateString('es-CO'), pageWidth - 15, 15, { align: 'right' });
+
+            // Move title down to avoid overlap (Logo is 10-30)
+            doc.setFontSize(16);
+            doc.setFont('helvetica', 'bold');
+            doc.text('REPORTE GERENCIAL DE ORDEN Y ASEO', pageWidth / 2, 40, { align: 'center' });
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'normal');
+            doc.text('Aleph Impresores S.A.S', pageWidth / 2, 48, { align: 'center' });
+
+            // == RESUMEN GERENCIAL ==
+            doc.setFontSize(14);
+            doc.setTextColor(0, 51, 102);
+            doc.text('Resumen por Proceso (Puesto de Trabajo)', 15, 60);
+            doc.setTextColor(0, 0, 0);
+
+            const summaryBody = Object.values(processGroups).map(g => {
+                const avgScore = g.cumple / g.total; // Promedio de puntos sobre 6
+                const porcentaje = (avgScore / 6) * 100;
+
+                let status = 'CRITICO';
+                if (porcentaje >= 90) status = 'EXCELENTE';
+                else if (porcentaje >= 80) status = 'ACEPTABLE';
+                else if (porcentaje >= 60) status = 'MEJORABLE';
+
+                return [
+                    g.name,
+                    g.total.toString(),
+                    `${avgScore.toFixed(1)} / 6`,
+                    `${porcentaje.toFixed(1)}%`,
+                    status
+                ];
+            });
+
+            autoTable(doc, {
+                startY: 65,
+                head: [['Proceso / Puesto', 'Auditorias', 'Prom. Puntos', '% Cumpl.', 'Estado']],
+                body: summaryBody,
+                headStyles: { fillColor: [0, 51, 102], textColor: 255 },
+                didParseCell: (data) => {
+                    if (data.section === 'body' && data.column.index === 4) {
+                        const val = data.cell.raw;
+                        if (val === 'EXCELENTE') {
+                            data.cell.styles.fillColor = [40, 167, 69]; // Verde
+                            data.cell.styles.textColor = 255;
+                        } else if (val === 'ACEPTABLE' || val === 'MEJORABLE') {
+                            data.cell.styles.fillColor = [255, 193, 7]; // Amarillo
+                            data.cell.styles.textColor = 0;
+                        } else {
+                            data.cell.styles.fillColor = [220, 53, 69]; // Rojo
+                            data.cell.styles.textColor = 255;
+                        }
+                    }
+                }
+            });
+
+            // == DETALLE POR COLABORADOR ==
+            let finalY = doc.lastAutoTable.finalY + 15;
+            doc.setFontSize(14);
+            doc.setTextColor(0, 51, 102);
+            doc.text('Detalle por Colaborador', 15, finalY);
+            doc.setTextColor(0, 0, 0);
+
+            // Flatten for 'Colaborador' view
+            const detailBody = [];
+            Object.values(processGroups).forEach(group => {
+                group.details.forEach(enc => {
+                    const pct = (enc.totalCumple / 6) * 100;
+                    detailBody.push([
+                        group.name,
+                        enc.nombreAuditado,
+                        formatDate(enc.fechaCreacion),
+                        `${enc.totalCumple}/6`,
+                        pct < 80 ? 'NO CUMPLE' : 'CUMPLE' // Umbral arbitrario de 80% para "Cumple el dia"
+                    ]);
+                });
+            });
+
+            // Sort by status (NO CUMPLE first) to highlight criticals
+            detailBody.sort((a, b) => (a[4] === 'NO CUMPLE' ? -1 : 1));
+
+            autoTable(doc, {
+                startY: finalY + 5,
+                head: [['Puesto', 'Colaborador', 'Fecha', 'Puntaje', 'Conc. Diario']],
+                body: detailBody,
+                headStyles: { fillColor: [100, 100, 100] },
+                didParseCell: (data) => {
+                    if (data.section === 'body' && data.column.index === 4) {
+                        if (data.cell.raw === 'NO CUMPLE') {
+                            data.cell.styles.textColor = [220, 53, 69];
+                            data.cell.styles.fontStyle = 'bold';
+                        } else {
+                            data.cell.styles.textColor = [40, 167, 69];
+                        }
+                    }
+                }
+            });
+
+            // == ANEXO DE EVIDENCIAS (FOTOS NO CUMPLE) ==
+            const issues = [];
+
+            // Identify surveys with issues
+            const surveysWithIssues = encuestas.filter(e => e.totalCumple < 6);
+
+            if (surveysWithIssues.length > 0) {
+                doc.addPage();
+                doc.setFontSize(14);
+                doc.setTextColor(0, 51, 102);
+                doc.text('ANEXO DE HALLAZGOS (EVIDENCIA FOTOGRAFICA)', 15, 20);
+                let currentY = 30;
+
+                // Fetch full details for these surveys in parallel to get photo filenames
+                // We limit concurrency to avoid overwhelming the server or network
+                const issueDetails = await Promise.all(
+                    surveysWithIssues.map(s => ordenAseoApi.getEncuesta(s.id).catch(e => null))
+                );
+
+                for (const fullEncuesta of issueDetails) {
+                    if (!fullEncuesta) continue;
+
+                    // Check which questions failed and have photos
+                    const failedItems = PREGUNTAS_ASEO.filter(p => {
+                        // Backend data might use PascalCase or camelCase. We check both from PREGUNTAS_ASEO keys
+                        // In list we use camelCase usually? Let's rely on what we found in handleViewDetail
+                        // In handleViewDetail we saw: selectedEncuesta[p.key] ?? selectedEncuesta[lowerKey]
+                        const lowerKey = p.key.charAt(0).toLowerCase() + p.key.slice(1);
+                        const val = fullEncuesta[p.key] ?? fullEncuesta[lowerKey];
+                        return val === false; // Explicitly false means NO CUMPLE
+                    });
+
+                    if (failedItems.length > 0) {
+                        // Check if we need new page for the header
+                        if (currentY > 250) { doc.addPage(); currentY = 20; }
+
+                        doc.setFontSize(11);
+                        doc.setTextColor(0, 0, 0);
+                        doc.setFont('helvetica', 'bold');
+                        doc.text(`${fullEncuesta.procesoAuditado} - ${fullEncuesta.nombreAuditado} (${formatDate(fullEncuesta.fechaCreacion)})`, 15, currentY);
+                        currentY += 8;
+
+                        for (const item of failedItems) {
+                            // Get photo filename
+                            const photoField = `foto${item.key}`; // e.g. fotoImplementosAseo
+                            // Try to get filename
+                            const filename = fullEncuesta[photoField] ?? fullEncuesta[photoField.charAt(0).toLowerCase() + photoField.slice(1)];
+
+                            if (currentY > 220) { doc.addPage(); currentY = 20; }
+
+                            doc.setFontSize(10);
+                            doc.setFont('helvetica', 'normal');
+                            doc.setTextColor(220, 53, 69); // Red
+                            doc.text(`• ${item.label}`, 15, currentY);
+                            currentY += 5;
+
+                            if (filename) {
+                                try {
+                                    const photoUrl = ordenAseoApi.getFotoUrl(filename);
+                                    const photoBase64 = await getBase64FromUrl(photoUrl);
+
+                                    // Image placement
+                                    // Check space again
+                                    if (currentY + 60 > 280) { doc.addPage(); currentY = 20; }
+
+                                    doc.addImage(photoBase64, 'JPEG', 20, currentY, 80, 60);
+                                    currentY += 65;
+                                } catch (imgErr) {
+                                    doc.setTextColor(100, 100, 100);
+                                    doc.text('(Error cargando foto)', 20, currentY + 5);
+                                    currentY += 10;
+                                }
+                            } else {
+                                doc.setTextColor(100, 100, 100);
+                                doc.setFont('helvetica', 'italic');
+                                doc.text('(Sin evidencia fotográfica adjunta)', 20, currentY + 5);
+                                doc.setFont('helvetica', 'normal');
+                                currentY += 10;
+                            }
+                            currentY += 5; // Spacing between items
+                        }
+                        currentY += 5; // Spacing between surveys
+
+                        // Separator line
+                        doc.setDrawColor(200, 200, 200);
+                        doc.line(15, currentY, pageWidth - 15, currentY);
+                        currentY += 10;
+                    }
+                }
+            }
+
+            // 4. Save
+            const fileName = `Reporte_OrdenAseo_${new Date().toISOString().split('T')[0]}.pdf`;
+
+            if (Platform.OS === 'web') {
+                doc.save(fileName);
+            } else {
+                const pdfBase64 = doc.output('base64');
+                const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+                await FileSystem.writeAsStringAsync(fileUri, pdfBase64, { encoding: FileSystem.EncodingType.Base64 });
+                if (await Sharing.isAvailableAsync()) {
+                    await Sharing.shareAsync(fileUri);
+                } else {
+                    Alert.alert('Éxito', `Reporte guardado en: ${fileUri}`);
+                }
+            }
+
+        } catch (error) {
+            console.error('PDF Generation Error:', error);
+            Alert.alert('Error', 'No se pudo generar el reporte PDF. ' + error.message);
+        } finally {
+            setGeneratingReport(false);
+        }
+    };
+
+    const loadEncuestas = useCallback(async () => {
+        setLoading(true);
+        try {
+            const data = await ordenAseoApi.getEncuestas();
+            setEncuestas(data || []);
+        } catch (error) {
+            console.error('Error loading encuestas:', error);
+            Alert.alert('Error', 'No se pudieron cargar las encuestas');
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadEncuestas();
+    }, [loadEncuestas]);
+
+    const getCumplimiento = (e) => {
+        if (e.totalCumple !== undefined) return `${e.totalCumple}/6`;
+        let score = 0;
+        if (e.implementosAseo) score++;
+        if (e.herramientasLugar) score++;
+        if (e.tarrosRotulados) score++;
+        if (e.areaDespejada) score++;
+        if (e.rutasEvacuacion) score++;
+        if (e.mesasTrabajo) score++;
+        return `${score}/6`;
+    };
+
+    const formatDate = (dateStr) => {
+        if (!dateStr) return '-';
+        return new Date(dateStr).toLocaleDateString('es-CO');
+    };
+
+    const handleViewDetail = async (item) => {
+        setDetailModalVisible(true);
+        setLoadingDetail(true);
+        setSelectedEncuesta(null); // Clear previous to show loading state
+        try {
+            // Fetch full details (including photos) which are not in the list view
+            const fullData = await ordenAseoApi.getEncuesta(item.id);
+            setSelectedEncuesta(fullData);
+        } catch (error) {
+            console.error('Error fetching detail:', error);
+            Alert.alert('Error', 'No se pudo cargar el detalle de la encuesta');
+            setDetailModalVisible(false);
+        } finally {
+            setLoadingDetail(false);
+        }
+    };
+
+    return (
+        <View style={styles.contentContainer}>
+            <View style={styles.header}>
+                <Text style={{ fontSize: 18, fontWeight: 'bold' }}>Historial Audit. Orden y Aseo</Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TouchableOpacity
+                        style={[styles.addButtonSmall, { backgroundColor: '#059669' }]}
+                        onPress={handleGenerateReport}
+                        disabled={generatingReport}
+                    >
+                        {generatingReport ? (
+                            <ActivityIndicator size="small" color="#FFF" />
+                        ) : (
+                            <Text style={styles.addButtonText}>📄 Reporte</Text>
+                        )}
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.addButtonSmall} onPress={loadEncuestas}>
+                        <Text style={styles.addButtonText}>🔄 Actualizar</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+
+            <ScrollView style={styles.listContainer}>
+                <View style={[styles.row, styles.tableHeaderRow]}>
+                    <Text style={[styles.cell, { flex: 2, fontWeight: 'bold' }]}>Proceso</Text>
+                    <Text style={[styles.cell, { flex: 1, fontWeight: 'bold' }]}>Auditor</Text>
+                    <Text style={[styles.cell, { flex: 1, fontWeight: 'bold' }]}>Planta</Text>
+                    <Text style={[styles.cell, { flex: 1, fontWeight: 'bold' }]}>Fecha</Text>
+                    <Text style={[styles.cell, { flex: 1, fontWeight: 'bold' }]}>Calif.</Text>
+                </View>
+
+                {loading ? (
+                    <ActivityIndicator size="large" color="#2563EB" style={{ marginTop: 20 }} />
+                ) : (
+                    encuestas.map((item, index) => (
+                        <TouchableOpacity
+                            key={item.id}
+                            style={[styles.row, index % 2 === 1 && { backgroundColor: '#f9fafb' }]}
+                            onPress={() => handleViewDetail(item)}
+                        >
+                            <Text style={[styles.cell, { flex: 2 }]}>{item.procesoAuditado}</Text>
+                            <Text style={[styles.cell, { flex: 1 }]}>{item.nombreAuditado}</Text>
+                            <Text style={[styles.cell, { flex: 1 }]}>{item.planta}</Text>
+                            <Text style={[styles.cell, { flex: 1 }]}>{formatDate(item.fechaCreacion)}</Text>
+                            <Text style={[styles.cell, { flex: 1, fontWeight: 'bold', color: '#2563EB' }]}>
+                                {getCumplimiento(item)}
+                            </Text>
+                        </TouchableOpacity>
+                    ))
+                )}
+                {!loading && encuestas.length === 0 && (
+                    <View style={styles.emptyState}>
+                        <Text style={styles.emptyText}>No hay encuestas registradas.</Text>
+                    </View>
+                )}
+            </ScrollView>
+
+            <Modal visible={detailModalVisible} animationType="slide" transparent onRequestClose={() => setDetailModalVisible(false)}>
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { maxHeight: '90%' }]}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
+                            <Text style={styles.modalTitle}>Detalle de Encuesta</Text>
+                            <TouchableOpacity onPress={() => setDetailModalVisible(false)}>
+                                <Text style={{ fontSize: 24, color: '#666' }}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        {loadingDetail ? (
+                            <View style={{ padding: 40, alignItems: 'center' }}>
+                                <ActivityIndicator size="large" color="#2563EB" />
+                                <Text style={{ marginTop: 10, color: '#666' }}>Cargando detalles y fotos...</Text>
+                            </View>
+                        ) : selectedEncuesta ? (
+                            <ScrollView>
+                                <View style={{ backgroundColor: '#F3F4F6', padding: 12, borderRadius: 8, marginBottom: 16 }}>
+                                    <Text style={styles.label}>📅 Fecha: <Text style={{ fontWeight: 'normal' }}>{formatDate(selectedEncuesta.fechaCreacion)}</Text></Text>
+                                    <Text style={styles.label}>🏗️ Proceso: <Text style={{ fontWeight: 'normal' }}>{selectedEncuesta.procesoAuditado}</Text></Text>
+                                    <Text style={styles.label}>👤 Auditor: <Text style={{ fontWeight: 'normal' }}>{selectedEncuesta.nombreAuditado}</Text></Text>
+                                    <Text style={styles.label}>🏢 Planta: <Text style={{ fontWeight: 'normal' }}>{selectedEncuesta.planta}</Text></Text>
+                                    <Text style={styles.label}>🏆 Cumplimiento: <Text style={{ fontWeight: 'bold', color: '#2563EB' }}>{getCumplimiento(selectedEncuesta)}</Text></Text>
+                                    {selectedEncuesta.observaciones && (
+                                        <Text style={[styles.label, { marginTop: 8 }]}>📝 Observaciones: <Text style={{ fontWeight: 'normal', fontStyle: 'italic' }}>"{selectedEncuesta.observaciones}"</Text></Text>
+                                    )}
+                                </View>
+
+                                {PREGUNTAS_ASEO.map((p, i) => {
+                                    // Construct photo field name: 'foto' + Key (e.g. fotoImplementosAseo)
+                                    // Keys in PREGUNTAS_ASEO are now PascalCase to match DB columns better
+                                    const photoField = `foto${p.key}`;
+                                    const hasPhoto = !!selectedEncuesta[photoField];
+
+                                    // For boolean check, we might need to handle casing if backend sends camelCase
+                                    // Usually ASP.NET Core sends camelCase JSON. So 'ImplementosAseo' -> 'implementosAseo'
+                                    // We'll check both just in case
+                                    const val = selectedEncuesta[p.key] ?? selectedEncuesta[p.key.charAt(0).toLowerCase() + p.key.slice(1)];
+                                    const isCompliant = !!val;
+
+                                    // For photo field, backend sends camelCase 'fotoImplementosAseo' usually
+                                    const photoVal = selectedEncuesta[photoField] ?? selectedEncuesta[photoField.charAt(0).toLowerCase() + photoField.slice(1)];
+
+                                    return (
+                                        <View key={p.key} style={{ marginBottom: 20, borderBottomWidth: 1, borderBottomColor: '#EEE', paddingBottom: 16 }}>
+                                            <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#374151', marginBottom: 8 }}>
+                                                {i + 1}. {p.label}
+                                            </Text>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                                                <Text style={{
+                                                    fontSize: 14,
+                                                    fontWeight: 'bold',
+                                                    color: isCompliant ? '#059669' : '#DC2626',
+                                                    paddingHorizontal: 8,
+                                                    paddingVertical: 2,
+                                                    backgroundColor: isCompliant ? '#D1FAE5' : '#FEE2E2',
+                                                    borderRadius: 4
+                                                }}>
+                                                    {isCompliant ? 'CUMPLE' : 'NO CUMPLE'}
+                                                </Text>
+                                            </View>
+                                            {photoVal ? (
+                                                <View>
+                                                    <Text style={{ fontSize: 12, color: '#6B7280', marginBottom: 4 }}>Evidencia fotográfica:</Text>
+                                                    <Image
+                                                        source={{ uri: ordenAseoApi.getFotoUrl(photoVal) }}
+                                                        style={{ width: '100%', height: 250, borderRadius: 8, backgroundColor: '#F3F4F6' }}
+                                                        resizeMode="contain"
+                                                    />
+                                                </View>
+                                            ) : (
+                                                <Text style={{ fontSize: 12, color: '#9CA3AF', fontStyle: 'italic' }}>Sin foto adjunta</Text>
+                                            )}
+                                        </View>
+                                    );
+                                })}
+                            </ScrollView>
+                        ) : null}
+
+                        <View style={[styles.modalActions, { marginTop: 10 }]}>
+                            <TouchableOpacity style={styles.submitButton} onPress={() => setDetailModalVisible(false)}>
+                                <Text style={styles.submitButtonText}>Cerrar</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+        </View>
+    );
+}
+
 const styles = StyleSheet.create({
+    // Copied Table Styles from QualityView
+    row: {
+        flexDirection: 'row',
+        padding: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: '#ddd',
+        backgroundColor: '#fff',
+        alignItems: 'center',
+    },
+    headerRow: {
+        backgroundColor: '#e0e0e0',
+        borderTopLeftRadius: 8,
+        borderTopRightRadius: 8,
+    },
+    cell: {
+        fontSize: 14,
+        paddingHorizontal: 5,
+        color: '#333',
+    },
+    cellHeader: {
+        fontWeight: 'bold',
+        fontSize: 14,
+        paddingHorizontal: 5,
+        color: '#333',
+    },
     container: {
         flex: 1,
         backgroundColor: '#F3F4F6',

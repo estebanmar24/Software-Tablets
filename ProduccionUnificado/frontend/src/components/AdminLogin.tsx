@@ -5,7 +5,7 @@ import { setToken } from '../services/authStorage';
 import { MaterialIcons } from '@expo/vector-icons';
 
 interface AdminLoginProps {
-    onLoginSuccess: (role: string, nombreMostrar: string) => void;
+    onLoginSuccess: (role: string, nombreMostrar: string, username: string) => void;
     onBack: () => void;
 }
 
@@ -28,7 +28,7 @@ export function AdminLogin({ onLoginSuccess, onBack }: AdminLoginProps) {
         try {
             const data = await adminLogin(username.trim(), password.trim());
             await setToken(data.token);
-            onLoginSuccess(data.role, data.nombreMostrar);
+            onLoginSuccess(data.role, data.nombreMostrar, data.username);
         } catch (err: any) {
             setError(err.message || 'Error de autenticación');
         } finally {

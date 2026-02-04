@@ -211,3 +211,14 @@ export async function deletePersonal(id) {
     await api.delete(`${API_BASE_URL}/tallerespersonal/${id}`);
     return true;
 }
+
+// ==================== REPORTS ====================
+export async function getHorasExtrasReport(fechaInicio, fechaFin) {
+    const response = await api.get(`${API_BASE_URL}/talleres/gastos/horas-extras-report?fechaInicio=${fechaInicio}&fechaFin=${fechaFin}`);
+    return response.data;
+}
+
+export async function getRecargosReport(fechaInicio, fechaFin) {
+    const response = await api.get(`${API_BASE_URL}/talleres/gastos/recargos-report?fechaInicio=${fechaInicio}&fechaFin=${fechaFin}`);
+    return response.data;
+}

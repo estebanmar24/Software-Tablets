@@ -18,10 +18,15 @@ public interface ITiempoProcesoService
     Task<bool> LimpiarDatosDelDiaAsync(DateTime fecha, int? maquinaId, int? usuarioId);
     Task<List<TiempoProcesoDto>> GetHistorialDetalladoAsync(DateTime fechaInicio, DateTime fechaFin, int? maquinaId, int? usuarioId);
     Task RecalcularProduccionMesAsync(int anio, int mes);
+    Task<TiempoProcesoDto> FinalizarTiempoAsync(long id, RegistrarTiempoRequest request);
 }
 
 public class TiempoProcesoService : ITiempoProcesoService
 {
+// ... existing impl ...
+
+    // public async Task<TiempoProcesoDto> FinalizarTiempoAsync(long id, RegistrarTiempoRequest request)
+
     private readonly AppDbContext _context;
 
     public TiempoProcesoService(AppDbContext context)
@@ -615,5 +620,45 @@ public class TiempoProcesoService : ITiempoProcesoService
         diario.ValorAPagarBonificable = tirosExtraBonif * diario.ValorTiroSnapshot;
 
         await _context.SaveChangesAsync();
+    }
+
+    public async Task<TiempoProcesoDto> FinalizarTiempoAsync(long id, RegistrarTiempoRequest request)
+    {
+        var tiempo = await _context.TiemposProceso
+            .Include(t => t.Usuario)
+            .Include(t => t.Maquina)
+            .Include(t => t.Actividad)
+            .FirstOrDefaultAsync(t => t.Id == id);
+
+        if (tiempo == null) throw new Exception("Registro no encontrado");
+
+        tiempo.HoraFin = request.Fecha.Date.Add(TimeSpan.Parse(request.HoraFin));
+        tiempo.Duracion = TimeSpan.Parse(request.Duracion).Ticks;
+        
+        tiempo.Tiros = request.Tiros;
+        tiempo.Desperdicio = request.Desperdicio;
+        if (!string.IsNullOrEmpty(request.Observaciones))
+            tiempo.Observaciones = request.Observaciones;
+
+        await _context.SaveChangesAsync();
+        await ActualizarProduccionDiaria(tiempo.Fecha, tiempo.MaquinaId, tiempo.UsuarioId);
+
+        return new TiempoProcesoDto
+        {
+            Id = tiempo.Id,
+            Fecha = tiempo.Fecha,
+            HoraInicio = tiempo.HoraInicio.ToString("HH:mm:ss"),
+            HoraFin = tiempo.HoraFin.ToString("HH:mm:ss"),
+            Duracion = TimeSpan.FromTicks(tiempo.Duracion).ToString(@"hh\:mm\:ss"),
+            UsuarioId = tiempo.UsuarioId,
+            UsuarioNombre = tiempo.Usuario?.Nombre ?? "",
+            MaquinaId = tiempo.MaquinaId,
+            MaquinaNombre = tiempo.Maquina?.Nombre ?? "",
+            ActividadId = tiempo.ActividadId,
+            ActividadNombre = tiempo.Actividad?.Nombre ?? "",
+            Tiros = tiempo.Tiros,
+            Desperdicio = tiempo.Desperdicio,
+            Observaciones = tiempo.Observaciones
+        };
     }
 }

@@ -60,8 +60,11 @@ public static class DbInitializer
                     ('Valencia Mirquez Nicol', CAST(1 AS BOOLEAN)), ('Uran Quintero Yohao Alexander', CAST(1 AS BOOLEAN)), ('Preciado Rivas Johan Alexander', CAST(1 AS BOOLEAN)), ('Jose Fernando Ruiz', CAST(1 AS BOOLEAN))
                 ) AS v(""Nombre"", ""Estado"")
                 WHERE NOT EXISTS (SELECT 1 FROM ""Usuarios"");
+
+                -- ADD Documento COLUMN
+                ALTER TABLE ""Usuarios"" ADD COLUMN IF NOT EXISTS ""Documento"" TEXT NOT NULL DEFAULT '';
             ");
-            Console.WriteLine("[DB INIT] Usuarios checked/created.");
+            Console.WriteLine("[DB INIT] Usuarios checked/created/updated.");
         }
         catch (Exception ex) { Log($"Usuarios Error: {ex.Message}"); }
 
@@ -883,5 +886,54 @@ public static class DbInitializer
             }
         }
         catch (Exception ex) { Console.WriteLine($"[DB ERROR] Talleres Tables: {ex.Message}"); }
+
+        // ORDEN Y ASEO SURVEYS
+        try
+        {
+            context.Database.ExecuteSqlRaw(@"
+                CREATE TABLE IF NOT EXISTS ""EncuestasOrdenAseo"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""ProcesoAuditado"" VARCHAR(200) NOT NULL,
+                    ""NombreAuditado"" VARCHAR(200) NOT NULL,
+                    ""Planta"" VARCHAR(20) NOT NULL,
+                    ""ImplementosAseo"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""FotoImplementosAseo"" TEXT NULL,
+                    ""HerramientasLugar"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""FotoHerramientasLugar"" TEXT NULL,
+                    ""TarrosRotulados"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""FotoTarrosRotulados"" TEXT NULL,
+                    ""AreaDespejada"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""FotoAreaDespejada"" TEXT NULL,
+                    ""RutasEvacuacion"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""FotoRutasEvacuacion"" TEXT NULL,
+                    ""MesasTrabajo"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""FotoMesasTrabajo"" TEXT NULL,
+                    ""Observaciones"" TEXT NULL,
+                    ""FechaCreacion"" TIMESTAMP NOT NULL DEFAULT NOW(),
+                    ""CreadoPor"" VARCHAR(100) NULL
+                );
+            ");
+            Console.WriteLine("[DB INIT] EncuestasOrdenAseo checked/created.");
+        }
+        catch (Exception ex) { Console.WriteLine($"[DB ERROR] EncuestasOrdenAseo: {ex.Message}"); }
+
+        // ESST USER (Orden y Aseo)
+        try
+        {
+            var esstUser = context.AdminUsuarios.FirstOrDefault(u => u.Username == "esst");
+            if (esstUser == null)
+            {
+                context.AdminUsuarios.Add(new TiempoProcesos.API.Models.AdminUsuario 
+                { 
+                    Username = "esst", 
+                    Role = "esst", 
+                    NombreMostrar = "Encuestas SST (Orden y Aseo)", 
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword("esst") 
+                });
+                context.SaveChanges();
+                Console.WriteLine("[DB INIT] ESST User Added.");
+            }
+        }
+        catch (Exception ex) { Console.WriteLine($"[DB ERROR] ESST User: {ex.Message}"); }
     }
 }

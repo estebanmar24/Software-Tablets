@@ -36,6 +36,16 @@ public class ProduccionController : ControllerBase
         
         // Existing tables
         var maquinas = await _context.Maquinas.Where(m => m.Activo).Select(m => new { m.Id, m.Nombre }).ToListAsync();
+        
+        // Ordenamiento Natural (1, 2, ... 10)
+        maquinas = maquinas.OrderBy(m => 
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(m.Nombre, @"^\d+");
+            return match.Success ? int.Parse(match.Value) : int.MaxValue;
+        })
+        .ThenBy(m => m.Nombre)
+        .ToList();
+
         var usuarios = await _context.Usuarios
             .Where(u => u.Activo)
             .OrderBy(u => u.Nombre)
@@ -443,6 +453,89 @@ public class ProduccionController : ControllerBase
         return NoContent();
     }
 
+    // ===================== HORAS EXTRAS REPORT =====================
+    /// <summary>
+    /// Get overtime (Horas Extras) records for Excel export within a date range
+    /// </summary>
+    [HttpGet("gastos/horas-extras-report")]
+    public async Task<ActionResult<List<object>>> GetHorasExtrasReport(DateTime fechaInicio, DateTime fechaFin)
+    {
+        // Find "Horas Extras" rubro ID
+        var rubroHE = await _context.Produccion_Rubros.FirstOrDefaultAsync(r => r.Nombre == "Horas Extras");
+        if (rubroHE == null) return Ok(new List<object>());
+
+        // Normalize dates to UTC
+        fechaInicio = fechaInicio.Date.ToUniversalTime();
+        fechaFin = fechaFin.Date.AddDays(1).AddSeconds(-1).ToUniversalTime();
+
+        var gastos = await _context.Produccion_Gastos
+            .Where(g => g.RubroId == rubroHE.Id && g.Fecha >= fechaInicio && g.Fecha <= fechaFin)
+            .Include(g => g.Usuario)
+            .Include(g => g.TipoHora)
+            .OrderByDescending(g => g.Fecha)
+            .Select(g => new {
+                Id = g.Id,
+                Fecha = g.Fecha,
+                UsuarioNombre = g.Usuario != null ? g.Usuario.Nombre : "N/A",
+                UsuarioDocumento = g.Usuario != null ? g.Usuario.Documento : "",
+                Salario = g.Usuario != null ? g.Usuario.Salario : 0, // ADDED
+                ValorHora = g.Usuario != null ? (g.Usuario.Salario / 240m) : 0, // ADDED
+                NumeroOP = g.NumeroOP ?? "",
+                TipoHoraNombre = g.TipoHora != null ? g.TipoHora.Nombre : "N/A",
+                Factor = g.TipoHora != null ? g.TipoHora.Factor : 0,
+                CantidadHoras = g.CantidadHoras ?? 0,
+                Precio = g.Precio,
+                Nota = g.Nota ?? "" // ADDED
+            })
+            .ToListAsync();
+
+        return Ok(gastos);
+    }
+
+    // ===================== RECARGOS REPORT =====================
+    /// <summary>
+    /// Get surcharge (Recargo) records for Excel export within a date range
+    /// </summary>
+    [HttpGet("gastos/recargos-report")]
+    public async Task<ActionResult<List<object>>> GetRecargosReport(DateTime fechaInicio, DateTime fechaFin)
+    {
+        // Find "Recargo" rubro ID
+        var rubroRecargo = await _context.Produccion_Rubros.FirstOrDefaultAsync(r => r.Nombre == "Recargo");
+        if (rubroRecargo == null) return Ok(new List<object>());
+
+        // Normalize dates to UTC
+        fechaInicio = fechaInicio.Date.ToUniversalTime();
+        fechaFin = fechaFin.Date.AddDays(1).AddSeconds(-1).ToUniversalTime();
+
+        var gastos = await _context.Produccion_Gastos
+            .Where(g => g.RubroId == rubroRecargo.Id && g.Fecha >= fechaInicio && g.Fecha <= fechaFin)
+            .Include(g => g.Usuario)
+            .Include(g => g.TipoRecargo)
+            .OrderByDescending(g => g.Fecha)
+            .Select(g => new {
+                Id = g.Id,
+                Fecha = g.Fecha,
+                UsuarioNombre = g.Usuario != null ? g.Usuario.Nombre : "N/A",
+                UsuarioDocumento = g.Usuario != null ? g.Usuario.Documento : "", // ADDED
+                Salario = g.Usuario != null ? g.Usuario.Salario : 0, // ADDED
+                ValorHora = g.Usuario != null ? (g.Usuario.Salario / 240m) : 0, // ADDED
+                NumeroOP = g.NumeroOP ?? "",
+                TipoRecargoNombre = g.TipoRecargo != null ? g.TipoRecargo.Nombre : "N/A",
+                Factor = g.TipoRecargo != null ? g.TipoRecargo.Factor : 0,
+                CantidadHoras = g.CantidadHoras ?? 0,
+                Precio = g.Precio,
+                Nota = g.Nota ?? ""
+            })
+            .ToListAsync();
+        
+        // DEBUG LOG TO TRACE MISSING IDS
+        Console.WriteLine($"[DEBUG] Found {gastos.Count} recargos records");
+        foreach(var g in gastos) {
+             Console.WriteLine($"[DEBUG] Recargo User: {g.UsuarioNombre}, ID: '{g.UsuarioDocumento}'");
+        }
+
+        return Ok(gastos);
+    }
 
 
     // ===================== PRESUPUESTOS (Budgets) =====================
@@ -610,7 +703,7 @@ public class ProduccionController : ControllerBase
                 var first = g.First();
                 var tirosReferencia = maq?.TirosReferencia ?? 0;
                 
-                // Calculate TirosConEquivalencia like CalificacionController
+                // Calculate TirosConEquivalencia
                 var totalTiros = g.Sum(p => (p.Cambios * tirosReferencia) + p.TirosDiarios);
                 var tirosBonificables = g.Sum(p => p.TirosBonificables);
                 var diasOp = g.Select(p => p.Fecha.Date).Distinct().Count();
@@ -618,15 +711,33 @@ public class ProduccionController : ControllerBase
                 // Use Meta100Porciento like CalificacionController
                 var meta100PorcientoBase = maq?.Meta100Porciento ?? maq?.MetaRendimiento ?? 7500;
                 
-                // Calculate meta100 iterating days to handle Half-Day Saturdays
+
+                // Calculate meta100 iterating days to handle Half-Day Saturdays AND Jan 1-14 Adjustment
                 decimal meta100 = 0;
                 var distinctDays = g.Select(p => p.Fecha.Date).Distinct().ToList();
                 foreach (var day in distinctDays)
                 {
-                    if (day.DayOfWeek == DayOfWeek.Saturday)
+                    // JAN 1-14 2026 ADJUSTMENT: User requested strict division: Meta / Hours
+                    if (day.Month == 1 && day.Day >= 1 && day.Day <= 14 && day.Year == 2026)
+                    {
+                        // Find stats for this specific day/user/machine
+                        // Use Sum in case of multiple records per day for same user/machine
+                        var dayHours = g.Where(p => p.Fecha.Date == day).Sum(p => p.TotalHoras);
+                        if (dayHours > 0) 
+                        {
+                             // User instructions: "agarrar la meta del 100% y dividirla entre las horas"
+                             // Example given: 7500 / 4 = 1875.
+                             meta100 += (meta100PorcientoBase / (decimal)dayHours);
+                        }
+                    }
+                    else if (day.DayOfWeek == DayOfWeek.Saturday)
+                    {
                         meta100 += meta100PorcientoBase / 2;
+                    }
                     else
+                    {
                         meta100 += meta100PorcientoBase;
+                    }
                 }
 
                 var meta75 = meta100 * 0.75m;
@@ -674,22 +785,39 @@ public class ProduccionController : ControllerBase
                 var maq = maquinas.FirstOrDefault(m => m.Id == g.Key);
                 var tirosReferencia = maq?.TirosReferencia ?? 0;
                 
-                // Calculate TirosConEquivalencia like CalificacionController: (Cambios * TirosReferencia) + TirosDiarios
+                // Calculate TirosConEquivalencia like CalificacionController
                 var tirosTotales = g.Sum(p => (p.Cambios * tirosReferencia) + p.TirosDiarios);
                 var diasMaq = g.Select(p => p.Fecha.Date).Distinct().Count();
                 
                 // Use Meta100Porciento like CalificacionController
                 var meta100PorcientoBase = maq?.Meta100Porciento ?? maq?.MetaRendimiento ?? 7500;
                 
-                // Calculate meta100 iterating days to handle Half-Day Saturdays
+
+                // Calculate meta100 iterating days to handle Half-Day Saturdays AND Jan 1-14 Adjustment
                 decimal meta100 = 0;
                 var distinctDays = g.Select(p => p.Fecha.Date).Distinct().ToList();
                 foreach (var day in distinctDays)
                 {
-                    if (day.DayOfWeek == DayOfWeek.Saturday)
+                    // JAN 1-14 2026 ADJUSTMENT
+                    if (day.Month == 1 && day.Day >= 1 && day.Day <= 14 && day.Year == 2026)
+                    {
+                        // Machine Summary
+                        decimal totalHoursMachine = (decimal)g.Where(p => p.Fecha.Date == day).Sum(p => p.TotalHoras);
+                        
+                        // Apply same user logic: Base / Hours
+                        if (totalHoursMachine > 0)
+                        {
+                             meta100 += (meta100PorcientoBase / totalHoursMachine);
+                        }
+                    }
+                    else if (day.DayOfWeek == DayOfWeek.Saturday)
+                    {
                         meta100 += meta100PorcientoBase / 2;
+                    }
                     else
+                    {
                         meta100 += meta100PorcientoBase;
+                    }
                 }
 
                 var meta75 = meta100 * 0.75m;
@@ -1153,106 +1281,97 @@ public class ProduccionController : ControllerBase
         
         return NoContent();
     }
-    // =================================================================================================
-    // MISSED ENDPOINTS FOR CAPTURE GRID SCREEN
-    // =================================================================================================
 
-    [HttpGet("maquinas-con-datos")]
-    public async Task<ActionResult<List<object>>> GetMaquinasConDatos(int mes, int anio)
-    {
-        var data = await _context.ProduccionDiaria
-            .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio)
-            .Select(p => new { p.MaquinaId, p.Maquina.Nombre })
-            .Distinct()
-            .ToListAsync();
-        return Ok(data);
-    }
 
-    [HttpGet("operarios-con-datos")]
-    public async Task<ActionResult<List<object>>> GetOperariosConDatos(int mes, int anio)
-    {
-        var data = await _context.ProduccionDiaria
-            .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio)
-            .Select(p => new { p.UsuarioId, p.Usuario.Nombre })
-            .Distinct()
-            .ToListAsync();
-        return Ok(data);
-    }
 
-    [HttpGet("detalles")]
-    public async Task<ActionResult<List<ProduccionDiaria>>> GetProduccionDetalles(int mes, int anio, int maquinaId, int usuarioId)
-    {
-        var data = await _context.ProduccionDiaria
-            .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio && p.MaquinaId == maquinaId && p.UsuarioId == usuarioId)
-            .ToListAsync();
-        return Ok(data);
-    }
 
-    [HttpGet("detalles-maquina")]
-    public async Task<ActionResult<List<ProduccionDiaria>>> GetProduccionPorMaquina(int mes, int anio, int maquinaId)
+
+
+
+
+
+    
+
+
+
+
+
+
+    [HttpGet("debug-meta")]
+    public async Task<ActionResult> GetDebugMeta(string nombreMaquina, int mes, int anio, int? usuarioId = null)
     {
-        var data = await _context.ProduccionDiaria
-            .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio && p.MaquinaId == maquinaId)
+        var maquina = await _context.Maquinas.FirstOrDefaultAsync(m => m.Nombre.Contains(nombreMaquina));
+        if (maquina == null) return NotFound("Maquina no encontrada");
+
+        var query = _context.ProduccionDiaria
+            .Where(p => p.MaquinaId == maquina.Id && p.Fecha.Month == mes && p.Fecha.Year == anio);
+
+        if (usuarioId.HasValue)
+        {
+            query = query.Where(p => p.UsuarioId == usuarioId.Value);
+        }
+
+        var produccion = await query
             .OrderBy(p => p.Fecha)
             .ToListAsync();
-        return Ok(data);
-    }
-    
-    [HttpGet("periodos-disponibles")]
-    public async Task<ActionResult<List<object>>> GetPeriodosDisponibles()
-    {
-        var data = await _context.ProduccionDiaria
-            .Select(p => new { p.Fecha.Year, p.Fecha.Month })
-            .Distinct()
-            .OrderByDescending(x => x.Year)
-            .ThenByDescending(x => x.Month)
-            .ToListAsync();
-        var mapped = data.Select(x => new {
-            anio = x.Year,
-            mes = x.Month,
-            nombre = new DateTime(x.Year, x.Month, 1).ToString("MMMM yyyy", new System.Globalization.CultureInfo("es-CO"))
-        }).ToList();
-        return Ok(mapped);
-    }
 
-    [HttpPost("mensual")]
-    public async Task<ActionResult> SaveProduccionMensual([FromBody] List<ProduccionDiaria> registros)
-    {
-        if (registros == null || registros.Count == 0) return Ok();
-        var first = registros.First();
-        var mes = first.Fecha.Month;
-        var anio = first.Fecha.Year;
-        var maquinaId = first.MaquinaId;
+        var breakdown = new List<object>();
+        decimal totalMeta = 0;
 
-        using var transaction = _context.Database.BeginTransaction();
-        try
+        var distinctDays = produccion.Select(p => p.Fecha.Date).Distinct().ToList();
+        
+        foreach (var day in distinctDays)
         {
-            var existing = _context.ProduccionDiaria
-                .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio && p.MaquinaId == maquinaId);
-            _context.ProduccionDiaria.RemoveRange(existing);
-            await _context.SaveChangesAsync();
+            decimal metaDia = 0;
+            string formula = "";
+            decimal divisor = 0;
 
-            foreach (var r in registros) { r.Id = 0; r.Maquina = null; r.Usuario = null; r.Horario = null; }
-            _context.ProduccionDiaria.AddRange(registros);
-            await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
-            return Ok();
-        }
-        catch (Exception ex)
-        {
-            await transaction.RollbackAsync();
-            return BadRequest("Error saving monthly data: " + ex.Message);
-        }
-    }
+            var prodDia = produccion.Where(p => p.Fecha.Date == day).ToList();
+            // AJUSTE: Sum both normal hours and dead time for total hours as per recent fix
+            decimal horas = prodDia.Sum(p => p.TotalHoras);
+            
+            // Equivalence Data
+            int cambios = prodDia.Sum(p => p.Cambios);
+            int tirosDiarios = prodDia.Sum(p => p.TirosDiarios);
+            int tirosCambios = cambios * maquina.TirosReferencia;
 
-    [HttpDelete("borrar")]
-    public async Task<ActionResult> BorrarProduccion(int mes, int anio, int? maquinaId, int? usuarioId)
-    {
-        var query = _context.ProduccionDiaria.Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio);
-        if (maquinaId.HasValue) query = query.Where(p => p.MaquinaId == maquinaId.Value);
-        if (usuarioId.HasValue) query = query.Where(p => p.UsuarioId == usuarioId.Value);
-        _context.ProduccionDiaria.RemoveRange(query);
-        await _context.SaveChangesAsync();
-        return Ok();
+            if (day.Month == 1 && day.Day >= 1 && day.Day <= 14 && day.Year == 2026)
+            {
+                if (horas > 0)
+                {
+                    metaDia = maquina.Meta100Porciento / horas;
+                    formula = $"MetaBase ({maquina.Meta100Porciento}) / Horas ({horas:F2})";
+                    divisor = horas;
+                }
+                tirosCambios = 0; // Cambios ignored for strict equivalent in this period, BUT user asked for "sum of equivalent shots"
+                // Actually, user asked to see "suma los tiros equivalentes por cambios y el numero de cambios"
+                // Since I reverted the logic, TirosCambios SHOULD be counted now.
+                // Reverted logic: TirosEquivalentes = (TirosRef * Cambios) + R_Final
+                tirosCambios = cambios * maquina.TirosReferencia;
+            }
+            else if (day.DayOfWeek == DayOfWeek.Saturday)
+            {
+                metaDia = maquina.Meta100Porciento / 2;
+                formula = "MetaBase / 2 (Sabado)";
+            }
+            else
+            {
+                metaDia = maquina.Meta100Porciento;
+                formula = "MetaBase Completa";
+            }
+
+            totalMeta += metaDia;
+            breakdown.Add(new { 
+                Fecha = day.ToString("dd/MM/yyyy"),
+                Meta = Math.Round(metaDia, 2),
+                Horas = Math.Round(horas, 2),
+                Formula = formula,
+                Cambios = cambios,
+                TirosDiarios = tirosDiarios,
+                TirosCambios = tirosCambios
+            });
+        }
+
+        return Ok(new { Total = Math.Round(totalMeta, 2), Desglose = breakdown });
     }
 }

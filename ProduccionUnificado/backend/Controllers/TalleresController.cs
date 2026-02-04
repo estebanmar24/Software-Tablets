@@ -305,6 +305,84 @@ public class TalleresController : ControllerBase
         return NoContent();
     }
 
+    // ===================== HORAS EXTRAS REPORT =====================
+    /// <summary>
+    /// Get overtime (Horas Extras) records for Excel export within a date range
+    /// </summary>
+    [HttpGet("gastos/horas-extras-report")]
+    public async Task<ActionResult<List<object>>> GetHorasExtrasReport(DateTime fechaInicio, DateTime fechaFin)
+    {
+        // Find "Horas Extras" rubro ID
+        var rubroHE = await _context.Talleres_Rubros.FirstOrDefaultAsync(r => r.Nombre == "Horas Extras");
+        if (rubroHE == null) return Ok(new List<object>());
+
+        // Normalize dates to UTC
+        fechaInicio = fechaInicio.Date.ToUniversalTime();
+        fechaFin = fechaFin.Date.AddDays(1).AddSeconds(-1).ToUniversalTime();
+
+        var gastos = await _context.Talleres_Gastos
+            .Where(g => g.RubroId == rubroHE.Id && g.Fecha >= fechaInicio && g.Fecha <= fechaFin)
+            .Include(g => g.Personal)
+            .Include(g => g.TipoHora)
+            .OrderByDescending(g => g.Fecha)
+            .Select(g => new {
+                Id = g.Id,
+                Fecha = g.Fecha,
+                PersonalNombre = g.Personal != null ? g.Personal.Nombre : "N/A",
+                PersonalDocumento = g.Personal != null ? g.Personal.Documento : "", // ADDED
+                Salario = g.Personal != null ? g.Personal.Salario : 0, // ADDED
+                ValorHora = g.Personal != null ? (g.Personal.Salario / 240m) : 0, // ADDED
+                NumeroOP = g.NumeroOP ?? "",
+                TipoHoraNombre = g.TipoHora != null ? g.TipoHora.Nombre : "N/A",
+                Factor = g.TipoHora != null ? g.TipoHora.Factor : 0,
+                CantidadHoras = g.CantidadHoras ?? 0,
+                Precio = g.Precio,
+                Nota = g.Observaciones ?? ""
+            })
+            .ToListAsync();
+
+        return Ok(gastos);
+    }
+
+    // ===================== RECARGOS REPORT =====================
+    /// <summary>
+    /// Get surcharge (Recargo) records for Excel export within a date range
+    /// </summary>
+    [HttpGet("gastos/recargos-report")]
+    public async Task<ActionResult<List<object>>> GetRecargosReport(DateTime fechaInicio, DateTime fechaFin)
+    {
+        // Find "Recargo" rubro ID
+        var rubroRecargo = await _context.Talleres_Rubros.FirstOrDefaultAsync(r => r.Nombre == "Recargo");
+        if (rubroRecargo == null) return Ok(new List<object>());
+
+        // Normalize dates to UTC
+        fechaInicio = fechaInicio.Date.ToUniversalTime();
+        fechaFin = fechaFin.Date.AddDays(1).AddSeconds(-1).ToUniversalTime();
+
+        var gastos = await _context.Talleres_Gastos
+            .Where(g => g.RubroId == rubroRecargo.Id && g.Fecha >= fechaInicio && g.Fecha <= fechaFin)
+            .Include(g => g.Personal)
+            .Include(g => g.TipoRecargo)
+            .OrderByDescending(g => g.Fecha)
+            .Select(g => new {
+                Id = g.Id,
+                Fecha = g.Fecha,
+                PersonalNombre = g.Personal != null ? g.Personal.Nombre : "N/A",
+                PersonalDocumento = g.Personal != null ? g.Personal.Documento : "", // ADDED
+                Salario = g.Personal != null ? g.Personal.Salario : 0, // ADDED
+                ValorHora = g.Personal != null ? (g.Personal.Salario / 240m) : 0, // ADDED
+                NumeroOP = g.NumeroOP ?? "",
+                TipoRecargoNombre = g.TipoRecargo != null ? g.TipoRecargo.Nombre : "N/A",
+                Factor = g.TipoRecargo != null ? g.TipoRecargo.Factor : 0,
+                CantidadHoras = g.CantidadHoras ?? 0,
+                Precio = g.Precio,
+                Nota = g.Observaciones ?? ""
+            })
+            .ToListAsync();
+
+        return Ok(gastos);
+    }
+
     #endregion
 
     #region File Upload

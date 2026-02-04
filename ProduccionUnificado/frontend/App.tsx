@@ -22,6 +22,7 @@ import {
   TiempoProceso,
   CodigoDesperdicio,
   RegistroDesperdicioRequest,
+  RegistrarTiempoRequest,
   Horario,
 } from './src/types';
 import * as api from './src/services/api';
@@ -29,6 +30,7 @@ import * as api from './src/services/api';
 import { AdminLogin } from './src/components/AdminLogin';
 import { AdminDashboard } from './src/components/AdminDashboard';
 import CalidadScreen from './src/screens/CalidadScreen';
+import OrdenAseoScreen from './src/screens/OrdenAseoScreen';
 import UserManagementScreen from './src/screens/UserManagementScreen';
 
 export default function App() {
@@ -63,7 +65,7 @@ export default function App() {
   }, [isPhone]);
 
   // Estado de vista
-  const [currentView, setCurrentView] = useState<'timer' | 'login' | 'admin' | 'calidad' | 'develop'>('timer');
+  const [currentView, setCurrentView] = useState<'timer' | 'login' | 'admin' | 'calidad' | 'develop' | 'esst'>('timer');
   const [adminRole, setAdminRole] = useState<string>('admin');
   const [adminName, setAdminName] = useState<string>('');
 
@@ -71,22 +73,17 @@ export default function App() {
   useEffect(() => {
     async function loadView() {
       try {
-        const savedView = await AsyncStorage.getItem('lastView');
+        // FORCE RESET TO FIX CRASH LOOP
+        // Ignore saved view and clear it
+        await AsyncStorage.removeItem('lastView');
+        setCurrentView('timer');
+
+        // Restore Admin name/role for context but don't auto-navigate
         const savedRole = await AsyncStorage.getItem('adminRole');
         const savedName = await AsyncStorage.getItem('adminName');
-
         if (savedRole) setAdminRole(savedRole);
         if (savedName) setAdminName(savedName);
 
-        if (savedRole === 'calidad') {
-          setCurrentView('calidad');
-        } else if (savedView === 'admin') {
-          setCurrentView('admin');
-        } else if (savedView === 'calidad') {
-          setCurrentView('calidad');
-        } else {
-          setCurrentView('timer');
-        }
       } catch (e) {
         console.log('Failed to load view state');
       }
@@ -95,8 +92,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Persistir estado de vista para admin y calidad
-    if (currentView === 'admin' || currentView === 'calidad') {
+    // Persistir estado de vista para admin, calidad y esst
+    if (currentView === 'admin' || currentView === 'calidad' || currentView === 'esst') {
       AsyncStorage.setItem('lastView', currentView);
       AsyncStorage.setItem('adminRole', adminRole);
       AsyncStorage.setItem('adminName', adminName);
@@ -105,17 +102,27 @@ export default function App() {
     }
   }, [currentView, adminRole, adminName]);
 
-  const handleLoginSuccess = (role: string, nombreMostrar: string) => {
-    const normalizedRole = role.toLowerCase();
-    setAdminRole(normalizedRole);
-    setAdminName(nombreMostrar);
+  const handleLoginSuccess = (role: string, nombreMostrar: string, username: string = '') => {
+    const normalizedRole = (role || '').toLowerCase().trim();
+    const normalizedName = (nombreMostrar || '').toLowerCase().trim();
+    const normalizedUsername = (username || '').toLowerCase().trim();
 
-    // Priority Routing: Develop > Calidad (Exclusive) > Admin (General)
+    setAdminRole(normalizedRole);
+    setAdminName(nombreMostrar || '');
+
+    // Priority Routing: Develop > Calidad > ESST (Exclusive) > Admin (General)
     if (normalizedRole.includes('develop')) {
       setCurrentView('develop');
     } else if (normalizedRole === 'calidad') {
       // Exclusive view only if specific role is strictly 'calidad' and nothing else
       setCurrentView('calidad');
+    } else if (
+      normalizedUsername === 'esst' || // FORCE REDIRECT BY USERNAME
+      normalizedRole.includes('esst') ||
+      (normalizedRole.includes('sst') && (normalizedName.includes('encuesta') || normalizedName.includes('aseo')))
+    ) {
+      // Exclusive view for ESST (Orden y Aseo) or SST user specifically for Encuestas
+      setCurrentView('esst');
     } else {
       // For 'admin' and mixed roles (e.g. 'produccion,talleres'), use the Dashboard
       setCurrentView('admin');
@@ -197,6 +204,7 @@ export default function App() {
 
   // Hook del cronómetro
   const timer = useTimer();
+  const [activeProcessId, setActiveProcessId] = useState<number | null>(null);
 
   // 1. Cargar datos persistidos al iniciar
   useEffect(() => {
@@ -212,6 +220,7 @@ export default function App() {
         if (saved.observaciones) setObservaciones(saved.observaciones);
         if (saved.tirosAcumulados) setTirosAcumulados(saved.tirosAcumulados);
         if (saved.desperdicioAcumulado) setDesperdicioAcumulado(saved.desperdicioAcumulado);
+        if (saved.activeProcessId) setActiveProcessId(saved.activeProcessId);
 
         // Resume Timer if it was running
         if (saved.timerStartTime) {
@@ -240,12 +249,13 @@ export default function App() {
       observaciones,
       tirosAcumulados,
       desperdicioAcumulado,
-      timerStartTime: timer.startTime ? timer.startTime.toISOString() : null
+      timerStartTime: timer.startTime ? timer.startTime.toISOString() : null,
+      activeProcessId: activeProcessId
     });
   }, [
     selectedUsuario, selectedMaquina, selectedHorario, selectedActividad, selectedOrden,
     opSearchText, observaciones, tirosAcumulados, desperdicioAcumulado,
-    timer.startTime, isRestored
+    timer.startTime, isRestored, activeProcessId
   ]);
 
   // Cargar catálogos al iniciar
@@ -382,7 +392,7 @@ export default function App() {
   const canStart = selectedActividad !== null && selectedMaquina !== null && selectedUsuario !== null && selectedHorario !== null;
 
   // Manejadores de eventos
-  const handleStart = () => {
+  const handleStart = async () => {
     if (!canStart) {
       showAlert('Datos incompletos', 'Debe seleccionar máquina, horario, operario y actividad antes de iniciar.');
       return;
@@ -400,7 +410,43 @@ export default function App() {
       return;
     }
 
-    timer.start();
+    const now = new Date();
+    timer.start(now);
+
+    // Register active session in backend
+    try {
+      const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const startTimeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0') + ':' + now.getSeconds().toString().padStart(2, '0');
+
+      const payload: RegistrarTiempoRequest = {
+        fecha: localDate,
+        horaInicio: startTimeStr,
+        horaFin: startTimeStr, // Placeholder for start
+        duracion: "00:00:00",
+        usuarioId: selectedUsuario!,
+        maquinaId: selectedMaquina!,
+        ordenProduccionId: selectedOrden || undefined,
+        actividadId: selectedActividad!.id,
+        tiros: 0,
+        desperdicio: 0,
+        referenciaOP: opSearchText.trim() || '460',
+        observaciones: observaciones || '',
+        horarioId: selectedHorario || undefined
+      };
+
+      const savedRecord = await api.registrarTiempo(payload);
+      setActiveProcessId(savedRecord.id);
+
+      // Add to history with "Running" indicators
+      const displayRecord: TiempoProceso = {
+        ...savedRecord,
+        horaFin: '---',
+        duracion: 'En Progreso'
+      };
+      setHistorial(prev => [displayRecord, ...prev]);
+    } catch (e) {
+      console.error("Error starting backend process:", e);
+    }
   };
 
   const handleStop = async () => {
@@ -422,13 +468,11 @@ export default function App() {
 
     const { duration, startTime, endTime } = timer.stop();
 
-    // Crear registro para el historial
-    // Use local date format (YYYY-MM-DD) instead of UTC to prevent timezone issues
+    // Crear registro para payload
     const today = new Date();
     const localDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-    const nuevoRegistro: TiempoProceso = {
-      id: Date.now(),
+    const payload: RegistrarTiempoRequest = {
       fecha: localDate,
       horaInicio: startTime,
       horaFin: endTime,
@@ -436,49 +480,41 @@ export default function App() {
       usuarioId: selectedUsuario!,
       maquinaId: selectedMaquina!,
       ordenProduccionId: selectedOrden || undefined,
-      ordenProduccionNumero: opSearchText.trim() || '460', // Default to 460 if empty
       actividadId: selectedActividad!.id,
-      actividadNombre: selectedActividad!.nombre,
-      actividadCodigo: selectedActividad!.codigo,
       tiros: tirosAcumulados,
       desperdicio: desperdicioAcumulado,
-      observaciones: observaciones, // Usar observaciones de la sesión
+      referenciaOP: opSearchText.trim() || '460',
+      observaciones: observaciones,
+      horarioId: selectedHorario || undefined,
     };
 
-    // Agregar al historial (más reciente primero)
-    setHistorial((prev) => [nuevoRegistro, ...prev]);
-
-    // Actualizar totales del día
-    setTirosTotalesDia((prev) => prev + tirosAcumulados);
-    setDesperdicioTotalDia((prev) => prev + desperdicioAcumulado);
-
-    // Reiniciar contadores INMEDIATAMENTE para evitar doble conteo visual
-    setTirosAcumulados(0);
-    setDesperdicioAcumulado(0);
-    setObservaciones('');
-
-    // Intentar guardar en la API
     try {
-      const payload = {
-        fecha: nuevoRegistro.fecha,
-        horaInicio: nuevoRegistro.horaInicio,
-        horaFin: nuevoRegistro.horaFin,
-        duracion: nuevoRegistro.duracion,
-        usuarioId: nuevoRegistro.usuarioId,
-        maquinaId: nuevoRegistro.maquinaId,
-        ordenProduccionId: nuevoRegistro.ordenProduccionId,
-        actividadId: nuevoRegistro.actividadId,
-        tiros: nuevoRegistro.tiros,
-        desperdicio: nuevoRegistro.desperdicio,
-        referenciaOP: opSearchText.trim() || '460', // Default to 460 if empty
-        observaciones: observaciones,
-        horarioId: selectedHorario || undefined,  // Turno de trabajo
-      };
       console.log('=== GUARDANDO EN BD ===');
-      console.log('Payload:', JSON.stringify(payload, null, 2));
+      let savedRecord: TiempoProceso;
 
-      const savedRecord = await api.registrarTiempo(payload);
+      if (activeProcessId) {
+        console.log('Finalizando proceso existente:', activeProcessId);
+        savedRecord = await api.finalizarTiempo(activeProcessId, payload);
+        // Actualizar en historial (reemplazar el item con "En Progreso")
+        setHistorial((prev) => prev.map(item => item.id === activeProcessId ? savedRecord : item));
+        setActiveProcessId(null);
+      } else {
+        console.log('No hay proceso activo, creando nuevo registro');
+        savedRecord = await api.registrarTiempo(payload);
+        // Agregar al historial
+        setHistorial((prev) => [savedRecord, ...prev]);
+      }
+
       console.log('Guardado exitoso:', savedRecord);
+
+      // Actualizar totales del día
+      setTirosTotalesDia((prev) => prev + tirosAcumulados);
+      setDesperdicioTotalDia((prev) => prev + desperdicioAcumulado);
+
+      // Reiniciar contadores INMEDIATAMENTE
+      setTirosAcumulados(0);
+      setDesperdicioAcumulado(0);
+      setObservaciones('');
 
       // Guardar registros detallados de desperdicio si existen
       if (wasteRecords.length > 0) {
@@ -493,28 +529,24 @@ export default function App() {
           console.log('Detalles de desperdicio guardados correctamente');
         } catch (wasteError) {
           console.error("Error guardando detalles de desperdicio:", wasteError);
-          // No bloqueamos el éxito global, pero avisamos
           Alert.alert("Advertencia", "El tiempo se guardó, pero hubo un error guardando los detalles de desperdicio.");
         }
       }
-
-      // Limpiar registros temporales
-      setWasteRecords([]);
-
-
-
-      // Clear OP to force re-entry for next process
-      setOpSearchText('');
-      setSelectedOrden(null); // Also clear selected order object
-
-      clearState(); // Limpiar persistencia de sesión
-    } catch (error: any) {
-      const errorMsg = error.response?.data?.error || error.message || 'Error desconocido';
-      console.error('=== ERROR AL GUARDAR ===');
-      console.error('Error completo:', error);
-      console.error('Mensaje:', errorMsg);
-      showAlert('Error de Guardado', `No se pudó guardar en la base de datos: ${errorMsg}`);
+    } catch (e) {
+      console.error(e);
+      Alert.alert("Error", "No se pudo guardar el proceso. Intente de nuevo.");
     }
+
+    // Limpiar registros temporales
+    setWasteRecords([]);
+
+
+
+    // Clear OP to force re-entry for next process
+    setOpSearchText('');
+    setSelectedOrden(null); // Also clear selected order object
+
+    clearState(); // Limpiar persistencia de sesión
   };
 
   const handleAddTiros = (value: number) => {
@@ -596,8 +628,8 @@ export default function App() {
   if (currentView === 'login') {
     return (
       <AdminLogin
-        onLoginSuccess={(role, nombreMostrar) => {
-          handleLoginSuccess(role, nombreMostrar);
+        onLoginSuccess={(role, nombreMostrar, username) => {
+          handleLoginSuccess(role, nombreMostrar, username);
         }}
         onBack={() => setCurrentView('timer')}
       />
@@ -672,6 +704,26 @@ export default function App() {
         // No removemos adminName aqui por si acaso, pero borramos persistencia de vista
         AsyncStorage.removeItem('lastView');
       }} />
+    );
+  }
+
+  if (currentView === 'esst') {
+    return (
+      <OrdenAseoScreen
+        navigation={{
+          goBack: () => {
+            setAdminRole('');
+            setAdminName('');
+            AsyncStorage.removeItem('adminRole');
+            AsyncStorage.removeItem('lastView');
+            setCurrentView('timer');
+          },
+          navigate: (screen: string, params?: any) => {
+            console.log('Navigate to:', screen, params);
+          },
+          addListener: () => () => { }
+        }}
+      />
     );
   }
 

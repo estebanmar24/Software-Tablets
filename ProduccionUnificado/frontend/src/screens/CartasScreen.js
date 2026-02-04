@@ -387,6 +387,84 @@ export default function CartasScreen({ navigation }) {
                     finalY = chartStartY + chartHeight + 15;
                 }
 
+                // ========== TABLAS DETALLADAS POR MÁQUINA (NUEVO) ==========
+                // Justo después de las gráficas de rendimiento
+                // Iterar sobre las máquinas del operario y buscar detalle
+
+                // Necesitamos un bucle async para hacer fetch secuencial
+                for (const maq of sortedMaquinas) {
+                    try {
+                        // Verificar espacio en página
+                        if (finalY > 220) {
+                            doc.addPage();
+                            finalY = 20;
+                        }
+
+                        // Fetch detailed data
+                        const debugRes = await api.get(`/produccion/debug-meta?nombreMaquina=${encodeURIComponent(maq.maquina)}&mes=${mes}&anio=${anio}&usuarioId=${opData.usuarioId}`);
+                        const breakdownData = debugRes.data.desglose || [];
+
+                        if (breakdownData.length > 0) {
+                            finalY += 10;
+                            doc.setFontSize(11);
+                            doc.setFont('helvetica', 'bold');
+                            doc.setTextColor(0, 51, 102);
+                            doc.text(`Detalle Diario: ${maq.maquina}`, 20, finalY);
+                            doc.setTextColor(0, 0, 0);
+
+                            const colsBreakdown = ['Fecha', 'Meta', 'Formula', 'Tiros Reg.', 'Tiros Eq', 'Total', 'Cambios'];
+                            const dataBreakdown = breakdownData.map(item => [
+                                item.fecha,
+                                Math.round(item.meta).toLocaleString(),
+                                item.formula,
+                                (item.tirosDiarios || 0).toLocaleString(),
+                                item.tirosCambios.toLocaleString(),
+                                ((item.tirosDiarios || 0) + item.tirosCambios).toLocaleString(),
+                                item.cambios.toString()
+                            ]);
+
+                            // Calculate Totals
+                            const totalMeta = breakdownData.reduce((acc, curr) => acc + (curr.meta || 0), 0);
+                            const totalTirosReg = breakdownData.reduce((acc, curr) => acc + (curr.tirosDiarios || 0), 0);
+                            const totalTirosEq = breakdownData.reduce((acc, curr) => acc + (curr.tirosCambios || 0), 0);
+                            const totalCambios = breakdownData.reduce((acc, curr) => acc + (curr.cambios || 0), 0);
+                            const totalTirosGrand = totalTirosReg + totalTirosEq;
+
+                            const footerRow = [
+                                'TOTALES',
+                                Math.round(totalMeta).toLocaleString(),
+                                '',
+                                totalTirosReg.toLocaleString(),
+                                totalTirosEq.toLocaleString(),
+                                totalTirosGrand.toLocaleString(),
+                                totalCambios.toString()
+                            ];
+
+                            // Add totals to body
+                            dataBreakdown.push(footerRow);
+
+                            autoTable(doc, {
+                                startY: finalY + 5,
+                                head: [colsBreakdown],
+                                body: dataBreakdown,
+                                styles: { fontSize: 7, cellPadding: 2, halign: 'center' },
+                                headStyles: { fillColor: [70, 130, 180], textColor: 255 },
+                                columnStyles: { 2: { cellWidth: 35 } }, // Formula column wider
+                                didParseCell: (data) => {
+                                    if (data.section === 'body' && data.row.index === dataBreakdown.length - 1) {
+                                        data.cell.styles.fillColor = [220, 220, 220];
+                                        data.cell.styles.fontStyle = 'bold';
+                                    }
+                                }
+                            });
+
+                            finalY = doc.lastAutoTable.finalY + 5;
+                        }
+                    } catch (err) {
+                        console.error(`Error fetching breakdown for letter ${maq.maquina}`, err);
+                    }
+                }
+
                 // ========== GRÁFICA DE TENDENCIA HISTÓRICA DEL OPERARIO ==========
                 try {
                     // Solo guardar el rendimiento si el operario tiene datos reales de producción

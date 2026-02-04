@@ -442,9 +442,11 @@ export default function DashboardScreen({ navigation }) {
                     ? [...new Set((resumen?.resumenOperarios || []).map(i => i.usuarioId))]
                     : [selectedOperario];
 
-                targetIds.sort().forEach(opId => {
+                const sortedTargetIds = targetIds.sort();
+
+                for (const opId of sortedTargetIds) {
                     const operarioData = (resumen?.resumenOperarios || []).filter(item => item.usuarioId == opId);
-                    if (operarioData.length === 0) return;
+                    if (operarioData.length === 0) continue;
 
                     const operarioNombre = usuarios.find(u => u.id == opId)?.nombre || operarioData[0].operario || 'Desconocido';
                     // Ordenar máquinas naturalmente dentro del operario
@@ -466,7 +468,68 @@ export default function DashboardScreen({ navigation }) {
                         `${item.semaforoColor100 || 'Gris'}|${(item.porcentajeRendimiento100 || 0).toFixed(0)}%`
                     ]);
                     tablesPayload.push({ title: `Operario: ${operarioNombre}`, columns: colsOperario, data });
-                });
+
+                    // *** NEW: Machine Breakdown Tables for Operator ***
+                    // Filter valid machines for this operator
+                    const operatorMachineData = (resumen?.resumenOperarios || []).filter(item => item.usuarioId == opId);
+
+                    // Helper function to fetch and add breakdown table (async inside map is tricky, we'll do sequential processing later or promises here)
+                    // Since we need to modify 'tablesPayload' or add to a 'breakdownPayloads' list?
+                    // PDF generation is linear. We can add a "special" payload type or just fetch data here and store it.
+
+                    // Strategy: Fetch data here, loop over machines, call debug-meta, and push breakdown tables immediately after the summary table.
+
+                    // We need to pause and fetch. This requires the generatePDF function to be async (it is).
+                    for (const machineItem of operatorMachineData) {
+                        try {
+                            const debugRes = await api.get(`/produccion/debug-meta?nombreMaquina=${encodeURIComponent(machineItem.maquina)}&mes=${mes}&anio=${anio}&usuarioId=${opId}`);
+                            const breakdownData = debugRes.data.desglose || [];
+
+                            if (breakdownData.length > 0) {
+                                const colsBreakdown = ['Fecha', 'Meta Calculada', 'Formula', 'Tiros Reg.', 'Tiros Eq (Cambios)', 'Total Tiros', 'Total Cambios'];
+                                const dataBreakdown = breakdownData.map(item => [
+                                    item.fecha,
+                                    Math.round(item.meta).toLocaleString(),
+                                    item.formula,
+                                    (item.tirosDiarios || 0).toLocaleString(),
+                                    item.tirosCambios.toLocaleString(),
+                                    ((item.tirosDiarios || 0) + item.tirosCambios).toLocaleString(),
+                                    item.cambios.toString()
+                                ]);
+
+                                // Calculate Totals
+                                const totalMeta = breakdownData.reduce((acc, curr) => acc + (curr.meta || 0), 0);
+                                const totalTirosReg = breakdownData.reduce((acc, curr) => acc + (curr.tirosDiarios || 0), 0);
+                                const totalTirosEq = breakdownData.reduce((acc, curr) => acc + (curr.tirosCambios || 0), 0);
+                                const totalCambios = breakdownData.reduce((acc, curr) => acc + (curr.cambios || 0), 0);
+                                const totalTirosGrand = totalTirosReg + totalTirosEq;
+
+                                const footerRow = [
+                                    'TOTALES',
+                                    Math.round(totalMeta).toLocaleString(),
+                                    '',
+                                    totalTirosReg.toLocaleString(),
+                                    totalTirosEq.toLocaleString(),
+                                    totalTirosGrand.toLocaleString(),
+                                    totalCambios.toString()
+                                ];
+
+                                // Append totals
+                                dataBreakdown.push(footerRow);
+
+                                tablesPayload.push({
+                                    title: `Detalle ${machineItem.maquina} - ${operarioNombre}`,
+                                    columns: colsBreakdown,
+                                    data: dataBreakdown,
+                                    headStyles: { fillColor: [70, 130, 180], textColor: 255 },
+                                    isBreakdown: true // Flag to identify distinct styling if needed (e.g. bold last row)
+                                });
+                            }
+                        } catch (err) {
+                            console.error(`Error fetching breakdown for ${machineItem.maquina}`, err);
+                        }
+                    }
+                }
 
             } else if (reportType === 'maquina') {
                 const targetIds = selectedMaquina === 'todos'
@@ -702,12 +765,18 @@ export default function DashboardScreen({ navigation }) {
                     headStyles: tbl.headStyles || { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' },
                     alternateRowStyles: { fillColor: [245, 245, 245] },
                     didParseCell: (data) => {
-                        if (data.section === 'head') return;
-                        // Robust check: Apply to any column with header containing "Sem" or "Semaforo"
-                        // tbl.columns provides the header strings
-                        const header = tbl.columns[data.column.index];
-                        if (header && (header.includes('Semaforo') || header.includes('Sem '))) {
-                            setSemaforoColor(data);
+                        // 1. Semaphore Logic
+                        if (data.section === 'body') {
+                            const header = tbl.columns[data.column.index];
+                            if (header && (header.includes('Semaforo') || header.includes('Sem '))) {
+                                setSemaforoColor(data);
+                            }
+                        }
+
+                        // 2. Breakdown Totals Logic
+                        if (tbl.isBreakdown && data.section === 'body' && data.row.index === tbl.data.length - 1) {
+                            data.cell.styles.fillColor = [220, 220, 220];
+                            data.cell.styles.fontStyle = 'bold';
                         }
                     },
                     margin: { top: 20 }
@@ -780,6 +849,90 @@ export default function DashboardScreen({ navigation }) {
                 const dailyValues = dailyData.map(d => d.tiros);
 
                 chartY = drawLineChart(doc, "Tendencia Producción Diaria", dailyLabels, dailyValues, chartY);
+            }
+
+            // *** NEW: Machine Breakdown Table (Desglose Meta/Equivalencias) ***
+            if (reportType === 'maquina') {
+                // Check if we need a new page
+                if (chartY + 100 > doc.internal.pageSize.getHeight() - 20) {
+                    doc.addPage();
+                    chartY = 30;
+                }
+
+                try {
+                    // Get Machine Name for API call
+                    let machineName = "";
+                    if (selectedMaquina === 'todos' || !selectedMaquina) {
+                        // Default to first machine if multiple? OR skip if 'todos'
+                        // For now, if exact machine is selected, show it.
+                    } else {
+                        const mObj = maquinas.find(m => m.id == selectedMaquina);
+                        if (mObj) machineName = mObj.nombre;
+                    }
+
+                    if (machineName) {
+                        // Fetch debug data
+                        const debugRes = await api.get(`/produccion/debug-meta?nombreMaquina=${encodeURIComponent(machineName)}&mes=${mes}&anio=${anio}`);
+                        const breakdownData = debugRes.data.desglose || [];
+
+                        if (breakdownData.length > 0) {
+                            const colsBreakdown = ['Fecha', 'Meta Calculada', 'Formula', 'Tiros Reg.', 'Tiros Eq (Cambios)', 'Total Tiros', 'Total Cambios'];
+                            const dataBreakdown = breakdownData.map(item => [
+                                item.fecha,
+                                Math.round(item.meta).toLocaleString(),
+                                item.formula,
+                                (item.tirosDiarios || 0).toLocaleString(),
+                                item.tirosCambios.toLocaleString(),
+                                ((item.tirosDiarios || 0) + item.tirosCambios).toLocaleString(),
+                                item.cambios.toString()
+                            ]);
+
+                            // Calculate Totals
+                            const totalMeta = breakdownData.reduce((acc, curr) => acc + (curr.meta || 0), 0);
+                            const totalTirosReg = breakdownData.reduce((acc, curr) => acc + (curr.tirosDiarios || 0), 0);
+                            const totalTirosEq = breakdownData.reduce((acc, curr) => acc + (curr.tirosCambios || 0), 0);
+                            const totalCambios = breakdownData.reduce((acc, curr) => acc + (curr.cambios || 0), 0);
+                            // Total Tiros Sum (Reg + Eq)
+                            const totalTirosGrand = totalTirosReg + totalTirosEq;
+
+                            const footerRow = [
+                                'TOTALES',
+                                Math.round(totalMeta).toLocaleString(),
+                                '',
+                                totalTirosReg.toLocaleString(),
+                                totalTirosEq.toLocaleString(),
+                                totalTirosGrand.toLocaleString(),
+                                totalCambios.toString()
+                            ];
+
+                            // Append totals to body for guaranteed rendering
+                            dataBreakdown.push(footerRow);
+
+                            doc.setFontSize(14);
+                            doc.text(`Desglose Detallado: ${machineName}`, 14, chartY + 10);
+
+                            autoTable(doc, {
+                                head: [colsBreakdown],
+                                body: dataBreakdown,
+                                startY: chartY + 15,
+                                styles: { fontSize: 8, cellPadding: 2 },
+                                headStyles: { fillColor: [70, 130, 180], textColor: 255 },
+                                didParseCell: (data) => {
+                                    // Style the last row (Totals)
+                                    if (data.row.index === dataBreakdown.length - 1) {
+                                        data.cell.styles.fillColor = [220, 220, 220];
+                                        data.cell.styles.fontStyle = 'bold';
+                                    }
+                                }
+                            });
+
+                            // Update chartY for next section
+                            chartY = doc.lastAutoTable.finalY + 15;
+                        }
+                    }
+                } catch (err) {
+                    console.error("Error fetching breakdown for PDF", err);
+                }
             }
 
             // =========== TABLA DE CALIFICACIONES POR MÁQUINA ===========
@@ -1413,7 +1566,7 @@ export default function DashboardScreen({ navigation }) {
                                                 borderWidth: 2, borderColor: '#333'
                                             }}>
                                                 <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 14 }}>
-                                                    {Math.floor(item.porcentajeRendimiento100 || 0)}%
+                                                    {Math.round(item.porcentajeRendimiento100 || 0)}%
                                                 </Text>
                                             </View>
                                         </View>

@@ -15,6 +15,7 @@ export interface PersistedState {
     tirosAcumulados: number;
     desperdicioAcumulado: number;
     timerStartTime: string | null; // ISO Date String
+    activeProcessId?: number | null;
     lastUpdated: number; // Timestamp to expire old sessions
 }
 

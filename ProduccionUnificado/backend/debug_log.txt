@@ -118,3 +118,52 @@
 [30/01/2026 4:33:51 p. m.] RegistrarTiempo - HorarioId Request: 2, Maquina: 8
 [30/01/2026 4:33:51 p. m.] UpdateProdDiaria - Fecha: 30/01/2026 12:00:00 a. m., Maq: 8, Usu: 3, Tiempos: 9, PrimerHorario: 2
 [30/01/2026 4:33:51 p. m.] Asignando HorarioId 2 a ProduccionDiaria
+[2/02/2026 8:33:49 a. m.] RegistrarTiempo - HorarioId Request: 2, Maquina: 9
+[2/02/2026 8:33:49 a. m.] UpdateProdDiaria - Fecha: 2/02/2026 12:00:00 a. m., Maq: 9, Usu: 3, Tiempos: 1, PrimerHorario: 2
+[2/02/2026 8:33:49 a. m.] Asignando HorarioId 2 a ProduccionDiaria
+[2/02/2026 8:57:31 a. m.] RegistrarTiempo - HorarioId Request: 2, Maquina: 9
+[2/02/2026 8:57:31 a. m.] UpdateProdDiaria - Fecha: 2/02/2026 12:00:00 a. m., Maq: 9, Usu: 3, Tiempos: 2, PrimerHorario: 2
+[2/02/2026 8:57:31 a. m.] Asignando HorarioId 2 a ProduccionDiaria
+[2/02/2026 9:18:47 a. m.] RegistrarTiempo - HorarioId Request: 2, Maquina: 9
+[2/02/2026 9:18:48 a. m.] UpdateProdDiaria - Fecha: 2/02/2026 12:00:00 a. m., Maq: 9, Usu: 3, Tiempos: 3, PrimerHorario: 2
+[2/02/2026 9:18:48 a. m.] Asignando HorarioId 2 a ProduccionDiaria
+[2/02/2026 11:24:05 a. m.] RegistrarTiempo - HorarioId Request: 1, Maquina: 9
+[2/02/2026 11:24:05 a. m.] UpdateProdDiaria - Fecha: 2/02/2026 12:00:00 a. m., Maq: 9, Usu: 3, Tiempos: 4, PrimerHorario: 1
+[2/02/2026 11:24:05 a. m.] Asignando HorarioId 1 a ProduccionDiaria
+[2/02/2026 11:24:36 a. m.] RegistrarTiempo - HorarioId Request: 1, Maquina: 23
+[2/02/2026 11:24:36 a. m.] UpdateProdDiaria - Fecha: 2/02/2026 12:00:00 a. m., Maq: 23, Usu: 3, Tiempos: 1, PrimerHorario: 1
+[2/02/2026 11:24:36 a. m.] Asignando HorarioId 1 a ProduccionDiaria
+[2/02/2026 11:33:32 a. m.] RegistrarTiempo - HorarioId Request: 1, Maquina: 23
+[2/02/2026 11:33:32 a. m.] UpdateProdDiaria - Fecha: 2/02/2026 12:00:00 a. m., Maq: 23, Usu: 3, Tiempos: 2, PrimerHorario: 1
+[2/02/2026 11:33:32 a. m.] Asignando HorarioId 1 a ProduccionDiaria
+[2/02/2026 1:17:33 p. m.] RegistrarTiempo - HorarioId Request: 1, Maquina: 23
+[2/02/2026 1:17:33 p. m.] UpdateProdDiaria - Fecha: 2/02/2026 12:00:00 a. m., Maq: 23, Usu: 3, Tiempos: 3, PrimerHorario: 1
+[2/02/2026 1:17:33 p. m.] Asignando HorarioId 1 a ProduccionDiaria
+[2/02/2026 1:18:00 p. m.] RegistrarTiempo - HorarioId Request: 1, Maquina: 23
+[2/02/2026 1:18:00 p. m.] UpdateProdDiaria - Fecha: 2/02/2026 12:00:00 a. m., Maq: 23, Usu: 16, Tiempos: 1, PrimerHorario: 1
+[2/02/2026 1:18:00 p. m.] Asignando HorarioId 1 a ProduccionDiaria
+[2/02/2026 1:18:26 p. m.] RegistrarTiempo - HorarioId Request: 1, Maquina: 23
+[2/02/2026 1:18:26 p. m.] UpdateProdDiaria - Fecha: 2/02/2026 12:00:00 a. m., Maq: 23, Usu: 16, Tiempos: 2, PrimerHorario: 1
+[2/02/2026 1:18:26 p. m.] Asignando HorarioId 1 a ProduccionDiaria
+[2/02/2026 1:19:26 p. m.] UpdateProdDiaria - Fecha: 2/02/2026 12:00:00 a. m., Maq: 23, Usu: 16, Tiempos: 2, PrimerHorario: 1
+[2/02/2026 1:19:26 p. m.] Asignando HorarioId 1 a ProduccionDiaria
+[2/02/2026 1:37:23 p. m.] RegistrarTiempo - HorarioId Request: 1, Maquina: 23
+[2/02/2026 1:37:23 p. m.] UpdateProdDiaria - Fecha: 2/02/2026 12:00:00 a. m., Maq: 23, Usu: 16, Tiempos: 3, PrimerHorario: 1
+[2/02/2026 1:37:23 p. m.] Asignando HorarioId 1 a ProduccionDiaria
+[2/02/2026 1:37:34 p. m.] UpdateProdDiaria - Fecha: 2/02/2026 12:00:00 a. m., Maq: 23, Usu: 16, Tiempos: 3, PrimerHorario: 1
+[2/02/2026 1:37:34 p. m.] Asignando HorarioId 1 a ProduccionDiaria
+[4/02/2026 10:09:04 a. m.] RegistrarTiempo - HorarioId Request: 3, Maquina: 23
+[4/02/2026 10:09:04 a. m.] UpdateProdDiaria - Fecha: 4/02/2026 12:00:00 a. m., Maq: 23, Usu: 16, Tiempos: 1, PrimerHorario: 3
+[4/02/2026 10:09:04 a. m.] Asignando HorarioId 3 a ProduccionDiaria
+[4/02/2026 10:09:19 a. m.] UpdateProdDiaria - Fecha: 4/02/2026 12:00:00 a. m., Maq: 23, Usu: 16, Tiempos: 1, PrimerHorario: 3
+[4/02/2026 10:09:19 a. m.] Asignando HorarioId 3 a ProduccionDiaria
+[4/02/2026 10:09:33 a. m.] RegistrarTiempo - HorarioId Request: 3, Maquina: 23
+[4/02/2026 10:09:33 a. m.] UpdateProdDiaria - Fecha: 4/02/2026 12:00:00 a. m., Maq: 23, Usu: 16, Tiempos: 2, PrimerHorario: 3
+[4/02/2026 10:09:33 a. m.] Asignando HorarioId 3 a ProduccionDiaria
+[4/02/2026 10:10:30 a. m.] UpdateProdDiaria - Fecha: 4/02/2026 12:00:00 a. m., Maq: 23, Usu: 16, Tiempos: 2, PrimerHorario: 3
+[4/02/2026 10:10:30 a. m.] Asignando HorarioId 3 a ProduccionDiaria
+[4/02/2026 10:11:23 a. m.] RegistrarTiempo - HorarioId Request: 3, Maquina: 23
+[4/02/2026 10:11:23 a. m.] UpdateProdDiaria - Fecha: 4/02/2026 12:00:00 a. m., Maq: 23, Usu: 16, Tiempos: 3, PrimerHorario: 3
+[4/02/2026 10:11:23 a. m.] Asignando HorarioId 3 a ProduccionDiaria
+[4/02/2026 10:12:07 a. m.] UpdateProdDiaria - Fecha: 4/02/2026 12:00:00 a. m., Maq: 23, Usu: 16, Tiempos: 3, PrimerHorario: 3
+[4/02/2026 10:12:07 a. m.] Asignando HorarioId 3 a ProduccionDiaria

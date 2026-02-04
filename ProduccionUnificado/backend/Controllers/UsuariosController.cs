@@ -45,6 +45,7 @@ public class UsuariosController : ControllerBase
         usuario.Activo = updated.Activo;
         usuario.EsPorHoras = updated.EsPorHoras;
         usuario.Salario = updated.Salario; // ADDED
+        usuario.Documento = updated.Documento; // ADDED
         await _context.SaveChangesAsync();
         
         return Ok(usuario);

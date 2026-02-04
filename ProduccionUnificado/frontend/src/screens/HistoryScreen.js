@@ -45,7 +45,7 @@ const HistoryScreen = ({ navigation }) => { // Recibimos navigation prop
 
         const interval = setInterval(() => {
             handleSearch(true); // true = silent match
-        }, 15000); // 15 seconds
+        }, 4000); // 4 seconds (Real-time feel)
 
         return () => clearInterval(interval);
     }, [mesInicio, anioInicio, mesFin, anioFin, selectedMaquina, selectedOperario]); // Re-run if filters change
@@ -182,7 +182,7 @@ const HistoryScreen = ({ navigation }) => { // Recibimos navigation prop
                 <TouchableOpacity style={styles.searchButton} onPress={() => handleSearch(false)} disabled={loading}>
                     <Text style={styles.searchButtonText}>{loading ? 'Buscando...' : '🔍 Actualizar Ahora'}</Text>
                 </TouchableOpacity>
-                <Text style={{ textAlign: 'center', fontSize: 10, color: '#888', marginTop: 5 }}>Actualización automática cada 15s</Text>
+                <Text style={{ textAlign: 'center', fontSize: 10, color: '#888', marginTop: 5 }}>Actualización en tiempo real (4s)</Text>
             </View>
 
             {/* Results Table */}
@@ -191,48 +191,59 @@ const HistoryScreen = ({ navigation }) => { // Recibimos navigation prop
 
                 {/* Table Header */}
                 <View style={styles.tableHeader}>
-                    <Text style={[styles.columnHeader, { flex: 0.8 }]}>Fecha</Text>
-                    <Text style={[styles.columnHeader, { flex: 1.2 }]}>Operario</Text>
-                    <Text style={[styles.columnHeader, { flex: 1.2 }]}>Máquina</Text>
-                    <Text style={[styles.columnHeader, { flex: 0.8 }]}>OP</Text>
-                    <Text style={[styles.columnHeader, { flex: 1 }]}>Actividad</Text>
-                    <Text style={[styles.columnHeader, { flex: 0.8, textAlign: 'right' }]}>Tiempo</Text>
-                    <Text style={[styles.columnHeader, { flex: 0.7, textAlign: 'right' }]}>Tiros</Text>
-                    <Text style={[styles.columnHeader, { flex: 0.6, textAlign: 'right' }]}>Desp</Text>
-                    <Text style={[styles.columnHeader, { flex: 0.8, textAlign: 'right' }]}>Pago</Text>
+                    <Text style={[styles.columnHeader, { flex: 0.7 }]}>Fecha</Text>
+                    <Text style={[styles.columnHeader, { flex: 1 }]}>Operario</Text>
+                    <Text style={[styles.columnHeader, { flex: 1 }]}>Máquina</Text>
+                    <Text style={[styles.columnHeader, { flex: 0.6 }]}>OP</Text>
+                    <Text style={[styles.columnHeader, { flex: 0.9 }]}>Actividad</Text>
+                    <Text style={[styles.columnHeader, { flex: 0.7, textAlign: 'center' }]}>Inicio</Text>
+                    <Text style={[styles.columnHeader, { flex: 0.7, textAlign: 'center' }]}>Fin</Text>
+                    <Text style={[styles.columnHeader, { flex: 0.7, textAlign: 'right' }]}>Tiempo</Text>
+                    <Text style={[styles.columnHeader, { flex: 0.6, textAlign: 'right' }]}>Tiros</Text>
+                    <Text style={[styles.columnHeader, { flex: 0.5, textAlign: 'right' }]}>Desp</Text>
+                    <Text style={[styles.columnHeader, { flex: 0.6, textAlign: 'right' }]}>Pago</Text>
                 </View>
 
                 {/* Rows */}
-                {results.map((item, index) => (
-                    <View key={index} style={[styles.tableRow, { backgroundColor: index % 2 === 0 ? colors.rowEven : colors.rowOdd }]}>
-                        <Text style={[styles.cell, { flex: 0.8, color: colors.text }]}>{new Date(item.fecha).toLocaleDateString()}</Text>
-                        <Text style={[styles.cell, { flex: 1.2, color: colors.text }]}>{item.usuarioNombre}</Text>
-                        <Text style={[styles.cell, { flex: 1.2, color: colors.text }]}>{item.maquinaNombre}</Text>
-                        <Text style={[styles.cell, { flex: 0.8, color: colors.text, fontSize: 10 }]}>{item.ordenProduccionNumero}</Text>
-                        <Text style={[styles.cell, { flex: 1, fontWeight: 'bold', color: '#0275d8' }]}>{item.actividadNombre}</Text>
-                        <Text style={[styles.cell, { flex: 0.8, textAlign: 'right', fontWeight: 'bold', color: colors.text }]}>{item.duracion}</Text>
-                        <Text style={[styles.cell, { flex: 0.7, textAlign: 'right', color: colors.text }]}>{item.tiros > 0 ? item.tiros : '-'}</Text>
-                        <Text style={[styles.cell, { flex: 0.6, textAlign: 'right', color: '#d9534f' }]}>{item.desperdicio > 0 ? item.desperdicio : '-'}</Text>
-                        <Text style={[styles.cell, { flex: 0.8, textAlign: 'right', fontWeight: 'bold', color: '#28a745' }]}>
-                            {'-'}
-                        </Text>
-                    </View>
-                ))}
+                {/* Rows */}
+                {results.map((item, index) => {
+                    const isActive = (item.horaInicio && item.horaFin && item.horaInicio.trim() === item.horaFin.trim());
+                    return (
+                        <View key={index} style={[styles.tableRow, { backgroundColor: isActive ? '#e3f2fd' : (index % 2 === 0 ? colors.rowEven : colors.rowOdd) }]}>
+                            <Text style={[styles.cell, { flex: 0.7, color: colors.text }]}>{new Date(item.fecha).toLocaleDateString()}</Text>
+                            <Text style={[styles.cell, { flex: 1, color: colors.text }]}>{item.usuarioNombre}</Text>
+                            <Text style={[styles.cell, { flex: 1, color: colors.text }]}>{item.maquinaNombre}</Text>
+                            <Text style={[styles.cell, { flex: 0.6, color: colors.text, fontSize: 10 }]}>{item.ordenProduccionNumero}</Text>
+                            <Text style={[styles.cell, { flex: 0.9, fontWeight: 'bold', color: '#0275d8' }]}>{item.actividadNombre}</Text>
+                            <Text style={[styles.cell, { flex: 0.7, textAlign: 'center', color: colors.text }]}>{item.horaInicio}</Text>
+                            <Text style={[styles.cell, { flex: 0.7, textAlign: 'center', color: isActive ? '#0275d8' : colors.text, fontWeight: isActive ? 'bold' : 'normal' }]}>
+                                {isActive ? '---' : item.horaFin}
+                            </Text>
+                            <Text style={[styles.cell, { flex: 0.7, textAlign: 'right', fontWeight: 'bold', color: isActive ? '#0275d8' : colors.text }]}>
+                                {isActive ? 'En Progreso' : item.duracion}
+                            </Text>
+                            <Text style={[styles.cell, { flex: 0.6, textAlign: 'right', color: colors.text }]}>{item.tiros > 0 ? item.tiros : '-'}</Text>
+                            <Text style={[styles.cell, { flex: 0.5, textAlign: 'right', color: '#d9534f' }]}>{item.desperdicio > 0 ? item.desperdicio : '-'}</Text>
+                            <Text style={[styles.cell, { flex: 0.6, textAlign: 'right', fontWeight: 'bold', color: '#28a745' }]}>
+                                {'-'}
+                            </Text>
+                        </View>
+                    );
+                })}
 
                 {results.length > 0 && (
                     <View style={[styles.totalsRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                        <Text style={[styles.totalCell, { flex: 4, color: colors.text }]}>TOTALES</Text>
-                        <Text style={[styles.totalCell, { flex: 1, color: colors.text }]}>-</Text>
-                        <Text style={[styles.totalCell, { flex: 0.8, textAlign: 'right', color: colors.text }]}>
+                        <Text style={[styles.totalCell, { flex: 5.6, color: colors.text }]}>TOTALES</Text>
+                        <Text style={[styles.totalCell, { flex: 0.7, textAlign: 'right', color: colors.text }]}>
                             {formatSeconds(results.reduce((sum, item) => sum + parseDuration(item.duracion), 0))}
                         </Text>
-                        <Text style={[styles.totalCell, { flex: 0.7, textAlign: 'right', color: colors.text }]}>
+                        <Text style={[styles.totalCell, { flex: 0.6, textAlign: 'right', color: colors.text }]}>
                             {results.reduce((sum, item) => sum + (item.tiros || 0), 0)}
                         </Text>
-                        <Text style={[styles.totalCell, { flex: 0.6, textAlign: 'right', color: colors.text }]}>
+                        <Text style={[styles.totalCell, { flex: 0.5, textAlign: 'right', color: colors.text }]}>
                             {results.reduce((sum, item) => sum + (item.desperdicio || 0), 0)}
                         </Text>
-                        <Text style={[styles.totalCell, { flex: 0.8, textAlign: 'right', color: colors.text }]}>
+                        <Text style={[styles.totalCell, { flex: 0.6, textAlign: 'right', color: colors.text }]}>
                             {'-'}
                         </Text>
                     </View>

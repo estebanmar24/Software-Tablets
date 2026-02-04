@@ -428,31 +428,25 @@ const DesperdicioScreen = () => {
             const summaryCode = getGroupData(r => r.codigo);
             const summaryOp = getGroupData(r => r.usuarioNombre);
 
-            // Resumen Máquina Mensual (Independiente del filtro diario de la lista)
-            // 1. Determinar Mes/Año objetivo
-            const targetDate = selectedFecha || new Date(); // Si no hay fecha, usa hoy (mes actual)
+            // Resumen Máquina Mensual
+            // 1. Determinar Mes/Año objetivo para Contexto de Producción
+            let targetDate = selectedFecha;
+            if (!targetDate && registrosOrdenados.length > 0) {
+                // Si no hay fecha seleccionada, usar la del último registro (el más reciente)
+                targetDate = new Date(registrosOrdenados[registrosOrdenados.length - 1].fecha);
+            }
+            targetDate = targetDate || new Date();
+
             const targetMonth = targetDate.getMonth() + 1;
             const targetYear = targetDate.getFullYear();
 
-            // 2. Fetch Waste Monthly Summary (UNFILTERED by context to show Machine Month Totals)
+            // 2. Calcular Desperdicio por Máquina desde los registros FILTRADOS (Consistencia)
             const wasteByMaq = {};
-            try {
-                // We ask for GLOBAL monthly summary for all machines
-                let urlWaste = `${API_URL}/desperdicio/resumen-mensual?mes=${targetMonth}&anio=${targetYear}`;
-
-                const resWaste = await fetch(urlWaste);
-                if (resWaste.ok) {
-                    const list = await resWaste.json();
-                    list.forEach(w => {
-                        const mid = w.maquinaId !== undefined ? w.maquinaId : w.MaquinaId;
-                        const qty = w.cantidad !== undefined ? w.cantidad : w.Cantidad;
-                        const name = w.maquinaNombre !== undefined ? w.maquinaNombre : w.MaquinaNombre;
-                        if (mid !== undefined) {
-                            wasteByMaq[mid] = { nombre: name, cantidad: qty || 0 };
-                        }
-                    });
-                }
-            } catch (e) { console.log("Error fetching waste summary", e); }
+            registrosOrdenados.forEach(r => {
+                const mid = r.maquinaId;
+                if (!wasteByMaq[mid]) wasteByMaq[mid] = { nombre: r.maquinaNombre, cantidad: 0 };
+                wasteByMaq[mid].cantidad += r.cantidad;
+            });
 
             // 3. Fetch Production Monthly Summary (UNFILTERED by context)
             let prodByMaq = {}; // { id: tiros }
@@ -498,7 +492,18 @@ const DesperdicioScreen = () => {
                     waste.toLocaleString('es-CO', { maximumFractionDigits: 0 }),
                     `${pct.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`
                 ];
-            }).filter(item => item !== null).sort((a, b) => a[0].localeCompare(b[0]));
+            }).filter(item => item !== null).sort((a, b) => {
+                const nA = a[0];
+                const nB = b[0];
+                const matchA = nA.match(/^\d+/);
+                const matchB = nB.match(/^\d+/);
+                if (matchA && matchB) {
+                    const numA = parseInt(matchA[0], 10);
+                    const numB = parseInt(matchB[0], 10);
+                    if (numA !== numB) return numA - numB;
+                }
+                return nA.localeCompare(nB);
+            });
 
 
             // Mover a nueva pagina si queda poco espacio

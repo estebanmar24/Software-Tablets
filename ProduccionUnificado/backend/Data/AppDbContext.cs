@@ -66,6 +66,9 @@ public class AppDbContext : DbContext
     public DbSet<Talleres_Gasto> Talleres_Gastos { get; set; }
     public DbSet<Talleres_PresupuestoMensual> Talleres_PresupuestosMensuales { get; set; }
 
+    // Orden y Aseo Surveys
+    public DbSet<EncuestaOrdenAseo> EncuestasOrdenAseo { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -320,6 +323,9 @@ public class AppDbContext : DbContext
         // Desperdicio Tables Configuration
         modelBuilder.Entity<CodigoDesperdicio>().ToTable("CodigosDesperdicio");
         modelBuilder.Entity<RegistroDesperdicio>().ToTable("RegistrosDesperdicio");
+
+        // Orden y Aseo Configuration
+        modelBuilder.Entity<EncuestaOrdenAseo>().ToTable("EncuestasOrdenAseo");
 
         modelBuilder.Entity<RegistroDesperdicio>()
             .HasOne(r => r.CodigoDesperdicio)

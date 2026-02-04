@@ -58,6 +58,15 @@ export async function getProduccionDia(
     return response.data;
 }
 
+// Finalizar tiempo de actividad
+export async function finalizarTiempo(
+    id: number,
+    request: RegistrarTiempoRequest
+): Promise<TiempoProceso> {
+    const response = await api.put<TiempoProceso>(`${API_BASE_URL}/finalizar/${id}`, request);
+    return response.data;
+}
+
 // Registrar tiempo de actividad
 export async function registrarTiempo(
     request: RegistrarTiempoRequest

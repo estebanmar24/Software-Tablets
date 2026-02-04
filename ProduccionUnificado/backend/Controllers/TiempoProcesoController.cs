@@ -109,6 +109,23 @@ public class TiempoProcesoController : ControllerBase
     }
 
     /// <summary>
+    /// Finaliza un tiempo de proceso existente
+    /// </summary>
+    [HttpPut("finalizar/{id}")]
+    public async Task<ActionResult<TiempoProcesoDto>> FinalizarTiempo(long id, [FromBody] RegistrarTiempoRequest request)
+    {
+        try
+        {
+            var resultado = await _service.FinalizarTiempoAsync(id, request);
+            return Ok(resultado);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Obtiene el historial detallado de tiempos
     /// </summary>
     [HttpGet("historial")]

@@ -12,6 +12,8 @@ public class Talleres_Personal
     [Required]
     public string Nombre { get; set; } = string.Empty;
     
+    public string Documento { get; set; } = string.Empty; // ADDED
+    
     public string? Cargo { get; set; }
     
     [Column(TypeName = "decimal(18,2)")]

@@ -52,10 +52,26 @@ public class CalificacionController : ControllerBase
                     var tirosReferencia = maq.TirosReferencia;
                     // Same formula as ProduccionController.GetResumen
                     var tirosTotales = grupoMaquina.Sum(p => (p.Cambios * tirosReferencia) + p.TirosDiarios);
-                    var diasMaq = grupoMaquina.Select(p => p.Fecha.Date).Distinct().Count();
                     
-                    var meta100Porciento = maq.Meta100Porciento > 0 ? maq.Meta100Porciento : maq.MetaRendimiento;
-                    var meta100 = meta100Porciento * diasMaq;
+                    var meta100PorcientoBase = maq.Meta100Porciento > 0 ? maq.Meta100Porciento : maq.MetaRendimiento;
+                    
+                    // Calculate meta100 iterating days to handle Half-Day Saturdays
+                    decimal meta100 = 0;
+                    var distinctDays = grupoMaquina.Select(p => p.Fecha.Date).Distinct().ToList();
+                    foreach (var day in distinctDays)
+                    {
+                        // JAN 1-14 2026 ADJUSTMENT
+                        if (day.Month == 1 && day.Day >= 1 && day.Day <= 14 && day.Year == 2026)
+                        {
+                            decimal totalHoursMachine = grupoMaquina.Where(p => p.Fecha.Date == day).Sum(p => p.TotalHoras);
+                            if (totalHoursMachine > 0)
+                                meta100 += meta100PorcientoBase / totalHoursMachine;
+                        }
+                        else if (day.DayOfWeek == DayOfWeek.Saturday)
+                            meta100 += meta100PorcientoBase / 2;
+                        else
+                            meta100 += meta100PorcientoBase;
+                    }
                     
                     var pct = meta100 > 0 ? (decimal)tirosTotales / meta100 * 100 : 0;
                     var calificacion = pct * maq.Importancia / 100;
@@ -171,8 +187,26 @@ public class CalificacionController : ControllerBase
                 {
                     // Calcular directamente en lugar de usar la propiedad computada
                     var tirosTotales = grupoMaquina.Sum(x => (x.Cambios * maquina.TirosReferencia) + x.TirosDiarios);
-                    var diasUnicos = grupoMaquina.Select(x => x.Fecha.Date).Distinct().Count();
-                    var meta100 = diasUnicos * maquina.Meta100Porciento;
+                    
+                    var meta100PorcientoBase = maquina.Meta100Porciento;
+                    
+                     // Calculate meta100 iterating days to handle Half-Day Saturdays
+                    decimal meta100 = 0;
+                    var distinctDays = grupoMaquina.Select(p => p.Fecha.Date).Distinct().ToList();
+                    foreach (var day in distinctDays)
+                    {
+                        // JAN 1-14 2026 ADJUSTMENT
+                        if (day.Month == 1 && day.Day >= 1 && day.Day <= 14 && day.Year == 2026)
+                        {
+                            decimal totalHoursMachine = grupoMaquina.Where(p => p.Fecha.Date == day).Sum(p => p.TotalHoras);
+                            if (totalHoursMachine > 0)
+                                meta100 += meta100PorcientoBase / totalHoursMachine;
+                        }
+                        else if (day.DayOfWeek == DayOfWeek.Saturday)
+                            meta100 += meta100PorcientoBase / 2;
+                        else
+                            meta100 += meta100PorcientoBase;
+                    }
                     
                     var porcentaje100 = meta100 > 0 ? ((decimal)tirosTotales / meta100) * 100 : 0;
                     var calificacion = porcentaje100 * ((decimal)maquina.Importancia / 100);
@@ -265,8 +299,26 @@ public class CalificacionController : ControllerBase
                     {
                         // Same formula as calcular-y-guardar
                         var tirosTotales = grupoMaquina.Sum(x => (x.Cambios * maquina.TirosReferencia) + x.TirosDiarios);
-                        var diasUnicos = grupoMaquina.Select(x => x.Fecha.Date).Distinct().Count();
-                        var meta100 = diasUnicos * maquina.Meta100Porciento;
+                        
+                        var meta100PorcientoBase = maquina.Meta100Porciento;
+                        
+                        // Calculate meta100 iterating days to handle Half-Day Saturdays
+                        decimal meta100 = 0;
+                        var distinctDays = grupoMaquina.Select(p => p.Fecha.Date).Distinct().ToList();
+                        foreach (var day in distinctDays)
+                        {
+                            // JAN 1-14 2026 ADJUSTMENT
+                            if (day.Month == 1 && day.Day >= 1 && day.Day <= 14 && day.Year == 2026)
+                            {
+                                decimal totalHoursMachine = grupoMaquina.Where(p => p.Fecha.Date == day).Sum(p => p.TotalHoras);
+                                if (totalHoursMachine > 0)
+                                    meta100 += meta100PorcientoBase / totalHoursMachine;
+                            }
+                            else if (day.DayOfWeek == DayOfWeek.Saturday)
+                                meta100 += meta100PorcientoBase / 2;
+                            else
+                                meta100 += meta100PorcientoBase;
+                        }
                         
                         var porcentaje100 = meta100 > 0 ? ((decimal)tirosTotales / meta100) * 100 : 0;
                         var calificacion = porcentaje100 * ((decimal)maquina.Importancia / 100);

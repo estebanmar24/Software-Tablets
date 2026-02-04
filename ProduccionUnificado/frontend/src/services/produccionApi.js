@@ -168,6 +168,18 @@ export const produccionApi = {
         return response.data;
     },
 
+    // ==================== HORAS EXTRAS REPORT ====================
+    getHorasExtrasReport: async (fechaInicio, fechaFin) => {
+        const response = await api.get(`${BASE_URL}/gastos/horas-extras-report?fechaInicio=${fechaInicio}&fechaFin=${fechaFin}`);
+        return response.data;
+    },
+
+    // ==================== RECARGOS REPORT ====================
+    getRecargosReport: async (fechaInicio, fechaFin) => {
+        const response = await api.get(`${BASE_URL}/gastos/recargos-report?fechaInicio=${fechaInicio}&fechaFin=${fechaFin}`);
+        return response.data;
+    },
+
     // Helper for month names
     getMesNombre: (mes) => {
         const nombres = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',

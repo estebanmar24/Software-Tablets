@@ -1,6 +1,6 @@
 {
   "name": "tiempoprocesos.app",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "main": "index.ts",
   "scripts": {
     "start": "set REACT_NATIVE_PACKAGER_HOSTNAME=192.168.100.227 && expo start",
@@ -45,7 +45,8 @@
     "react-native-svg": "^15.15.1",
     "react-native-view-shot": "^4.0.3",
     "react-native-web": "^0.21.0",
-    "text-encoding": "^0.7.0"
+    "text-encoding": "^0.7.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/react": "~19.1.0",

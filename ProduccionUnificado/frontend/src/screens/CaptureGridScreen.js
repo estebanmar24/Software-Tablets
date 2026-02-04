@@ -601,7 +601,20 @@ export default function CaptureGridScreen({ navigation }) {
         const esSabado = diaSemana === 6;
 
         let MetaRendimiento = rowMaquina.metaRendimiento || 0;
-        if (esSabado) {
+
+        // AJUSTE ENERO 1-14 2026: Meta = MetaBase / Horas Totales
+        // Nota: mes es 1-based (1..12) y anio es el seleccionado en el picker
+        // Pre-calcular TotalHoras aquí para usarlo en el ajuste
+        const TotalHorasProd_Pre = HorasOp + PuestaPunto;
+        const TotalAux_Pre = MantAseo + Descansos + OtrosAux;
+        const TotalMuertos_Pre = FaltaTrabajo + Reparacion + OtroMuerto;
+        const TotalHoras_Pre = TotalHorasProd_Pre + TotalAux_Pre + TotalMuertos_Pre;
+
+        if (anio === 2026 && mes === 1 && day.day >= 1 && day.day <= 14) {
+            if (TotalHoras_Pre > 0) {
+                MetaRendimiento = MetaRendimiento / TotalHoras_Pre;
+            }
+        } else if (esSabado) {
             MetaRendimiento = MetaRendimiento / 2;
         }
 

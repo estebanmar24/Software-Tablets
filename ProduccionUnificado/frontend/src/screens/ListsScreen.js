@@ -5,6 +5,7 @@ import { getUsuarios, createUsuario, updateUsuario, deleteUsuario } from '../ser
 export default function ListsScreen({ navigation }) {
     const [usuarios, setUsuarios] = useState([]);
     const [newUsuario, setNewUsuario] = useState('');
+    const [newDocumento, setNewDocumento] = useState(''); // NEW STATE
     const [newSalario, setNewSalario] = useState(''); // NEW STATE
     const [esPorHoras, setEsPorHoras] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -13,6 +14,7 @@ export default function ListsScreen({ navigation }) {
     const [editModalVisible, setEditModalVisible] = useState(false);
     const [editingUser, setEditingUser] = useState(null);
     const [editName, setEditName] = useState('');
+    const [editDocumento, setEditDocumento] = useState(''); // NEW EDIT STATE
     const [editSalario, setEditSalario] = useState(''); // NEW EDIT STATE
     const [editEsPorHoras, setEditEsPorHoras] = useState(false);
 
@@ -47,9 +49,11 @@ export default function ListsScreen({ navigation }) {
                 estado: true,
                 activo: true,
                 esPorHoras: esPorHoras,
-                salario: newSalario ? parseFloat(newSalario) : 0
+                salario: newSalario ? parseFloat(newSalario) : 0,
+                documento: newDocumento
             });
             setNewUsuario('');
+            setNewDocumento('');
             setNewSalario('');
             setEsPorHoras(false);
             loadUsuarios();
@@ -71,6 +75,7 @@ export default function ListsScreen({ navigation }) {
     const handleEditPress = (user) => {
         setEditingUser(user);
         setEditName(user.nombre);
+        setEditDocumento(user.documento || '');
         setEditSalario(user.salario ? user.salario.toString() : '');
         setEditEsPorHoras(user.esPorHoras || false);
         setEditModalVisible(true);
@@ -84,7 +89,8 @@ export default function ListsScreen({ navigation }) {
                 estado: editingUser.estado,
                 activo: editingUser.activo,
                 esPorHoras: editEsPorHoras,
-                salario: editSalario ? parseFloat(editSalario) : 0
+                salario: editSalario ? parseFloat(editSalario) : 0,
+                documento: editDocumento
             });
             setEditModalVisible(false);
             setEditingUser(null);
@@ -170,6 +176,13 @@ export default function ListsScreen({ navigation }) {
                     />
                     <TextInput
                         style={styles.input}
+                        value={newDocumento}
+                        onChangeText={setNewDocumento}
+                        placeholder="Documento"
+                        keyboardType="numeric"
+                    />
+                    <TextInput
+                        style={styles.input}
                         value={newSalario}
                         onChangeText={setNewSalario}
                         placeholder="Salario (Mensual)"
@@ -202,6 +215,7 @@ export default function ListsScreen({ navigation }) {
                             <Text style={styles.itemText}>
                                 {item.nombre} {item.esPorHoras ? "🕒" : ""} {!item.activo && "(Eliminado)"}
                             </Text>
+                            {item.documento ? <Text style={{ fontSize: 13, color: '#555' }}>🆔 {item.documento}</Text> : null}
                             {item.esPorHoras ? (
                                 <Text style={{ fontSize: 13, color: '#059669', marginTop: 2 }}>
                                     💰 Por Horas
@@ -258,6 +272,13 @@ export default function ListsScreen({ navigation }) {
                             value={editName}
                             onChangeText={setEditName}
                             placeholder="Nombre del operario"
+                        />
+                        <TextInput
+                            style={styles.modalInput}
+                            value={editDocumento}
+                            onChangeText={setEditDocumento}
+                            placeholder="Documento"
+                            keyboardType="numeric"
                         />
                         <TextInput
                             style={styles.modalInput}
