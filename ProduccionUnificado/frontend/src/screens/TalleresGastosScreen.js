@@ -243,7 +243,7 @@ function GastosTab() {
             if (!worker) { console.log('DEBUG Calc: Worker not found'); return; }
 
             const salario = parseFloat(worker.salario || worker.Salario) || 0;
-            const valorHoraBase = salario / 240;
+            const valorHoraBase = salario / 220;
             const horas = parseFloat(formData.cantidadHoras) || 0;
             let factor = 0; // Initialize to 0 to catch missing types
 

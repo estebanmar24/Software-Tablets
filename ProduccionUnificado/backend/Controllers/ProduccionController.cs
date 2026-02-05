@@ -385,8 +385,8 @@ public class ProduccionController : ControllerBase
 
                 if (usuario == null || factor <= 0) return BadRequest("Referencia no encontrada o factor inválido");
 
-                // Formula: (Salario / 240) * Factor * Horas
-                decimal hourlyRate = usuario.Salario / 240m;
+                // Formula: (Salario / 220) * Factor * Horas
+                decimal hourlyRate = usuario.Salario / 220m;
                 gasto.Precio = hourlyRate * factor * (gasto.CantidadHoras ?? 0);
                 gasto.Precio = Math.Round(gasto.Precio, 2);
                 
@@ -479,7 +479,7 @@ public class ProduccionController : ControllerBase
                 UsuarioNombre = g.Usuario != null ? g.Usuario.Nombre : "N/A",
                 UsuarioDocumento = g.Usuario != null ? g.Usuario.Documento : "",
                 Salario = g.Usuario != null ? g.Usuario.Salario : 0, // ADDED
-                ValorHora = g.Usuario != null ? (g.Usuario.Salario / 240m) : 0, // ADDED
+                ValorHora = g.Usuario != null ? (g.Usuario.Salario / 220m) : 0, // ADDED
                 NumeroOP = g.NumeroOP ?? "",
                 TipoHoraNombre = g.TipoHora != null ? g.TipoHora.Nombre : "N/A",
                 Factor = g.TipoHora != null ? g.TipoHora.Factor : 0,
@@ -518,7 +518,7 @@ public class ProduccionController : ControllerBase
                 UsuarioNombre = g.Usuario != null ? g.Usuario.Nombre : "N/A",
                 UsuarioDocumento = g.Usuario != null ? g.Usuario.Documento : "", // ADDED
                 Salario = g.Usuario != null ? g.Usuario.Salario : 0, // ADDED
-                ValorHora = g.Usuario != null ? (g.Usuario.Salario / 240m) : 0, // ADDED
+                ValorHora = g.Usuario != null ? (g.Usuario.Salario / 220m) : 0, // ADDED
                 NumeroOP = g.NumeroOP ?? "",
                 TipoRecargoNombre = g.TipoRecargo != null ? g.TipoRecargo.Nombre : "N/A",
                 Factor = g.TipoRecargo != null ? g.TipoRecargo.Factor : 0,
@@ -771,7 +771,8 @@ public class ProduccionController : ControllerBase
                     porcentajeRendimiento75 = pct75,
                     porcentajeRendimiento100 = pct100,
                     semaforoColor = sem75,
-                    semaforoColor100 = sem100
+                    semaforoColor100 = sem100,
+                    ultimaFecha = g.Max(p => p.Fecha).ToString("dd/MM/yyyy"),
                 };
             })
             .OrderBy(r => r.operario)
@@ -843,7 +844,9 @@ public class ProduccionController : ControllerBase
                     totalTiempoFaltaTrabajo = g.Sum(p => p.TiempoFaltaTrabajo),
                     totalTiempoOtro = g.Sum(p => p.TiempoOtroMuerto),
                     importancia = importancia,
-                    calificacion = Math.Round(calificacion, 2)
+                    calificacion = Math.Round(calificacion, 2),
+                    diasLaborados = diasMaq,
+                    ultimaFecha = g.Max(p => p.Fecha).ToString("dd/MM/yyyy")
                 };
             })
             .OrderBy(r => r.maquina)
@@ -1373,5 +1376,63 @@ public class ProduccionController : ControllerBase
         }
 
         return Ok(new { Total = Math.Round(totalMeta, 2), Desglose = breakdown });
+    }
+
+    [HttpDelete("history/clear")]
+    public async Task<IActionResult> ClearHistory(int mes, int anio)
+    {
+        var records = await _context.RendimientoOperariosMensual
+            .Where(r => r.Mes == mes && r.Anio == anio)
+            .ToListAsync();
+
+        if (records.Count == 0)
+        {
+            return Ok(new { message = "No history records found for this period." });
+        }
+
+        _context.RendimientoOperariosMensual.RemoveRange(records);
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = $"Deleted {records.Count} history records for {mes}/{anio}." });
+    }
+
+    [HttpPost("gastos/recalcular")]
+    public async Task<IActionResult> RecalcularGastos()
+    {
+        var rubroHE = await _context.Produccion_Rubros.FirstOrDefaultAsync(r => r.Nombre == "Horas Extras");
+        var rubroRecargo = await _context.Produccion_Rubros.FirstOrDefaultAsync(r => r.Nombre == "Recargo");
+
+        var ids = new List<int>();
+        if (rubroHE != null) ids.Add(rubroHE.Id);
+        if (rubroRecargo != null) ids.Add(rubroRecargo.Id);
+
+        if (!ids.Any()) return Ok("No rubros found");
+
+        var gastos = await _context.Produccion_Gastos
+            .Where(g => ids.Contains(g.RubroId))
+            .Include(g => g.Usuario) // Need User Salary
+            .Include(g => g.TipoHora) // Need Factors
+            .Include(g => g.TipoRecargo)
+            .ToListAsync();
+
+        int count = 0;
+        foreach (var g in gastos)
+        {
+            if (g.Usuario == null || g.Usuario.Salario <= 0) continue;
+
+            decimal factor = 0;
+            if (g.RubroId == rubroHE?.Id && g.TipoHora != null) factor = g.TipoHora.Factor;
+            if (g.RubroId == rubroRecargo?.Id && g.TipoRecargo != null) factor = g.TipoRecargo.Factor;
+            
+            if (factor > 0 && g.CantidadHoras > 0)
+            {
+                decimal hourlyRate = g.Usuario.Salario / 220m;
+                g.Precio = Math.Round(hourlyRate * factor * g.CantidadHoras.Value, 2);
+                count++;
+            }
+        }
+        
+        await _context.SaveChangesAsync();
+        return Ok(new { message = $"Recalculated {count} records." });
     }
 }

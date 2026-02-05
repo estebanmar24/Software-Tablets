@@ -331,7 +331,7 @@ public class TalleresController : ControllerBase
                 PersonalNombre = g.Personal != null ? g.Personal.Nombre : "N/A",
                 PersonalDocumento = g.Personal != null ? g.Personal.Documento : "", // ADDED
                 Salario = g.Personal != null ? g.Personal.Salario : 0, // ADDED
-                ValorHora = g.Personal != null ? (g.Personal.Salario / 240m) : 0, // ADDED
+                ValorHora = g.Personal != null ? (g.Personal.Salario / 220m) : 0, // ADDED
                 NumeroOP = g.NumeroOP ?? "",
                 TipoHoraNombre = g.TipoHora != null ? g.TipoHora.Nombre : "N/A",
                 Factor = g.TipoHora != null ? g.TipoHora.Factor : 0,
@@ -370,7 +370,7 @@ public class TalleresController : ControllerBase
                 PersonalNombre = g.Personal != null ? g.Personal.Nombre : "N/A",
                 PersonalDocumento = g.Personal != null ? g.Personal.Documento : "", // ADDED
                 Salario = g.Personal != null ? g.Personal.Salario : 0, // ADDED
-                ValorHora = g.Personal != null ? (g.Personal.Salario / 240m) : 0, // ADDED
+                ValorHora = g.Personal != null ? (g.Personal.Salario / 220m) : 0, // ADDED
                 NumeroOP = g.NumeroOP ?? "",
                 TipoRecargoNombre = g.TipoRecargo != null ? g.TipoRecargo.Nombre : "N/A",
                 Factor = g.TipoRecargo != null ? g.TipoRecargo.Factor : 0,
@@ -648,4 +648,44 @@ public class TalleresController : ControllerBase
     }
 
     #endregion
+
+    [HttpPost("gastos/recalcular")]
+    public async Task<IActionResult> RecalcularGastos()
+    {
+        var rubroHE = await _context.Talleres_Rubros.FirstOrDefaultAsync(r => r.Nombre == "Horas Extras");
+        var rubroRecargo = await _context.Talleres_Rubros.FirstOrDefaultAsync(r => r.Nombre == "Recargo");
+
+        var ids = new List<int>();
+        if (rubroHE != null) ids.Add(rubroHE.Id);
+        if (rubroRecargo != null) ids.Add(rubroRecargo.Id);
+
+        if (!ids.Any()) return Ok("No rubros found");
+
+        var gastos = await _context.Talleres_Gastos
+            .Where(g => ids.Contains(g.RubroId))
+            .Include(g => g.Personal) // Need Personal Salary
+            .Include(g => g.TipoHora) // Need Factors
+            .Include(g => g.TipoRecargo)
+            .ToListAsync();
+
+        int count = 0;
+        foreach (var g in gastos)
+        {
+            if (g.Personal == null || g.Personal.Salario <= 0) continue;
+
+            decimal factor = 0;
+            if (g.RubroId == rubroHE?.Id && g.TipoHora != null) factor = g.TipoHora.Factor;
+            if (g.RubroId == rubroRecargo?.Id && g.TipoRecargo != null) factor = g.TipoRecargo.Factor;
+            
+            if (factor > 0 && g.CantidadHoras > 0)
+            {
+                decimal hourlyRate = g.Personal.Salario / 220m;
+                g.Precio = Math.Round(hourlyRate * factor * g.CantidadHoras.Value, 2);
+                count++;
+            }
+        }
+        
+        await _context.SaveChangesAsync();
+        return Ok(new { message = $"Recalculated {count} records." });
+    }
 }

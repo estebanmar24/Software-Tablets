@@ -213,7 +213,7 @@ function GastosTab() {
             }
 
             if (usuario && factor > 0) {
-                const hourlyRate = (usuario.salario || 0) / 240;
+                const hourlyRate = (usuario.salario || 0) / 220;
                 const total = hourlyRate * factor * parseFloat(formData.cantidadHoras);
                 setFormData(prev => ({ ...prev, precio: Math.round(total).toString() }));
             }

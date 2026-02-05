@@ -1548,6 +1548,10 @@ export default function DashboardScreen({ navigation }) {
                                     <Text style={[styles.cardTitle, { color: colors.text }]}>{item.operario} - {item.maquina}</Text>
                                     <Text style={{ color: colors.text }}>Meta 100%: {item.meta100Porciento?.toFixed(0) || '0'}</Text>
                                     <Text style={{ color: colors.text }}>Tiros: {item.totalTiros}</Text>
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', paddingRight: 10 }}>
+                                        <Text style={{ color: colors.text, fontSize: 11, fontWeight: 'bold' }}>📅 Último: {item.ultimaFecha}</Text>
+                                        <Text style={{ color: colors.text, fontSize: 11, fontWeight: 'bold' }}>#️⃣ Días: {item.diasLaborados}</Text>
+                                    </View>
                                     <Text style={{ color: colors.text }}>Horas Prod: {item.totalHorasProductivas?.toFixed(2)}</Text>
                                     <Text style={{ color: colors.text }}>Promedio/H: {item.promedioHoraProductiva?.toFixed(2)}</Text>
                                     <Text style={{ color: colors.text }}>💰 Bonificación: ${item.valorAPagarBonificable?.toFixed(0) || '0'}</Text>
@@ -1582,6 +1586,10 @@ export default function DashboardScreen({ navigation }) {
                             displayedMaquinas.map((item, index) => (
                                 <View key={index} style={[styles.card, { backgroundColor: getColor(item.semaforoColor), borderColor: 'black', borderWidth: 2 }]}>
                                     <Text style={[styles.cardTitle, { color: '#000' }]}>{item.maquina}</Text>
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
+                                        <Text style={{ color: '#000', fontSize: 11, fontWeight: 'bold' }}>📅 {item.ultimaFecha}</Text>
+                                        <Text style={{ color: '#000', fontSize: 11, fontWeight: 'bold' }}>#️⃣ {item.diasLaborados} días</Text>
+                                    </View>
                                     <Text style={{ color: '#000' }}>Tiros Totales: {item.tirosTotales}</Text>
                                     <Text style={{ color: '#000' }}>Rendimiento Esp: {item.meta100Porciento?.toFixed(0)}</Text>
                                     <Text style={{ color: '#000' }}>Eficiencia: {(item.porcentajeRendimiento100)?.toFixed(1)}%</Text>
