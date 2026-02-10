@@ -69,6 +69,9 @@ public class AppDbContext : DbContext
     // Orden y Aseo Surveys
     public DbSet<EncuestaOrdenAseo> EncuestasOrdenAseo { get; set; }
 
+    // Detalle diario de producción
+    public DbSet<ProduccionDiariaDetalle> ProduccionDiariaDetalles { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -326,6 +329,19 @@ public class AppDbContext : DbContext
 
         // Orden y Aseo Configuration
         modelBuilder.Entity<EncuestaOrdenAseo>().ToTable("EncuestasOrdenAseo");
+
+        // ProduccionDiariaDetalle Configuration
+        modelBuilder.Entity<ProduccionDiariaDetalle>().ToTable("ProduccionDiariaDetalles");
+        modelBuilder.Entity<ProduccionDiariaDetalle>()
+            .HasOne(d => d.ProduccionDiaria)
+            .WithMany()
+            .HasForeignKey(d => d.ProduccionDiariaId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<ProduccionDiariaDetalle>()
+            .HasOne(d => d.Actividad)
+            .WithMany()
+            .HasForeignKey(d => d.ActividadId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<RegistroDesperdicio>()
             .HasOne(r => r.CodigoDesperdicio)

@@ -39,17 +39,17 @@ export default function OrdenAseoScreen({ navigation }) {
         nombreAuditado: '',
         planta: '',
         implementosAseo: false,
-        fotoImplementosAseoBase64: null,
+        fotoImplementosAseoBase64: [],
         herramientasLugar: false,
-        fotoHerramientasLugarBase64: null,
+        fotoHerramientasLugarBase64: [],
         tarrosRotulados: false,
-        fotoTarrosRotuladosBase64: null,
+        fotoTarrosRotuladosBase64: [],
         areaDespejada: false,
-        fotoAreaDespejadaBase64: null,
+        fotoAreaDespejadaBase64: [],
         rutasEvacuacion: false,
-        fotoRutasEvacuacionBase64: null,
+        fotoRutasEvacuacionBase64: [],
         mesasTrabajo: false,
-        fotoMesasTrabajoBase64: null,
+        fotoMesasTrabajoBase64: [],
         observaciones: ''
     });
 
@@ -85,17 +85,18 @@ export default function OrdenAseoScreen({ navigation }) {
             nombreAuditado: '',
             planta: '',
             implementosAseo: false,
-            fotoImplementosAseoBase64: null,
+            implementosAseo: false,
+            fotoImplementosAseoBase64: [],
             herramientasLugar: false,
-            fotoHerramientasLugarBase64: null,
+            fotoHerramientasLugarBase64: [],
             tarrosRotulados: false,
-            fotoTarrosRotuladosBase64: null,
+            fotoTarrosRotuladosBase64: [],
             areaDespejada: false,
-            fotoAreaDespejadaBase64: null,
+            fotoAreaDespejadaBase64: [],
             rutasEvacuacion: false,
-            fotoRutasEvacuacionBase64: null,
+            fotoRutasEvacuacionBase64: [],
             mesasTrabajo: false,
-            fotoMesasTrabajoBase64: null,
+            fotoMesasTrabajoBase64: [],
             observaciones: ''
         });
     };
@@ -178,9 +179,10 @@ export default function OrdenAseoScreen({ navigation }) {
 
             if (!result.canceled && result.assets[0].base64) {
                 const fotoKey = `foto${preguntaKey}Base64`;
+                const newPhoto = `data:image/jpeg;base64,${result.assets[0].base64}`;
                 setFormData(prev => ({
                     ...prev,
-                    [fotoKey]: `data:image/jpeg;base64,${result.assets[0].base64}`
+                    [fotoKey]: [...(prev[fotoKey] || []), newPhoto]
                 }));
             }
         } catch (error) {
@@ -198,9 +200,10 @@ export default function OrdenAseoScreen({ navigation }) {
 
             if (!result.canceled && result.assets[0].base64) {
                 const fotoKey = `foto${preguntaKey}Base64`;
+                const newPhoto = `data:image/jpeg;base64,${result.assets[0].base64}`;
                 setFormData(prev => ({
                     ...prev,
-                    [fotoKey]: `data:image/jpeg;base64,${result.assets[0].base64}`
+                    [fotoKey]: [...(prev[fotoKey] || []), newPhoto]
                 }));
             }
         } catch (error) {
@@ -208,12 +211,13 @@ export default function OrdenAseoScreen({ navigation }) {
         }
     };
 
-    const eliminarFoto = (preguntaKey) => {
+    const eliminarFoto = (preguntaKey, index) => {
         const fotoKey = `foto${preguntaKey}Base64`;
-        setFormData(prev => ({
-            ...prev,
-            [fotoKey]: null
-        }));
+        setFormData(prev => {
+            const newPhotos = [...(prev[fotoKey] || [])];
+            newPhotos.splice(index, 1);
+            return { ...prev, [fotoKey]: newPhotos };
+        });
     };
 
     const formatDate = (dateString) => {
@@ -424,31 +428,35 @@ export default function OrdenAseoScreen({ navigation }) {
 
                                         {/* Photo Section */}
                                         <View style={styles.fotoSection}>
-                                            {hasFoto ? (
-                                                <View style={styles.fotoPreviewContainer}>
-                                                    <Image source={{ uri: formData[fotoKey] }} style={styles.fotoPreview} />
-                                                    <TouchableOpacity
-                                                        style={styles.fotoDeleteBtn}
-                                                        onPress={() => eliminarFoto(pregunta.key)}
-                                                    >
-                                                        <Text style={styles.fotoDeleteText}>✕</Text>
-                                                    </TouchableOpacity>
-                                                </View>
-                                            ) : (
-                                                <View style={styles.fotoActions}>
-                                                    <TouchableOpacity
-                                                        style={styles.fotoBtn}
-                                                        onPress={() => tomarFoto(pregunta.key)}
-                                                    >
-                                                        <Text style={styles.fotoBtnText}>📷 Foto</Text>
-                                                    </TouchableOpacity>
-                                                    <TouchableOpacity
-                                                        style={styles.fotoBtn}
-                                                        onPress={() => seleccionarFoto(pregunta.key)}
-                                                    >
-                                                        <Text style={styles.fotoBtnText}>🖼️ Galería</Text>
-                                                    </TouchableOpacity>
-                                                </View>
+                                            <View style={styles.fotoActions}>
+                                                <TouchableOpacity
+                                                    style={styles.fotoBtn}
+                                                    onPress={() => tomarFoto(pregunta.key)}
+                                                >
+                                                    <Text style={styles.fotoBtnText}>📷 Foto</Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity
+                                                    style={styles.fotoBtn}
+                                                    onPress={() => seleccionarFoto(pregunta.key)}
+                                                >
+                                                    <Text style={styles.fotoBtnText}>🖼️ Galería</Text>
+                                                </TouchableOpacity>
+                                            </View>
+
+                                            {(formData[fotoKey] && formData[fotoKey].length > 0) && (
+                                                <ScrollView horizontal style={styles.fotoGallery}>
+                                                    {formData[fotoKey].map((foto, idx) => (
+                                                        <View key={idx} style={styles.fotoPreviewContainer}>
+                                                            <Image source={{ uri: foto }} style={styles.fotoPreview} />
+                                                            <TouchableOpacity
+                                                                style={styles.fotoDeleteBtn}
+                                                                onPress={() => eliminarFoto(pregunta.key, idx)}
+                                                            >
+                                                                <Text style={styles.fotoDeleteText}>✕</Text>
+                                                            </TouchableOpacity>
+                                                        </View>
+                                                    ))}
+                                                </ScrollView>
                                             )}
                                         </View>
                                     </View>
@@ -869,10 +877,16 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#333'
     },
+    fotoGallery: {
+        marginTop: 12,
+        flexDirection: 'row'
+    },
     fotoPreviewContainer: {
         position: 'relative',
         width: 100,
-        height: 100
+        height: 100,
+        marginRight: 12,
+        marginBottom: 4
     },
     fotoPreview: {
         width: 100,

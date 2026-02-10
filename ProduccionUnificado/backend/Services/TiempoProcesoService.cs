@@ -428,44 +428,56 @@ public class TiempoProcesoService : ITiempoProcesoService
         diario.EsHorarioLaboral = false;
 
         // 3.1 Calcular Cambios de OP (cuenta transiciones entre diferentes OPs)
+        // 3.1 Calcular Cambios de OP (Nueva Lógica: Puesta a Punto + Cambio de OP)
         // REGLAS:
-        // 1. Solo contar cambios si ocurren durante actividades de Producción (Codigo "02")
-        // 2. La OP 460 (General) NO cuenta para cambios (es neutra)
+        // 1. Considerar eventos de Puesta a Punto (01) y Producción (02)
+        // 2. Solo contar como cambio si es "Puesta a Punto" (01) Y la OP es diferente a la anterior
+        // 3. La OP 460 NO cuenta
         
-        // Filtrar solo tiempos de producción
-        var tiemposProduccion = tiempos
-            .Where(t => t.OrdenProduccion != null && t.Actividad?.Codigo == "02")
+        // Filtrar tiempos relevantes (01 y 02)
+        var tiemposRelevantes = tiempos
+            .Where(t => t.OrdenProduccion != null && (t.Actividad?.Codigo == "01" || t.Actividad?.Codigo == "02"))
             .OrderBy(t => t.HoraInicio)
             .ToList();
 
-        // Obtener la última OP del día anterior que sea de producción y NO sea 460
-        var fechaAyer = fecha.AddDays(-1);
+        // Obtener la última OP del día anterior (01 o 02, no 460)
+        // Obtener la última OP del día anterior (01 o 02, no 460)
+        // BUGFIX: Antes buscaba solo Fecha == fecha.AddDays(-1). Si era Lunes, fallaba al buscar Domingo.
+        // AHORA: Busca el último registro con Fecha < fecha actual.
         var ultimoRegistroAyer = await _context.TiemposProceso
-            .Include(t => t.OrdenProduccion) // Necesario para checar el número
-            .Include(t => t.Actividad)       // Necesario para checar si fue producción
-            .Where(t => t.Fecha == fechaAyer 
+            .Include(t => t.OrdenProduccion)
+            .Include(t => t.Actividad)
+            .Where(t => t.Fecha < fecha 
                         && t.MaquinaId == maquinaId 
-                        && t.UsuarioId == usuarioId 
+                        // && t.UsuarioId == usuarioId  <-- History is Machine-wide
                         && t.OrdenProduccionId.HasValue
-                        && t.Actividad.Codigo == "02"
+                        && t.OrdenProduccion != null // Guard against broken FK
+                        && t.Actividad != null       // Guard against broken FK
+                        && (t.Actividad.Codigo == "01" || t.Actividad.Codigo == "02")
                         && t.OrdenProduccion.Numero != "460")
-            .OrderByDescending(t => t.HoraFin)
+            .OrderByDescending(t => t.Fecha)
+            .ThenByDescending(t => t.HoraFin)
             .FirstOrDefaultAsync();
         
         int cambios = 0;
+        // Inicializar con la OP de ayer para comparar el inicio del turno
         int? opAnteriorId = ultimoRegistroAyer?.OrdenProduccionId;
         
-        foreach (var t in tiemposProduccion)
+        foreach (var t in tiemposRelevantes)
         {
-            // Si la OP actual es 460, la ignoramos completamente para el conteo de cambios
+            // Si la OP actual es 460, ignorar
             if (t.OrdenProduccion!.Numero == "460") continue;
 
-            if (opAnteriorId.HasValue && t.OrdenProduccionId != opAnteriorId)
+            // Chequear cambio
+            // Si no hay OP anterior (primera vez o hueco histórico), asumimos cambio (setup inicial).
+            // Si hay OP anterior, solo cuenta si es diferente.
+            if (!opAnteriorId.HasValue || t.OrdenProduccionId != opAnteriorId)
             {
-                cambios++;
+                 cambios++;
             }
             
-            // Actualizamos la OP anterior (solo si no es 460, que ya filtramos arriba con el continue)
+            // Actualizamos la posteridad siempre (sea 01 o 02) para detectar cambios futuros
+            // Ejemplo: Prod A -> Prod B (No cuenta) -> Setup B (No cambio) -> Setup C (Cuenta)
             opAnteriorId = t.OrdenProduccionId;
         }
         

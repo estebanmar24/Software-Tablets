@@ -152,7 +152,7 @@ export function Sidebar({
                     style={styles.logo}
                     resizeMode="contain"
                 />
-                <Text style={{ fontSize: 10, color: '#718096', marginTop: 4 }}>v1.6.17 - Report with Photos 🖼️</Text>
+                <Text style={{ fontSize: 10, color: '#718096', marginTop: 4 }}>v1.7.6 - Changeover Weekend Fix 🛠️</Text>
             </View>
 
             {/* Toggle Button for Phones */}

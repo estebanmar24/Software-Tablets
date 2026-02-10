@@ -37,6 +37,7 @@ public class CalificacionController : ControllerBase
             // Use same filtering as ProduccionController.GetResumen
             var produccion = await _context.ProduccionDiaria
                 .Where(p => p.Fecha.Month == periodo.Mes && p.Fecha.Year == periodo.Anio)
+                .Where(p => !(p.Fecha.Year == 2026 && p.Fecha.Month == 1 && p.Fecha.Day >= 1 && p.Fecha.Day <= 12)) // JAN 1-12 EXCLUSION
                 .ToListAsync();
 
             if (!produccion.Any()) continue;
@@ -55,19 +56,13 @@ public class CalificacionController : ControllerBase
                     
                     var meta100PorcientoBase = maq.Meta100Porciento > 0 ? maq.Meta100Porciento : maq.MetaRendimiento;
                     
-                    // Calculate meta100 iterating days to handle Half-Day Saturdays
+                    // Calculate meta100 iterating ACTUALLY WORKED days (Active Days)
                     decimal meta100 = 0;
-                    var distinctDays = grupoMaquina.Select(p => p.Fecha.Date).Distinct().ToList();
-                    foreach (var day in distinctDays)
+                    var activeDays = grupoMaquina.Where(p => p.TotalHoras > 0 || p.TirosDiarios > 0 || p.Cambios > 0)
+                                                 .Select(p => p.Fecha.Date).Distinct().ToList();
+                    foreach (var day in activeDays)
                     {
-                        // JAN 1-14 2026 ADJUSTMENT
-                        if (day.Month == 1 && day.Day >= 1 && day.Day <= 14 && day.Year == 2026)
-                        {
-                            decimal totalHoursMachine = grupoMaquina.Where(p => p.Fecha.Date == day).Sum(p => p.TotalHoras);
-                            if (totalHoursMachine > 0)
-                                meta100 += meta100PorcientoBase / totalHoursMachine;
-                        }
-                        else if (day.DayOfWeek == DayOfWeek.Saturday)
+                        if (day.DayOfWeek == DayOfWeek.Saturday)
                             meta100 += meta100PorcientoBase / 2;
                         else
                             meta100 += meta100PorcientoBase;
@@ -78,6 +73,10 @@ public class CalificacionController : ControllerBase
                     
                     calificacionTotal += calificacion;
                 }
+                // NOTE: GetHistorial doesn't build a 'desglose' list for individual machines in the simplified view loop,
+                // but if it did, we would handle the else block here. 
+                // However, since it only sums 'calificacionTotal', machines with 0 active days contribute 0 to the sum anyway.
+                // The critical methods are CalcularYGuardar and RecalcularTodos which build the JSON desglose.
             }
 
             resultados.Add(new {
@@ -170,6 +169,7 @@ public class CalificacionController : ControllerBase
             var produccion = await _context.ProduccionDiaria
                 .Include(p => p.Maquina)
                 .Where(p => p.Fecha >= fechaInicio && p.Fecha < fechaFin)
+                .Where(p => !(p.Fecha.Year == 2026 && p.Fecha.Month == 1 && p.Fecha.Day >= 1 && p.Fecha.Day <= 12)) // JAN 1-12 EXCLUSION
                 .ToListAsync();
 
             if (!produccion.Any())
@@ -190,19 +190,13 @@ public class CalificacionController : ControllerBase
                     
                     var meta100PorcientoBase = maquina.Meta100Porciento;
                     
-                     // Calculate meta100 iterating days to handle Half-Day Saturdays
+                     // Calculate meta100 iterating ACTUALLY WORKED days (Active Days)
                     decimal meta100 = 0;
-                    var distinctDays = grupoMaquina.Select(p => p.Fecha.Date).Distinct().ToList();
-                    foreach (var day in distinctDays)
+                    var activeDays = grupoMaquina.Where(p => p.TotalHoras > 0 || p.TirosDiarios > 0 || p.Cambios > 0)
+                                                 .Select(p => p.Fecha.Date).Distinct().ToList();
+                    foreach (var day in activeDays)
                     {
-                        // JAN 1-14 2026 ADJUSTMENT
-                        if (day.Month == 1 && day.Day >= 1 && day.Day <= 14 && day.Year == 2026)
-                        {
-                            decimal totalHoursMachine = grupoMaquina.Where(p => p.Fecha.Date == day).Sum(p => p.TotalHoras);
-                            if (totalHoursMachine > 0)
-                                meta100 += meta100PorcientoBase / totalHoursMachine;
-                        }
-                        else if (day.DayOfWeek == DayOfWeek.Saturday)
+                        if (day.DayOfWeek == DayOfWeek.Saturday)
                             meta100 += meta100PorcientoBase / 2;
                         else
                             meta100 += meta100PorcientoBase;
@@ -220,6 +214,18 @@ public class CalificacionController : ControllerBase
                         Importancia = maquina.Importancia,
                         PorcentajeRendimiento100 = Math.Round(porcentaje100, 2),
                         Calificacion = Math.Round(calificacion, 2)
+                    });
+                }
+                else
+                {
+                    // Case for machines with NO production data in period
+                    desglose.Add(new
+                    {
+                        MaquinaId = maquina.Id,
+                        Maquina = maquina.Nombre,
+                        Importancia = maquina.Importancia,
+                        PorcentajeRendimiento100 = 0m,
+                        Calificacion = 0m
                     });
                 }
             }
@@ -284,6 +290,7 @@ public class CalificacionController : ControllerBase
 
                 var produccion = await _context.ProduccionDiaria
                     .Where(p => p.Fecha >= fechaInicio && p.Fecha < fechaFin)
+                    .Where(p => !(p.Fecha.Year == 2026 && p.Fecha.Month == 1 && p.Fecha.Day >= 1 && p.Fecha.Day <= 12)) // JAN 1-12 EXCLUSION
                     .ToListAsync();
 
                 if (!produccion.Any()) continue;
@@ -302,19 +309,13 @@ public class CalificacionController : ControllerBase
                         
                         var meta100PorcientoBase = maquina.Meta100Porciento;
                         
-                        // Calculate meta100 iterating days to handle Half-Day Saturdays
+                        // Calculate meta100 iterating ACTUALLY WORKED days (Active Days)
                         decimal meta100 = 0;
-                        var distinctDays = grupoMaquina.Select(p => p.Fecha.Date).Distinct().ToList();
-                        foreach (var day in distinctDays)
+                        var activeDays = grupoMaquina.Where(p => p.TotalHoras > 0 || p.TirosDiarios > 0 || p.Cambios > 0)
+                                                     .Select(p => p.Fecha.Date).Distinct().ToList();
+                        foreach (var day in activeDays)
                         {
-                            // JAN 1-14 2026 ADJUSTMENT
-                            if (day.Month == 1 && day.Day >= 1 && day.Day <= 14 && day.Year == 2026)
-                            {
-                                decimal totalHoursMachine = grupoMaquina.Where(p => p.Fecha.Date == day).Sum(p => p.TotalHoras);
-                                if (totalHoursMachine > 0)
-                                    meta100 += meta100PorcientoBase / totalHoursMachine;
-                            }
-                            else if (day.DayOfWeek == DayOfWeek.Saturday)
+                            if (day.DayOfWeek == DayOfWeek.Saturday)
                                 meta100 += meta100PorcientoBase / 2;
                             else
                                 meta100 += meta100PorcientoBase;
@@ -332,6 +333,18 @@ public class CalificacionController : ControllerBase
                             Importancia = maquina.Importancia,
                             PorcentajeRendimiento100 = Math.Round(porcentaje100, 2),
                             Calificacion = Math.Round(calificacion, 2)
+                        });
+                    }
+                    else
+                    {
+                        // Case for machines with NO production data in period
+                        desglose.Add(new
+                        {
+                            MaquinaId = maquina.Id,
+                            Maquina = maquina.Nombre,
+                            Importancia = maquina.Importancia,
+                            PorcentajeRendimiento100 = 0m,
+                            Calificacion = 0m
                         });
                     }
                 }

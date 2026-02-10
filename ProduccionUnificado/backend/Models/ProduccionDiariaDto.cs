@@ -5,6 +5,7 @@ namespace TiempoProcesos.API.Models;
 /// </summary>
 public class ProduccionDiariaDto
 {
+    public long Id { get; set; } // For Upsert matching
     public string Fecha { get; set; } = string.Empty;
     public int UsuarioId { get; set; }
     public int MaquinaId { get; set; }
@@ -19,6 +20,7 @@ public class ProduccionDiariaDto
     public decimal PromedioHoraProductiva { get; set; }
     public decimal ValorTiroSnapshot { get; set; }
     public decimal ValorAPagar { get; set; }
+    public decimal ValorAPagarBonificable { get; set; }
     public decimal HorasMantenimiento { get; set; }
     public decimal HorasDescanso { get; set; }
     public decimal HorasOtrosAux { get; set; }

@@ -405,7 +405,14 @@ export default function App() {
 
     const hasOP = selectedOrden || opSearchText.trim().length > 0;
 
-    if (requiresOP && !hasOP) {
+    // EXCEPCIÓN: Corrugadoras 13A y 13B pueden tener OP opcional en estos procesos
+    const currentMachine = maquinas.find(m => m.id === selectedMaquina);
+    const isCorrugadora = currentMachine?.nombre && (
+      currentMachine.nombre.toUpperCase().includes('13A') ||
+      currentMachine.nombre.toUpperCase().includes('13B')
+    );
+
+    if (requiresOP && !hasOP && !isCorrugadora) {
       showAlert('OP Requerida', 'Debe ingresar una Orden de Producción (OP) antes de iniciar Producción o Puesta a Punto.');
       return;
     }

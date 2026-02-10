@@ -4,6 +4,7 @@ import { Picker } from '@react-native-picker/picker';
 import axios from 'axios';
 import { api, getMaquinasActivas, getUsuarios, saveProduccion, getProduccionDetalles, getOperariosConDatos, getMaquinasConDatos, getProduccionPorMaquina, API_URL } from '../services/productionApi';
 import { useTheme } from '../contexts/ThemeContext';
+import DayDetailModal from '../components/DayDetailModal';
 
 const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 let rowIdCounter = 100;
@@ -54,6 +55,20 @@ export default function CaptureGridScreen({ navigation }) {
     // Clean Confirmation Modal
     const [cleanConfirmVisible, setCleanConfirmVisible] = useState(false);
 
+    // OP Search State
+    const [opSearchModalVisible, setOpSearchModalVisible] = useState(false);
+    const [opResultsModalVisible, setOpResultsModalVisible] = useState(false);
+    const [loadingOPs, setLoadingOPs] = useState(false);
+    const [opFilterText, setOpFilterText] = useState('');
+    const [opList, setOpList] = useState([]);
+    const [opResults, setOpResults] = useState([]);
+    const [selectedOP, setSelectedOP] = useState('');
+
+    // Day Detail State
+    const [dayDetailModalVisible, setDayDetailModalVisible] = useState(false);
+    const [dayDetailInfo, setDayDetailInfo] = useState(null);
+    const [actividades, setActividades] = useState([]);
+
     useEffect(() => {
         loadLists();
     }, []);
@@ -84,14 +99,16 @@ export default function CaptureGridScreen({ navigation }) {
 
     const loadLists = async () => {
         try {
-            const [m, u, h] = await Promise.all([
+            const [m, u, h, tact] = await Promise.all([
                 getMaquinasActivas(),
                 getUsuarios(),
-                api.get(`tiempoproceso/horarios`)
+                api.get(`tiempoproceso/horarios`),
+                api.get('tiempoproceso/actividades')
             ]);
             setMaquinas(m.data);
             setUsuarios(u.data);
             setHorarios(h.data || []);
+            setActividades(tact.data || []);
             setSelectedMaquina(null);
             if (u.data.length > 0) setSelectedOperario(u.data[0].id);
         } catch (e) {
@@ -122,17 +139,11 @@ export default function CaptureGridScreen({ navigation }) {
             otroMuerto: '',
             desperdicio: '',
             referenciaOP: '',
-            novedades: ''
+            novedades: '',
+            id: null
         }));
         rowIdCounter = 100;
         setGridData(initial);
-    };
-
-    const formatForDisplay = (val) => {
-        if (val === null || val === undefined || val === '') return '';
-        const num = parseFloat(val);
-        if (isNaN(num)) return val;
-        return new Intl.NumberFormat('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(num);
     };
 
     const handleLoadData = async (maquinaIdToLoad = null, operarioOverride = null) => {
@@ -169,39 +180,42 @@ export default function CaptureGridScreen({ navigation }) {
                     : (record ? formatForDisplay(record.desperdicio) : '');
 
                 if (record) {
-                    console.log(`[DEBUGGRID] Day ${d}: record found. HorarioId:`, record.horarioId, "Pascal:", record.HorarioId);
+                    const recordId = record.id || record.Id;
+                    console.log(`[DEBUGGRID] Day ${d}: record found. Id:`, recordId);
                     return {
                         rowId: idx + 1,
                         day: d,
-                        maquinaId: maquinaIdToLoad,
+                        id: recordId,
                         operarioId: record.usuarioId,
                         horarioId: record.horarioId || record.HorarioId || null,
-                        horaInicio: record.horaInicio?.substring(0, 5) || '',
-                        horaFin: record.horaFin?.substring(0, 5) || '',
-                        rFinal: formatForDisplay(record.rendimientoFinal),
-                        horasOp: formatForDisplay(record.horasOperativas),
-                        cambios: record.cambios?.toString() || '',
-                        puestaPunto: formatForDisplay(record.tiempoPuestaPunto),
-                        mantenimiento: formatForDisplay(record.horasMantenimiento),
-                        descansos: formatForDisplay(record.horasDescanso),
-                        otrosAux: formatForDisplay(record.horasOtrosAux),
-                        faltaTrabajo: formatForDisplay(record.tiempoFaltaTrabajo),
-                        reparacion: formatForDisplay(record.tiempoReparacion),
-                        otroMuerto: formatForDisplay(record.tiempoOtroMuerto),
+                        horaInicio: (record.horaInicio || record.HoraInicio)?.substring(0, 5) || '',
+                        horaFin: (record.horaFin || record.HoraFin)?.substring(0, 5) || '',
+                        rFinal: formatForDisplay(record.rendimientoFinal || record.RendimientoFinal),
+                        horasOp: formatForDisplay(record.horasOperativas || record.HorasOperativas),
+                        cambios: (record.cambios || record.Cambios)?.toString() || '',
+                        puestaPunto: formatForDisplay(record.tiempoPuestaPunto || record.TiempoPuestaPunto),
+                        mantenimiento: formatForDisplay(record.horasMantenimiento || record.HorasMantenimiento),
+                        descansos: formatForDisplay(record.horasDescanso || record.HorasDescanso),
+                        otrosAux: formatForDisplay(record.horasOtrosAux || record.HorasOtrosAux),
+                        faltaTrabajo: formatForDisplay(record.tiempoFaltaTrabajo || record.TiempoFaltaTrabajo),
+                        reparacion: formatForDisplay(record.tiempoReparacion || record.TiempoReparacion),
+                        otroMuerto: formatForDisplay(record.tiempoOtroMuerto || record.TiempoOtroMuerto),
                         desperdicio: despValor,
-                        referenciaOP: record.referenciaOP || '',
-                        novedades: record.novedades || ''
+                        referenciaOP: record.referenciaOP || record.ReferenciaOP || '',
+                        novedades: record.novedades || record.Novedades || ''
                     };
                 } else {
                     return {
                         rowId: idx + 1,
                         day: d,
+                        id: null,
                         maquinaId: maquinaIdToLoad,
                         operarioId: null,
                         horarioId: null,
                         horaInicio: '', horaFin: '', rFinal: '', horasOp: '', cambios: '', puestaPunto: '',
                         mantenimiento: '', descansos: '', otrosAux: '', faltaTrabajo: '', reparacion: '',
-                        otroMuerto: '', desperdicio: '', referenciaOP: '', novedades: ''
+                        otroMuerto: '', desperdicio: '', referenciaOP: '', novedades: '',
+                        id: null
                     };
                 }
             });
@@ -215,6 +229,8 @@ export default function CaptureGridScreen({ navigation }) {
             Alert.alert("Error", "Error al cargar datos");
         }
     };
+
+
 
     const handleOpenLoadModal = async () => {
         try {
@@ -263,7 +279,7 @@ export default function CaptureGridScreen({ navigation }) {
                     operarioId: null,
                     horaInicio: '', horaFin: '', rFinal: '', horasOp: '', cambios: '', puestaPunto: '',
                     mantenimiento: '', descansos: '', otrosAux: '', faltaTrabajo: '', reparacion: '',
-                    otroMuerto: '', desperdicio: '', referenciaOP: '', novedades: ''
+                    otroMuerto: '', desperdicio: '', referenciaOP: '', novedades: '', id: null
                 }));
                 // Si hay desperdicios pero no producción, llenarlos
                 if (Object.keys(desperdicios).length > 0) {
@@ -297,35 +313,38 @@ export default function CaptureGridScreen({ navigation }) {
                         return {
                             rowId: tempRowId++,
                             day: d,
+                            id: record.id || record.Id,
                             maquinaId: maquinaId,
-                            operarioId: record.usuarioId,
-                            horaInicio: record.horaInicio?.substring(0, 5) || '',
-                            horaFin: record.horaFin?.substring(0, 5) || '',
-                            rFinal: formatForDisplay(record.rendimientoFinal),
-                            horasOp: formatForDisplay(record.horasOperativas),
-                            cambios: record.cambios?.toString() || '',
-                            puestaPunto: formatForDisplay(record.tiempoPuestaPunto),
-                            mantenimiento: formatForDisplay(record.horasMantenimiento),
-                            descansos: formatForDisplay(record.horasDescanso),
-                            otrosAux: formatForDisplay(record.horasOtrosAux),
-                            faltaTrabajo: formatForDisplay(record.tiempoFaltaTrabajo),
-                            reparacion: formatForDisplay(record.tiempoReparacion),
-                            otroMuerto: formatForDisplay(record.tiempoOtroMuerto),
+                            operarioId: record.usuarioId || record.UsuarioId,
+                            horarioId: record.horarioId || record.HorarioId || null,
+                            horaInicio: (record.horaInicio || record.HoraInicio)?.substring(0, 5) || '',
+                            horaFin: (record.horaFin || record.HoraFin)?.substring(0, 5) || '',
+                            rFinal: formatForDisplay(record.rendimientoFinal || record.RendimientoFinal),
+                            horasOp: formatForDisplay(record.horasOperativas || record.HorasOperativas),
+                            cambios: (record.cambios || record.Cambios)?.toString() || '',
+                            puestaPunto: formatForDisplay(record.tiempoPuestaPunto || record.TiempoPuestaPunto),
+                            mantenimiento: formatForDisplay(record.horasMantenimiento || record.HorasMantenimiento),
+                            descansos: formatForDisplay(record.horasDescanso || record.HorasDescanso),
+                            otrosAux: formatForDisplay(record.horasOtrosAux || record.HorasOtrosAux),
+                            faltaTrabajo: formatForDisplay(record.tiempoFaltaTrabajo || record.TiempoFaltaTrabajo),
+                            reparacion: formatForDisplay(record.tiempoReparacion || record.TiempoReparacion),
+                            otroMuerto: formatForDisplay(record.tiempoOtroMuerto || record.TiempoOtroMuerto),
                             // Desperdicio por operario individual
                             desperdicio: despOperador,
-                            referenciaOP: record.referenciaOP || '',
-                            novedades: record.novedades || ''
+                            referenciaOP: record.referenciaOP || record.ReferenciaOP || '',
+                            novedades: record.novedades || record.Novedades || ''
                         };
                     });
                 } else {
                     return [{
                         rowId: tempRowId++,
                         day: d,
+                        id: null,
                         maquinaId: maquinaId,
                         operarioId: null,
                         horaInicio: '', horaFin: '', rFinal: '', horasOp: '', cambios: '', puestaPunto: '',
                         mantenimiento: '', descansos: '', otrosAux: '', faltaTrabajo: '', reparacion: '',
-                        otroMuerto: '', desperdicio: despValor, referenciaOP: '', novedades: ''
+                        otroMuerto: '', desperdicio: despValor, referenciaOP: '', novedades: '', id: null
                     }];
                 }
             });
@@ -351,6 +370,7 @@ export default function CaptureGridScreen({ navigation }) {
     };
 
     const getMaquinaById = (id) => maquinas.find(m => m.id == id) || null;
+    const getUsuarioById = (id) => usuarios.find(u => u.id == id) || null;
 
     const handleContextMenu = (e, rowIndex) => {
         if (Platform.OS === 'web') e.preventDefault();
@@ -398,10 +418,47 @@ export default function CaptureGridScreen({ navigation }) {
     const handleRowClick = (index) => setSelectedRowIndex(index);
 
     const formatNumber = (value) => {
-        if (!value && value !== 0) return '';
+        if (value === null || value === undefined || value === '') return '';
         const num = typeof value === 'string' ? parseFloat(value.replace(/\./g, '').replace(',', '.')) : value;
         if (isNaN(num)) return value;
-        return num.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+        return new Intl.NumberFormat('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(num);
+    };
+
+    const formatForDisplay = (val) => formatNumber(val);
+
+    const parseNumberInput = (v) => {
+        if (v === undefined || v === null || v === '') return 0;
+        if (typeof v === 'number') return v;
+        let s = v.toString().replace(/\./g, '').replace(',', '.');
+        let n = parseFloat(s);
+        return isNaN(n) ? 0 : n;
+    };
+
+    const calculateDurationHours = (start, end) => {
+        if (!start || !end) return 0;
+        try {
+            const [sh, sm] = start.split(':').map(Number);
+            const [eh, em] = end.split(':').map(Number);
+            const startMins = sh * 60 + sm;
+            const endMins = eh * 60 + em;
+            let diff = endMins - startMins;
+            if (diff < 0) diff += 1440; // Over midnight
+            return diff / 60;
+        } catch { return 0; }
+    };
+
+    const mapActivityToField = (actName) => {
+        const name = actName.toLowerCase();
+        if (name.includes('producc')) return 'horasOp';
+        if (name.includes('puesta a punto')) return 'puestaPunto';
+        if (name.includes('mantenimiento')) return 'mantenimiento';
+        if (name.includes('descanso') || name.includes('alimento')) return 'descansos';
+        if (name.includes('falta de trabajo')) return 'faltaTrabajo';
+        if (name.includes('reparacion')) return 'reparacion';
+        if (name.includes('otros muertos')) return 'otroMuerto';
+        if (name.includes('otros auxiliares')) return 'otrosAux';
+        if (name.includes('desperdicio')) return 'desperdicio';
+        return null;
     };
 
     const parseNumber = (value) => {
@@ -450,13 +507,7 @@ export default function CaptureGridScreen({ navigation }) {
         });
     };
 
-    const parseNumberInput = (v) => {
-        if (!v && v !== 0) return 0;
-        const str = String(v);
-        let cleaned = str.replace(/\./g, '');
-        cleaned = cleaned.replace(',', '.');
-        return parseFloat(cleaned) || 0;
-    };
+
 
     // ========== FESTIVOS COLOMBIA ==========
 
@@ -530,6 +581,169 @@ export default function CaptureGridScreen({ navigation }) {
     };
 
     // ========== FIN FESTIVOS COLOMBIA ==========
+
+    // ========== OP SEARCH & DAY DETAIL HANDLERS ==========
+
+    const handleOpenOPSearch = async () => {
+        setLoadingOPs(true);
+        setOpSearchModalVisible(true);
+        try {
+            const res = await api.get('produccion/ops-unicos'); // This endpoint returns distinct OPs
+            setOpList(res.data || []);
+        } catch (e) {
+            console.error('Error fetching OP list:', e);
+        } finally {
+            setLoadingOPs(false);
+        }
+    };
+
+    const handleSelectOP = async (op) => {
+        setOpSearchModalVisible(false);
+        setSelectedOP(op);
+        setLoadingOPs(true);
+        try {
+            const res = await api.get(`produccion/buscar-op/${encodeURIComponent(op)}`);
+            console.log("[DEBUG] OP Search results:", res.data);
+            setOpResults(res.data || []);
+            setOpResultsModalVisible(true);
+        } catch (e) {
+            console.error('Error searching OP:', e);
+            Alert.alert('Error', 'No se pudo buscar la OP');
+        } finally {
+            setLoadingOPs(false);
+        }
+    };
+
+    const formatDateOP = (dateStr) => {
+        if (!dateStr) return '-';
+        const d = new Date(dateStr);
+        return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+    };
+
+    const handleOpenDayDetail = async (index) => {
+        const row = gridData[index];
+        if (!selectedMaquina) {
+            Alert.alert("Error", "Seleccione una máquina primero");
+            return;
+        }
+        const maquina = getMaquinaById(selectedMaquina);
+        const operario = getUsuarioById(row.operarioId);
+        const mesNombre = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"][mes - 1];
+        const fechaStr = `${row.day} de ${mesNombre} de ${anio}`;
+
+        setDayDetailInfo({
+            rowIndex: index,
+            day: row.day,
+            produccionDiariaId: row.id,
+            maquinaId: selectedMaquina,
+            usuarioId: row.operarioId,
+            maquina: maquina ? maquina.nombre : 'N/A',
+            operario: operario ? operario.nombre : (row.operarioId ? `ID: ${row.operarioId}` : 'N/A'),
+            fecha: fechaStr,
+            fechaISO: `${anio}-${mes.toString().padStart(2, '0')}-${row.day.toString().padStart(2, '0')}`
+        });
+        setDayDetailModalVisible(true);
+    };
+
+    const handleDayDetailSaved = async (details, newId) => {
+        if (!dayDetailInfo) return;
+        const rowIndex = dayDetailInfo.rowIndex;
+        const currentRow = gridData[rowIndex];
+
+        // Sort details by start time
+        const sortedDetails = [...details].sort((a, b) => {
+            const timeA = a.horaInicio || "00:00";
+            const timeB = b.horaInicio || "00:00";
+            return timeA.localeCompare(timeB);
+        });
+
+        const sums = {
+            tiros: 0,
+            horasOp: 0,
+            puestaPunto: 0,
+            mantenimiento: 0,
+            descansos: 0,
+            otrosAux: 0,
+            faltaTrabajo: 0,
+            reparacion: 0,
+            otroMuerto: 0,
+            desperdicio: 0,
+            totalPuestaPunto: 0
+        };
+
+        const opsList = [];
+        let lastOP_conc = null;
+
+        // Initialize lastOP context from previous grid rows
+        let lastOP = null;
+        for (let i = rowIndex - 1; i >= 0; i--) {
+            if (gridData[i].referenciaOP) {
+                const parts = gridData[i].referenciaOP.toString().split('-');
+                lastOP = parts[parts.length - 1].trim();
+                break;
+            }
+        }
+
+        let totalCambios = 0;
+
+        sortedDetails.forEach(d => {
+            const h = calculateDurationHours(d.horaInicio, d.horaFin);
+            const actId = d.actividadId;
+            const activity = actividades.find(a => a.id === Number(actId));
+            const actName = activity ? activity.nombre.toLowerCase() : '';
+            const field = mapActivityToField(actName);
+
+            if (field) {
+                if (field === 'desperdicio') sums[field] += parseNumberInput(d.tiros);
+                else if (field === 'horasOp') {
+                    sums[field] += h;
+                    sums.tiros += parseNumberInput(d.tiros);
+                }
+                else sums[field] += h;
+            }
+
+            const currentOP = (d.referenciaOP || "").toString().trim();
+
+            if (actName.includes('puesta a punto')) {
+                if (currentOP !== lastOP && currentOP !== "460" && currentOP !== "") {
+                    totalCambios++;
+                }
+                lastOP = currentOP;
+            } else if (actName.includes('producc')) {
+                lastOP = currentOP;
+            }
+
+            // Concatenation logic: sequential only
+            if (currentOP && currentOP !== lastOP_conc) {
+                opsList.push(currentOP);
+                lastOP_conc = currentOP;
+            }
+        });
+
+        const updatedRow = {
+            ...currentRow,
+            id: newId || currentRow.id,
+            rFinal: sums.tiros.toString(),
+            horasOp: formatForDisplay(sums.horasOp),
+            cambios: totalCambios.toString(),
+            puestaPunto: formatForDisplay(sums.puestaPunto),
+            mantenimiento: formatForDisplay(sums.mantenimiento),
+            descansos: formatForDisplay(sums.descansos),
+            otrosAux: formatForDisplay(sums.otrosAux),
+            faltaTrabajo: formatForDisplay(sums.faltaTrabajo),
+            reparacion: formatForDisplay(sums.reparacion),
+            otroMuerto: formatForDisplay(sums.otroMuerto),
+            desperdicio: formatForDisplay(sums.desperdicio),
+            referenciaOP: opsList.join('-'),
+            novedades: sortedDetails.map(d => d.observaciones).filter(o => o && o.trim()).join(' | ')
+        };
+
+        const newData = [...gridData];
+        newData[rowIndex] = updatedRow;
+        setGridData(newData);
+    };
+
+    // ========== FIN HANDLERS ==========
 
     // Función para calcular el porcentaje de tiempo dentro del horario laboral
     const calcularPorcentajeBonificable = (day) => {
@@ -928,8 +1142,14 @@ export default function CaptureGridScreen({ navigation }) {
                         <TouchableOpacity style={[styles.btnLoad, { backgroundColor: '#28a745', flex: 1, marginRight: 5 }]} onPress={handleOpenExportModal}>
                             <Text style={styles.btnText}>Exp</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity style={[styles.btnLoad, { backgroundColor: '#c0392b', flex: 1, marginRight: 5 }]} onPress={handleOpenDeleteModal}>
-                            <Text style={styles.btnText}>Del</Text>
+                        <TouchableOpacity style={[styles.btnLoad, { marginRight: 10 }]} onPress={handleOpenLoadModal}>
+                            <Text style={styles.btnText}>Cargar Datos</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.btnLoad, { marginRight: 10, backgroundColor: '#8e44ad' }]} onPress={handleOpenOPSearch}>
+                            <Text style={styles.btnText}>Buscar OP</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.btnLoad, { backgroundColor: '#e74c3c', marginRight: 10 }]} onPress={handleOpenDeleteModal}>
+                            <Text style={styles.btnText}>Borrar</Text>
                         </TouchableOpacity>
                         <TouchableOpacity style={[styles.btnLoad, { backgroundColor: '#f1c40f', flex: 1 }]} onPress={handleCleanFields}>
                             <Text style={styles.btnText}>Limp</Text>
@@ -1266,13 +1486,97 @@ export default function CaptureGridScreen({ navigation }) {
                 </View>
             </Modal>
 
+            {/* OP Search Modal */}
+            <Modal visible={opSearchModalVisible} transparent animationType="fade">
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { maxWidth: 400 }]}>
+                        <Text style={styles.modalTitle}>Buscar por OP / Referencia</Text>
+                        <TextInput
+                            style={[styles.input, { borderBottomWidth: 1, marginBottom: 15, padding: 8 }]}
+                            placeholder="Ej: 1000, 999..."
+                            value={opFilterText}
+                            onChangeText={setOpFilterText}
+                            autoFocus
+                        />
+                        {loadingOPs ? (
+                            <ActivityIndicator size="small" color="#8e44ad" />
+                        ) : (
+                            <FlatList
+                                data={opList.filter(o => o.toLowerCase().includes(opFilterText.toLowerCase()))}
+                                keyExtractor={(item, i) => i.toString()}
+                                style={{ maxHeight: 300 }}
+                                renderItem={({ item }) => (
+                                    <TouchableOpacity style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: '#eee' }} onPress={() => handleSelectOP(item)}>
+                                        <Text style={{ fontWeight: '500' }}>{item}</Text>
+                                    </TouchableOpacity>
+                                )}
+                                ListEmptyComponent={<Text style={{ textAlign: 'center', padding: 20 }}>No hay OPs registradas</Text>}
+                            />
+                        )}
+                        <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setOpSearchModalVisible(false)}>
+                            <Text style={{ color: 'white' }}>Cerrar</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* OP Results Modal */}
+            <Modal visible={opResultsModalVisible} transparent animationType="fade">
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { maxWidth: 600, maxHeight: '80%' }]}>
+                        <Text style={styles.modalTitle}>Resultados para OP: {selectedOP}</Text>
+                        {loadingOPs ? (
+                            <ActivityIndicator size="large" color="#8e44ad" />
+                        ) : opResults.length === 0 ? (
+                            <Text style={{ textAlign: 'center', padding: 20 }}>No se encontraron registros para esta OP</Text>
+                        ) : (
+                            <ScrollView style={{ maxHeight: 400 }}>
+                                {/* Header */}
+                                <View style={{ flexDirection: 'row', backgroundColor: '#8e44ad', padding: 8, borderRadius: 4 }}>
+                                    <Text style={{ flex: 1.5, color: 'white', fontWeight: 'bold' }}>Máquina</Text>
+                                    <Text style={{ flex: 1, color: 'white', fontWeight: 'bold', textAlign: 'center' }}>Fecha</Text>
+                                    <Text style={{ flex: 1.2, color: 'white', fontWeight: 'bold' }}>Proceso</Text>
+                                    <Text style={{ flex: 0.8, color: 'white', fontWeight: 'bold', textAlign: 'center' }}>Tiros</Text>
+                                    <Text style={{ flex: 1.5, color: 'white', fontWeight: 'bold' }}>OP Completa</Text>
+                                </View>
+                                {/* Rows */}
+                                {opResults.map((r, idx) => (
+                                    <View key={idx} style={{ flexDirection: 'row', padding: 8, backgroundColor: idx % 2 === 0 ? '#faf5ff' : 'white', borderBottomWidth: 1, borderBottomColor: '#eee', alignItems: 'center' }}>
+                                        <Text style={{ flex: 1.5, fontSize: 11 }}>{r.maquinaNombre || r.MaquinaNombre}</Text>
+                                        <Text style={{ flex: 1, textAlign: 'center', fontSize: 11 }}>{formatDateOP(r.fecha || r.Fecha)}</Text>
+                                        <Text style={{ flex: 1.2, fontSize: 11 }}>{r.actividadNombre || r.ActividadNombre}</Text>
+                                        <Text style={{ flex: 0.8, textAlign: 'center', fontSize: 11, fontWeight: 'bold' }}>{formatForDisplay(r.tiros ?? r.Tiros)}</Text>
+                                        <Text style={{ flex: 1.5, fontSize: 11 }}>{r.referenciaOP || r.ReferenciaOP}</Text>
+                                    </View>
+                                ))}
+                            </ScrollView>
+                        )}
+                        <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setOpResultsModalVisible(false)}>
+                            <Text style={{ color: 'white' }}>Cerrar</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
             {contextMenu.visible && (
                 <View style={[styles.contextMenu, { top: contextMenu.y, left: contextMenu.x }]}>
+                    <TouchableOpacity onPress={() => handleOpenDayDetail(contextMenu.rowIndex)} style={[styles.contextMenuItem, { backgroundColor: '#e8f4fd' }]}>
+                        <Text style={{ color: '#2980b9', fontWeight: 'bold' }}>📋 Día Detallado</Text>
+                    </TouchableOpacity>
                     <TouchableOpacity onPress={handleDuplicateRow} style={styles.contextMenuItem}><Text>Duplicar Fila</Text></TouchableOpacity>
                     <TouchableOpacity onPress={handleDeleteRow} style={styles.contextMenuItem}><Text style={{ color: 'red' }}>Eliminar Fila</Text></TouchableOpacity>
                     <TouchableOpacity onPress={closeContextMenu} style={styles.contextMenuItem}><Text>Cancelar</Text></TouchableOpacity>
                 </View>
             )}
+
+            {/* Day Detail Modal */}
+            <DayDetailModal
+                visible={dayDetailModalVisible}
+                onClose={() => setDayDetailModalVisible(false)}
+                onSaveSuccess={handleDayDetailSaved}
+                dayInfo={dayDetailInfo}
+                actividades={actividades}
+            />
 
         </View>
     );

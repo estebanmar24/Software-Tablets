@@ -449,7 +449,15 @@ export default function CartasScreen({ navigation }) {
                                 body: dataBreakdown,
                                 styles: { fontSize: 7, cellPadding: 2, halign: 'center' },
                                 headStyles: { fillColor: [70, 130, 180], textColor: 255 },
-                                columnStyles: { 2: { cellWidth: 35 } }, // Formula column wider
+                                columnStyles: {
+                                    0: { cellWidth: 25, halign: 'center' }, // Fecha
+                                    1: { cellWidth: 20, halign: 'center' }, // Meta
+                                    2: { cellWidth: 40, halign: 'center' }, // Formula
+                                    3: { cellWidth: 25, halign: 'center' }, // Tiros Reg
+                                    4: { cellWidth: 25, halign: 'center' }, // Tiros Eq
+                                    5: { cellWidth: 25, halign: 'center' }, // Total
+                                    6: { cellWidth: 15, halign: 'center' }  // Cambios
+                                },
                                 didParseCell: (data) => {
                                     if (data.section === 'body' && data.row.index === dataBreakdown.length - 1) {
                                         data.cell.styles.fillColor = [220, 220, 220];

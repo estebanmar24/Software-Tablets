@@ -376,7 +376,9 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                 loadData();
             } else {
                 const err = await res.json();
-                Alert.alert('Error', err.message || 'No se pudo guardar');
+                console.log('Save Error:', err);
+                const msg = err.message || (err.errors ? JSON.stringify(err.errors) : 'No se pudo guardar');
+                Alert.alert('Error', msg);
             }
         } catch (error) {
             Alert.alert('Error', 'Error de conexión');
@@ -460,7 +462,8 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                 loadData();
             } else {
                 const err = await res.json().catch(() => ({}));
-                Alert.alert('Error', err.message || 'No se pudo guardar');
+                const msg = err.message || (err.errors ? JSON.stringify(err.errors) : 'No se pudo guardar');
+                Alert.alert('Error', msg);
             }
         } catch (error) {
             Alert.alert('Error', 'No se pudo guardar');
@@ -2498,7 +2501,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                         </View>
                         <Text style={styles.modalSubtitle}>¿Qué tipo de equipo deseas agregar?</Text>
 
-                        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }} showsVerticalScrollIndicator>
+                        <ScrollView style={{ width: '100%', minHeight: 100 }} contentContainerStyle={{ paddingBottom: 16 }} showsVerticalScrollIndicator={false}>
                             <View style={styles.tipoEquipoGrid}>
                                 {TIPOS_EQUIPO.map(tipo => (
                                     <TouchableOpacity

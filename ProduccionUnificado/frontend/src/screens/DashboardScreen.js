@@ -954,7 +954,7 @@ export default function DashboardScreen({ navigation }) {
                 // Tabla de calificaciones - ordenada por nombre descendente
                 const calColumns = ['Máquina', 'Sem 100%', 'Importancia', 'Puntos'];
                 const calData = resumen.resumenMaquinas
-                    .filter(m => m.importancia > 0) // Solo máquinas activas con importancia
+                    //.filter(m => m.importancia > 0) // REMOVED FILTER to show all machines (even with 0 perf/importance)
                     .sort(naturalSort) // Orden natural (1, 2, 3... 10, 11)
                     .map(m => [
                         m.maquina,
@@ -1554,7 +1554,7 @@ export default function DashboardScreen({ navigation }) {
                                     </View>
                                     <Text style={{ color: colors.text }}>Horas Prod: {item.totalHorasProductivas?.toFixed(2)}</Text>
                                     <Text style={{ color: colors.text }}>Promedio/H: {item.promedioHoraProductiva?.toFixed(2)}</Text>
-                                    <Text style={{ color: colors.text }}>💰 Bonificación: ${item.valorAPagarBonificable?.toFixed(0) || '0'}</Text>
+                                    {/* <Text style={{ color: colors.text }}>💰 Bonificación: ${item.valorAPagarBonificable?.toFixed(0) || '0'}</Text> */}
 
                                     {/* Semáforos con porcentajes */}
                                     <View style={{ flexDirection: 'row', marginTop: 10, gap: 15 }}>

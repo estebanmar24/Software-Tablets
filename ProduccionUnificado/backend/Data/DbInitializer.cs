@@ -82,43 +82,49 @@ public static class DbInitializer
                     ""SemaforoMin"" INTEGER NOT NULL DEFAULT 0,
                     ""SemaforoNormal"" INTEGER NOT NULL DEFAULT 0,
                     ""SemaforoMax"" INTEGER NOT NULL DEFAULT 0,
+                    ""Importancia"" DECIMAL(5,2) NOT NULL DEFAULT 0,
+                    ""Meta100Porciento"" INTEGER NOT NULL DEFAULT 0,
                     ""Activa"" BOOLEAN DEFAULT TRUE
                 );
 
                 -- Insertar si no existen
-                INSERT INTO ""Maquinas"" (""Id"", ""Nombre"", ""MetaRendimiento"", ""MetaDesperdicio"", ""ValorPorTiro"", ""TirosReferencia"", ""SemaforoMin"", ""SemaforoNormal"", ""SemaforoMax"", ""Activa"")
+                INSERT INTO ""Maquinas"" (""Id"", ""Nombre"", ""MetaRendimiento"", ""MetaDesperdicio"", ""ValorPorTiro"", ""TirosReferencia"", ""SemaforoMin"", ""SemaforoNormal"", ""SemaforoMax"", ""Importancia"", ""Meta100Porciento"", ""Activa"")
                 SELECT * FROM (VALUES
-                    (-1, 'MANUAL / TERMINADOS', 0, 0, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
-                    (1, 'CONVERTIDORA 1A', 15000, 0.25, 5, 1250, 0, 0, 0, CAST(1 AS BOOLEAN)),
-                    (2, 'CONVERTIDORA 1B', 15000, 0.25, 5, 1250, 0, 0, 0, CAST(1 AS BOOLEAN)),
-                    (3, 'Guillotina 2A polar132', 30000, 0.25, 2, 1250, 0, 0, 0, CAST(1 AS BOOLEAN)),
-                    (4, 'Guillotina 2B org- Perfecta 107', 30000, 0.25, 2, 1250, 0, 0, 0, CAST(1 AS BOOLEAN)),
-                    (5, '3 Sord Z', 15000, 0.25, 5, 1250, 0, 0, 0, CAST(1 AS BOOLEAN)),
-                    (6, '4 Sord Z', 15000, 0.25, 5, 2000, 0, 0, 0, CAST(1 AS BOOLEAN)),
-                    (7, '5 Sord Z', 15000, 0.25, 5, 1250, 0, 0, 0, CAST(1 AS BOOLEAN)),
-                    (8, '6 SpeedMaster', 15000, 0.25, 5, 3000, 0, 0, 0, CAST(1 AS BOOLEAN)),
-                    (9, '7 SpeedMaster', 22500, 0.25, 5, 3000, 0, 0, 0, CAST(1 AS BOOLEAN)),
-                    (10, '8A Troqueladora de Papel', 7500, 0.25, 10, 1000, 0, 0, 0, CAST(1 AS BOOLEAN)),
-                    (11, '8B Troqueladora de Papel', 7500, 0.25, 10, 1000, 0, 0, 0, CAST(1 AS BOOLEAN)),
-                    (12, '8C Estampadora', 6000, 0.25, 12, 1500, 0, 0, 0, CAST(1 AS BOOLEAN)),
-                    (13, '9 Troqueladora Rollo', 15000, 0.25, 5, 1250, 0, 0, 0, CAST(1 AS BOOLEAN)),
-                    (14, '10A Colaminadora Carton', 7500, 0.07, 10, 500, 0, 0, 0, CAST(1 AS BOOLEAN)),
-                    (15, '10B Colaminadora Carton', 6000, 0.03, 12, 400, 0, 0, 0, CAST(1 AS BOOLEAN)),
-                    (16, '11 Laminadora BOPP', 7500, 0.25, 10, 1000, 0, 0, 0, CAST(1 AS BOOLEAN)),
-                    (103, '16 Barnizadora UV', 7500, 0.25, 10, 1250, 0, 0, 0, CAST(1 AS BOOLEAN)),
-                    (18, '13A Corrugadora FLTE', 2250, 0.25, 40, 2000, 0, 0, 0, CAST(1 AS BOOLEAN)),
-                    (19, '13b Corrugadora FLTB', 2250, 0.25, 35, 1250, 0, 0, 0, CAST(1 AS BOOLEAN)),
-                    (20, '14 Pegadora de Cajas', 75000, 0.07, 1, 40000, 0, 0, 0, CAST(1 AS BOOLEAN)),
-                    (21, '15 Troqueladora Kirby', 1500, 0.25, 40, 1250, 0, 0, 0, CAST(1 AS BOOLEAN)),
-                    (22, '12 Maquina de Cordon', 2100, 0.25, 10, 2000, 0, 0, 0, CAST(1 AS BOOLEAN)),
-                    (23, '12 Cortadora de Manijas', 9000, 0.25, 5, 2000, 0, 0, 0, CAST(1 AS BOOLEAN))
-                ) AS v(""Id"", ""Nombre"", ""MetaRendimiento"", ""MetaDesperdicio"", ""ValorPorTiro"", ""TirosReferencia"", ""SemaforoMin"", ""SemaforoNormal"", ""SemaforoMax"", ""Activa"")
+                    (-1, 'MANUAL / TERMINADOS', 0, 0, 0, 0, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    (1, 'CONVERTIDORA 1A', 15000, 0.25, 5, 1250, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    (2, 'CONVERTIDORA 1B', 15000, 0.25, 5, 1250, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    (3, 'Guillotina 2A polar132', 30000, 0.25, 2, 1250, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    (4, 'Guillotina 2B org- Perfecta 107', 30000, 0.25, 2, 1250, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    (5, '3 Sord Z', 15000, 0.25, 5, 1250, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    (6, '4 Sord Z', 15000, 0.25, 5, 2000, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    (7, '5 Sord Z', 15000, 0.25, 5, 1250, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    (8, '6 SpeedMaster', 15000, 0.25, 5, 3000, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    (9, '7 SpeedMaster', 22500, 0.25, 5, 3000, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    (10, '8A Troqueladora de Papel', 7500, 0.25, 10, 1000, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    (11, '8B Troqueladora de Papel', 7500, 0.25, 10, 1000, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    (12, '8C Estampadora', 6000, 0.25, 12, 1500, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    (13, '9 Troqueladora Rollo', 15000, 0.25, 5, 1250, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    (14, '10A Colaminadora Carton', 7500, 0.07, 10, 500, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    (15, '10B Colaminadora Carton', 6000, 0.03, 12, 400, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    (16, '11 Laminadora BOPP', 7500, 0.25, 10, 1000, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    (103, '16 Barnizadora UV', 7500, 0.25, 10, 1250, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    (18, '13A Corrugadora FLTE', 2250, 0.25, 40, 2000, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    (19, '13b Corrugadora FLTB', 2250, 0.25, 35, 1250, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    (20, '14 Pegadora de Cajas', 75000, 0.07, 1, 40000, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    (21, '15 Troqueladora Kirby', 1500, 0.25, 40, 1250, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    (22, '12 Maquina de Cordon', 2100, 0.25, 10, 2000, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
+                    (23, '12 Cortadora de Manijas', 9000, 0.25, 5, 2000, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN))
+                ) AS v(""Id"", ""Nombre"", ""MetaRendimiento"", ""MetaDesperdicio"", ""ValorPorTiro"", ""TirosReferencia"", ""SemaforoMin"", ""SemaforoNormal"", ""SemaforoMax"", ""Importancia"", ""Meta100Porciento"", ""Activa"")
                 WHERE NOT EXISTS (SELECT 1 FROM ""Maquinas"" WHERE ""Id"" = v.""Id"");
                 
                 -- Ensure -1 exists separately if others already exist
-                INSERT INTO ""Maquinas"" (""Id"", ""Nombre"", ""MetaRendimiento"", ""MetaDesperdicio"", ""ValorPorTiro"", ""TirosReferencia"", ""SemaforoMin"", ""SemaforoNormal"", ""SemaforoMax"", ""Activa"")
-                SELECT -1, 'MANUAL / TERMINADOS', 0, 0, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)
+                INSERT INTO ""Maquinas"" (""Id"", ""Nombre"", ""MetaRendimiento"", ""MetaDesperdicio"", ""ValorPorTiro"", ""TirosReferencia"", ""SemaforoMin"", ""SemaforoNormal"", ""SemaforoMax"", ""Importancia"", ""Meta100Porciento"", ""Activa"")
+                SELECT -1, 'MANUAL / TERMINADOS', 0, 0, 0, 0, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)
                 WHERE NOT EXISTS (SELECT 1 FROM ""Maquinas"" WHERE ""Id"" = -1);
+
+                -- Update existing columns if they don't exist
+                ALTER TABLE ""Maquinas"" ADD COLUMN IF NOT EXISTS ""Importancia"" DECIMAL(5,2) NOT NULL DEFAULT 0;
+                ALTER TABLE ""Maquinas"" ADD COLUMN IF NOT EXISTS ""Meta100Porciento"" INTEGER NOT NULL DEFAULT 0;
             ");
             Console.WriteLine("[DB INIT] Maquinas checked/created.");
         }

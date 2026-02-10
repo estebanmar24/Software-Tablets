@@ -18,6 +18,7 @@ import {
     Image
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as sstApi from '../services/sstApi'; // Restore sstApi
 import * as ordenAseoApi from '../services/ordenAseoApi'; // Import OrdenAseo API
@@ -2656,16 +2657,79 @@ function OrdenAseoTab() {
     const [detailModalVisible, setDetailModalVisible] = useState(false);
     const [selectedEncuesta, setSelectedEncuesta] = useState(null);
     const [loadingDetail, setLoadingDetail] = useState(false);
-    const [generatingReport, setGeneratingReport] = useState(false); // State for report generation
+    const [generatingReport, setGeneratingReport] = useState(false);
+    const [reportProgress, setReportProgress] = useState('');
+
+    // Report Modal State
+    const [reportModalVisible, setReportModalVisible] = useState(false);
+    const [reportStartDate, setReportStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1)); // First day of month
+    const [reportEndDate, setReportEndDate] = useState(new Date());
 
     const getBase64FromUrl = async (url) => {
-        const data = await fetch(url);
-        const blob = await data.blob();
-        return new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(blob);
-            reader.onloadend = () => resolve(reader.result);
-        });
+        // En WEB: Usar Canvas para redimensionar y comprimir
+        if (Platform.OS === 'web') {
+            return new Promise((resolve, reject) => {
+                const img = new window.Image();
+                img.crossOrigin = 'Anonymous'; // Necesario para imágenes externas si CORS lo permite
+                img.src = url;
+                img.onload = () => {
+                    // Dimensiones objetivo (Aún más reducidas para equipos con poca RAM)
+                    const MAX_WIDTH = 350;
+                    const MAX_HEIGHT = 350;
+                    let width = img.width;
+                    let height = img.height;
+
+                    console.log(`[Image] Processing: ${url.split('/').pop()} | Original: ${width}x${height}`);
+
+                    // Calcular nuevas dimensiones manteniendo aspecto
+                    if (width > height) {
+                        if (width > MAX_WIDTH) {
+                            height *= MAX_WIDTH / width;
+                            width = MAX_WIDTH;
+                        }
+                    } else {
+                        if (height > MAX_HEIGHT) {
+                            width *= MAX_HEIGHT / height;
+                            height = MAX_HEIGHT;
+                        }
+                    }
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    console.log(`[Image] Resized to: ${Math.round(width)}x${Math.round(height)}`);
+
+                    // Retornar JPEG comprimido (calidad 0.4 - prioridad estabilidad)
+                    const result = canvas.toDataURL('image/jpeg', 0.4);
+                    console.log(`[Image] Final Base64 Length: ${result.length}`);
+                    resolve(result);
+                };
+                img.onerror = (e) => {
+                    console.error('[Image] Error loading image for resizing:', e);
+                    // IMPORTANTE: Desactivar fallback para evitar pasar imágenes gigantes al PDF que crashean Edge.
+                    // Si falla el resize, es mejor no mostrar la foto que romper el reporte.
+                    resolve(null);
+                };
+            });
+        }
+
+
+        // EN NATIVE: Fallback al método original (o usar expo-image-manipulator si estuviera instalado)
+        try {
+            const data = await fetch(url);
+            const blob = await data.blob();
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(blob);
+                reader.onloadend = () => resolve(reader.result);
+            });
+        } catch (e) {
+            console.error('Native fetch failed', e);
+            return null;
+        }
     };
 
     const handleGenerateReport = async () => {
@@ -2674,11 +2738,33 @@ function OrdenAseoTab() {
             return;
         }
 
+        console.log('[PDF] 🚀 Starting report generation...');
         setGeneratingReport(true);
+        setReportProgress('Filtrando encuestas...');
         try {
+            // 0. Filter by Date Range
+            const start = new Date(reportStartDate);
+            start.setHours(0, 0, 0, 0);
+            const end = new Date(reportEndDate);
+            end.setHours(23, 59, 59, 999);
+
+            const filteredEncuestas = encuestas.filter(e => {
+                const date = new Date(e.fechaCreacion);
+                return date >= start && date <= end;
+            });
+
+            if (filteredEncuestas.length === 0) {
+                Alert.alert('Aviso', 'No hay encuestas en el rango de fechas seleccionado');
+                setGeneratingReport(false);
+                setReportProgress('');
+                return;
+            }
+
+            setReportProgress(`Procesando ${filteredEncuestas.length} encuestas...`);
+
             // 1. Prepare Data
             const processGroups = {};
-            encuestas.forEach(enc => {
+            filteredEncuestas.forEach(enc => {
                 if (!processGroups[enc.procesoAuditado]) {
                     processGroups[enc.procesoAuditado] = {
                         name: enc.procesoAuditado,
@@ -2689,15 +2775,10 @@ function OrdenAseoTab() {
                 }
                 const group = processGroups[enc.procesoAuditado];
                 group.total++;
-                // Cumplimiento: totalCumple / 6. Si totalCumple es 6, es 100%. promedio.
-                // Pero el requerimiento es "indicador por puesto".
-                // Asumiremos cumplimiento si >= 80% (5/6 es 83%). O simplemente promedio del puntaje.
-
-                // Calculamos porcentaje de esta encuesta
-                // const porcentaje = (enc.totalCumple / 6) * 100;
                 group.cumple += enc.totalCumple;
                 group.details.push(enc);
             });
+            console.log(`[PDF] Processed ${filteredEncuestas.length} surveys into ${Object.keys(processGroups).length} groups.`);
 
             // 2. Load Libraries & Assets
             let jsPDF, autoTable;
@@ -2717,14 +2798,18 @@ function OrdenAseoTab() {
             } catch (e) { console.log('Logo load error', e); }
 
             // 3. Generate PDF
+            setReportProgress('Creando documento PDF...');
+            console.log('[PDF] Starting PDF generation...');
             const doc = new jsPDF();
             const pageWidth = doc.internal.pageSize.getWidth();
+            console.log('[PDF] Document created');
 
             // Header
             if (logoBase64) doc.addImage(logoBase64, 'JPEG', 15, 10, 40, 20);
 
             doc.setFontSize(10);
-            doc.text(new Date().toLocaleDateString('es-CO'), pageWidth - 15, 15, { align: 'right' });
+            const dateStr = new Date().toLocaleDateString('es-CO');
+            doc.text(dateStr, pageWidth - 15, 15, { align: 'right' });
 
             // Move title down to avoid overlap (Logo is 10-30)
             doc.setFontSize(16);
@@ -2733,11 +2818,13 @@ function OrdenAseoTab() {
             doc.setFontSize(12);
             doc.setFont('helvetica', 'normal');
             doc.text('Aleph Impresores S.A.S', pageWidth / 2, 48, { align: 'center' });
+            doc.setFontSize(10);
+            doc.text(`Periodo: ${formatDate(start)} - ${formatDate(end)}`, pageWidth / 2, 54, { align: 'center' });
 
             // == RESUMEN GERENCIAL ==
             doc.setFontSize(14);
             doc.setTextColor(0, 51, 102);
-            doc.text('Resumen por Proceso (Puesto de Trabajo)', 15, 60);
+            doc.text('Resumen por Proceso (Puesto de Trabajo)', 15, 65);
             doc.setTextColor(0, 0, 0);
 
             const summaryBody = Object.values(processGroups).map(g => {
@@ -2780,55 +2867,65 @@ function OrdenAseoTab() {
                 }
             });
 
-            // == DETALLE POR COLABORADOR ==
+            // == DETALLE OPERATIVO ==
             let finalY = doc.lastAutoTable.finalY + 15;
             doc.setFontSize(14);
             doc.setTextColor(0, 51, 102);
-            doc.text('Detalle por Colaborador', 15, finalY);
+            doc.text('Detalle Operativo (Agrupado por Fecha)', 15, finalY);
             doc.setTextColor(0, 0, 0);
 
-            // Flatten for 'Colaborador' view
-            const detailBody = [];
-            Object.values(processGroups).forEach(group => {
-                group.details.forEach(enc => {
-                    const pct = (enc.totalCumple / 6) * 100;
-                    detailBody.push([
-                        group.name,
-                        enc.nombreAuditado,
-                        formatDate(enc.fechaCreacion),
-                        `${enc.totalCumple}/6`,
-                        pct < 80 ? 'NO CUMPLE' : 'CUMPLE' // Umbral arbitrario de 80% para "Cumple el dia"
-                    ]);
-                });
-            });
+            // Sort all surveys by Date Descending
+            const sortedDetails = [...filteredEncuestas].sort((a, b) => new Date(b.fechaCreacion) - new Date(a.fechaCreacion));
 
-            // Sort by status (NO CUMPLE first) to highlight criticals
-            detailBody.sort((a, b) => (a[4] === 'NO CUMPLE' ? -1 : 1));
+            const detailBody = [];
+            let lastDate = '';
+
+            sortedDetails.forEach(enc => {
+                const currentDate = formatDate(enc.fechaCreacion);
+
+                // Add Group Header if date changes
+                if (currentDate !== lastDate) {
+                    detailBody.push([{ content: currentDate, colSpan: 4, styles: { fillColor: [220, 220, 220], fontStyle: 'bold', halign: 'center', textColor: 50 } }]);
+                    lastDate = currentDate;
+                }
+
+                const pct = (enc.totalCumple / 6) * 100;
+                detailBody.push([
+                    enc.procesoAuditado,
+                    enc.nombreAuditado,
+                    `${enc.totalCumple}/6`,
+                    pct < 80 ? 'NO CUMPLE' : 'CUMPLE'
+                ]);
+            });
 
             autoTable(doc, {
                 startY: finalY + 5,
-                head: [['Puesto', 'Colaborador', 'Fecha', 'Puntaje', 'Conc. Diario']],
+                head: [['Puesto', 'Auditor/Colaborador', 'Puntaje', 'Estado']],
                 body: detailBody,
                 headStyles: { fillColor: [100, 100, 100] },
                 didParseCell: (data) => {
-                    if (data.section === 'body' && data.column.index === 4) {
-                        if (data.cell.raw === 'NO CUMPLE') {
-                            data.cell.styles.textColor = [220, 53, 69];
-                            data.cell.styles.fontStyle = 'bold';
-                        } else {
-                            data.cell.styles.textColor = [40, 167, 69];
+                    if (data.section === 'body' && data.column.index === 3) {
+                        // Check if it's a content row (not group header)
+                        if (!data.row.raw[0].colSpan) {
+                            const val = data.cell.raw;
+                            if (val === 'NO CUMPLE') {
+                                data.cell.styles.textColor = [220, 53, 69];
+                                data.cell.styles.fontStyle = 'bold';
+                            } else {
+                                data.cell.styles.textColor = [40, 167, 69];
+                            }
                         }
                     }
                 }
             });
 
             // == ANEXO DE EVIDENCIAS (FOTOS NO CUMPLE) ==
-            const issues = [];
 
-            // Identify surveys with issues
-            const surveysWithIssues = encuestas.filter(e => e.totalCumple < 6);
+            // Identify surveys with issues from the filtered list
+            const surveysWithIssues = filteredEncuestas.filter(e => e.totalCumple < 6);
 
             if (surveysWithIssues.length > 0) {
+                setReportProgress(`Cargando fotos de ${surveysWithIssues.length} hallazgos...`);
                 doc.addPage();
                 doc.setFontSize(14);
                 doc.setTextColor(0, 51, 102);
@@ -2847,8 +2944,6 @@ function OrdenAseoTab() {
                     // Check which questions failed and have photos
                     const failedItems = PREGUNTAS_ASEO.filter(p => {
                         // Backend data might use PascalCase or camelCase. We check both from PREGUNTAS_ASEO keys
-                        // In list we use camelCase usually? Let's rely on what we found in handleViewDetail
-                        // In handleViewDetail we saw: selectedEncuesta[p.key] ?? selectedEncuesta[lowerKey]
                         const lowerKey = p.key.charAt(0).toLowerCase() + p.key.slice(1);
                         const val = fullEncuesta[p.key] ?? fullEncuesta[lowerKey];
                         return val === false; // Explicitly false means NO CUMPLE
@@ -2880,18 +2975,46 @@ function OrdenAseoTab() {
 
                             if (filename) {
                                 try {
+                                    console.log(`[PDF] Loading image for ${item.key}: ${filename}`);
                                     const photoUrl = ordenAseoApi.getFotoUrl(filename);
+
+                                    const startResize = Date.now();
                                     const photoBase64 = await getBase64FromUrl(photoUrl);
+                                    console.log(`[PDF] Image loaded & resized in ${Date.now() - startResize}ms. Size: ${photoBase64 ? photoBase64.length : 0} chars`);
 
-                                    // Image placement
-                                    // Check space again
-                                    if (currentY + 60 > 280) { doc.addPage(); currentY = 20; }
+                                    if (photoBase64) {
+                                        // Image placement
+                                        // Check space again
+                                        if (currentY + 60 > 280) { doc.addPage(); currentY = 20; }
 
-                                    doc.addImage(photoBase64, 'JPEG', 20, currentY, 80, 60);
-                                    currentY += 65;
+                                        // Detect format from base64 header (e.g., "data:image/png;base64,...")
+                                        let format = 'JPEG';
+                                        if (photoBase64.startsWith('data:image/png')) format = 'PNG';
+                                        else if (photoBase64.startsWith('data:image/webp')) format = 'WEBP';
+
+                                        console.log(`[PDF] Adding image to PDF (Format: ${format})...`);
+
+                                        // Safety: jsPDF might not support WEBP in all versions, fallback to skip or try JPEG
+                                        try {
+                                            // Parametro final 'FAST' activa compresion zlib en el PDF
+                                            doc.addImage(photoBase64, format, 20, currentY, 80, 60, undefined, 'FAST');
+                                            console.log(`[PDF] Image added successfully.`);
+                                        } catch (addError) {
+                                            console.warn('[PDF] Error doc.addImage:', addError);
+                                            doc.setTextColor(100, 100, 100);
+                                            doc.text('(Sin evidencia fotográfica adjunta)', 20, currentY + 30);
+                                        }
+                                        currentY += 65;
+                                    } else {
+                                        console.warn(`[PDF] Failed to load/resize image: ${filename}`);
+                                        doc.setTextColor(100, 100, 100);
+                                        doc.text('(Sin evidencia fotográfica adjunta)', 20, currentY + 5);
+                                        currentY += 10;
+                                    }
                                 } catch (imgErr) {
+                                    console.error('[PDF] Global error processing image item:', imgErr);
                                     doc.setTextColor(100, 100, 100);
-                                    doc.text('(Error cargando foto)', 20, currentY + 5);
+                                    doc.text('(Sin evidencia fotográfica adjunta)', 20, currentY + 5);
                                     currentY += 10;
                                 }
                             } else {
@@ -2902,6 +3025,9 @@ function OrdenAseoTab() {
                                 currentY += 10;
                             }
                             currentY += 5; // Spacing between items
+
+                            // Pequeña pausa para permitir al navegador liberar memoria (Fix para Edge)
+                            await new Promise(resolve => setTimeout(resolve, 100));
                         }
                         currentY += 5; // Spacing between surveys
 
@@ -2915,13 +3041,18 @@ function OrdenAseoTab() {
 
             // 4. Save
             const fileName = `Reporte_OrdenAseo_${new Date().toISOString().split('T')[0]}.pdf`;
+            console.log('[PDF] Saving PDF as:', fileName);
+            setReportProgress('Guardando archivo PDF...');
 
             if (Platform.OS === 'web') {
                 doc.save(fileName);
+                setReportModalVisible(false);
+                Alert.alert('Éxito', `Reporte "${fileName}" generado correctamente. Revise su carpeta de descargas.`);
             } else {
                 const pdfBase64 = doc.output('base64');
                 const fileUri = `${FileSystem.documentDirectory}${fileName}`;
                 await FileSystem.writeAsStringAsync(fileUri, pdfBase64, { encoding: FileSystem.EncodingType.Base64 });
+                setReportModalVisible(false);
                 if (await Sharing.isAvailableAsync()) {
                     await Sharing.shareAsync(fileUri);
                 } else {
@@ -2934,6 +3065,7 @@ function OrdenAseoTab() {
             Alert.alert('Error', 'No se pudo generar el reporte PDF. ' + error.message);
         } finally {
             setGeneratingReport(false);
+            setReportProgress('');
         }
     };
 
@@ -2966,9 +3098,16 @@ function OrdenAseoTab() {
         return `${score}/6`;
     };
 
-    const formatDate = (dateStr) => {
-        if (!dateStr) return '-';
-        return new Date(dateStr).toLocaleDateString('es-CO');
+    const formatDate = (dateInput) => {
+        if (!dateInput) return '-';
+        // Handle both Date objects and date strings
+        const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+        if (isNaN(d.getTime())) return '-';
+        // Use local date parts to avoid timezone issues
+        const day = d.getDate().toString().padStart(2, '0');
+        const month = (d.getMonth() + 1).toString().padStart(2, '0');
+        const year = d.getFullYear();
+        return `${day}/${month}/${year}`;
     };
 
     const handleViewDetail = async (item) => {
@@ -2995,14 +3134,10 @@ function OrdenAseoTab() {
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                     <TouchableOpacity
                         style={[styles.addButtonSmall, { backgroundColor: '#059669' }]}
-                        onPress={handleGenerateReport}
+                        onPress={() => setReportModalVisible(true)}
                         disabled={generatingReport}
                     >
-                        {generatingReport ? (
-                            <ActivityIndicator size="small" color="#FFF" />
-                        ) : (
-                            <Text style={styles.addButtonText}>📄 Reporte</Text>
-                        )}
+                        <Text style={styles.addButtonText}>📄 Reporte</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.addButtonSmall} onPress={loadEncuestas}>
                         <Text style={styles.addButtonText}>🔄 Actualizar</Text>
@@ -3109,11 +3244,24 @@ function OrdenAseoTab() {
                                             {photoVal ? (
                                                 <View>
                                                     <Text style={{ fontSize: 12, color: '#6B7280', marginBottom: 4 }}>Evidencia fotográfica:</Text>
-                                                    <Image
-                                                        source={{ uri: ordenAseoApi.getFotoUrl(photoVal) }}
-                                                        style={{ width: '100%', height: 250, borderRadius: 8, backgroundColor: '#F3F4F6' }}
-                                                        resizeMode="contain"
-                                                    />
+                                                    {photoVal.includes('|') ? (
+                                                        <View>
+                                                            {photoVal.split('|').map((photo, idx) => (
+                                                                <Image
+                                                                    key={idx}
+                                                                    source={{ uri: ordenAseoApi.getFotoUrl(photo) }}
+                                                                    style={{ width: '100%', height: 300, borderRadius: 8, backgroundColor: '#F3F4F6', marginBottom: 12 }}
+                                                                    resizeMode="contain"
+                                                                />
+                                                            ))}
+                                                        </View>
+                                                    ) : (
+                                                        <Image
+                                                            source={{ uri: ordenAseoApi.getFotoUrl(photoVal) }}
+                                                            style={{ width: '100%', height: 250, borderRadius: 8, backgroundColor: '#F3F4F6' }}
+                                                            resizeMode="contain"
+                                                        />
+                                                    )}
                                                 </View>
                                             ) : (
                                                 <Text style={{ fontSize: 12, color: '#9CA3AF', fontStyle: 'italic' }}>Sin foto adjunta</Text>
@@ -3129,6 +3277,86 @@ function OrdenAseoTab() {
                                 <Text style={styles.submitButtonText}>Cerrar</Text>
                             </TouchableOpacity>
                         </View>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Report Generation Modal */}
+            <Modal visible={reportModalVisible} animationType="fade" transparent onRequestClose={() => setReportModalVisible(false)}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContentSmall}>
+                        <Text style={styles.modalTitle}>Generar Reporte PDF</Text>
+
+                        <Text style={styles.label}>Fecha Inicio:</Text>
+                        <View style={styles.pickerContainer}>
+                            {Platform.OS === 'web' ? (
+                                <input
+                                    type="date"
+                                    style={{ padding: 10, width: '100%', border: 'none', fontSize: 16, backgroundColor: 'transparent' }}
+                                    defaultValue={reportStartDate.toISOString().split('T')[0]}
+                                    onChange={(e) => {
+                                        if (e.target.value) {
+                                            const newDate = new Date(e.target.value + 'T00:00:00');
+                                            if (!isNaN(newDate.getTime())) {
+                                                setReportStartDate(newDate);
+                                            }
+                                        }
+                                    }}
+                                />
+                            ) : (
+                                <DateTimePicker
+                                    value={reportStartDate}
+                                    mode="date"
+                                    display="default"
+                                    onChange={(event, date) => date && setReportStartDate(date)}
+                                />
+                            )}
+                        </View>
+
+                        <Text style={styles.label}>Fecha Fin:</Text>
+                        <View style={styles.pickerContainer}>
+                            {Platform.OS === 'web' ? (
+                                <input
+                                    type="date"
+                                    style={{ padding: 10, width: '100%', border: 'none', fontSize: 16, backgroundColor: 'transparent' }}
+                                    defaultValue={reportEndDate.toISOString().split('T')[0]}
+                                    onChange={(e) => {
+                                        if (e.target.value) {
+                                            const newDate = new Date(e.target.value + 'T00:00:00');
+                                            if (!isNaN(newDate.getTime())) {
+                                                setReportEndDate(newDate);
+                                            }
+                                        }
+                                    }}
+                                />
+                            ) : (
+                                <DateTimePicker
+                                    value={reportEndDate}
+                                    mode="date"
+                                    display="default"
+                                    onChange={(event, date) => date && setReportEndDate(date)}
+                                />
+                            )}
+                        </View>
+
+                        {generatingReport ? (
+                            <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+                                <ActivityIndicator size="large" color="#059669" />
+                                <Text style={{ marginTop: 12, color: '#374151', fontSize: 14 }}>{reportProgress || 'Generando...'}</Text>
+                            </View>
+                        ) : (
+                            <View style={styles.modalActions}>
+                                <TouchableOpacity style={styles.cancelButton} onPress={() => setReportModalVisible(false)}>
+                                    <Text style={styles.cancelButtonText}>Cancelar</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={styles.submitButton}
+                                    onPress={handleGenerateReport}
+                                >
+                                    <Text style={styles.submitButtonText}>Generar</Text>
+                                </TouchableOpacity>
+                            </View>
+                        )}
                     </View>
                 </View>
             </Modal>

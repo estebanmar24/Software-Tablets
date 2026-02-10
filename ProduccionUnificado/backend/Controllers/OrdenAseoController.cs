@@ -36,7 +36,10 @@ public class OrdenAseoController : ControllerBase
         "PROCESO DE PLANEACIÓN",
         "PROCESO DE TERMINADOS",
         "PROCESO DE TROQUELADO",
-        "PROCESO TEJEDORA"
+        "PROCESO TEJEDORA",
+        "PROCESO DE PRODUCCIÓN",
+        "PROCESO DE ESTAMPADORA",
+        "PROCESO DE BARNIZADORA"
     };
 
     private static readonly string[] Plantas = new[] { "PLANTA 1", "PLANTA 2" };
@@ -109,12 +112,12 @@ public class OrdenAseoController : ControllerBase
             var uploadsPath = Path.Combine(_env.WebRootPath ?? "wwwroot", "uploads", "ordenaseo");
             if (!Directory.Exists(uploadsPath)) Directory.CreateDirectory(uploadsPath);
 
-            encuesta.FotoImplementosAseo = await SavePhoto(dto.FotoImplementosAseoBase64, uploadsPath, "implementos");
-            encuesta.FotoHerramientasLugar = await SavePhoto(dto.FotoHerramientasLugarBase64, uploadsPath, "herramientas");
-            encuesta.FotoTarrosRotulados = await SavePhoto(dto.FotoTarrosRotuladosBase64, uploadsPath, "tarros");
-            encuesta.FotoAreaDespejada = await SavePhoto(dto.FotoAreaDespejadaBase64, uploadsPath, "area");
-            encuesta.FotoRutasEvacuacion = await SavePhoto(dto.FotoRutasEvacuacionBase64, uploadsPath, "rutas");
-            encuesta.FotoMesasTrabajo = await SavePhoto(dto.FotoMesasTrabajoBase64, uploadsPath, "mesas");
+            encuesta.FotoImplementosAseo = await SavePhotos(dto.FotoImplementosAseoBase64, uploadsPath, "implementos");
+            encuesta.FotoHerramientasLugar = await SavePhotos(dto.FotoHerramientasLugarBase64, uploadsPath, "herramientas");
+            encuesta.FotoTarrosRotulados = await SavePhotos(dto.FotoTarrosRotuladosBase64, uploadsPath, "tarros");
+            encuesta.FotoAreaDespejada = await SavePhotos(dto.FotoAreaDespejadaBase64, uploadsPath, "area");
+            encuesta.FotoRutasEvacuacion = await SavePhotos(dto.FotoRutasEvacuacionBase64, uploadsPath, "rutas");
+            encuesta.FotoMesasTrabajo = await SavePhotos(dto.FotoMesasTrabajoBase64, uploadsPath, "mesas");
 
             _context.EncuestasOrdenAseo.Add(encuesta);
             await _context.SaveChangesAsync();
@@ -151,18 +154,18 @@ public class OrdenAseoController : ControllerBase
             if (!Directory.Exists(uploadsPath)) Directory.CreateDirectory(uploadsPath);
 
             // Update photos only if new ones are provided
-            if (!string.IsNullOrEmpty(dto.FotoImplementosAseoBase64))
-                encuesta.FotoImplementosAseo = await SavePhoto(dto.FotoImplementosAseoBase64, uploadsPath, "implementos");
-            if (!string.IsNullOrEmpty(dto.FotoHerramientasLugarBase64))
-                encuesta.FotoHerramientasLugar = await SavePhoto(dto.FotoHerramientasLugarBase64, uploadsPath, "herramientas");
-            if (!string.IsNullOrEmpty(dto.FotoTarrosRotuladosBase64))
-                encuesta.FotoTarrosRotulados = await SavePhoto(dto.FotoTarrosRotuladosBase64, uploadsPath, "tarros");
-            if (!string.IsNullOrEmpty(dto.FotoAreaDespejadaBase64))
-                encuesta.FotoAreaDespejada = await SavePhoto(dto.FotoAreaDespejadaBase64, uploadsPath, "area");
-            if (!string.IsNullOrEmpty(dto.FotoRutasEvacuacionBase64))
-                encuesta.FotoRutasEvacuacion = await SavePhoto(dto.FotoRutasEvacuacionBase64, uploadsPath, "rutas");
-            if (!string.IsNullOrEmpty(dto.FotoMesasTrabajoBase64))
-                encuesta.FotoMesasTrabajo = await SavePhoto(dto.FotoMesasTrabajoBase64, uploadsPath, "mesas");
+            if (dto.FotoImplementosAseoBase64 != null)
+                encuesta.FotoImplementosAseo = await SavePhotos(dto.FotoImplementosAseoBase64, uploadsPath, "implementos");
+            if (dto.FotoHerramientasLugarBase64 != null)
+                encuesta.FotoHerramientasLugar = await SavePhotos(dto.FotoHerramientasLugarBase64, uploadsPath, "herramientas");
+            if (dto.FotoTarrosRotuladosBase64 != null)
+                encuesta.FotoTarrosRotulados = await SavePhotos(dto.FotoTarrosRotuladosBase64, uploadsPath, "tarros");
+            if (dto.FotoAreaDespejadaBase64 != null)
+                encuesta.FotoAreaDespejada = await SavePhotos(dto.FotoAreaDespejadaBase64, uploadsPath, "area");
+            if (dto.FotoRutasEvacuacionBase64 != null)
+                encuesta.FotoRutasEvacuacion = await SavePhotos(dto.FotoRutasEvacuacionBase64, uploadsPath, "rutas");
+            if (dto.FotoMesasTrabajoBase64 != null)
+                encuesta.FotoMesasTrabajo = await SavePhotos(dto.FotoMesasTrabajoBase64, uploadsPath, "mesas");
 
             await _context.SaveChangesAsync();
             return Ok(new { message = "Encuesta actualizada" });
@@ -180,12 +183,12 @@ public class OrdenAseoController : ControllerBase
         if (encuesta == null) return NotFound();
 
         // Delete associated photos
-        DeletePhotoFile(encuesta.FotoImplementosAseo);
-        DeletePhotoFile(encuesta.FotoHerramientasLugar);
-        DeletePhotoFile(encuesta.FotoTarrosRotulados);
-        DeletePhotoFile(encuesta.FotoAreaDespejada);
-        DeletePhotoFile(encuesta.FotoRutasEvacuacion);
-        DeletePhotoFile(encuesta.FotoMesasTrabajo);
+        DeletePhotoFiles(encuesta.FotoImplementosAseo);
+        DeletePhotoFiles(encuesta.FotoHerramientasLugar);
+        DeletePhotoFiles(encuesta.FotoTarrosRotulados);
+        DeletePhotoFiles(encuesta.FotoAreaDespejada);
+        DeletePhotoFiles(encuesta.FotoRutasEvacuacion);
+        DeletePhotoFiles(encuesta.FotoMesasTrabajo);
 
         _context.EncuestasOrdenAseo.Remove(encuesta);
         await _context.SaveChangesAsync();
@@ -201,39 +204,52 @@ public class OrdenAseoController : ControllerBase
         return PhysicalFile(path, "image/jpeg");
     }
 
-    private async Task<string?> SavePhoto(string? base64, string uploadsPath, string prefix)
+    private async Task<string?> SavePhotos(List<string>? base64List, string uploadsPath, string prefix)
     {
-        if (string.IsNullOrEmpty(base64)) return null;
+        if (base64List == null || !base64List.Any()) return null;
 
-        try
+        var uploadedFiles = new List<string>();
+
+        foreach (var base64 in base64List)
         {
-            // Remove data URI prefix if present
-            var base64Data = base64;
-            if (base64.Contains(","))
-                base64Data = base64.Split(',')[1];
+            if (string.IsNullOrEmpty(base64)) continue;
 
-            var bytes = Convert.FromBase64String(base64Data);
-            var filename = $"{prefix}_{DateTime.UtcNow:yyyyMMddHHmmssfff}_{Guid.NewGuid():N}.jpg";
-            var filepath = Path.Combine(uploadsPath, filename);
+            try
+            {
+                // Remove data URI prefix if present
+                var base64Data = base64;
+                if (base64.Contains(","))
+                    base64Data = base64.Split(',')[1];
 
-            await System.IO.File.WriteAllBytesAsync(filepath, bytes);
-            return filename;
+                var bytes = Convert.FromBase64String(base64Data);
+                var filename = $"{prefix}_{DateTime.UtcNow:yyyyMMddHHmmssfff}_{Guid.NewGuid():N}.jpg";
+                var filepath = Path.Combine(uploadsPath, filename);
+
+                await System.IO.File.WriteAllBytesAsync(filepath, bytes);
+                uploadedFiles.Add(filename);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[OrdenAseo] Error saving photo: {ex.Message}");
+            }
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[OrdenAseo] Error saving photo: {ex.Message}");
-            return null;
-        }
+        
+        return uploadedFiles.Any() ? string.Join("|", uploadedFiles) : null;
     }
 
-    private void DeletePhotoFile(string? filename)
+    private void DeletePhotoFiles(string? filenames)
     {
-        if (string.IsNullOrEmpty(filename)) return;
-        try
+        if (string.IsNullOrEmpty(filenames)) return;
+
+        var files = filenames.Split('|');
+        foreach (var filename in files)
         {
-            var path = Path.Combine(_env.WebRootPath ?? "wwwroot", "uploads", "ordenaseo", filename);
-            if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+            try
+            {
+                var path = Path.Combine(_env.WebRootPath ?? "wwwroot", "uploads", "ordenaseo", filename);
+                if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+            }
+            catch { /* Ignore deletion errors */ }
         }
-        catch { /* Ignore deletion errors */ }
     }
 }
