@@ -28,16 +28,19 @@ namespace TiempoProcesos.API.Controllers
                 query = query.Where(m => m.Activo);
             }
             
+            // Exclude TERMINADOS
+            query = query.Where(m => m.Nombre != null && !m.Nombre.Contains("TERMINADOS"));
+            
             var maquinas = await query.ToListAsync();
 
             // Implementar Natural Sort Order (2A < 10A)
             var resultado = maquinas
                 .OrderBy(m => 
                 {
-                    var match = Regex.Match(m.Nombre, @"^\d+");
+                    var match = Regex.Match(m.Nombre ?? "", @"^\d+");
                     return match.Success ? int.Parse(match.Value) : int.MaxValue;
                 })
-                .ThenBy(m => m.Nombre)
+                .ThenBy(m => m.Nombre ?? "")
                 .ToList();
 
             return resultado;
@@ -78,6 +81,42 @@ namespace TiempoProcesos.API.Controllers
             try
             {
                 await _context.SaveChangesAsync();
+
+                // Auto-snapshot: create or update the meta snapshot for the CURRENT month
+                var now = DateTime.Now;
+                var mes = now.Month;
+                var anio = now.Year;
+
+                var snapshot = await _context.MetasMensuales
+                    .FirstOrDefaultAsync(s => s.MaquinaId == id && s.Mes == mes && s.Anio == anio);
+
+                if (snapshot != null)
+                {
+                    snapshot.Meta100Porciento = maquina.Meta100Porciento;
+                    snapshot.MetaRendimiento = maquina.MetaRendimiento;
+                    snapshot.Importancia = maquina.Importancia;
+                    snapshot.TirosReferencia = maquina.TirosReferencia;
+                    snapshot.ValorPorTiro = maquina.ValorPorTiro;
+                    snapshot.Tarifa = maquina.Tarifa;
+                }
+                else
+                {
+                    _context.MetasMensuales.Add(new MetaMensual
+                    {
+                        MaquinaId = id,
+                        Mes = mes,
+                        Anio = anio,
+                        Meta100Porciento = maquina.Meta100Porciento,
+                        MetaRendimiento = maquina.MetaRendimiento,
+                        Importancia = maquina.Importancia,
+                        TirosReferencia = maquina.TirosReferencia,
+                        ValorPorTiro = maquina.ValorPorTiro,
+                        Tarifa = maquina.Tarifa
+                    });
+                }
+
+                await _context.SaveChangesAsync();
+                Console.WriteLine($"[META SNAPSHOT] Updated snapshot for MaquinaId={id}, {mes}/{anio}");
             }
             catch (DbUpdateConcurrencyException)
             {

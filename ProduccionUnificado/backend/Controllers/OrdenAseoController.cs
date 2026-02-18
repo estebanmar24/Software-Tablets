@@ -201,6 +201,10 @@ public class OrdenAseoController : ControllerBase
     {
         var path = Path.Combine(_env.WebRootPath ?? "wwwroot", "uploads", "ordenaseo", filename);
         if (!System.IO.File.Exists(path)) return NotFound();
+        
+        // Explicitly add CORS header to allow canvas usage on frontend
+        Response.Headers.Append("Access-Control-Allow-Origin", "*");
+        
         return PhysicalFile(path, "image/jpeg");
     }
 

@@ -17,6 +17,7 @@ export default function MachineParamsScreen({ navigation }) {
         valorPorTiro: '',
         tirosReferencia: '',
         importancia: '',
+        tarifa: '',
         activo: true
     });
 
@@ -58,6 +59,7 @@ export default function MachineParamsScreen({ navigation }) {
             valorPorTiro: maquina.valorPorTiro?.toString() || '0',
             tirosReferencia: maquina.tirosReferencia?.toString() || '0',
             importancia: maquina.importancia?.toString() || '1',
+            tarifa: (maquina.tarifa || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, "."),
             activo: maquina.activo !== false
         });
         setModalVisible(true);
@@ -73,6 +75,7 @@ export default function MachineParamsScreen({ navigation }) {
             valorPorTiro: '0',
             tirosReferencia: '0',
             importancia: '0',
+            tarifa: '0',
             activo: true
         });
         setModalVisible(true);
@@ -104,6 +107,7 @@ export default function MachineParamsScreen({ navigation }) {
             semaforoMin: 0,
             semaforoNormal: 0,
             semaforoMax: 0,
+            tarifa: parseInt(form.tarifa.replace(/\./g, '')) || 0,
             activo: form.activo
         };
 
@@ -182,7 +186,7 @@ export default function MachineParamsScreen({ navigation }) {
             </View>
 
             <FlatList
-                data={maquinas}
+                data={maquinas.filter(m => !m.nombre.includes("TERMINADOS"))}
                 keyExtractor={(item) => item.id.toString()}
                 renderItem={({ item }) => (
                     <TouchableOpacity
@@ -197,6 +201,7 @@ export default function MachineParamsScreen({ navigation }) {
                         </View>
                         <Text>Meta 100%: {item.meta100Porciento || '-'} | Meta 75%: {item.metaRendimiento}</Text>
                         <Text>Valor/Tiro: ${item.valorPorTiro} | Importancia: {(parseFloat(item.importancia) || 0).toFixed(2)}%</Text>
+                        <Text>Tarifa: ${(item.tarifa || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".")}</Text>
                     </TouchableOpacity>
                 )}
             />
@@ -260,6 +265,20 @@ export default function MachineParamsScreen({ navigation }) {
 
                     <Text style={styles.label}>Tiros Referencia (para cambios OP):</Text>
                     <TextInput style={styles.input} keyboardType="numeric" value={form.tirosReferencia} onChangeText={t => setForm({ ...form, tirosReferencia: t })} />
+
+                    <Text style={styles.label}>Tarifa por Hora ($)</Text>
+                    <TextInput
+                        style={styles.input}
+                        keyboardType="numeric"
+                        value={form.tarifa}
+                        onChangeText={(t) => {
+                            // Remove non-numeric chars
+                            const numericValue = t.replace(/[^0-9]/g, '');
+                            // Format with thousands separator
+                            const formatted = numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+                            setForm({ ...form, tarifa: formatted });
+                        }}
+                    />
 
                     <View style={styles.buttonRow}>
                         <Button title="Guardar" onPress={handleSave} />

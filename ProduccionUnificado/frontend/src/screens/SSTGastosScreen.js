@@ -580,24 +580,65 @@ function GastosTab() {
             </View>
 
             {/* Summary Cards */}
-            {
-                resumen && (
+            {resumen && (() => {
+                // Calculate displayed totals based on filters
+                let displayedPresupuesto = resumen.totalPresupuesto;
+                let displayedGastado = resumen.totalGastado;
+                let displayedRestante = resumen.totalRestante;
+                let isFiltered = false;
+
+                if (filterTipo) {
+                    isFiltered = true;
+                    // Specific Type selected
+                    const tipoData = resumen.resumenPorTipo.find(r => r.tipoServicioId === parseInt(filterTipo));
+                    if (tipoData) {
+                        displayedPresupuesto = tipoData.presupuesto;
+                        displayedGastado = tipoData.gastado;
+                        displayedRestante = displayedPresupuesto - displayedGastado;
+                    } else {
+                        displayedPresupuesto = 0;
+                        displayedGastado = 0;
+                        displayedRestante = 0;
+                    }
+                } else if (filterRubro) {
+                    isFiltered = true;
+                    // Rubro selected - Sum all types for this Rubro
+                    const tiposDelRubro = tiposServicio
+                        .filter(t => t.rubroId === parseInt(filterRubro))
+                        .map(t => t.id);
+
+                    const resumenFiltrado = resumen.resumenPorTipo.filter(r =>
+                        tiposDelRubro.includes(r.tipoServicioId)
+                    );
+
+                    displayedPresupuesto = resumenFiltrado.reduce((sum, r) => sum + r.presupuesto, 0);
+                    displayedGastado = resumenFiltrado.reduce((sum, r) => sum + r.gastado, 0);
+                    displayedRestante = displayedPresupuesto - displayedGastado;
+                }
+
+                return (
                     <View style={styles.summaryContainer}>
                         <View style={[styles.summaryCard, styles.presupuestoCard]}>
-                            <Text style={styles.summaryLabel}>Presupuesto</Text>
-                            <Text style={styles.summaryValue}>{formatCurrency(resumen.totalPresupuesto)}</Text>
+                            <Text style={styles.summaryLabel}>
+                                Presupuesto {isFiltered ? '*' : ''}
+                            </Text>
+                            <Text style={styles.summaryValue}>{formatCurrency(displayedPresupuesto)}</Text>
                         </View>
                         <View style={[styles.summaryCard, styles.gastadoCard]}>
-                            <Text style={styles.summaryLabel}>Gastado</Text>
-                            <Text style={styles.summaryValue}>{formatCurrency(resumen.totalGastado)}</Text>
+                            <Text style={styles.summaryLabel}>
+                                Gastado {isFiltered ? '*' : ''}
+                            </Text>
+                            <Text style={styles.summaryValue}>{formatCurrency(displayedGastado)}</Text>
                         </View>
-                        <View style={[styles.summaryCard, resumen.totalRestante >= 0 ? styles.restanteCard : styles.excesoCard]}>
-                            <Text style={styles.summaryLabel}>{resumen.totalRestante >= 0 ? 'Restante' : 'Exceso'}</Text>
-                            <Text style={styles.summaryValue}>{formatCurrency(Math.abs(resumen.totalRestante))}</Text>
+                        <View style={[styles.summaryCard, displayedRestante >= 0 ? styles.restanteCard : styles.excesoCard]}>
+                            <Text style={styles.summaryLabel}>
+                                {displayedRestante >= 0 ? 'Restante' : 'Exceso'} {isFiltered ? '*' : ''}
+                            </Text>
+                            <Text style={styles.summaryValue}>{formatCurrency(Math.abs(displayedRestante))}</Text>
                         </View>
                     </View>
-                )
-            }
+                );
+            })()}
 
             {/* Add Button */}
             <TouchableOpacity style={styles.addButton} onPress={() => setShowModal(true)}>
@@ -2938,7 +2979,14 @@ function OrdenAseoTab() {
                     surveysWithIssues.map(s => ordenAseoApi.getEncuesta(s.id).catch(e => null))
                 );
 
+                let processedCount = 0;
                 for (const fullEncuesta of issueDetails) {
+                    processedCount++;
+                    // Update UI to show progress
+                    const progressMsg = `Cargando evidencias (${processedCount}/${surveysWithIssues.length})...`;
+                    setReportProgress(progressMsg);
+                    // Force UI update
+                    await new Promise(r => setTimeout(r, 0));
                     if (!fullEncuesta) continue;
 
                     // Check which questions failed and have photos
@@ -2974,48 +3022,54 @@ function OrdenAseoTab() {
                             currentY += 5;
 
                             if (filename) {
-                                try {
-                                    console.log(`[PDF] Loading image for ${item.key}: ${filename}`);
-                                    const photoUrl = ordenAseoApi.getFotoUrl(filename);
+                                // Soporte para múltiples fotos y limpieza de cache
+                                const files = filename.split('|').filter(f => f.trim().length > 0);
 
-                                    const startResize = Date.now();
-                                    const photoBase64 = await getBase64FromUrl(photoUrl);
-                                    console.log(`[PDF] Image loaded & resized in ${Date.now() - startResize}ms. Size: ${photoBase64 ? photoBase64.length : 0} chars`);
-
-                                    if (photoBase64) {
-                                        // Image placement
-                                        // Check space again
-                                        if (currentY + 60 > 280) { doc.addPage(); currentY = 20; }
-
-                                        // Detect format from base64 header (e.g., "data:image/png;base64,...")
-                                        let format = 'JPEG';
-                                        if (photoBase64.startsWith('data:image/png')) format = 'PNG';
-                                        else if (photoBase64.startsWith('data:image/webp')) format = 'WEBP';
-
-                                        console.log(`[PDF] Adding image to PDF (Format: ${format})...`);
-
-                                        // Safety: jsPDF might not support WEBP in all versions, fallback to skip or try JPEG
-                                        try {
-                                            // Parametro final 'FAST' activa compresion zlib en el PDF
-                                            doc.addImage(photoBase64, format, 20, currentY, 80, 60, undefined, 'FAST');
-                                            console.log(`[PDF] Image added successfully.`);
-                                        } catch (addError) {
-                                            console.warn('[PDF] Error doc.addImage:', addError);
-                                            doc.setTextColor(100, 100, 100);
-                                            doc.text('(Sin evidencia fotográfica adjunta)', 20, currentY + 30);
-                                        }
-                                        currentY += 65;
-                                    } else {
-                                        console.warn(`[PDF] Failed to load/resize image: ${filename}`);
-                                        doc.setTextColor(100, 100, 100);
-                                        doc.text('(Sin evidencia fotográfica adjunta)', 20, currentY + 5);
-                                        currentY += 10;
-                                    }
-                                } catch (imgErr) {
-                                    console.error('[PDF] Global error processing image item:', imgErr);
+                                if (files.length === 0) {
                                     doc.setTextColor(100, 100, 100);
+                                    doc.setFont('helvetica', 'italic');
                                     doc.text('(Sin evidencia fotográfica adjunta)', 20, currentY + 5);
+                                    doc.setFont('helvetica', 'normal');
                                     currentY += 10;
+                                }
+
+                                for (const file of files) {
+                                    try {
+                                        console.log(`[PDF] Loading image for ${item.key}: ${file}`);
+                                        // Cache busting param to ensure CORS headers are fresh
+                                        const photoUrl = ordenAseoApi.getFotoUrl(file) + `?t=${Date.now()}`;
+
+                                        const startResize = Date.now();
+                                        const photoBase64 = await getBase64FromUrl(photoUrl);
+
+                                        if (photoBase64) {
+                                            if (currentY + 65 > 280) { doc.addPage(); currentY = 20; }
+
+                                            // Detect format
+                                            let format = 'JPEG';
+                                            if (photoBase64.startsWith('data:image/png')) format = 'PNG';
+                                            else if (photoBase64.startsWith('data:image/webp')) format = 'WEBP';
+
+                                            try {
+                                                doc.addImage(photoBase64, format, 20, currentY, 80, 60, undefined, 'FAST');
+                                                currentY += 65;
+                                            } catch (addError) {
+                                                console.warn('[PDF] Error doc.addImage:', addError);
+                                                doc.text('(Error al agregar imagen al PDF)', 20, currentY + 10);
+                                                currentY += 20;
+                                            }
+                                        } else {
+                                            doc.setTextColor(100, 100, 100);
+                                            doc.text('(No se pudo descargar la imagen)', 20, currentY + 10);
+                                            currentY += 20;
+                                        }
+                                    } catch (imgErr) {
+                                        console.error('[PDF] Global error processing image item:', imgErr);
+                                        doc.text('(Error procesando imagen)', 20, currentY + 10);
+                                        currentY += 20;
+                                    }
+                                    // Pause to free UI thread
+                                    await new Promise(r => setTimeout(r, 50));
                                 }
                             } else {
                                 doc.setTextColor(100, 100, 100);

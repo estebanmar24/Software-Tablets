@@ -17,6 +17,7 @@ import GHGastosScreen from '../screens/GHGastosScreen';
 import ProduccionGastosScreen from '../screens/ProduccionGastosScreen';
 import TalleresGastosScreen from '../screens/TalleresGastosScreen';
 import DesperdicioScreen from '../screens/DesperdicioScreen';
+import CalidadDashboard from './CalidadDashboard';
 
 // Theme Provider
 import { ThemeProvider, useTheme } from '../contexts/ThemeContext';
@@ -73,10 +74,10 @@ function DashboardCard({ title, description, icon, onPress, color = '#E6FFFA', d
 
 function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDashboardProps) {
     // Mode: 'MENU' (Grid de tarjetas) | 'CONTENT' (Tabs existentes) | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS'
-    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS'>(() => {
+    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD'>(() => {
         if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
             const savedMode = window.localStorage.getItem('adminDashboardMode');
-            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS' || savedMode === 'PRODUCCION_GASTOS' || savedMode === 'TALLERES_GASTOS') {
+            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS' || savedMode === 'PRODUCCION_GASTOS' || savedMode === 'TALLERES_GASTOS' || savedMode === 'CALIDAD') {
                 return savedMode;
             }
         }
@@ -324,6 +325,31 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
         );
     }
 
+    // --- VISTA CALIDAD (DASHBOARD INDEPENDIENTE) ---
+    if (mode === 'CALIDAD') {
+        return (
+            <View style={styles.container}>
+                <View style={styles.header}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => {
+                        setMode('MENU');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                    }}>
+                        <Text style={styles.backButtonText}>← Volver al Panel</Text>
+                    </TouchableOpacity>
+                    <View style={styles.centeredTitleContainer} pointerEvents="box-none">
+                        <Text style={styles.title}>Calidad</Text>
+                    </View>
+                    <Image
+                        source={require('../../assets/logo_perla.png')}
+                        style={styles.contentHeaderLogo}
+                        resizeMode="contain"
+                    />
+                </View>
+                <CalidadDashboard />
+            </View>
+        );
+    }
+
     // --- VISTA CONTENT (SISTEMA ACTUAL) ---
     if (mode === 'CONTENT') {
         return (
@@ -378,7 +404,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
     };
 
     const isMasterEnabled = userRoles.includes('admin') || userRoles.includes('master');
-    const isCalidadEnabled = userRoles.includes('admin') || userRoles.includes('calidad');
+    const isCalidadEnabled = userRoles.includes('admin') || userRoles.includes('modulo_calidad');
     const isProduccionEnabled = userRoles.includes('admin') || userRoles.includes('produccion');
     const isTalleresEnabled = userRoles.includes('admin') || userRoles.includes('talleres');
     const isPresupuestoEnabled = userRoles.includes('admin') || userRoles.includes('presupuesto');
@@ -393,7 +419,8 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
         'produccion': 'Producción',
         'talleres': 'Talleres y Despachos',
         'presupuesto': 'Presupuesto General',
-        'calidad': 'Calidad',
+        'calidad': 'Encuestas Calidad',
+        'modulo_calidad': 'Módulo Calidad',
         'equipos': 'Mantenimiento Equipos'
     };
 
@@ -489,6 +516,16 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                             if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'EQUIPOS');
                         }}
                         disabled={!isEquiposEnabled}
+                    />
+                    <DashboardCard
+                        title="Calidad"
+                        description="Encuestas y control de calidad"
+                        icon="✅"
+                        onPress={() => {
+                            setMode('CALIDAD');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'CALIDAD');
+                        }}
+                        disabled={!isCalidadEnabled}
                     />
                 </ScrollView>
             </View>

@@ -79,6 +79,42 @@ export default function DayDetailModal({ visible, onClose, onSaveSuccess, dayInf
         }
     };
 
+    const insertRowAbove = (index) => {
+        const newRow = createEmptyDetailRow();
+
+        // Smart Time Calculation
+        // End time of new row = Start time of current row
+        if (details[index].horaInicio) {
+            newRow.horaFin = details[index].horaInicio;
+        }
+        // Start time of new row = End time of previous row (if exists)
+        if (index > 0 && details[index - 1].horaFin) {
+            newRow.horaInicio = details[index - 1].horaFin;
+        }
+
+        const updated = [...details];
+        updated.splice(index, 0, newRow);
+        setDetails(updated);
+    };
+
+    const insertRowBelow = (index) => {
+        const newRow = createEmptyDetailRow();
+
+        // Smart Time Calculation
+        // Start time of new row = End time of current row
+        if (details[index].horaFin) {
+            newRow.horaInicio = details[index].horaFin;
+        }
+        // End time of new row = Start time of next row (if exists)
+        if (index < details.length - 1 && details[index + 1].horaInicio) {
+            newRow.horaFin = details[index + 1].horaInicio;
+        }
+
+        const updated = [...details];
+        updated.splice(index + 1, 0, newRow);
+        setDetails(updated);
+    };
+
     const deleteDetailRow = (index) => {
         if (details.length <= 1) return;
         const updated = details.filter((_, i) => i !== index);
@@ -92,8 +128,8 @@ export default function DayDetailModal({ visible, onClose, onSaveSuccess, dayInf
             const [eh, em] = end.split(':').map(Number);
             const startMins = sh * 60 + sm;
             const endMins = eh * 60 + em;
-            const diff = endMins - startMins;
-            if (diff < 0) return '-';
+            let diff = endMins - startMins;
+            if (diff < 0) diff += 1440; // Handles crossing midnight
             const hours = Math.floor(diff / 60);
             const mins = diff % 60;
             return `${hours}h ${mins}m`;
@@ -189,7 +225,7 @@ export default function DayDetailModal({ visible, onClose, onSaveSuccess, dayInf
                                 <Text style={[styles.headerText, { width: 70, marginLeft: 2 }]}>OP</Text>
                                 <Text style={[styles.headerText, { width: 70, marginLeft: 2 }]}>Tiros</Text>
                                 <Text style={[styles.headerText, { flex: 1 }]}>Observaciones</Text>
-                                <Text style={{ width: 30 }}></Text>
+                                <Text style={{ width: 90, textAlign: 'center', color: 'white', fontWeight: 'bold' }}>Acciones</Text>
                             </View>
 
                             {details.map((row, idx) => (
@@ -240,9 +276,19 @@ export default function DayDetailModal({ visible, onClose, onSaveSuccess, dayInf
                                         placeholder="Obs..."
                                         onChangeText={(v) => updateDetailRow(idx, 'observaciones', v)}
                                     />
-                                    <TouchableOpacity onPress={() => deleteDetailRow(idx)} style={{ width: 30, alignItems: 'center' }}>
-                                        <Text style={{ color: 'red', fontSize: 16 }}>✕</Text>
-                                    </TouchableOpacity>
+
+                                    {/* Action Buttons */}
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', width: 90, justifyContent: 'space-around' }}>
+                                        <TouchableOpacity onPress={() => insertRowAbove(idx)} style={[styles.actionBtn, { backgroundColor: '#e0f2f1' }]}>
+                                            <Text style={[styles.actionBtnText, { color: '#00695c' }]}>↑</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity onPress={() => insertRowBelow(idx)} style={[styles.actionBtn, { backgroundColor: '#e3f2fd' }]}>
+                                            <Text style={[styles.actionBtnText, { color: '#1565c0' }]}>↓</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity onPress={() => deleteDetailRow(idx)} style={[styles.actionBtn, { backgroundColor: '#ffecec' }]}>
+                                            <Text style={[styles.actionBtnText, { color: 'red' }]}>✕</Text>
+                                        </TouchableOpacity>
+                                    </View>
                                 </View>
                             ))}
                         </ScrollView>
@@ -274,5 +320,7 @@ const styles = StyleSheet.create({
     input: { borderWidth: 1, borderColor: '#ccc', padding: 4, borderRadius: 3, textAlign: 'center', marginLeft: 2 },
     buttonRow: { flexDirection: 'row', marginTop: 15, gap: 10 },
     btn: { flex: 1, padding: 10, borderRadius: 5, alignItems: 'center', justifyContent: 'center' },
-    btnText: { color: 'white', fontWeight: 'bold' }
+    btnText: { color: 'white', fontWeight: 'bold' },
+    actionBtn: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', marginHorizontal: 2 },
+    actionBtnText: { fontSize: 14, fontWeight: 'bold' }
 });

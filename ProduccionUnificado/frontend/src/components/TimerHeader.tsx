@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
     leftContent: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 30,
+        gap: 15, // Reduced from 30
         flex: 1,
     },
     leftContentMobile: {
@@ -135,9 +135,9 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     activityLabel: {
-        fontSize: 12,
+        fontSize: 10, // Reduced from 12
         color: 'rgba(255,255,255,0.8)',
-        letterSpacing: 1,
+        letterSpacing: 0.5, // Reduced from 1
         marginBottom: 4,
         fontWeight: '600',
     },

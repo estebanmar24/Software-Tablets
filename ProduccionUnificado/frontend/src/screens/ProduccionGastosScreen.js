@@ -408,6 +408,38 @@ function GastosTab() {
         setFilterMaquinaId('');
     }, [filterRubroId]);
 
+    // 5. Calcular totales para tarjetas (DINÁMICO)
+    let displayedPresupuesto = resumen?.totalPresupuesto || 0;
+    let displayedGastado = resumen?.totalGastado || 0;
+    let displayedRestante = resumen?.totalRestante || 0;
+
+    if (filterRubroId) {
+        // Buscar el nombre del rubro seleccionado
+        const selectedRubroName = rubros.find(r => r.id.toString() === filterRubroId)?.nombre;
+        if (selectedRubroName && resumen?.porRubro) {
+            const rubroData = resumen.porRubro.find(r => r.rubroNombre === selectedRubroName);
+            if (rubroData) {
+                // Si hay datos para ese rubro
+                displayedPresupuesto = rubroData.presupuesto || 0;
+                displayedGastado = rubroData.gastado || 0;
+                displayedRestante = (rubroData.presupuesto || 0) - (rubroData.gastado || 0);
+            } else {
+                // Si filtre por un rubro que NO tiene datos en el resumen (raro si uso availableRubros, pero posible)
+                // OJO: Si quiero mostrar el presupuesto aunque no haya gasto, necesitaría traer el presupuesto del grid
+                // Por ahora, si no está en porRubro (que viene del backend con lo gastado), asumimos 0 o mantenemos global?
+                // Mejor 0 para ser consistente con el filtro.
+                displayedPresupuesto = 0;
+                displayedGastado = 0;
+                displayedRestante = 0;
+
+                // INTENTO DE MEJORA: Buscar el presupuesto real si no hay gasto
+                // Esto requeriría una llamada extra o tener los presupuestos cargados.
+                // Dado que `presupuestoInfo` ya hace algo similar en el formulario, podríamos reusar esa lógica si fuera global.
+                // Por simplicidad y rapidez, mostramos lo que trae el resumen por ahora. 
+            }
+        }
+    }
+
     return (
         <View style={styles.contentContainer}>
             {/* Header - EXACT SST STYLE */}
@@ -506,16 +538,16 @@ function GastosTab() {
             {/* Summary Cards - EXACT SST STYLE: 3 colored cards with budget data */}
             <View style={styles.summaryContainer}>
                 <View style={[styles.summaryCard, styles.presupuestoCard]}>
-                    <Text style={styles.summaryLabel}>Presupuesto</Text>
-                    <Text style={styles.summaryValue}>{formatCurrency(resumen?.totalPresupuesto || 0)}</Text>
+                    <Text style={styles.summaryLabel}>Presupuesto{filterRubroId ? '*' : ''}</Text>
+                    <Text style={styles.summaryValue}>{formatCurrency(displayedPresupuesto)}</Text>
                 </View>
                 <View style={[styles.summaryCard, styles.gastadoCard]}>
                     <Text style={styles.summaryLabel}>Gastado</Text>
-                    <Text style={styles.summaryValue}>{formatCurrency(resumen?.totalGastado || 0)}</Text>
+                    <Text style={styles.summaryValue}>{formatCurrency(displayedGastado)}</Text>
                 </View>
-                <View style={[styles.summaryCard, (resumen?.totalRestante || 0) >= 0 ? styles.restanteCard : styles.excesoCard]}>
-                    <Text style={styles.summaryLabel}>{(resumen?.totalRestante || 0) >= 0 ? 'Restante' : 'Exceso'}</Text>
-                    <Text style={styles.summaryValue}>{formatCurrency(Math.abs(resumen?.totalRestante || 0))}</Text>
+                <View style={[styles.summaryCard, displayedRestante >= 0 ? styles.restanteCard : styles.excesoCard]}>
+                    <Text style={styles.summaryLabel}>{displayedRestante >= 0 ? 'Restante' : 'Exceso'}</Text>
+                    <Text style={styles.summaryValue}>{formatCurrency(Math.abs(displayedRestante))}</Text>
                 </View>
             </View>
 

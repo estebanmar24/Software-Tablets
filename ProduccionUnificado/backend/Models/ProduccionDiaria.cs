@@ -83,7 +83,7 @@ public class ProduccionDiaria
     public decimal TotalHoras { get; set; }
     
     // Extras
-    [StringLength(50)]
+    [StringLength(500)]
     public string? ReferenciaOP { get; set; }
     
     public string? Novedades { get; set; }
@@ -120,4 +120,7 @@ public class ProduccionDiaria
     // Horario/Turno del operario
     public int? HorarioId { get; set; }
     public Horario? Horario { get; set; }
+
+    // Detalles granulares (uno a muchos)
+    public ICollection<ProduccionDiariaDetalle>? Detalles { get; set; }
 }

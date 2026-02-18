@@ -568,6 +568,40 @@ export default function DashboardScreen({ navigation }) {
                     });
                     tablesPayload.push({ title: `Maquina: ${maquinaNombre}`, columns: colsMaquina, data });
                 });
+            } else if (reportType === 'bonificacion') {
+                const columns = ['Operario', 'Maquina', 'Rendimiento %', 'Bonif. Potencial', 'Bonif. Real'];
+                const allOps = (resumen?.resumenOperarios || []);
+
+                if (allOps.length === 0) {
+                    alert('No hay datos disponibles en este periodo.');
+                    setGeneratingPdf(false);
+                    return;
+                }
+
+                const data = allOps.map(item => [
+                    item.operario,
+                    item.maquina,
+                    `${(item.porcentajeRendimiento100 || 0).toFixed(0)}%`,
+                    `$${(item.valorBonifPotencial || 0).toLocaleString()}`,
+                    `$${(item.valorAPagarBonificable || 0).toLocaleString()}`
+                ]);
+
+                // Total sum
+                const totalBonosPotencial = allOps.reduce((sum, item) => sum + (item.valorBonifPotencial || 0), 0);
+                const totalBonosReal = allOps.reduce((sum, item) => sum + (item.valorAPagarBonificable || 0), 0);
+
+                data.push([
+                    { content: 'TOTALES', colSpan: 3, styles: { halign: 'right', fontStyle: 'bold' } },
+                    { content: `$${totalBonosPotencial.toLocaleString()}`, styles: { fontStyle: 'bold' } },
+                    { content: `$${totalBonosReal.toLocaleString()}`, styles: { fontStyle: 'bold' } }
+                ]);
+
+                tablesPayload.push({
+                    title: 'Reporte de Gastos y Bonificaciones (Todos los Operarios)',
+                    columns,
+                    data,
+                    headStyles: { fillColor: [40, 167, 69], textColor: 255, fontStyle: 'bold' }
+                });
             }
 
             // Render Logic (Sequential)
@@ -789,47 +823,202 @@ export default function DashboardScreen({ navigation }) {
             if (reportType === 'general') {
                 console.log("Generating general report charts...");
 
+                // --- REMOVED CHARTS AS PER USER REQUEST (Top Prod, Speed, Efficiency) ---
+                /*
                 // Chart 1: Top Production (Tiros)
-                if ((resumen?.resumenOperarios || []).length > 0) {
-                    const topOps = [...resumen.resumenOperarios]
-                        .sort((a, b) => b.totalTiros - a.totalTiros)
-                        .slice(0, 10);
+                if ((resumen?.resumenOperarios || []).length > 0) { ... }
+                // Chart 2: Speed (Promedio/Hora)
+                if ((resumen?.resumenOperarios || []).length > 0) { ... }
+                */
 
-                    if (topOps.length > 0) {
-                        const chartColors = topOps.map(o => {
-                            if (o.semaforoColor === 'Verde') return '#28a745';
-                            if (o.semaforoColor === 'Amarillo') return '#ffc107';
-                            return '#dc3545';
+                // *** NEW: TABLA DE HORAS MUERTAS Y COSTOS ***
+                if ((resumen?.resumenMaquinas || []).length > 0) {
+                    const hmColumns = ['Máquina', 'Falta Trabajo', 'Reparación', 'Otros Tiempos', 'T. Muer (Hrs)', '% Muer', 'Tarifa/H', 'Costo T.M.'];
+
+                    let totalHorasMuertas = 0;
+                    let totalCosto = 0;
+                    let totalFalta = 0;
+                    let totalReparacion = 0;
+                    let totalOtros = 0;
+
+                    const hmData = resumen.resumenMaquinas
+                        .filter(m => (m.totalTiemposMuertos || 0) > 0) // Hide if 0 hours
+                        .sort((a, b) => (b.totalTiemposMuertos || 0) - (a.totalTiemposMuertos || 0)) // Mayor a menor
+                        .map(m => {
+                            const tm = m.totalTiemposMuertos || 0;
+                            const tFalta = m.totalTiempoFaltaTrabajo || 0;
+                            const tRep = m.totalTiempoReparacion || 0;
+                            const tOtros = m.totalTiempoOtro || 0;
+
+                            // Use totalHoras (sum of all reported hours for this machine) as denominator
+                            // ADAPTATION: Exclude Rest Hours from calculation basis
+                            const totalHorasReportadas = m.totalHoras || 0;
+                            const totalDescanso = m.totalHorasDescanso || 0;
+                            const totalBase = Math.max(totalHorasReportadas - totalDescanso, 1);
+
+                            const pct = (tm / totalBase) * 100;
+                            const costo = tm * (m.tarifa || 0);
+
+                            totalHorasMuertas += tm;
+                            totalCosto += costo;
+                            totalFalta += tFalta;
+                            totalReparacion += tRep;
+                            totalOtros += tOtros;
+
+                            return [
+                                m.maquina,
+                                tFalta.toFixed(2),
+                                tRep.toFixed(2),
+                                tOtros.toFixed(2),
+                                tm.toFixed(2),
+                                `${pct.toFixed(2)}%`,
+                                `$${(m.tarifa || 0).toLocaleString()}`,
+                                `$${costo.toLocaleString()}`
+                            ];
                         });
-                        const chartLabels = topOps.map(o => o.operario.substring(0, 10));
-                        const chartData = topOps.map(o => o.totalTiros);
 
-                        chartY = drawBarChart(doc, "Top Producción (Tiros)", chartLabels, chartData, chartY, { colors: chartColors });
+                    // Add Total Row
+                    hmData.push([
+                        'TOTALES',
+                        totalFalta.toFixed(2),
+                        totalReparacion.toFixed(2),
+                        totalOtros.toFixed(2),
+                        totalHorasMuertas.toFixed(2),
+                        '-',
+                        '-',
+                        `$${totalCosto.toLocaleString()}`
+                    ]);
+
+                    // Check if we need a new page for Title + Header + at least one row (~60 units)
+                    if (chartY + 60 > doc.internal.pageSize.getHeight() - 20) {
+                        doc.addPage();
+                        chartY = 30;
+                    }
+
+                    doc.setFontSize(14);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setTextColor(0, 51, 102);
+                    doc.text('ANÁLISIS DE TIEMPOS MUERTOS Y COSTOS', pageWidth / 2, chartY, { align: 'center' });
+                    doc.setTextColor(0, 0, 0);
+
+                    autoTable(doc, {
+                        head: [hmColumns],
+                        body: hmData,
+                        startY: chartY + 5,
+                        styles: { fontSize: 9, cellPadding: 3, halign: 'center' }, // Slightly smaller font to fit cols
+                        headStyles: { fillColor: [178, 34, 34], textColor: 255, fontStyle: 'bold' }, // Firebrick red for alerts/costs
+                        columnStyles: {
+                            0: { halign: 'left' },
+                            7: { fontStyle: 'bold' }
+                        },
+                        didParseCell: (data) => {
+                            // Style Total Row
+                            if (data.section === 'body' && data.row.index === hmData.length - 1) {
+                                data.cell.styles.fontStyle = 'bold';
+                                data.cell.styles.fillColor = [220, 220, 220];
+                            }
+                        }
+                    });
+
+                    chartY = doc.lastAutoTable.finalY + 20;
+                }
+
+                // *** NEW: TABLA DE PUESTA A PUNTO ***
+                if ((resumen?.resumenMaquinas || []).length > 0) {
+                    const papColumns = ['Máquina', 'Total Horas', 'Promedio/Cambio', '% Tiempo', 'Cambios'];
+                    let totalPapHoras = 0;
+                    let totalPapCambios = 0;
+
+                    // Calculate total reported hours for the filtered group to perform correct % calc on Total Row
+                    // Filter machines with setup activity or changes
+                    const papMachines = resumen.resumenMaquinas
+                        .filter(m => (m.totalTiempoPuestaPunto || 0) > 0 || (m.totalCambios || 0) > 0)
+                        .sort((a, b) => (b.totalTiempoPuestaPunto || 0) - (a.totalTiempoPuestaPunto || 0));
+
+                    const papData = papMachines.map(m => {
+                        const horas = m.totalTiempoPuestaPunto || 0;
+                        const cambios = m.totalCambios || 0;
+                        const totalHorasReportadas = m.totalHoras || 0;
+                        const totalDescanso = m.totalHorasDescanso || 0;
+                        const totalBase = Math.max(totalHorasReportadas - totalDescanso, 1);
+
+                        const promedio = cambios > 0 ? (horas / cambios) : 0;
+                        const pct = (horas / totalBase) * 100;
+
+                        totalPapHoras += horas;
+                        totalPapCambios += cambios;
+
+                        return [
+                            m.maquina,
+                            horas.toFixed(2),
+                            promedio.toFixed(2),
+                            `${pct.toFixed(2)}%`,
+                            cambios.toString()
+                        ];
+                    });
+
+                    if (papData.length > 0) {
+                        // Total Row Calculations
+                        const totalPromedio = totalPapCambios > 0 ? (totalPapHoras / totalPapCambios) : 0;
+                        // Sum total hours only for the machines displayed to keep consistency in the table context
+                        const sumTotalReported = papMachines.reduce((acc, m) => acc + (m.totalHoras || 0), 0);
+                        const totalPct = sumTotalReported > 0 ? (totalPapHoras / sumTotalReported) * 100 : 0;
+
+                        papData.push([
+                            'TOTALES',
+                            totalPapHoras.toFixed(2),
+                            totalPromedio.toFixed(2),
+                            `${totalPct.toFixed(2)}%`,
+                            totalPapCambios.toString()
+                        ]);
+
+                        // Check page break
+                        if (chartY + 60 > doc.internal.pageSize.getHeight() - 20) {
+                            doc.addPage();
+                            chartY = 30;
+                        }
+
+                        doc.setFontSize(14);
+                        doc.setFont('helvetica', 'bold');
+                        doc.setTextColor(0, 51, 102);
+                        doc.text('ANÁLISIS DE PUESTA A PUNTO', pageWidth / 2, chartY, { align: 'center' });
+                        doc.setTextColor(0, 0, 0);
+
+                        autoTable(doc, {
+                            head: [papColumns],
+                            body: papData,
+                            startY: chartY + 5,
+                            styles: { fontSize: 9, cellPadding: 3, halign: 'center' },
+                            headStyles: { fillColor: [255, 140, 0], textColor: 255, fontStyle: 'bold' }, // Dark Orange
+                            columnStyles: {
+                                0: { halign: 'left' },
+                                4: { fontStyle: 'bold' }
+                            },
+                            didParseCell: (data) => {
+                                if (data.section === 'body' && data.row.index === papData.length - 1) {
+                                    data.cell.styles.fontStyle = 'bold';
+                                    data.cell.styles.fillColor = [220, 220, 220];
+                                }
+                            }
+                        });
+
+                        chartY = doc.lastAutoTable.finalY + 20;
                     }
                 }
 
-                // Chart 2: Speed (Promedio/Hora)
-                if ((resumen?.resumenOperarios || []).length > 0) {
-                    const speedData = [...resumen.resumenOperarios]
-                        .sort((a, b) => b.promedioHoraProductiva - a.promedioHoraProductiva)
-                        .slice(0, 10);
 
-                    if (speedData.length > 0) {
-                        const speedColors = speedData.map(o => {
-                            if (o.semaforoColor === 'Verde') return '#28a745';
-                            if (o.semaforoColor === 'Amarillo') return '#ffc107';
-                            return '#dc3545';
-                        });
-                        const speedLabels = speedData.map(o => o.operario.substring(0, 10));
-                        const speedValues = speedData.map(o => Math.round(o.promedioHoraProductiva));
+                // Chart: Daily Trend (line chart for general report) - KEEPING THIS ONE? User said "solo quita esas 3".
+                if ((resumen?.tendenciaDiaria || []).length > 0) {
+                    const dailyData = [...resumen.tendenciaDiaria].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+                    const dailyLabels = dailyData.map(d => d.fecha.split('T')[0].split('-').slice(1).join('/'));
+                    const dailyValues = dailyData.map(d => d.tiros);
 
-                        chartY = drawBarChart(doc, "Velocidad Promedio (Tiros/Hora)", speedLabels, speedValues, chartY, { colors: speedColors });
-                    }
+                    chartY = drawLineChart(doc, "Tendencia Producción Diaria", dailyLabels, dailyValues, chartY);
                 }
             }
 
-            // Chart: Efficiency by Machine (for general and machine reports)
-            if (reportType === 'general' || reportType === 'maquina') {
+            // Chart: Efficiency by Machine (ONLY for machine report now, removed from general)
+            if (reportType === 'maquina') {
                 if ((resumen?.resumenMaquinas || []).length > 0) {
                     const chartDataEff = [...resumen.resumenMaquinas]
                         .sort((a, b) => b.porcentajeRendimiento - a.porcentajeRendimiento);
@@ -841,16 +1030,6 @@ export default function DashboardScreen({ navigation }) {
                     chartY = drawBarChart(doc, "Eficiencia por Máquina (%)", effLabels, effValues, chartY, { colors: effColors });
                 }
             }
-
-            // Chart: Daily Trend (line chart for general report)
-            if (reportType === 'general' && (resumen?.tendenciaDiaria || []).length > 0) {
-                const dailyData = [...resumen.tendenciaDiaria].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
-                const dailyLabels = dailyData.map(d => d.fecha.split('T')[0].split('-').slice(1).join('/'));
-                const dailyValues = dailyData.map(d => d.tiros);
-
-                chartY = drawLineChart(doc, "Tendencia Producción Diaria", dailyLabels, dailyValues, chartY);
-            }
-
             // *** NEW: Machine Breakdown Table (Desglose Meta/Equivalencias) ***
             if (reportType === 'maquina') {
                 // Check if we need a new page
@@ -1430,6 +1609,7 @@ export default function DashboardScreen({ navigation }) {
                                 <Picker.Item label="General (Todos)" value="general" />
                                 <Picker.Item label="Por Operario" value="operario" />
                                 <Picker.Item label="Por Maquina" value="maquina" />
+                                <Picker.Item label="Gastos por Bonificación" value="bonificacion" />
                             </Picker>
                         </View>
                     </View>
@@ -1545,9 +1725,13 @@ export default function DashboardScreen({ navigation }) {
                         ) : (
                             displayedOperarios.map((item, index) => (
                                 <View key={index} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}>
-                                    <Text style={[styles.cardTitle, { color: colors.text }]}>{item.operario} - {item.maquina}</Text>
+                                    <Text style={[styles.cardTitle, { color: colors.text }]}>{item.operario} — {item.maquina}</Text>
                                     <Text style={{ color: colors.text }}>Meta 100%: {item.meta100Porciento?.toFixed(0) || '0'}</Text>
-                                    <Text style={{ color: colors.text }}>Tiros: {item.totalTiros}</Text>
+                                    <Text style={{ color: colors.text }}>Tiros Reportados: {item.tirosReportados?.toLocaleString() || '0'}</Text>
+                                    <Text style={{ color: colors.text }}>Tiros Equivalentes: {item.tirosEquivalentes?.toLocaleString() || '0'}</Text>
+                                    <Text style={{ color: colors.text }}>Cambios Totales: {item.totalCambios || '0'}</Text>
+                                    <Text style={{ color: colors.text, fontWeight: 'bold' }}>Tiros Totales: {item.totalTiros?.toLocaleString() || '0'}</Text>
+
                                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', paddingRight: 10 }}>
                                         <Text style={{ color: colors.text, fontSize: 11, fontWeight: 'bold' }}>📅 Último: {item.ultimaFecha}</Text>
                                         <Text style={{ color: colors.text, fontSize: 11, fontWeight: 'bold' }}>#️⃣ Días: {item.diasLaborados}</Text>
@@ -1590,7 +1774,10 @@ export default function DashboardScreen({ navigation }) {
                                         <Text style={{ color: '#000', fontSize: 11, fontWeight: 'bold' }}>📅 {item.ultimaFecha}</Text>
                                         <Text style={{ color: '#000', fontSize: 11, fontWeight: 'bold' }}>#️⃣ {item.diasLaborados} días</Text>
                                     </View>
-                                    <Text style={{ color: '#000' }}>Tiros Totales: {item.tirosTotales}</Text>
+                                    <Text style={{ color: '#000' }}>Tiros Reportados: {item.tirosReportados?.toLocaleString() || '0'}</Text>
+                                    <Text style={{ color: '#000' }}>Tiros Equivalentes: {item.tirosEquivalentes?.toLocaleString() || '0'}</Text>
+                                    <Text style={{ color: '#000' }}>Cambios Totales: {item.totalCambios || '0'}</Text>
+                                    <Text style={{ color: '#000', fontWeight: 'bold' }}>Tiros Totales: {item.tirosTotales?.toLocaleString() || '0'}</Text>
                                     <Text style={{ color: '#000' }}>Rendimiento Esp: {item.meta100Porciento?.toFixed(0)}</Text>
                                     <Text style={{ color: '#000' }}>Eficiencia: {(item.porcentajeRendimiento100)?.toFixed(1)}%</Text>
                                 </View>

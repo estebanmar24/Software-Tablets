@@ -578,22 +578,52 @@ function GastosTab() {
             </View>
 
             {/* Summary Cards */}
-            {resumen && (
-                <View style={styles.summaryContainer}>
-                    <View style={[styles.summaryCard, styles.presupuestoCard]}>
-                        <Text style={styles.summaryLabel}>Presupuesto</Text>
-                        <Text style={styles.summaryValue}>{formatCurrency(resumen.totalPresupuesto)}</Text>
+            {resumen && (() => {
+                // Calculate displayed totals based on filterRubro
+                let displayedPresupuesto = resumen.totalPresupuesto;
+                let displayedGastado = resumen.totalGastado;
+                let displayedRestante = resumen.totalRestante;
+                let isFiltered = false;
+
+                if (filterRubro) {
+                    isFiltered = true;
+                    // Find all TipoServicios that belong to this Rubro
+                    const tiposDelRubro = tiposServicio
+                        .filter(t => t.rubroId === parseInt(filterRubro))
+                        .map(t => t.id);
+
+                    const resumenFiltrado = resumen.resumenPorTipo.filter(r =>
+                        tiposDelRubro.includes(r.tipoServicioId)
+                    );
+
+                    displayedPresupuesto = resumenFiltrado.reduce((sum, r) => sum + r.presupuesto, 0);
+                    displayedGastado = resumenFiltrado.reduce((sum, r) => sum + r.gastado, 0);
+                    displayedRestante = displayedPresupuesto - displayedGastado;
+                }
+
+                return (
+                    <View style={styles.summaryContainer}>
+                        <View style={[styles.summaryCard, styles.presupuestoCard]}>
+                            <Text style={styles.summaryLabel}>
+                                Presupuesto {isFiltered ? '*' : ''}
+                            </Text>
+                            <Text style={styles.summaryValue}>{formatCurrency(displayedPresupuesto)}</Text>
+                        </View>
+                        <View style={[styles.summaryCard, styles.gastadoCard]}>
+                            <Text style={styles.summaryLabel}>
+                                Gastado {isFiltered ? '*' : ''}
+                            </Text>
+                            <Text style={styles.summaryValue}>{formatCurrency(displayedGastado)}</Text>
+                        </View>
+                        <View style={[styles.summaryCard, displayedRestante >= 0 ? styles.restanteCard : styles.excesoCard]}>
+                            <Text style={styles.summaryLabel}>
+                                {displayedRestante >= 0 ? 'Restante' : 'Exceso'} {isFiltered ? '*' : ''}
+                            </Text>
+                            <Text style={styles.summaryValue}>{formatCurrency(Math.abs(displayedRestante))}</Text>
+                        </View>
                     </View>
-                    <View style={[styles.summaryCard, styles.gastadoCard]}>
-                        <Text style={styles.summaryLabel}>Gastado</Text>
-                        <Text style={styles.summaryValue}>{formatCurrency(resumen.totalGastado)}</Text>
-                    </View>
-                    <View style={[styles.summaryCard, resumen.totalRestante >= 0 ? styles.restanteCard : styles.excesoCard]}>
-                        <Text style={styles.summaryLabel}>{resumen.totalRestante >= 0 ? 'Restante' : 'Exceso'}</Text>
-                        <Text style={styles.summaryValue}>{formatCurrency(Math.abs(resumen.totalRestante))}</Text>
-                    </View>
-                </View>
-            )}
+                );
+            })()}
 
             {/* Add Button */}
             <TouchableOpacity style={styles.addButton} onPress={() => setShowModal(true)}>

@@ -72,6 +72,13 @@ public class AppDbContext : DbContext
     // Detalle diario de producción
     public DbSet<ProduccionDiariaDetalle> ProduccionDiariaDetalles { get; set; }
 
+    // Metas mensuales por máquina
+    public DbSet<MetaMensual> MetasMensuales { get; set; }
+
+    // Calidad Producción
+    public DbSet<EncuestaCalidadProduccion> EncuestasCalidadProduccion { get; set; }
+    public DbSet<EncuestaCalidadProduccionProceso> EncuestaCalidadProduccionProcesos { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -334,7 +341,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ProduccionDiariaDetalle>().ToTable("ProduccionDiariaDetalles");
         modelBuilder.Entity<ProduccionDiariaDetalle>()
             .HasOne(d => d.ProduccionDiaria)
-            .WithMany()
+            .WithMany(p => p.Detalles)
             .HasForeignKey(d => d.ProduccionDiariaId)
             .OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<ProduccionDiariaDetalle>()
@@ -342,6 +349,26 @@ public class AppDbContext : DbContext
             .WithMany()
             .HasForeignKey(d => d.ActividadId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // MetasMensuales Configuration
+        modelBuilder.Entity<MetaMensual>().ToTable("MetasMensuales");
+        modelBuilder.Entity<MetaMensual>()
+            .HasOne(m => m.Maquina)
+            .WithMany()
+            .HasForeignKey(m => m.MaquinaId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<MetaMensual>()
+            .HasIndex(m => new { m.MaquinaId, m.Mes, m.Anio })
+            .IsUnique();
+
+        // Calidad Producción Configuration
+        modelBuilder.Entity<EncuestaCalidadProduccion>().ToTable("EncuestasCalidadProduccion");
+        modelBuilder.Entity<EncuestaCalidadProduccionProceso>().ToTable("EncuestaCalidadProduccionProcesos");
+        modelBuilder.Entity<EncuestaCalidadProduccion>()
+            .HasMany(e => e.Procesos)
+            .WithOne(p => p.Encuesta)
+            .HasForeignKey(p => p.EncuestaId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<RegistroDesperdicio>()
             .HasOne(r => r.CodigoDesperdicio)

@@ -23,6 +23,8 @@ public class ProduccionDiariaDetalle
     // Production data (0 if not production activity)
     public int Tiros { get; set; }
     
+    public int Desperdicio { get; set; }
+    
     // OP Reference
     public string? ReferenciaOP { get; set; }
     

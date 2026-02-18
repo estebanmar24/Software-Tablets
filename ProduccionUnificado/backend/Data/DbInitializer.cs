@@ -353,7 +353,7 @@ public static class DbInitializer
                     ""TiempoOtroMuerto"" DECIMAL(10, 2) NOT NULL,
                     ""TotalTiemposMuertos"" DECIMAL(10, 2) NOT NULL,
                     ""TotalHoras"" DECIMAL(10, 2) NOT NULL,
-                    ""ReferenciaOP"" VARCHAR(50) NULL,
+                    ""ReferenciaOP"" VARCHAR(500) NULL,
                     ""Novedades"" TEXT NULL,
                     ""Desperdicio"" DECIMAL(10, 2) NOT NULL,
                     ""DiaLaborado"" INTEGER NOT NULL,
@@ -372,6 +372,9 @@ public static class DbInitializer
                 ALTER TABLE ""ProduccionDiaria"" ADD COLUMN IF NOT EXISTS ""TirosBonificables"" INTEGER NOT NULL DEFAULT 0;
                 ALTER TABLE ""ProduccionDiaria"" ADD COLUMN IF NOT EXISTS ""DesperdicioBonificable"" DECIMAL(10, 2) NOT NULL DEFAULT 0;
                 ALTER TABLE ""ProduccionDiaria"" ADD COLUMN IF NOT EXISTS ""ValorAPagarBonificable"" DECIMAL(10, 2) NOT NULL DEFAULT 0;
+                
+                -- Ampliar longitud de ReferenciaOP a 500 para soportar múltiples OPs concatenadas
+                ALTER TABLE ""ProduccionDiaria"" ALTER COLUMN ""ReferenciaOP"" TYPE VARCHAR(500);
             ");
             Console.WriteLine("[DB INIT] ProduccionDiaria checked/created.");
         }
@@ -405,7 +408,7 @@ public static class DbInitializer
                     ""Id"" SERIAL PRIMARY KEY,
                     ""OperarioId"" INTEGER NOT NULL,
                     ""AuxiliarId"" INTEGER NULL,
-                    ""OrdenProduccion"" VARCHAR(50) NOT NULL,
+                    ""OrdenProduccion"" VARCHAR(500) NOT NULL,
                     ""CantidadProducir"" DECIMAL(18, 2) NOT NULL,
                     ""MaquinaId"" INTEGER NOT NULL,
                     ""Proceso"" VARCHAR(100) NOT NULL,
@@ -941,5 +944,66 @@ public static class DbInitializer
             }
         }
         catch (Exception ex) { Console.WriteLine($"[DB ERROR] ESST User: {ex.Message}"); }
+
+        // MetasMensuales - Monthly Meta Snapshots
+        try
+        {
+            context.Database.ExecuteSqlRaw(@"
+                CREATE TABLE IF NOT EXISTS ""MetasMensuales"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""MaquinaId"" INTEGER NOT NULL REFERENCES ""Maquinas""(""Id"") ON DELETE CASCADE,
+                    ""Mes"" INTEGER NOT NULL,
+                    ""Anio"" INTEGER NOT NULL,
+                    ""Meta100Porciento"" INTEGER NOT NULL DEFAULT 0,
+                    ""MetaRendimiento"" INTEGER NOT NULL DEFAULT 0,
+                    ""Importancia"" DECIMAL(5,2) NOT NULL DEFAULT 0,
+                    ""TirosReferencia"" INTEGER NOT NULL DEFAULT 0,
+                    ""ValorPorTiro"" DECIMAL(10,2) NOT NULL DEFAULT 0,
+                    ""Tarifa"" INTEGER NOT NULL DEFAULT 0,
+                    UNIQUE(""MaquinaId"", ""Mes"", ""Anio"")
+                );
+            ");
+            Console.WriteLine("[DB INIT] MetasMensuales created.");
+
+            // Auto-seed: for each existing production month, create snapshots if missing
+            var existingPeriods = context.ProduccionDiaria
+                .Select(p => new { Mes = p.Fecha.Month, Anio = p.Fecha.Year })
+                .Distinct()
+                .ToList();
+
+            var maquinas = context.Maquinas.ToList();
+            var existingSnapshots = context.MetasMensuales.ToList();
+            int seeded = 0;
+
+            foreach (var periodo in existingPeriods)
+            {
+                foreach (var maq in maquinas)
+                {
+                    if (!existingSnapshots.Any(s => s.MaquinaId == maq.Id && s.Mes == periodo.Mes && s.Anio == periodo.Anio))
+                    {
+                        context.MetasMensuales.Add(new TiempoProcesos.API.Models.MetaMensual
+                        {
+                            MaquinaId = maq.Id,
+                            Mes = periodo.Mes,
+                            Anio = periodo.Anio,
+                            Meta100Porciento = maq.Meta100Porciento,
+                            MetaRendimiento = maq.MetaRendimiento,
+                            Importancia = maq.Importancia,
+                            TirosReferencia = maq.TirosReferencia,
+                            ValorPorTiro = maq.ValorPorTiro,
+                            Tarifa = maq.Tarifa
+                        });
+                        seeded++;
+                    }
+                }
+            }
+
+            if (seeded > 0)
+            {
+                context.SaveChanges();
+                Console.WriteLine($"[DB INIT] MetasMensuales seeded {seeded} snapshots for existing periods.");
+            }
+        }
+        catch (Exception ex) { Console.WriteLine($"[DB ERROR] MetasMensuales: {ex.Message}"); }
     }
 }

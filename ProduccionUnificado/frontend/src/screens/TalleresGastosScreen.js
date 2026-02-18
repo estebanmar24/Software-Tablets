@@ -430,6 +430,28 @@ function GastosTab() {
     const isHorasExtras = selectedRubro?.nombre?.toLowerCase().includes('horas extras');
     const isRecargo = selectedRubro?.nombre?.toLowerCase().includes('recargo');
 
+    // Calcular totales para tarjetas (DINÁMICO)
+    let displayedPresupuesto = resumen?.totalPresupuesto || 0;
+    let displayedGastado = resumen?.totalGastado || 0;
+    let displayedRestante = resumen?.totalRestante || 0;
+
+    if (filterRubro) {
+        const selectedRubroName = rubros.find(r => r.id.toString() === filterRubro)?.nombre;
+        if (selectedRubroName && resumen?.porRubro) {
+            // En Talleres la propiedad es 'rubro' (ver lÃ­nea ~301), no 'rubroNombre'
+            const rubroData = resumen.porRubro.find(r => r.rubro === selectedRubroName);
+            if (rubroData) {
+                displayedPresupuesto = rubroData.presupuesto || 0;
+                displayedGastado = rubroData.gastado || 0;
+                displayedRestante = (rubroData.presupuesto || 0) - (rubroData.gastado || 0);
+            } else {
+                displayedPresupuesto = 0;
+                displayedGastado = 0;
+                displayedRestante = 0;
+            }
+        }
+    }
+
     return (
         <View style={styles.contentContainer}>
             <View style={styles.header}>
@@ -517,16 +539,16 @@ function GastosTab() {
 
             <View style={styles.summaryContainer}>
                 <View style={[styles.summaryCard, styles.presupuestoCard]}>
-                    <Text style={styles.summaryLabel}>Presupuesto</Text>
-                    <Text style={styles.summaryValue}>{formatCurrency(resumen?.totalPresupuesto || 0)}</Text>
+                    <Text style={styles.summaryLabel}>Presupuesto{filterRubro ? '*' : ''}</Text>
+                    <Text style={styles.summaryValue}>{formatCurrency(displayedPresupuesto)}</Text>
                 </View>
                 <View style={[styles.summaryCard, styles.gastadoCard]}>
                     <Text style={styles.summaryLabel}>Gastado</Text>
-                    <Text style={styles.summaryValue}>{formatCurrency(resumen?.totalGastado || 0)}</Text>
+                    <Text style={styles.summaryValue}>{formatCurrency(displayedGastado)}</Text>
                 </View>
-                <View style={[styles.summaryCard, (resumen?.totalRestante || 0) >= 0 ? styles.restanteCard : styles.excesoCard]}>
-                    <Text style={styles.summaryLabel}>{(resumen?.totalRestante || 0) >= 0 ? 'Restante' : 'Exceso'}</Text>
-                    <Text style={styles.summaryValue}>{formatCurrency(Math.abs(resumen?.totalRestante || 0))}</Text>
+                <View style={[styles.summaryCard, displayedRestante >= 0 ? styles.restanteCard : styles.excesoCard]}>
+                    <Text style={styles.summaryLabel}>{displayedRestante >= 0 ? 'Restante' : 'Exceso'}</Text>
+                    <Text style={styles.summaryValue}>{formatCurrency(Math.abs(displayedRestante))}</Text>
                 </View>
             </View>
 

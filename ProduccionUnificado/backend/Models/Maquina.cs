@@ -30,4 +30,7 @@ public class Maquina
     
     [Column("Activa")]
     public bool Activo { get; set; } = true;
+
+    // Tarifa por hora (entero, miles)
+    public int Tarifa { get; set; } = 0;
 }

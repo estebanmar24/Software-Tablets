@@ -107,6 +107,7 @@ export default function CartasScreen({ navigation }) {
                     meta100Porciento: op.meta100Porciento,
                     totalTiros: op.totalTiros,
                     totalHorasProductivas: op.totalHorasProductivas,
+                    totalHoras: op.totalHoras, // Add mapping for Total Hours (includes Aux/Dead)
                     promedioHoraProductiva: op.promedioHoraProductiva,
                     valorAPagarBonificable: op.valorAPagarBonificable,
                     porcentajeRendimiento100: op.porcentajeRendimiento100,
@@ -232,7 +233,7 @@ export default function CartasScreen({ navigation }) {
                         m.diasLaborados?.toString() || '0',
                         m.meta100Porciento?.toFixed(0) || '0',
                         m.totalTiros?.toString() || '0',
-                        m.totalHorasProductivas?.toFixed(2) || '0',
+                        m.totalHorasProductivas?.toFixed(2) || '0', // Keep showing Productive Hours in main table? Or switch to Total? User complained "dice 101". The table header says "H.Prod". So 101 is correct for H.Prod. User wants weighted avg based on 119.
                         m.promedioHoraProductiva?.toFixed(0) || '0',
                         `$${(m.valorAPagarBonificable || 0).toLocaleString()}`,
                         `${colorSem}|${pct100.toFixed(0)}%`
@@ -287,9 +288,64 @@ export default function CartasScreen({ navigation }) {
 
                 let finalY = doc.lastAutoTable.finalY + 10;
 
-                // Calcular rendimiento promedio general del mes
-                const rendimientoPromedio = sortedMaquinas.length > 0
-                    ? sortedMaquinas.reduce((sum, m) => sum + (m.porcentajeRendimiento100 || 0), 0) / sortedMaquinas.length
+                // --- DEBUG: TABLA DE VERIFICACIÓN PROMEDIO PONDERADO (SOLICITUD MOMENTÁNEA) ---
+                if (opData.maquinas.length > 1) { // Solo si hay más de 1 máquina vale la pena mostrarlo, o siempre? Usuario dijo "debajo de esa tabla".
+                    doc.setFontSize(8);
+                    doc.setTextColor(100, 100, 100);
+                    doc.text('Verificación de Cálculo (Promedio Ponderado):', 20, finalY);
+
+                    const debugData = sortedMaquinas.map(m => {
+                        const eff = m.porcentajeRendimiento100 || 0;
+                        const hrs = m.totalHoras || 0; // Use Total Hours (119.09) instead of Productive (101.93)
+                        const weighted = eff * hrs;
+                        return [
+                            m.maquina,
+                            `${eff.toFixed(2)}%`,
+                            hrs.toFixed(2),
+                            weighted.toFixed(2)
+                        ];
+                    });
+
+                    // Totals
+                    const sumHrs = sortedMaquinas.reduce((s, m) => s + (m.totalHoras || 0), 0);
+                    const sumWeighted = sortedMaquinas.reduce((s, m) => s + ((m.porcentajeRendimiento100 || 0) * (m.totalHoras || 0)), 0);
+                    const finalAvg = sumHrs > 0 ? sumWeighted / sumHrs : 0;
+
+                    debugData.push([
+                        'TOTALES',
+                        '',
+                        sumHrs.toFixed(2),
+                        sumWeighted.toFixed(2) + ` / ${sumHrs.toFixed(2)} = ${finalAvg.toFixed(2)}%`
+                    ]);
+
+                    autoTable(doc, {
+                        startY: finalY + 2,
+                        head: [['Máquina', 'Rendim %', 'Horas Tot', 'Rendim * Horas']],
+                        body: debugData,
+                        styles: { fontSize: 7, cellPadding: 1, halign: 'center' },
+                        headStyles: { fillColor: [150, 150, 150], textColor: 255 },
+                        columnStyles: {
+                            0: { halign: 'left', cellWidth: 60 },
+                            3: { halign: 'center', cellWidth: 50 }
+                        },
+                        didParseCell: (data) => {
+                            if (data.section === 'body' && data.row.index === debugData.length - 1) {
+                                data.cell.styles.fontStyle = 'bold';
+                            }
+                        }
+                    });
+
+                    finalY = doc.lastAutoTable.finalY + 10;
+                }
+                // ---------------------------------------------------------------------------------
+
+                // Calcular rendimiento promedio general del mes (Ponderado por Horas Totales)
+                // Formula: Sum(Rendimiento * TotalHoras) / Sum(TotalHoras)
+                const totalHorasPonderado = sortedMaquinas.reduce((sum, m) => sum + (m.totalHoras || 0), 0);
+                const rendimientoPonderado = sortedMaquinas.reduce((sum, m) => sum + ((m.porcentajeRendimiento100 || 0) * (m.totalHoras || 0)), 0);
+
+                const rendimientoPromedio = totalHorasPonderado > 0
+                    ? rendimientoPonderado / totalHorasPonderado
                     : 0;
 
                 doc.setFontSize(10);

@@ -20,12 +20,13 @@ const DesperdicioScreen = () => {
     const logoSource = require('../../assets/LOGO_ALEPH_IMPRESORES.jpg');
 
     // Filtros
-    // Filtros
     const [selectedMaquina, setSelectedMaquina] = useState('');
     const [selectedFecha, setSelectedFecha] = useState(null);
-    const [selectedUsuario, setSelectedUsuario] = useState(''); // Nuevo filtro
-    const [selectedCodigo, setSelectedCodigo] = useState(''); // Nuevo Filtro
-    const [selectedOP, setSelectedOP] = useState(''); // Nuevo filtro
+    const [selectedUsuario, setSelectedUsuario] = useState('');
+    const [selectedCodigo, setSelectedCodigo] = useState('');
+    const [selectedOP, setSelectedOP] = useState('');
+    const [selectedMes, setSelectedMes] = useState(new Date().getMonth() + 1); // 1-12, default current month
+    const [selectedAnio, setSelectedAnio] = useState(new Date().getFullYear());
 
     // Modales
     const [modalConfigVisible, setModalConfigVisible] = useState(false);
@@ -55,7 +56,7 @@ const DesperdicioScreen = () => {
     useEffect(() => {
         // Recargar si cambian filtros
         loadRegistros();
-    }, [selectedMaquina, selectedFecha, selectedUsuario, selectedOP, selectedCodigo]);
+    }, [selectedMaquina, selectedFecha, selectedUsuario, selectedOP, selectedCodigo, selectedMes, selectedAnio]);
 
     const loadInitialData = async () => {
         try {
@@ -83,17 +84,18 @@ const DesperdicioScreen = () => {
         // Permitir carga sin máquina (trae todos los del día)
         setLoading(true);
         try {
-            // Solo formatear fecha si está seleccionada
-            let dateStr = '';
+            let url = `${API_URL}/desperdicio?`;
+
+            // If a specific date is selected, use it; otherwise use mes/anio
             if (selectedFecha) {
                 const year = selectedFecha.getFullYear();
                 const month = String(selectedFecha.getMonth() + 1).padStart(2, '0');
                 const day = String(selectedFecha.getDate()).padStart(2, '0');
-                dateStr = `${year}-${month}-${day}`;
+                url += `fecha=${year}-${month}-${day}&`;
+            } else if (selectedMes && selectedAnio) {
+                url += `mes=${selectedMes}&anio=${selectedAnio}&`;
             }
 
-            let url = `${API_URL}/desperdicio?`;
-            if (dateStr) url += `fecha=${dateStr}&`;
             if (selectedMaquina) url += `maquinaId=${selectedMaquina}&`;
             if (selectedUsuario) url += `usuarioId=${selectedUsuario}&`;
             if (selectedCodigo) url += `codigoDesperdicioId=${selectedCodigo}&`;
@@ -364,7 +366,8 @@ const DesperdicioScreen = () => {
 
             doc.setFontSize(12);
             doc.setFont('helvetica', 'normal');
-            const fechaStr = selectedFecha ? formatDate(selectedFecha) : 'Todo el Historial';
+            const mesesNombres = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+            const fechaStr = selectedFecha ? formatDate(selectedFecha) : (selectedMes && selectedAnio) ? `${mesesNombres[selectedMes]} ${selectedAnio}` : 'Todo el Historial';
             doc.text(`Fecha: ${fechaStr}`, pageWidth / 2, 30, { align: 'center' });
 
             if (selectedMaquina) {
@@ -422,7 +425,8 @@ const DesperdicioScreen = () => {
                     if (!group[k]) group[k] = 0;
                     group[k] += r.cantidad;
                 });
-                return Object.keys(group).map(k => [k, group[k].toFixed(2)]);
+                return Object.keys(group).map(k => [k, group[k].toFixed(2)])
+                    .sort((a, b) => parseFloat(b[1]) - parseFloat(a[1])); // Mayor a menor
             };
 
             const summaryCode = getGroupData(r => r.codigo);
@@ -584,7 +588,7 @@ const DesperdicioScreen = () => {
             {/* Header / Botones Superiores */}
             <View style={styles.header}>
                 <View style={[styles.filterRow, { flexWrap: 'wrap', gap: 10 }]}>
-                    {/* Filtro Fecha */}
+                    {/* Filtro Fecha específica */}
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                         <Text style={[styles.label, { marginBottom: 0, marginRight: 5 }]}>Fecha:</Text>
                         {selectedFecha ? (
@@ -610,10 +614,36 @@ const DesperdicioScreen = () => {
                                 </TouchableOpacity>
                             </View>
                         ) : (
-                            <TouchableOpacity onPress={() => setSelectedFecha(new Date())} style={{ backgroundColor: '#007bff', padding: 5, borderRadius: 4 }}>
+                            <TouchableOpacity onPress={() => { setSelectedFecha(new Date()); setSelectedMes(''); setSelectedAnio(''); }} style={{ backgroundColor: '#007bff', padding: 5, borderRadius: 4 }}>
                                 <Text style={{ color: 'white', fontSize: 12 }}>📅 Hoy</Text>
                             </TouchableOpacity>
                         )}
+                    </View>
+
+                    {/* Filtro Mes / Año */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={[styles.label, { marginBottom: 0, marginRight: 5 }]}>Mes:</Text>
+                        <Picker
+                            selectedValue={selectedMes}
+                            onValueChange={(v) => { setSelectedMes(v); if (v) setSelectedFecha(null); }}
+                            style={{ height: 30, width: 120, padding: 0 }}
+                        >
+                            <Picker.Item label="Todos" value="" />
+                            {['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'].map((m, i) => (
+                                <Picker.Item key={i + 1} label={m} value={i + 1} />
+                            ))}
+                        </Picker>
+                        <Text style={[styles.label, { marginBottom: 0, marginLeft: 5, marginRight: 5 }]}>Año:</Text>
+                        <Picker
+                            selectedValue={selectedAnio}
+                            onValueChange={(v) => { setSelectedAnio(v); if (v) setSelectedFecha(null); }}
+                            style={{ height: 30, width: 90, padding: 0 }}
+                        >
+                            <Picker.Item label="--" value="" />
+                            {[2025, 2026, 2027].map(y => (
+                                <Picker.Item key={y} label={y.toString()} value={y} />
+                            ))}
+                        </Picker>
                     </View>
 
                     {/* Filtro Máquina */}

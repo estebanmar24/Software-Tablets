@@ -264,7 +264,7 @@ export function Sidebar({
 
 const styles = StyleSheet.create({
     container: {
-        width: 280, // Ancho por defecto, sobrescribible via style prop
+        width: 240, // Ancho reducido para tablets 1280x800
         backgroundColor: '#FFFFFF',
         borderRightWidth: 1,
         borderRightColor: '#E8ECF0',

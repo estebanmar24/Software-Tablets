@@ -1,3 +1,7 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
@@ -27,7 +31,7 @@ public class ProduccionController : ControllerBase
     }
 
     [HttpGet("maestros")]
-    public async Task<ActionResult<object>> GetMaestros()
+    public async Task<ActionResult> GetMaestros()
     {
         var rubros = await _context.Produccion_Rubros.Where(r => r.Activo).ToListAsync();
         var proveedores = await _context.Produccion_Proveedores.Where(p => p.Activo).ToListAsync();
@@ -35,15 +39,15 @@ public class ProduccionController : ControllerBase
         var tiposRecargo = await _context.Produccion_TiposRecargo.Where(t => t.Activo).ToListAsync();
         
         // Existing tables
-        var maquinas = await _context.Maquinas.Where(m => m.Activo).Select(m => new { m.Id, m.Nombre }).ToListAsync();
+        var maquinas = await _context.Maquinas.Where(m => m.Activo && m.Nombre != null && !m.Nombre.Contains("TERMINADOS")).Select(m => new { m.Id, m.Nombre }).ToListAsync();
         
         // Ordenamiento Natural (1, 2, ... 10)
         maquinas = maquinas.OrderBy(m => 
         {
-            var match = System.Text.RegularExpressions.Regex.Match(m.Nombre, @"^\d+");
+            var match = System.Text.RegularExpressions.Regex.Match(m.Nombre ?? "", @"^\d+");
             return match.Success ? int.Parse(match.Value) : int.MaxValue;
         })
-        .ThenBy(m => m.Nombre)
+        .ThenBy(m => m.Nombre ?? "")
         .ToList();
 
         var usuarios = await _context.Usuarios
@@ -209,7 +213,7 @@ public class ProduccionController : ControllerBase
     }
 
     [HttpPost("importar-excel")]
-    public async Task<IActionResult> ImportarExcel(IFormFile file)
+    public async Task<IActionResult> ImportarExcel(IFormFile file, [FromForm] int? maquinaId)
     {
         if (file == null || file.Length == 0)
             return BadRequest(new { error = "No se ha subido ningún archivo" });
@@ -224,19 +228,22 @@ public class ProduccionController : ControllerBase
                 await file.CopyToAsync(stream);
                 using (var package = new OfficeOpenXml.ExcelPackage(stream))
                 {
-                    OfficeOpenXml.ExcelPackage.LicenseContext = OfficeOpenXml.LicenseContext.NonCommercial;
-                    
                     var worksheet = package.Workbook.Worksheets[0]; // Leer la primera hoja
+                    
+                    if (worksheet.Dimension == null)
+                        return BadRequest(new { error = "El archivo Excel no tiene un área con datos definida (hoja vacía)" });
+
                     var rowCount = worksheet.Dimension.Rows;
                     var colCount = worksheet.Dimension.Columns;
 
                     if (rowCount < 2) 
                         return BadRequest(new { error = "El archivo Excel está vacío o no tiene datos" });
 
-                    var registros = new List<ProduccionDiariaDto>();
+                    // 1. Pre-cargar maestros para optimizar y permitir búsqueda flexible
+                    var usuarios = await _context.Usuarios.ToListAsync();
+                    var maquinas = await _context.Maquinas.ToListAsync();
+                    var actividades = await _context.Actividades.ToListAsync();
 
-                    // Mapeo básico de columnas (Asumiendo orden fijo o buscando cabeceras)
-                    // Por ahora, implementaremos una búsqueda inteligente de cabeceras
                     var headers = new Dictionary<string, int>();
                     for (int col = 1; col <= colCount; col++)
                     {
@@ -244,87 +251,272 @@ public class ProduccionController : ControllerBase
                         if (!string.IsNullOrEmpty(cabecera)) headers[cabecera] = col;
                     }
 
-                    // Validar columnas requeridas mínimas
-                    if (!headers.ContainsKey("fecha") || (!headers.ContainsKey("maquina") && !headers.ContainsKey("máquina")))
-                        return BadRequest(new { error = "El Excel debe contener al menos las columnas 'Fecha' y 'Maquina'" });
+                    // 2. Validar columnas mínimas
+                    bool hasMaquina = headers.ContainsKey("maquina") || headers.ContainsKey("máquina");
+                    if (!headers.ContainsKey("fecha") || (!hasMaquina && maquinaId == null))
+                        return BadRequest(new { error = "El Excel debe contener la columna 'Fecha'. La columna 'Maquina' es necesaria si no se selecciona una en la pantalla." });
+
+                    var filasExcel = new List<ProduccionDiariaDetalleDto>();
+                    var agrupaciones = new Dictionary<string, ProduccionDiariaDto>();
 
                     // Procesar filas
                     for (int row = 2; row <= rowCount; row++)
                     {
                         try 
                         {
-                            var fechaStr = worksheet.Cells[row, headers.ContainsKey("fecha") ? headers["fecha"] : 1].Value?.ToString();
-                            if (string.IsNullOrEmpty(fechaStr)) continue; // Saltar filas vacías
+                            var fechaVal = worksheet.Cells[row, headers.ContainsKey("fecha") ? headers["fecha"] : 1].Value;
+                            if (fechaVal == null) continue;
 
-                            // Parsear Fecha
-                            if (!DateTime.TryParse(fechaStr, out DateTime fecha))
-                                continue; // Fecha inválida
+                            DateTime fecha;
+                            if (fechaVal is DateTime dt) fecha = dt;
+                            else if (!DateTime.TryParse(fechaVal.ToString(), out fecha)) continue;
 
-                            // Obtener Máquina
-                            string maquinaNombre = "";
-                            if (headers.ContainsKey("maquina")) maquinaNombre = worksheet.Cells[row, headers["maquina"]].Value?.ToString() ?? "";
-                            else if (headers.ContainsKey("máquina")) maquinaNombre = worksheet.Cells[row, headers["máquina"]].Value?.ToString() ?? "";
-
-                            var maquina = await _context.Maquinas.FirstOrDefaultAsync(m => m.Nombre.ToLower() == maquinaNombre.ToLower());
-                            if (maquina == null) continue; // Máquina no encontrada, saltar o reportar
-
-                            // Obtener Operario (Usuario)
-                            string operarioNombre = "";
-                            if (headers.ContainsKey("operario")) operarioNombre = worksheet.Cells[row, headers["operario"]].Value?.ToString() ?? "";
-                            else if (headers.ContainsKey("nombre")) operarioNombre = worksheet.Cells[row, headers["nombre"]].Value?.ToString() ?? "";
+                             // Obtener Máquina
+                            var maquina = maquinas.FirstOrDefault(m => m.Id == maquinaId); // Prioridad al fallback si se pasa explícitamente y no hay columna
                             
-                            var usuario = await _context.Usuarios.FirstOrDefaultAsync(u => u.Nombre.ToLower() == operarioNombre.ToLower()) 
-                                          ?? await _context.Usuarios.FirstOrDefaultAsync(u => u.Nombre == "Operario General"); // Fallback
-                            
-                            if (usuario == null) continue;
-
-                            // Crear DTO básico con los datos disponibles
-                            var dto = new ProduccionDiariaDto
+                            if (hasMaquina)
                             {
-                                Fecha = fecha.ToString("yyyy-MM-dd"),
-                                MaquinaId = maquina.Id,
-                                UsuarioId = usuario.Id,
-                                TirosDiarios = GetDecimalFromCell(worksheet, row, headers, "tiros") ?? 0,
-                                Desperdicio = GetDecimalFromCell(worksheet, row, headers, "desperdicio") ?? 0,
-                                HorasOperativas = GetDecimalFromCell(worksheet, row, headers, "horas") ?? 0,
-                                // Otros campos pueden ser calculados o dejados en 0 para edición posterior
-                                DiaLaborado = 1
+                                string maquinaNombre = (headers.ContainsKey("maquina") ? worksheet.Cells[row, headers["maquina"]].Value?.ToString() : null)
+                                                     ?? (headers.ContainsKey("máquina") ? worksheet.Cells[row, headers["máquina"]].Value?.ToString() : "") ?? "";
+                                
+                                var maquinaExt = maquinas.FirstOrDefault(m => string.Equals(m.Nombre, maquinaNombre, StringComparison.OrdinalIgnoreCase))
+                                              ?? maquinas.FirstOrDefault(m => m.Nombre.ToLower().Contains(maquinaNombre.ToLower()) && maquinaNombre.Length > 3);
+                                
+                                if (maquinaExt != null) maquina = maquinaExt;
+                            }
+
+                            if (maquina == null) continue;
+
+                            // Obtener Operario (Fuzzy Match)
+                            string operarioExcel = (headers.ContainsKey("operario") ? worksheet.Cells[row, headers["operario"]].Value?.ToString() : null)
+                                                   ?? (headers.ContainsKey("nombre") ? worksheet.Cells[row, headers["nombre"]].Value?.ToString() : "") ?? "";
+                            
+                            var usuario = BusquedaFuzzyUsuario(usuarios, operarioExcel);
+                            if (usuario == null) usuario = usuarios.FirstOrDefault(u => u.Nombre == "Operario General");
+
+                            // Obtener Actividad
+                            string actividadExcel = GetStringFromCell(worksheet, row, headers, "actividad") ?? "";
+                            var actividad = actividades.FirstOrDefault(a => actividadExcel.ToLower().Contains(a.Nombre.ToLower()))
+                                           ?? actividades.FirstOrDefault(a => a.Nombre == "Producción");
+
+                            // Crear Detalle
+                            var detalle = new ProduccionDiariaDetalleDto
+                            {
+                                HoraInicio = GetStringFromCell(worksheet, row, headers, "inicio") ?? "",
+                                HoraFin = GetStringFromCell(worksheet, row, headers, "final") ?? "",
+                                ActividadId = actividad?.Id ?? 2,
+                                ReferenciaOP = GetStringFromCell(worksheet, row, headers, "orden"),
+                                Tiros = (int)(GetDecimalFromCell(worksheet, row, headers, "tiros") ?? 0),
+                                Observaciones = GetStringFromCell(worksheet, row, headers, "observacio")
                             };
 
-                            registros.Add(dto);
+                            // Agrupar por Fecha, Máquina y Usuario
+                            string key = $"{fecha:yyyy-MM-dd}_{maquina.Id}_{usuario?.Id}";
+                            if (!agrupaciones.ContainsKey(key))
+                            {
+                                agrupaciones[key] = new ProduccionDiariaDto
+                                {
+                                    Fecha = fecha.ToString("yyyy-MM-dd"),
+                                    MaquinaId = maquina.Id,
+                                    UsuarioId = usuario?.Id ?? 0,
+                                    DiaLaborado = 1,
+                                    Detalles = new List<ProduccionDiariaDetalleDto>(),
+                                    Novedades = "" // Se llenará con la suma de observaciones
+                                };
+                            }
+
+                            agrupaciones[key].Detalles.Add(detalle);
+                            
+                            // --- AGREGACIÓN DE TOTALES PARA EL HEADER ---
+                            TimeSpan rowStart = ParseTime(detalle.HoraInicio);
+                            TimeSpan rowEnd = ParseTime(detalle.HoraFin);
+                            double duration = (rowEnd - rowStart).TotalHours;
+                            if (duration < 0) duration += 24; // Cruce de medianoche
+
+                            decimal dDuration = (decimal)duration;
+                            string actName = actividad?.Nombre.ToLower() ?? "";
+
+                            // Mapeo similar al del frontend
+                            if (actName.Contains("producc")) agrupaciones[key].HorasOperativas += dDuration;
+                            else if (actName.Contains("puesta a punto")) agrupaciones[key].TiempoPuestaPunto += dDuration;
+                            else if (actName.Contains("mantenimiento")) agrupaciones[key].HorasMantenimiento += dDuration;
+                            else if (actName.Contains("descanso") || actName.Contains("alimento")) agrupaciones[key].HorasDescanso += dDuration;
+                            else if (actName.Contains("falta de trabajo")) agrupaciones[key].TiempoFaltaTrabajo += dDuration;
+                            else if (actName.Contains("reparacion")) agrupaciones[key].TiempoReparacion += dDuration;
+                            else if (actName.Contains("otros muertos")) agrupaciones[key].TiempoOtroMuerto += dDuration;
+                            else if (actName.Contains("otros auxiliares")) agrupaciones[key].HorasOtrosAux += dDuration;
+
+                            agrupaciones[key].TirosDiarios += detalle.Tiros;
+                            agrupaciones[key].RendimientoFinal = agrupaciones[key].TirosDiarios;
+                            agrupaciones[key].Desperdicio += (decimal)(GetDecimalFromCell(worksheet, row, headers, "desperdicio") ?? 0);
+
+                            // Cambios (Incrementar si es Puesta a Punto con OP nueva)
+                            if (actName.Contains("puesta a punto"))
+                            {
+                                string opActual = (detalle.ReferenciaOP ?? "").Trim();
+                                // Si es el primer detalle o la OP cambió respecto al último registro de este grupo (simplificado)
+                                // En el excel granular, solemos contar un cambio por cada bloque de puesta a punto con OP válida.
+                                if (!string.IsNullOrEmpty(opActual) && opActual != "460") {
+                                    // Para no sobre-contar, comparamos con la última OP agregada a la lista de OPs del grupo
+                                    if (!agrupaciones[key].ReferenciaOP?.Contains(opActual) ?? true) {
+                                        agrupaciones[key].Cambios++;
+                                    }
+                                }
+                            }
+
+                            // Concatenar OPs (únicas y ordenadas por aparición)
+                            if (!string.IsNullOrEmpty(detalle.ReferenciaOP) && detalle.ReferenciaOP != "460")
+                            {
+                                if (string.IsNullOrEmpty(agrupaciones[key].ReferenciaOP)) 
+                                    agrupaciones[key].ReferenciaOP = detalle.ReferenciaOP;
+                                else if (!agrupaciones[key].ReferenciaOP.Contains(detalle.ReferenciaOP))
+                                    agrupaciones[key].ReferenciaOP += "-" + detalle.ReferenciaOP;
+                            }
+
+                            // Rango de horas del día
+                            // Agregación inteligente: 
+                            // 1. HoraInicio: El menor valor que sea mayor a 00:00.
+                            // 2. HoraFin: El mayor valor encontrado.
+                            
+                            TimeSpan currentStart = string.IsNullOrEmpty(agrupaciones[key].HoraInicio) ? TimeSpan.Zero : ParseTime(agrupaciones[key].HoraInicio);
+                            TimeSpan currentFin = string.IsNullOrEmpty(agrupaciones[key].HoraFin) ? TimeSpan.Zero : ParseTime(agrupaciones[key].HoraFin);
+
+                            // Si el nuevo rowStart es > 0, y (el actual es 0 o el nuevo es menor), actualizar.
+                            if (rowStart != TimeSpan.Zero) {
+                                if (currentStart == TimeSpan.Zero || rowStart < currentStart) {
+                                    agrupaciones[key].HoraInicio = detalle.HoraInicio;
+                                }
+                            }
+
+                            // Si el nuevo rowEnd es mayor al actual, actualizar.
+                            if (rowEnd > currentFin) {
+                                agrupaciones[key].HoraFin = detalle.HoraFin;
+                            }
+
+
+
+                            if (!string.IsNullOrEmpty(detalle.Observaciones) && !agrupaciones[key].Novedades.Contains(detalle.Observaciones))
+                            {
+                                agrupaciones[key].Novedades += (string.IsNullOrEmpty(agrupaciones[key].Novedades) ? "" : "; ") + detalle.Observaciones;
+                            }
+
+                            // Totales Productivos
+                            agrupaciones[key].TotalHorasProductivas = agrupaciones[key].HorasOperativas + agrupaciones[key].TiempoPuestaPunto;
+                            if (agrupaciones[key].TotalHorasProductivas > 0)
+                                agrupaciones[key].PromedioHoraProductiva = (agrupaciones[key].RendimientoFinal + (agrupaciones[key].Cambios * maquina.TirosReferencia)) / agrupaciones[key].TotalHorasProductivas;
+                            
+                            Console.WriteLine($"[IMPORT DEBUG] Key: {key}, Op: {usuario.Nombre}, HorasOp: {agrupaciones[key].HorasOperativas}, Tiros: {agrupaciones[key].TirosDiarios}, Inicio: {agrupaciones[key].HoraInicio}");
+
                         }
                         catch (Exception exRow)
                         {
                             Console.WriteLine($"Error procesando fila {row}: {exRow.Message}");
                         }
                     }
-                    
-                    if (registros.Any())
+
+                    if (agrupaciones.Any())
                     {
-                        // Guardar usando el método existente (reutilizando lógica)
-                        // ADVERTENCIA: Esto sobrescribirá datos si ya existen para ese día/máquina
-                        return await GuardarProduccionMensual(registros);
+                        // Retornar para previsualización
+                        var res = agrupaciones.Values.Select(v => new {
+                            v.Fecha,
+                            v.MaquinaId,
+                            MaquinaNombre = maquinas.FirstOrDefault(m => m.Id == v.MaquinaId)?.Nombre,
+                            v.UsuarioId,
+                            UsuarioNombre = usuarios.FirstOrDefault(u => u.Id == v.UsuarioId)?.Nombre,
+                            FilasDetalle = v.Detalles.Count,
+                            Data = v // El objeto completo para enviar de vuelta
+                        }).OrderBy(x => x.Fecha).ThenBy(x => x.UsuarioNombre).ToList();
+
+                        return Ok(new { 
+                            message = $"Se encontraron {res.Count} grupos de registros para cargar.",
+                            preview = res
+                        });
                     }
                     else
                     {
-                        return BadRequest(new { error = "No se pudieron extraer registros válidos del Excel" });
+                        return BadRequest(new { error = "No se pudieron extraer registros válidos del Excel. Verifique que los nombres de columnas coincidan (Fecha, Maquina, Operario, Orden, Inicio, Final, Actividad, Tiros)." });
                     }
                 }
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error importando Excel: {ex}");
-            return StatusCode(500, new { error = "Error interno procesando el archivo Excel: " + ex.Message });
+            var errorDetail = $"Error importando Excel: {ex.Message}\nStack: {ex.StackTrace}";
+            if (ex.InnerException != null) errorDetail += $"\nInner: {ex.InnerException.Message}";
+            
+            Console.WriteLine(errorDetail);
+            System.IO.File.WriteAllText("debug_import_error.txt", errorDetail);
+            
+            return StatusCode(500, new { error = "Error interno procesando el archivo Excel: " + ex.Message, details = ex.Message });
         }
+    }
+
+    private Usuario BusquedaFuzzyUsuario(List<Usuario> lista, string nombreBusqueda)
+    {
+        if (string.IsNullOrWhiteSpace(nombreBusqueda)) return null;
+        
+        string normalizado = nombreBusqueda.ToLower().Trim();
+        
+        // 1. Coincidencia Exacta
+        var exacto = lista.FirstOrDefault(u => u.Nombre.ToLower() == normalizado);
+        if (exacto != null) return exacto;
+
+        // 2. Coincidencia por palabras (Fuzzy)
+        // Dividimos el nombre buscado en fragmentos de al menos 3 letras
+        var palabras = normalizado.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                                  .Where(p => p.Length > 2)
+                                  .ToList();
+
+        if (!palabras.Any()) return null;
+
+        // Buscamos usuarios que contengan TODAS las palabras clave (sin importar el orden)
+        var coincide = lista.FirstOrDefault(u => {
+            string uNombre = u.Nombre.ToLower();
+            return palabras.All(p => uNombre.Contains(p));
+        });
+
+        if (coincide != null)
+        {
+            Console.WriteLine($"[USER MATCH] Excel: '{nombreBusqueda}' -> Match: '{coincide.Nombre}' (ID: {coincide.Id})");
+            return coincide;
+        }
+
+        // 3. Coincidencia parcial (al menos 2 palabras clave coinciden)
+        if (palabras.Count >= 2)
+        {
+            return lista.FirstOrDefault(u => {
+                string uNombre = u.Nombre.ToLower();
+                return palabras.Count(p => uNombre.Contains(p)) >= 2;
+            });
+        }
+
+        return null;
+    }
+
+    private string GetStringFromCell(OfficeOpenXml.ExcelWorksheet ws, int row, Dictionary<string, int> headers, string keySnippet)
+    {
+        var entry = headers.FirstOrDefault(h => h.Key.Contains(keySnippet));
+        if (entry.Key == null || entry.Value <= 0) return null;
+        
+        var val = ws.Cells[row, entry.Value].Value;
+        if (val == null) return null;
+
+        if (val is DateTime dt)
+        {
+            // Si es un tiempo solo de Excel, suele venir con fecha 1899-12-30
+            if (dt.Year == 1899) return dt.ToString("HH:mm:ss"); // Usar 24h para evitar líos de AM/PM
+            return dt.ToString("yyyy-MM-dd HH:mm:ss");
+        }
+
+        return val.ToString();
     }
 
     private decimal? GetDecimalFromCell(OfficeOpenXml.ExcelWorksheet ws, int row, Dictionary<string, int> headers, string keySnippet)
     {
-        var colIndex = headers.FirstOrDefault(h => h.Key.Contains(keySnippet)).Value;
-        if (colIndex == 0) return null;
+        var entry = headers.FirstOrDefault(h => h.Key.Contains(keySnippet));
+        if (entry.Key == null || entry.Value <= 0) return null;
         
-        var val = ws.Cells[row, colIndex].Value;
+        var val = ws.Cells[row, entry.Value].Value;
         if (val == null) return null;
 
         if (decimal.TryParse(val.ToString(), out decimal result))
@@ -370,8 +562,45 @@ public class ProduccionController : ControllerBase
             foreach (var dto in registros)
             {
                 var fechaRegistro = DateTime.Parse(dto.Fecha);
-                var horaInicio = TimeSpan.TryParse(dto.HoraInicio, out var hi) ? hi : TimeSpan.Zero;
-                var horaFin = TimeSpan.TryParse(dto.HoraFin, out var hf) ? hf : TimeSpan.Zero;
+                var horaInicio = ParseTime(dto.HoraInicio);
+                var horaFin = ParseTime(dto.HoraFin);
+
+                // --- FALLBACK REQUERIDO POR EL USUARIO ---
+                // Si la cabecera no trae horas, tomar el inicio del primer detalle y el fin del último.
+                if ((horaInicio == TimeSpan.Zero || horaFin == TimeSpan.Zero) && dto.Detalles != null && dto.Detalles.Any())
+                {
+                    var validTimes = dto.Detalles
+                        .Select(d => new { i = ParseTime(d.HoraInicio), f = ParseTime(d.HoraFin) })
+                        .Where(t => t.i != TimeSpan.Zero || t.f != TimeSpan.Zero)
+                        .ToList();
+
+                    if (validTimes.Any())
+                    {
+                        if (horaInicio == TimeSpan.Zero) {
+                            var minI = validTimes.Where(t => t.i != TimeSpan.Zero).Select(t => t.i).DefaultIfEmpty(TimeSpan.Zero).Min();
+                            if (minI != TimeSpan.Zero) horaInicio = minI;
+                        }
+                        if (horaFin == TimeSpan.Zero) {
+                            horaFin = validTimes.Max(t => t.f);
+                        }
+                    }
+                }
+
+                // SIEMPRE sincronizar con detalles si existen, para asegurar la cabecera coincida con el modal
+                if (dto.Detalles != null && dto.Detalles.Any()) {
+                    var detTimes = dto.Detalles
+                        .Select(d => new { i = ParseTime(d.HoraInicio), f = ParseTime(d.HoraFin) })
+                        .Where(t => t.i != TimeSpan.Zero || t.f != TimeSpan.Zero)
+                        .ToList();
+                    
+                    if (detTimes.Any()) {
+                        var minDet = detTimes.Where(t => t.i != TimeSpan.Zero).Select(t => t.i).DefaultIfEmpty(TimeSpan.Zero).Min();
+                        var maxDet = detTimes.Max(t => t.f);
+                        if (minDet != TimeSpan.Zero) horaInicio = minDet;
+                        if (maxDet != TimeSpan.Zero) horaFin = maxDet;
+                    }
+                }
+
 
                 ProduccionDiaria produccion = null;
 
@@ -421,8 +650,33 @@ public class ProduccionController : ControllerBase
                     produccion.TotalTiemposMuertos = dto.TiempoFaltaTrabajo + dto.TiempoReparacion + dto.TiempoOtroMuerto;
                     produccion.TotalHoras = dto.TotalHorasProductivas + dto.HorasMantenimiento + dto.HorasDescanso + dto.HorasOtrosAux + dto.TiempoFaltaTrabajo + dto.TiempoReparacion + dto.TiempoOtroMuerto;
 
+                    Console.WriteLine($"[SAVE DEBUG] Updating record {produccion.Id}. Date: {produccion.Fecha}, User: {produccion.UsuarioId}, Inicio: {produccion.HoraInicio}, RFinal: {produccion.RendimientoFinal}");
+
                     _context.Entry(produccion).State = EntityState.Modified;
                     procesadosIds.Add(produccion.Id);
+
+                    // Sincronizar Detalles si vienen en el DTO
+                    if (dto.Detalles != null)
+                    {
+                        var existentesDetalles = await _context.ProduccionDiariaDetalles
+                            .Where(d => d.ProduccionDiariaId == produccion.Id)
+                            .ToListAsync();
+                        _context.ProduccionDiariaDetalles.RemoveRange(existentesDetalles);
+
+                        foreach (var detDto in dto.Detalles)
+                        {
+                            _context.ProduccionDiariaDetalles.Add(new ProduccionDiariaDetalle
+                            {
+                                ProduccionDiariaId = produccion.Id,
+                                HoraInicio = ParseTime(detDto.HoraInicio),
+                                HoraFin = ParseTime(detDto.HoraFin),
+                                ActividadId = detDto.ActividadId,
+                                Tiros = detDto.Tiros,
+                                ReferenciaOP = detDto.ReferenciaOP ?? "",
+                                Observaciones = detDto.Observaciones ?? ""
+                            });
+                        }
+                    }
                 }
                 else
                 {
@@ -460,8 +714,29 @@ public class ProduccionController : ControllerBase
                         TotalTiemposMuertos = dto.TiempoFaltaTrabajo + dto.TiempoReparacion + dto.TiempoOtroMuerto,
                         TotalHoras = dto.TotalHorasProductivas + dto.HorasMantenimiento + dto.HorasDescanso + dto.HorasOtrosAux + dto.TiempoFaltaTrabajo + dto.TiempoReparacion + dto.TiempoOtroMuerto
                     };
+
+                    Console.WriteLine($"[SAVE DEBUG] Inserting NEW record. Date: {nueva.Fecha}, User: {nueva.UsuarioId}, Inicio: {nueva.HoraInicio}, RFinal: {nueva.RendimientoFinal}");
+                    
                     _context.ProduccionDiaria.Add(nueva);
                     produccion = nueva;
+
+                    // Si es nuevo y trae detalles, guardarlos (necesitamos el ID generado después de SaveChanges o usar el objeto)
+                    if (dto.Detalles != null)
+                    {
+                        foreach (var detDto in dto.Detalles)
+                        {
+                            _context.ProduccionDiariaDetalles.Add(new ProduccionDiariaDetalle
+                            {
+                                ProduccionDiaria = nueva, // EF manejará el ID
+                                HoraInicio = ParseTime(detDto.HoraInicio),
+                                HoraFin = ParseTime(detDto.HoraFin),
+                                ActividadId = detDto.ActividadId,
+                                Tiros = detDto.Tiros,
+                                ReferenciaOP = detDto.ReferenciaOP ?? "",
+                                Observaciones = detDto.Observaciones ?? ""
+                            });
+                        }
+                    }
                 }
                 processedEntities.Add(produccion);
             }
@@ -472,7 +747,49 @@ public class ProduccionController : ControllerBase
                 var paraBorrar = existentes.Where(e => !procesadosIds.Contains(e.Id)).ToList();
                 if (paraBorrar.Any())
                 {
+                    // CRITICAL FIX: Also delete TiemposProceso (History Logs) for these deleted dailies
+                    // Otherwise History view remains populated while Capture Grid is empty
+                    foreach (var del in paraBorrar)
+                    {
+                        var logs = await _context.TiemposProceso
+                            .Where(t => t.Fecha.Date == del.Fecha.Date && t.MaquinaId == del.MaquinaId && t.UsuarioId == del.UsuarioId)
+                            .ToListAsync();
+                        
+                        if (logs.Any())
+                        {
+                            _context.TiemposProceso.RemoveRange(logs);
+                            Console.WriteLine($"[SYNC DELETE] Deleted {logs.Count} history logs for {del.Fecha:yyyy-MM-dd} Maq:{del.MaquinaId}");
+                        }
+                    }
+
                     _context.ProduccionDiaria.RemoveRange(paraBorrar);
+                }
+
+                // EXTRA SAFETY: Clean up orphaned logs (TiemposProceso) for days NOT in the payload OR empty days
+                // This handles cases where ProduccionDiaria was already gone but logs remained
+                // We trust "registros" as the Full Truth for this Machine/Month
+                
+                // Identify valid dates: Must be present AND have actual content (Hours > 0 or OP or meaningful data)
+                // If a record exists but has 0 hours/content (e.g. just Operator set), we treat it as "Empty" and clear history.
+                var validDates = registros
+                    .Where(r => (r.TotalHorasProductivas + r.HorasMantenimiento + r.HorasDescanso + 
+                                 r.HorasOtrosAux + r.TiempoFaltaTrabajo + r.TiempoReparacion + 
+                                 r.TiempoOtroMuerto + r.Desperdicio) > 0 
+                                || !string.IsNullOrWhiteSpace(r.ReferenciaOP) 
+                                || !string.IsNullOrWhiteSpace(r.Novedades))
+                    .Select(r => DateTime.Parse(r.Fecha).Date)
+                    .ToHashSet();
+                
+                var allLogsThisMonth = await _context.TiemposProceso
+                    .Where(t => t.Fecha.Month == mes && t.Fecha.Year == anio && t.MaquinaId == maquinaId)
+                    .ToListAsync();
+                
+                var orphanedLogs = allLogsThisMonth.Where(t => !validDates.Contains(t.Fecha.Date)).ToList();
+                
+                if (orphanedLogs.Any())
+                {
+                    _context.TiemposProceso.RemoveRange(orphanedLogs);
+                    Console.WriteLine($"[SYNC CLEANUP] Removing {orphanedLogs.Count} orphaned logs for M:{mes}/A:{anio} Maq:{maquinaId}");
                 }
             }
 
@@ -498,8 +815,9 @@ public class ProduccionController : ControllerBase
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error en GuardarProduccionMensual: {ex.Message}");
-            Console.WriteLine($"StackTrace: {ex.StackTrace}");
+            var errorDetail = $"Error en GuardarProduccionMensual: {ex.Message}\nStackTrace: {ex.StackTrace}\nInner: {ex.InnerException?.Message}";
+            System.IO.File.WriteAllText("debug_save_error.txt", errorDetail);
+            Console.WriteLine(errorDetail);
             return StatusCode(500, new { error = ex.Message, details = ex.InnerException?.Message });
         }
     }
@@ -906,7 +1224,12 @@ public class ProduccionController : ControllerBase
         var produccion = await query.ToListAsync();
 
         // Get machine metadata for importance and meta calculations
-        var maquinas = await _context.Maquinas.Where(m => m.Activo).ToListAsync();
+        var maquinas = await _context.Maquinas.Where(m => m.Activo && (m.Nombre == null || !m.Nombre.Contains("TERMINADOS"))).ToListAsync();
+
+        // Load monthly meta snapshots for this period
+        var metaSnapshots = await _context.MetasMensuales
+            .Where(s => s.Mes == mes && s.Anio == anio)
+            .ToListAsync();
 
         // Count working days in period
         var diasLaborados = produccion
@@ -922,41 +1245,25 @@ public class ProduccionController : ControllerBase
                 var first = g.First();
                 var tirosReferencia = maq?.TirosReferencia ?? 0;
                 
-                // Calculate TirosConEquivalencia
-                // EXCLUDE Jan 1-12 2026 from ALL sums as per rule
-                var filteredGroup = g.Where(p => !(p.Fecha.Year == 2026 && p.Fecha.Month == 1 && p.Fecha.Day >= 1 && p.Fecha.Day <= 12));
+                // Usar todos los registros del grupo (datos Jan 1-12 2026 ya fueron eliminados de BD)
+                var filteredGroup = g.AsEnumerable();
                 
-                var totalTiros = filteredGroup.Sum(p => (p.Cambios * tirosReferencia) + p.TirosDiarios);
+                // FIXED: Usar RendimientoFinal (decimal) con redondeo para coincidir con frontend
+                var totalTiros = filteredGroup.Sum(p => (p.Cambios * tirosReferencia) + (int)Math.Round(p.RendimientoFinal));
                 var tirosBonificables = filteredGroup.Sum(p => p.TirosBonificables);
-                // DiasLaborados: Filter days to only those with actual activity AND EXCLUDE Jan 1-12 2026 as per rule
+                // DiasLaborados: Filter days to only those with actual activity
                 var diasOp = filteredGroup.Where(p => 
-                    (p.TotalHoras > 0 || p.TirosDiarios > 0 || p.Cambios > 0)
+                    (p.TotalHoras > 0 || p.RendimientoFinal > 0 || p.Cambios > 0)
                 ).Select(p => p.Fecha.Date).Distinct().Count();
                 
                 // Use Meta100Porciento like CalificacionController
                 var meta100PorcientoBase = maq?.Meta100Porciento ?? maq?.MetaRendimiento ?? 7500;
                 
-
-                // Calculate meta100 iterating days to handle Half-Day Saturdays AND Jan 1-14 Adjustment
-                // Calculate meta100 iterating ACTUALLY WORKED days (Active Days) to sync with DiasLaborados
-                decimal meta100 = 0;
-                // Use the same filter logic as diasOp
-                var activeDays = filteredGroup.Where(p => p.TotalHoras > 0 || p.TirosDiarios > 0 || p.Cambios > 0)
-                                              .Select(p => p.Fecha.Date).Distinct().ToList();
-                foreach (var day in activeDays)
-                {
-                    // SKIP Meta for Jan 1-12 2026
-                    if (day.Year == 2026 && day.Month == 1 && day.Day >= 1 && day.Day <= 12) continue;
-
-                    if (day.DayOfWeek == DayOfWeek.Saturday)
-                    {
-                        meta100 += meta100PorcientoBase / 2;
-                    }
-                    else
-                    {
-                        meta100 += meta100PorcientoBase;
-                    }
-                }
+                // NEW: Use TotalHoras to prorate Meta100
+                // Meta100 = TotalHoras * (Meta100PorcientoBase / 8)
+                decimal totalHorasOp = filteredGroup.Sum(p => p.TotalHoras);
+                decimal metaPorHora = (decimal)meta100PorcientoBase / 8;
+                decimal meta100 = totalHorasOp * metaPorHora;
 
                 var meta75 = meta100 * 0.75m;
                 
@@ -967,23 +1274,29 @@ public class ProduccionController : ControllerBase
                 string sem100 = pct100 >= 100 ? "Verde" : pct100 >= 75 ? "Amarillo" : "Rojo";
 
                 // Apply 75% threshold: Only pay bonificación if operario achieved >= 75% of Meta100
-                // EXCLUSION: Jan 1-12 2026 has NO bonus
-                // EXCLUSION: Jan 1-12 2026 has NO bonus (Already handled by filteredGroup exclusion)
                 var valorBonifSum = filteredGroup.Sum(p => p.ValorAPagarBonificable);
                 var valorAPagarBonificableFinal = pct100 >= 75 ? valorBonifSum : 0;
+                
+                // Bonif Potencial: Es el valor ganado ANTES de aplicar el filtro del 75% (lo que podría haber ganado)
+                // O mejor dicho, sumamos el ValorAPagar completo (total bonus earned) para reporte
+                var valorTotalGanado = filteredGroup.Sum(p => p.ValorAPagar);
 
                 return new {
                     usuarioId = g.Key.UsuarioId,
                     maquinaId = g.Key.MaquinaId,
                     operario = first.Usuario?.Nombre ?? "Desconocido",
                     maquina = first.Maquina?.Nombre ?? "Desconocida",
+                    tirosReportados = (int)Math.Round(filteredGroup.Sum(p => p.RendimientoFinal)),
+                    tirosEquivalentes = filteredGroup.Sum(p => p.Cambios * tirosReferencia),
+                    totalCambios = filteredGroup.Sum(p => p.Cambios),
                     totalTiros = totalTiros,
                     tirosBonificables = tirosBonificables,
                     totalHorasProductivas = filteredGroup.Sum(p => p.TotalHorasProductivas),
                     promedioHoraProductiva = filteredGroup.Any() ? filteredGroup.Average(p => p.PromedioHoraProductiva) : 0,
                     totalHoras = filteredGroup.Sum(p => p.TotalHoras),
-                    valorAPagar = filteredGroup.Sum(p => p.ValorAPagar),
+                    valorAPagar = valorTotalGanado,
                     valorAPagarBonificable = valorAPagarBonificableFinal,
+                    valorBonifPotencial = valorBonifSum, // Este es el bono acumulado EN horario laboral
                     diasLaborados = diasOp,
                     metaBonificacion = meta75,
                     meta100Porciento = meta100,
@@ -1009,49 +1322,49 @@ public class ProduccionController : ControllerBase
             {
                 var tirosReferencia = maq.TirosReferencia;
                 
-                // Calculate TirosConEquivalencia like CalificacionController
-                // EXCLUDE Jan 1-12 2026 from ALL sums
-                var filteredGroup = g.Where(p => !(p.Fecha.Year == 2026 && p.Fecha.Month == 1 && p.Fecha.Day >= 1 && p.Fecha.Day <= 12)).ToList();
+                // Usar todos los registros (datos Jan 1-12 2026 ya fueron eliminados de BD)
+                var filteredGroup = g;
 
-                var tirosTotales = filteredGroup.Sum(p => (p.Cambios * tirosReferencia) + p.TirosDiarios);
-                // Filter days to only those with actual activity AND EXCLUDE Jan 1-12 2026
+                // FIXED: Usar RendimientoFinal (decimal) con redondeo
+                var tirosTotales = filteredGroup.Sum(p => (p.Cambios * tirosReferencia) + (int)Math.Round(p.RendimientoFinal));
+                // Filter days to only those with actual activity
                 var diasMaq = filteredGroup.Where(p => 
-                    (p.TotalHoras > 0 || p.TirosDiarios > 0 || p.Cambios > 0)
+                    (p.TotalHoras > 0 || p.RendimientoFinal > 0 || p.Cambios > 0)
                 ).Select(p => p.Fecha.Date).Distinct().Count();
                 
-                // Use Meta100Porciento like CalificacionController
-                var meta100PorcientoBase = maq.Meta100Porciento > 0 ? maq.Meta100Porciento : maq.MetaRendimiento;
+                // Use monthly meta snapshot if available, otherwise fallback to current machine values
+                var snapshot = metaSnapshots.FirstOrDefault(s => s.MaquinaId == maq.Id);
+                var meta100PorcientoBase = snapshot != null 
+                    ? (snapshot.Meta100Porciento > 0 ? snapshot.Meta100Porciento : snapshot.MetaRendimiento)
+                    : (maq.Meta100Porciento > 0 ? maq.Meta100Porciento : maq.MetaRendimiento);
                 
-                // Calculate meta100 iterating ACTUALLY WORKED days
-                decimal meta100 = 0;
-                var activeDays = filteredGroup.Where(p => p.TotalHoras > 0 || p.TirosDiarios > 0 || p.Cambios > 0)
-                                              .Select(p => p.Fecha.Date).Distinct().ToList();
-                foreach (var day in activeDays)
-                {
-                    // SKIP Meta for Jan 1-12 2026
-                    if (day.Year == 2026 && day.Month == 1 && day.Day >= 1 && day.Day <= 12) continue;
-
-                    if (day.DayOfWeek == DayOfWeek.Saturday)
-                    {
-                        meta100 += meta100PorcientoBase / 2;
-                    }
-                    else
-                    {
-                        meta100 += meta100PorcientoBase;
-                    }
-                }
+                // NEW: Use TotalHoras to prorate Meta100
+                // Meta100 = TotalHoras * (Meta100PorcientoBase / 8)
+                decimal totalHorasMaq = filteredGroup.Sum(p => p.TotalHoras);
+                decimal metaPorHora = (decimal)meta100PorcientoBase / 8;
+                decimal meta100 = totalHorasMaq * metaPorHora;
 
                 var meta75 = meta100 * 0.75m;
                 
                 var pct = meta100 > 0 ? (decimal)tirosTotales / meta100 * 100 : 0;
                 string sem = pct >= 100 ? "Verde" : pct >= 75 ? "Amarillo" : "Rojo";
                 
-                var importancia = maq.Importancia;
+                var importancia = snapshot?.Importancia ?? maq.Importancia;
                 var calificacion = pct * importancia / 100;
+                var tarifaVal = snapshot?.Tarifa ?? maq.Tarifa;
 
                 return new {
                     maquinaId = maq.Id,
                     maquina = maq.Nombre,
+                    tirosReportados = (int)Math.Round(filteredGroup.Sum(p => p.RendimientoFinal)),
+                    tirosEquivalentes = filteredGroup.Sum(p => p.Cambios * tirosReferencia),
+                    totalCambios = filteredGroup.Sum(p => p.Cambios),
+                    totalTiempoPuestaPunto = filteredGroup.Sum(p => p.TiempoPuestaPunto),
+                    totalHorasDescanso = filteredGroup.Sum(p => p.HorasDescanso),
+
+
+
+
                     tirosTotales = tirosTotales,
                     rendimientoEsperado = meta100,
                     meta75Porciento = meta75,
@@ -1063,10 +1376,14 @@ public class ProduccionController : ControllerBase
                     totalTiempoReparacion = g.Sum(p => p.TiempoReparacion),
                     totalTiempoFaltaTrabajo = g.Sum(p => p.TiempoFaltaTrabajo),
                     totalTiempoOtro = g.Sum(p => p.TiempoOtroMuerto),
+                    totalHoras = g.Sum(p => p.TotalHoras),
                     importancia = importancia,
                     calificacion = Math.Round(calificacion, 2),
                     diasLaborados = diasMaq,
-                    ultimaFecha = g.Max(p => p.Fecha).ToString("dd/MM/yyyy")
+                    ultimaFecha = g.Max(p => p.Fecha).ToString("dd/MM/yyyy"),
+
+                    // NEW: Field for cost calculation
+                    tarifa = tarifaVal
                 };
             }
             else
@@ -1075,6 +1392,11 @@ public class ProduccionController : ControllerBase
                 return new {
                     maquinaId = maq.Id,
                     maquina = maq.Nombre,
+                    tirosReportados = 0,
+                    tirosEquivalentes = 0,
+                    totalCambios = 0,
+                    totalTiempoPuestaPunto = 0m,
+                    totalHorasDescanso = 0m,
                     tirosTotales = 0,
                     rendimientoEsperado = 0m,
                     meta75Porciento = 0m,
@@ -1086,10 +1408,14 @@ public class ProduccionController : ControllerBase
                     totalTiempoReparacion = 0m,
                     totalTiempoFaltaTrabajo = 0m,
                     totalTiempoOtro = 0m,
+                    totalHoras = 0m,
                     importancia = maq.Importancia,
                     calificacion = 0m,
                     diasLaborados = 0,
-                    ultimaFecha = "-"
+                    ultimaFecha = "-",
+
+                    // NEW: Field for cost calculation
+                    tarifa = maq.Tarifa
                 };
             }
         })
@@ -1578,26 +1904,16 @@ public class ProduccionController : ControllerBase
             
             // Equivalence Data
             int cambios = prodDia.Sum(p => p.Cambios);
-            int tirosDiarios = prodDia.Sum(p => p.TirosDiarios);
+            // FIX: Use RendimientoFinal (decimal) to avoid truncation issues (same as GetResumen)
+            decimal tirosDiariosDecimal = prodDia.Sum(p => p.RendimientoFinal);
+            int tirosDiarios = (int)Math.Round(tirosDiariosDecimal);
             int tirosCambios = cambios * maquina.TirosReferencia;
 
-            if (day.Month == 1 && day.Day >= 1 && day.Day <= 12 && day.Year == 2026)
-            {
-                // SPECIAL RULE JAN 1-12: Full Meta for everyone (including Saturdays)
-                metaDia = maquina.Meta100Porciento;
-                formula = "Meta Especial (100%)";
-                // TirosCambios calculated normally above (line 1445)
-            }
-            else if (day.DayOfWeek == DayOfWeek.Saturday)
-            {
-                metaDia = maquina.Meta100Porciento / 2;
-                formula = "MetaBase / 2 (Sabado)";
-            }
-            else
-            {
-                metaDia = maquina.Meta100Porciento;
-                formula = "MetaBase Completa";
-            }
+            // Hourly Prorated Meta Logic
+            // Meta = TotalHoras * (MetaBase / 8)
+            decimal metaPorHora = (decimal)maquina.Meta100Porciento / 8;
+            metaDia = horas * metaPorHora;
+            formula = $"{Math.Round(horas, 2)}h * {Math.Round(metaPorHora, 2)}/h";
 
             totalMeta += metaDia;
             breakdown.Add(new { 
@@ -1684,7 +2000,7 @@ public class ProduccionController : ControllerBase
     {
         var excludedOPs = new HashSet<string> { "0", "460" };
 
-        // Get OPs from both ProduccionDiaria and ProduccionDiariaDetalles
+        // Get OPs from ProduccionDiaria, ProduccionDiariaDetalles and also from OrdenesProduccion
         var opsMaestro = await _context.ProduccionDiaria
             .Where(p => !string.IsNullOrEmpty(p.ReferenciaOP))
             .Select(p => p.ReferenciaOP)
@@ -1695,9 +2011,14 @@ public class ProduccionController : ControllerBase
             .Select(p => p.ReferenciaOP)
             .ToListAsync();
 
-        var allRaw = opsMaestro.Concat(opsDetalle).ToList();
+        var opsOrdenes = await _context.OrdenesProduccion
+            .Select(op => op.Numero)
+            .ToListAsync();
+
+        var allRaw = opsMaestro.Concat(opsDetalle).Concat(opsOrdenes).ToList();
 
         var uniqueOPs = allRaw
+            .Where(op => !string.IsNullOrEmpty(op))
             .SelectMany(op => op!.Split(new[] { '-', '/', ',', ' ' }, StringSplitOptions.RemoveEmptyEntries))
             .Select(op => op.Trim())
             .Where(op => !string.IsNullOrWhiteSpace(op) && !excludedOPs.Contains(op))
@@ -1718,33 +2039,82 @@ public class ProduccionController : ControllerBase
         if (string.IsNullOrWhiteSpace(op))
             return BadRequest("OP es requerida");
 
-        var rawResults = await _context.ProduccionDiariaDetalles
-            .Where(p => !string.IsNullOrEmpty(p.ReferenciaOP) && p.ReferenciaOP.Contains(op))
+        op = op.Trim();
+
+        // 1. Buscar en Detalles (donde hay actividades y tiros granulares)
+        var detailedResults = await _context.ProduccionDiariaDetalles
+            .Where(p => !string.IsNullOrEmpty(p.ReferenciaOP) && EF.Functions.ILike(p.ReferenciaOP, $"%{op}%"))
             .Include(p => p.ProduccionDiaria)
                 .ThenInclude(pd => pd.Maquina)
             .Include(p => p.Actividad)
             .Select(p => new {
-                MaquinaId = p.ProduccionDiaria != null ? p.ProduccionDiaria.MaquinaId : 0,
+                HeaderId = p.ProduccionDiariaId,
+                MaquinaId = (p.ProduccionDiaria != null) ? p.ProduccionDiaria.MaquinaId : 0,
                 MaquinaNombre = (p.ProduccionDiaria != null && p.ProduccionDiaria.Maquina != null) ? p.ProduccionDiaria.Maquina.Nombre : "Desconocida",
-                Fecha = p.ProduccionDiaria != null ? p.ProduccionDiaria.Fecha : DateTime.MinValue,
+                Fecha = (p.ProduccionDiaria != null) ? p.ProduccionDiaria.Fecha : DateTime.MinValue,
                 ReferenciaOP = p.ReferenciaOP,
-                ActividadNombre = p.Actividad != null ? p.Actividad.Nombre : "N/A",
-                Tiros = p.Tiros
+                ActividadNombre = (p.Actividad != null) ? p.Actividad.Nombre : "N/A",
+                Tiros = p.Tiros,
+                Desperdicio = (p.ProduccionDiaria != null) ? p.ProduccionDiaria.Desperdicio : 0
             })
             .ToListAsync();
 
-        // Sort: date ascending (oldest first), then by numeric prefix of machine name ascending
-        var results = rawResults
-            .OrderBy(r => r.Fecha)
-            .ThenBy(r => {
-                // Extract leading number from machine name (e.g., "1B" -> 1, "9 Troqueladora" -> 9)
-                var match = System.Text.RegularExpressions.Regex.Match(r.MaquinaNombre, @"^(\d+)");
-                return match.Success ? int.Parse(match.Groups[1].Value) : 999;
+        // 2. Identificar qué cabeceras ya están representadas para no duplicar
+        var representedHeaderIds = detailedResults.Select(r => r.HeaderId).Distinct().ToList();
+
+        // 3. Buscar en la tabla principal (Headers) los que coincidan con la OP pero NO tengan detalles representados
+        var headerOnlyResults = await _context.ProduccionDiaria
+            .Where(p => !string.IsNullOrEmpty(p.ReferenciaOP) && EF.Functions.ILike(p.ReferenciaOP, $"%{op}%") && !representedHeaderIds.Contains(p.Id))
+            .Include(p => p.Maquina)
+            .Select(p => new {
+                HeaderId = p.Id,
+                MaquinaId = p.MaquinaId,
+                MaquinaNombre = (p.Maquina != null) ? p.Maquina.Nombre : "Desconocida",
+                Fecha = p.Fecha,
+                ReferenciaOP = p.ReferenciaOP,
+                ActividadNombre = "N/A",
+                Tiros = 0,
+                Desperdicio = p.Desperdicio
             })
-            .ThenBy(r => r.MaquinaNombre)
+            .ToListAsync();
+
+        // 4. Buscar en Historial Antiguo / Tiempo Real (TiemposProceso)
+        // Esto recupera datos de OPs que no se han consolidado o vienen de la versión anterior
+        var historyResults = await _context.TiemposProceso
+            .Include(t => t.Maquina)
+            .Include(t => t.Actividad)
+            .Include(t => t.OrdenProduccion)
+            .Where(t => t.OrdenProduccion != null && EF.Functions.ILike(t.OrdenProduccion.Numero, $"%{op}%"))
+            .Select(t => new {
+                HeaderId = (long)-1, // Indica que no tiene cabecera mensual vinculada
+                MaquinaId = t.MaquinaId,
+                MaquinaNombre = (t.Maquina != null) ? t.Maquina.Nombre : "Desconocida",
+                Fecha = t.Fecha,
+                ReferenciaOP = t.OrdenProduccion!.Numero,
+                ActividadNombre = (t.Actividad != null) ? t.Actividad.Nombre : "N/A",
+                Tiros = t.Tiros,
+                Desperdicio = (decimal)t.Desperdicio
+            })
+            .ToListAsync();
+
+        // 5. Combinar todos los sets (eliminar duplicados muy cercanos si es necesario, pero mejor mostrar todo)
+        var combinedResults = detailedResults.Cast<dynamic>()
+            .Concat(headerOnlyResults.Cast<dynamic>())
+            .Concat(historyResults.Cast<dynamic>())
             .ToList();
 
-        return Ok(results);
+        // 6. Ordenar: fecha descendente y máquina por número
+        var sortedResults = combinedResults
+            .OrderByDescending(r => (DateTime)r.Fecha)
+            .ThenBy(r => {
+                string mName = (string)r.MaquinaNombre;
+                var match = System.Text.RegularExpressions.Regex.Match(mName, @"^(\d+)");
+                return match.Success ? int.Parse(match.Groups[1].Value) : 999;
+            })
+            .ThenBy(r => (string)r.MaquinaNombre)
+            .ToList();
+
+        return Ok(sortedResults);
     }
 
     // ===================== DÍA DETALLADO =====================
@@ -1802,11 +2172,16 @@ public class ProduccionController : ControllerBase
             // Add new details (filter out empty rows)
             foreach (var dto in detalles.Where(d => !string.IsNullOrEmpty(d.HoraInicio) && !string.IsNullOrEmpty(d.HoraFin)))
             {
+                // Skip rows with unparseable times (e.g. placeholder "HH:MM")
+                if (!TimeSpan.TryParse(dto.HoraInicio, out var horaInicio) ||
+                    !TimeSpan.TryParse(dto.HoraFin, out var horaFin))
+                    continue;
+
                 var detalle = new ProduccionDiariaDetalle
                 {
                     ProduccionDiariaId = dto.ProduccionDiariaId,
-                    HoraInicio = TimeSpan.Parse(dto.HoraInicio!),
-                    HoraFin = TimeSpan.Parse(dto.HoraFin!),
+                    HoraInicio = horaInicio,
+                    HoraFin = horaFin,
                     ActividadId = dto.ActividadId,
                     Tiros = dto.Tiros,
                     ReferenciaOP = dto.ReferenciaOP,
@@ -1816,6 +2191,70 @@ public class ProduccionController : ControllerBase
             }
 
             await _context.SaveChangesAsync();
+
+            // Recalculate parent ProduccionDiaria summary from saved details
+            var parent = await _context.ProduccionDiaria
+                .Include(p => p.Maquina)
+                .FirstOrDefaultAsync(p => p.Id == produccionDiariaId);
+
+            if (parent != null)
+            {
+                var savedDetails = await _context.ProduccionDiariaDetalles
+                    .Include(d => d.Actividad)
+                    .Where(d => d.ProduccionDiariaId == produccionDiariaId)
+                    .ToListAsync();
+
+                // Reset counters
+                parent.TiempoPuestaPunto = 0;
+                parent.HorasOperativas = 0;
+                parent.TirosDiarios = 0;
+                parent.Desperdicio = 0;
+                parent.TiempoReparacion = 0;
+                parent.HorasDescanso = 0;
+                parent.TiempoOtroMuerto = 0;
+                parent.HorasMantenimiento = 0;
+                parent.TiempoFaltaTrabajo = 0;
+                parent.HorasOtrosAux = 0;
+
+                foreach (var d in savedDetails)
+                {
+                    decimal horas = 0;
+                    if (d.HoraFin > d.HoraInicio)
+                        horas = (decimal)(d.HoraFin - d.HoraInicio).TotalHours;
+
+                    string codigo = d.Actividad?.Codigo ?? "";
+
+                    switch (codigo)
+                    {
+                        case "01": parent.TiempoPuestaPunto += horas; break;
+                        case "02":
+                            parent.HorasOperativas += horas;
+                            parent.TirosDiarios += d.Tiros;
+                            break;
+                        case "03": parent.TiempoReparacion += horas; break;
+                        case "04": parent.HorasDescanso += horas; break;
+                        case "08": parent.TiempoOtroMuerto += horas; break;
+                        case "10": parent.HorasMantenimiento += horas; break;
+                        case "13": parent.TiempoFaltaTrabajo += horas; break;
+                        case "14": parent.HorasOtrosAux += horas; break;
+                        default: parent.HorasOtrosAux += horas; break;
+                    }
+                }
+
+                // Derived calculations
+                parent.TotalHorasProductivas = parent.HorasOperativas + parent.TiempoPuestaPunto;
+                parent.TotalHorasAuxiliares = parent.HorasMantenimiento + parent.HorasDescanso + parent.HorasOtrosAux;
+                parent.TotalTiemposMuertos = parent.TiempoFaltaTrabajo + parent.TiempoReparacion + parent.TiempoOtroMuerto;
+                parent.TotalHoras = parent.TotalHorasProductivas + parent.TotalHorasAuxiliares + parent.TotalTiemposMuertos;
+
+                if (parent.HorasOperativas > 0)
+                {
+                    parent.PromedioHoraProductiva = parent.TirosDiarios / parent.HorasOperativas;
+                }
+
+                await _context.SaveChangesAsync();
+            }
+
             return Ok(new { success = true, message = "Detalles guardados correctamente" });
         }
         catch (Exception ex)
@@ -1837,6 +2276,113 @@ public class ProduccionController : ControllerBase
         _context.ProduccionDiariaDetalles.Remove(detalle);
         await _context.SaveChangesAsync();
         return Ok(new { success = true });
+    }
+
+    private TimeSpan ParseTime(string? timeStr)
+    {
+        if (string.IsNullOrWhiteSpace(timeStr)) return TimeSpan.Zero;
+        
+        // Intentar parseo directo (00:00:00)
+        if (TimeSpan.TryParse(timeStr, out var ts)) return ts;
+
+        // Intentar como DateTime (para manejar "7:00:00 a. m.")
+        if (DateTime.TryParse(timeStr, out var dt)) return dt.TimeOfDay;
+
+        // Limpieza agresiva para formatos raros de Excel
+        // Reemplazar puntos y espacios raros: "a. m." -> "am", "p. m." -> "pm"
+        string clean = timeStr.Replace(".", "").Replace(" ", "").ToLower(); 
+        if (DateTime.TryParse(clean, out var dtClean)) return dtClean.TimeOfDay;
+        
+        // Intentar agregar un espacio antes de am/pm si no lo tiene
+        if (clean.EndsWith("am") || clean.EndsWith("pm")) {
+            string withSpace = clean.Insert(clean.Length - 2, " ");
+            if (DateTime.TryParse(withSpace, out var dtSpace)) return dtSpace.TimeOfDay;
+        }
+
+        return TimeSpan.Zero;
+    }
+
+    /// <summary>
+    /// Recalculate dead hours for ALL ProduccionDiaria that have Día Detallado entries
+    /// </summary>
+    [HttpPost("recalcular-horas-muertas")]
+    public async Task<IActionResult> RecalcularHorasMuertasDesdeDetalles()
+    {
+        try
+        {
+            var parentIds = await _context.ProduccionDiariaDetalles
+                .Select(d => d.ProduccionDiariaId)
+                .Distinct()
+                .ToListAsync();
+
+            int updated = 0;
+
+            foreach (var parentId in parentIds)
+            {
+                var parent = await _context.ProduccionDiaria
+                    .FirstOrDefaultAsync(p => p.Id == parentId);
+                if (parent == null) continue;
+
+                var details = await _context.ProduccionDiariaDetalles
+                    .Include(d => d.Actividad)
+                    .Where(d => d.ProduccionDiariaId == parentId)
+                    .ToListAsync();
+                if (!details.Any()) continue;
+
+                // Reset
+                parent.TiempoPuestaPunto = 0;
+                parent.HorasOperativas = 0;
+                parent.TirosDiarios = 0;
+                parent.Desperdicio = 0;
+                parent.TiempoReparacion = 0;
+                parent.HorasDescanso = 0;
+                parent.TiempoOtroMuerto = 0;
+                parent.HorasMantenimiento = 0;
+                parent.TiempoFaltaTrabajo = 0;
+                parent.HorasOtrosAux = 0;
+
+                foreach (var d in details)
+                {
+                    decimal horas = 0;
+                    if (d.HoraFin > d.HoraInicio)
+                        horas = (decimal)(d.HoraFin - d.HoraInicio).TotalHours;
+
+                    string codigo = d.Actividad?.Codigo ?? "";
+                    switch (codigo)
+                    {
+                        case "01": parent.TiempoPuestaPunto += horas; break;
+                        case "02":
+                            parent.HorasOperativas += horas;
+                            parent.TirosDiarios += d.Tiros;
+                            break;
+                        case "03": parent.TiempoReparacion += horas; break;
+                        case "04": parent.HorasDescanso += horas; break;
+                        case "08": parent.TiempoOtroMuerto += horas; break;
+                        case "10": parent.HorasMantenimiento += horas; break;
+                        case "13": parent.TiempoFaltaTrabajo += horas; break;
+                        case "14": parent.HorasOtrosAux += horas; break;
+                        default: parent.HorasOtrosAux += horas; break;
+                    }
+                }
+
+                parent.TotalHorasProductivas = parent.HorasOperativas + parent.TiempoPuestaPunto;
+                parent.TotalHorasAuxiliares = parent.HorasMantenimiento + parent.HorasDescanso + parent.HorasOtrosAux;
+                parent.TotalTiemposMuertos = parent.TiempoFaltaTrabajo + parent.TiempoReparacion + parent.TiempoOtroMuerto;
+                parent.TotalHoras = parent.TotalHorasProductivas + parent.TotalHorasAuxiliares + parent.TotalTiemposMuertos;
+
+                if (parent.HorasOperativas > 0)
+                    parent.PromedioHoraProductiva = parent.TirosDiarios / parent.HorasOperativas;
+
+                updated++;
+            }
+
+            await _context.SaveChangesAsync();
+            return Ok(new { success = true, message = $"Recalculados {updated} registros" });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 }
 

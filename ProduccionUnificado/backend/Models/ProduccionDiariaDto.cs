@@ -32,4 +32,5 @@ public class ProduccionDiariaDto
     public decimal Desperdicio { get; set; }
     public int DiaLaborado { get; set; } = 1;
     public int? HorarioId { get; set; }  // Turno de trabajo
+    public List<ProduccionDiariaDetalleDto>? Detalles { get; set; }
 }

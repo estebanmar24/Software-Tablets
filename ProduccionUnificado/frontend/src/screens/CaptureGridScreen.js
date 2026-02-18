@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Modal, Image, FlatList, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Modal, Image, FlatList, Platform, Dimensions } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import axios from 'axios';
 import { api, getMaquinasActivas, getUsuarios, saveProduccion, getProduccionDetalles, getOperariosConDatos, getMaquinasConDatos, getProduccionPorMaquina, API_URL } from '../services/productionApi';
 import { useTheme } from '../contexts/ThemeContext';
 import DayDetailModal from '../components/DayDetailModal';
+import * as DocumentPicker from 'expo-document-picker';
 
 const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 let rowIdCounter = 100;
@@ -68,6 +69,12 @@ export default function CaptureGridScreen({ navigation }) {
     const [dayDetailModalVisible, setDayDetailModalVisible] = useState(false);
     const [dayDetailInfo, setDayDetailInfo] = useState(null);
     const [actividades, setActividades] = useState([]);
+
+    // Excel Import Preview State
+    const [importPreviewVisible, setImportPreviewVisible] = useState(false);
+    const [importPreviewData, setImportPreviewData] = useState([]);
+    const [detailedPreviewVisible, setDetailedPreviewVisible] = useState(false);
+    const [detailedPreviewData, setDetailedPreviewData] = useState(null);
 
     useEffect(() => {
         loadLists();
@@ -166,47 +173,55 @@ export default function CaptureGridScreen({ navigation }) {
             let dbData = res.data || [];
             const desperdicios = resDesp.data || {};
 
-            const newGrid = DAYS.map((d, idx) => {
-                const record = dbData.find(item => {
+            let tempRowId = 1;
+            const newGrid = DAYS.flatMap((d) => {
+                const records = dbData.filter(item => {
                     const fechaStr = item.fecha.split('T')[0];
                     const dayFromDb = parseInt(fechaStr.split('-')[2], 10);
                     return dayFromDb === d;
                 });
 
-                // Buscar desperdicio por clave compuesta day_operatorId
-                const despKey = record ? `${d}_${record.usuarioId}` : null;
-                const despValor = despKey && desperdicios[despKey] !== undefined
-                    ? formatForDisplay(desperdicios[despKey])
-                    : (record ? formatForDisplay(record.desperdicio) : '');
+                if (records.length > 0) {
+                    // Ordenar por hora de inicio cronológicamente
+                    records.sort((a, b) => {
+                        const hA = (a.horaInicio || a.HoraInicio || "00:00").substring(0, 5);
+                        const hB = (b.horaInicio || b.HoraInicio || "00:00").substring(0, 5);
+                        return hA.localeCompare(hB);
+                    });
 
-                if (record) {
-                    const recordId = record.id || record.Id;
-                    console.log(`[DEBUGGRID] Day ${d}: record found. Id:`, recordId);
-                    return {
-                        rowId: idx + 1,
-                        day: d,
-                        id: recordId,
-                        operarioId: record.usuarioId,
-                        horarioId: record.horarioId || record.HorarioId || null,
-                        horaInicio: (record.horaInicio || record.HoraInicio)?.substring(0, 5) || '',
-                        horaFin: (record.horaFin || record.HoraFin)?.substring(0, 5) || '',
-                        rFinal: formatForDisplay(record.rendimientoFinal || record.RendimientoFinal),
-                        horasOp: formatForDisplay(record.horasOperativas || record.HorasOperativas),
-                        cambios: (record.cambios || record.Cambios)?.toString() || '',
-                        puestaPunto: formatForDisplay(record.tiempoPuestaPunto || record.TiempoPuestaPunto),
-                        mantenimiento: formatForDisplay(record.horasMantenimiento || record.HorasMantenimiento),
-                        descansos: formatForDisplay(record.horasDescanso || record.HorasDescanso),
-                        otrosAux: formatForDisplay(record.horasOtrosAux || record.HorasOtrosAux),
-                        faltaTrabajo: formatForDisplay(record.tiempoFaltaTrabajo || record.TiempoFaltaTrabajo),
-                        reparacion: formatForDisplay(record.tiempoReparacion || record.TiempoReparacion),
-                        otroMuerto: formatForDisplay(record.tiempoOtroMuerto || record.TiempoOtroMuerto),
-                        desperdicio: despValor,
-                        referenciaOP: record.referenciaOP || record.ReferenciaOP || '',
-                        novedades: record.novedades || record.Novedades || ''
-                    };
+                    return records.map(record => {
+                        const recordId = record.id || record.Id;
+                        const despKey = `${d}_${record.usuarioId}`;
+                        const despValor = desperdicios[despKey] !== undefined
+                            ? formatForDisplay(desperdicios[despKey])
+                            : (record ? formatForDisplay(record.desperdicio) : '');
+
+                        return {
+                            rowId: tempRowId++,
+                            day: d,
+                            id: recordId,
+                            operarioId: record.usuarioId,
+                            horarioId: record.horarioId || record.HorarioId || null,
+                            horaInicio: (record.horaInicio || record.HoraInicio)?.substring(0, 5) || '',
+                            horaFin: (record.horaFin || record.HoraFin)?.substring(0, 5) || '',
+                            rFinal: formatForDisplay(record.rendimientoFinal || record.RendimientoFinal),
+                            horasOp: formatForDisplay(record.horasOperativas || record.HorasOperativas),
+                            cambios: (record.cambios || record.Cambios)?.toString() || '',
+                            puestaPunto: formatForDisplay(record.tiempoPuestaPunto || record.TiempoPuestaPunto),
+                            mantenimiento: formatForDisplay(record.horasMantenimiento || record.HorasMantenimiento),
+                            descansos: formatForDisplay(record.horasDescanso || record.HorasDescanso),
+                            otrosAux: formatForDisplay(record.horasOtrosAux || record.HorasOtrosAux),
+                            faltaTrabajo: formatForDisplay(record.tiempoFaltaTrabajo || record.TiempoFaltaTrabajo),
+                            reparacion: formatForDisplay(record.tiempoReparacion || record.TiempoReparacion),
+                            otroMuerto: formatForDisplay(record.tiempoOtroMuerto || record.TiempoOtroMuerto),
+                            desperdicio: despValor,
+                            referenciaOP: record.referenciaOP || record.ReferenciaOP || '',
+                            novedades: record.novedades || record.Novedades || ''
+                        };
+                    });
                 } else {
-                    return {
-                        rowId: idx + 1,
+                    return [{
+                        rowId: tempRowId++,
                         day: d,
                         id: null,
                         maquinaId: maquinaIdToLoad,
@@ -215,13 +230,12 @@ export default function CaptureGridScreen({ navigation }) {
                         horaInicio: '', horaFin: '', rFinal: '', horasOp: '', cambios: '', puestaPunto: '',
                         mantenimiento: '', descansos: '', otrosAux: '', faltaTrabajo: '', reparacion: '',
                         otroMuerto: '', desperdicio: '', referenciaOP: '', novedades: '',
-                        id: null
-                    };
+                    }];
                 }
             });
 
-            rowIdCounter = 100;
-            setGridData(newGrid);
+            rowIdCounter = tempRowId + 100;
+            setGridData(autoAssignHorario(fillEmptyWithZeros(newGrid)));
             Alert.alert("Datos cargados", `Datos cargados para la máquina seleccionada (${dbData.length} registros)`);
 
         } catch (e) {
@@ -244,6 +258,98 @@ export default function CaptureGridScreen({ navigation }) {
         } catch (e) {
             console.error("Error cargando datos para modal", e);
             Alert.alert("Error", "Error al consultar datos. Verifica que el backend esté corriendo.");
+        }
+    };
+
+    const handleImportExcel = async () => {
+        if (!selectedMaquina) {
+            Alert.alert("Aviso", "Por favor, selecciona una máquina antes de importar el Excel.");
+            return;
+        }
+        try {
+            const result = await DocumentPicker.getDocumentAsync({
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                copyToCacheDirectory: true,
+            });
+
+            if (result.canceled) return;
+
+            const file = result.assets[0];
+            const formData = new FormData();
+
+            // Enviar la máquina seleccionada como fallback si el Excel no tiene columna de máquina
+            if (selectedMaquina) {
+                formData.append('maquinaId', selectedMaquina);
+            }
+
+            // En web, file.file es el objeto File real. En móvil, usamos uri/name/type.
+            if (Platform.OS === 'web') {
+                // @ts-ignore - Assuming file is the real file object in web
+                formData.append('file', file.file || file);
+            } else {
+                formData.append('file', {
+                    uri: file.uri,
+                    name: file.name,
+                    type: file.mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                });
+            }
+
+            setLoading(true);
+            const response = await api.post('produccion/importar-excel', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+
+            if (response.data?.preview) {
+                setImportPreviewData(response.data.preview);
+                setImportPreviewVisible(true);
+            } else {
+                Alert.alert("Éxito", response.data?.message || "Datos importados correctamente.");
+                loadLists();
+            }
+        } catch (e) {
+            console.error("Error importing excel:", e);
+            const errorMsg = e.response?.data?.error || e.message || "Error desconocido";
+            Alert.alert("Error", `No se pudo importar el archivo: ${errorMsg}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleUpdateOperatorInPreview = (index, usuarioId) => {
+        if (!usuarioId) return;
+        const selectedUser = usuarios.find(u => u.id === parseInt(usuarioId));
+        if (!selectedUser) return;
+
+        const newData = [...importPreviewData];
+        newData[index] = {
+            ...newData[index],
+            usuarioId: selectedUser.id,
+            usuarioNombre: selectedUser.nombre,
+            data: {
+                ...newData[index].data,
+                usuarioId: selectedUser.id
+            }
+        };
+        setImportPreviewData(newData);
+    };
+
+    const handleConfirmImport = async () => {
+        try {
+            setLoading(true);
+            const dataToSave = importPreviewData.map(item => item.data);
+
+            // Usamos el endpoint mensual que ahora soporta detalles
+            await api.post('produccion/mensual?isPartial=true', dataToSave);
+
+            setImportPreviewVisible(false);
+            setImportPreviewData([]);
+            Alert.alert("Éxito", "Los datos se han guardado correctamente.");
+            loadLists();
+        } catch (e) {
+            console.error("Error confirming import:", e);
+            Alert.alert("Error", "No se pudieron guardar los datos importados.");
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -299,6 +405,18 @@ export default function CaptureGridScreen({ navigation }) {
                     return dayFromDb === d;
                 }) : [];
 
+                if (dayRecords.length > 0) {
+                    dayRecords.sort((a, b) => {
+                        const hA = (a.horaInicio || a.HoraInicio || "00:00").substring(0, 5);
+                        const hB = (b.horaInicio || b.HoraInicio || "00:00").substring(0, 5);
+                        if (hA !== hB) return hA.localeCompare(hB);
+
+                        const nameA = usuarios.find(u => u.id === (a.usuarioId || a.UsuarioId))?.nombre || "";
+                        const nameB = usuarios.find(u => u.id === (b.usuarioId || b.UsuarioId))?.nombre || "";
+                        return nameA.localeCompare(nameB);
+                    });
+                }
+
                 // Desperdicio ahora viene agrupado por "day_operatorId" desde el backend
                 const despValor = desperdicios[d] !== undefined ? formatForDisplay(desperdicios[d]) : '';
 
@@ -350,7 +468,7 @@ export default function CaptureGridScreen({ navigation }) {
             });
 
             rowIdCounter = tempRowId + 100;
-            setGridData(newGrid);
+            setGridData(autoAssignHorario(fillEmptyWithZeros(newGrid)));
             Alert.alert("Datos cargados", `Datos cargados: ${dbData.length} registros (mostrando ${newGrid.length} filas)`);
 
         } catch (e) {
@@ -374,10 +492,21 @@ export default function CaptureGridScreen({ navigation }) {
 
     const handleContextMenu = (e, rowIndex) => {
         if (Platform.OS === 'web') e.preventDefault();
+        const screenWidth = Dimensions.get('window').width;
+        const screenHeight = Dimensions.get('window').height;
+        const menuWidth = 180;
+        const menuHeight = 180;
+        let x = e.nativeEvent?.pageX || 100;
+        let y = e.nativeEvent?.pageY || 100;
+        // Clamp so menu doesn't go off-screen
+        if (x + menuWidth > screenWidth) x = screenWidth - menuWidth - 10;
+        if (y + menuHeight > screenHeight) y = y - menuHeight;
+        if (y < 10) y = 10;
+        if (x < 10) x = 10;
         setContextMenu({
             visible: true,
-            x: e.nativeEvent?.pageX || 100,
-            y: e.nativeEvent?.pageY || 100,
+            x: x,
+            y: y,
             rowIndex: rowIndex
         });
     };
@@ -426,6 +555,78 @@ export default function CaptureGridScreen({ navigation }) {
 
     const formatForDisplay = (val) => formatNumber(val);
 
+    // Fill empty numeric fields with '0' for rows that have data
+    const fillEmptyWithZeros = (grid) => {
+        const numericFields = ['rFinal', 'horasOp', 'cambios', 'puestaPunto', 'mantenimiento', 'descansos', 'otrosAux', 'faltaTrabajo', 'reparacion', 'otroMuerto', 'desperdicio'];
+        return grid.map(row => {
+            if (!row.operarioId) return row; // Day with no data - leave blank
+            const filled = { ...row };
+            numericFields.forEach(f => {
+                if (filled[f] === '' || filled[f] === null || filled[f] === undefined) filled[f] = '0';
+            });
+            return filled;
+        });
+    };
+
+    // Auto-assign horarioId based on horaInicio/horaFin for rows that have data but no horario
+    const autoAssignHorario = (grid) => {
+        if (!horarios || horarios.length === 0) return grid;
+        // Pre-parse all horario start/end times
+        const parsedHorarios = horarios.map(h => {
+            const match = h.nombre.match(/(\d{1,2})(am|pm)\s*-\s*(\d{1,2})(am|pm)/i);
+            if (!match) return null;
+            let start = parseInt(match[1]);
+            const sp = match[2].toLowerCase();
+            let end = parseInt(match[3]);
+            const ep = match[4].toLowerCase();
+            if (sp === 'pm' && start !== 12) start += 12;
+            if (sp === 'am' && start === 12) start = 0;
+            if (ep === 'pm' && end !== 12) end += 12;
+            if (ep === 'am' && end === 12) end = 0;
+            // Handle cross-midnight shift (e.g. 10pm - 6am)
+            if (end < start) end += 24;
+
+            return { id: h.id, start, end, range: end - start };
+        }).filter(h => h !== null);
+
+        return grid.map(row => {
+            // Skip if no data, or already has horario assigned
+            if (!row.operarioId || row.horarioId) return row;
+            if (!row.horaInicio || !row.horaFin || row.horaInicio.length < 4 || row.horaFin.length < 4) return row;
+
+            // Parse row hours
+            const [hI, mI] = row.horaInicio.split(':').map(Number);
+            const [hF, mF] = row.horaFin.split(':').map(Number);
+
+            if (isNaN(hI) || isNaN(hF)) return row;
+
+            let rowStart = hI + (mI || 0) / 60;
+            let rowEnd = hF + (mF || 0) / 60;
+
+            // Handle tasks crossing midnight
+            if (rowEnd < rowStart) rowEnd += 24;
+
+            // Find horarios that CONTAIN both horaInicio and horaFin
+            // Condition: horarioStart <= rowStart AND rowEnd <= horarioEnd
+            const matches = parsedHorarios.filter(h => rowStart >= h.start && rowEnd <= h.end);
+
+            if (matches.length > 0) {
+                // Pick the most specific (smallest range)
+                matches.sort((a, b) => a.range - b.range);
+                return { ...row, horarioId: matches[0].id };
+            }
+
+            // Fallback: find horario whose END time contains rowEnd (if it ends within the shift)
+            const endMatches = parsedHorarios.filter(h => rowEnd <= h.end && rowEnd > h.start);
+            if (endMatches.length > 0) {
+                endMatches.sort((a, b) => a.range - b.range);
+                return { ...row, horarioId: endMatches[0].id };
+            }
+
+            return row;
+        });
+    };
+
     const parseNumberInput = (v) => {
         if (v === undefined || v === null || v === '') return 0;
         if (typeof v === 'number') return v;
@@ -454,9 +655,9 @@ export default function CaptureGridScreen({ navigation }) {
         if (name.includes('mantenimiento')) return 'mantenimiento';
         if (name.includes('descanso') || name.includes('alimento')) return 'descansos';
         if (name.includes('falta de trabajo')) return 'faltaTrabajo';
-        if (name.includes('reparacion')) return 'reparacion';
-        if (name.includes('otros muertos')) return 'otroMuerto';
-        if (name.includes('otros auxiliares')) return 'otrosAux';
+        if (name.includes('reparaci')) return 'reparacion';
+        if (name.includes('tiempo muerto')) return 'otroMuerto';
+        if (name.includes('otros tiempo') || name.includes('otros auxiliar')) return 'otrosAux';
         if (name.includes('desperdicio')) return 'desperdicio';
         return null;
     };
@@ -720,9 +921,21 @@ export default function CaptureGridScreen({ navigation }) {
             }
         });
 
+        // Auto-fill horaInicio and horaFin from first/last activity
+        let horaInicioDetalle = currentRow.horaInicio || '';
+        let horaFinDetalle = currentRow.horaFin || '';
+        if (sortedDetails.length > 0) {
+            const firstActivity = sortedDetails[0];
+            const lastActivity = sortedDetails[sortedDetails.length - 1];
+            if (firstActivity.horaInicio) horaInicioDetalle = firstActivity.horaInicio.substring(0, 5);
+            if (lastActivity.horaFin) horaFinDetalle = lastActivity.horaFin.substring(0, 5);
+        }
+
         const updatedRow = {
             ...currentRow,
             id: newId || currentRow.id,
+            horaInicio: horaInicioDetalle,
+            horaFin: horaFinDetalle,
             rFinal: sums.tiros.toString(),
             horasOp: formatForDisplay(sums.horasOp),
             cambios: totalCambios.toString(),
@@ -745,6 +958,22 @@ export default function CaptureGridScreen({ navigation }) {
 
     // ========== FIN HANDLERS ==========
 
+    // Parse horario name like '7am - 4pm' into { start: 7, end: 16 }
+    const parseHorarioName = (nombre) => {
+        if (!nombre) return null;
+        const match = nombre.match(/(\d{1,2})(am|pm)\s*-\s*(\d{1,2})(am|pm)/i);
+        if (!match) return null;
+        let start = parseInt(match[1]);
+        const startPeriod = match[2].toLowerCase();
+        let end = parseInt(match[3]);
+        const endPeriod = match[4].toLowerCase();
+        if (startPeriod === 'pm' && start !== 12) start += 12;
+        if (startPeriod === 'am' && start === 12) start = 0;
+        if (endPeriod === 'pm' && end !== 12) end += 12;
+        if (endPeriod === 'am' && end === 12) end = 0;
+        return { start, end };
+    };
+
     // Función para calcular el porcentaje de tiempo dentro del horario laboral
     const calcularPorcentajeBonificable = (day) => {
         if (!day.horaInicio || !day.horaFin || day.horaInicio.length < 5 || day.horaFin.length < 5) {
@@ -758,14 +987,23 @@ export default function CaptureGridScreen({ navigation }) {
         // Domingo o Festivo -> No bonificable
         if (diaSemana === 0 || esFestivoColombia(fecha)) return 0;
 
-        // Definir límites del horario laboral
+        // Usar el horario seleccionado en el picker si existe
         let horaInicioLaboral, horaFinLaboral;
-        if (diaSemana === 6) { // Sábado: 8am - 12pm
-            horaInicioLaboral = 8;
-            horaFinLaboral = 12;
-        } else { // Lunes a Viernes: 7am - 4pm
-            horaInicioLaboral = 7;
-            horaFinLaboral = 16;
+        if (day.horarioId) {
+            const horarioObj = horarios.find(h => h.id === day.horarioId || String(h.id) === String(day.horarioId));
+            const parsed = horarioObj ? parseHorarioName(horarioObj.nombre) : null;
+            if (parsed) {
+                horaInicioLaboral = parsed.start;
+                horaFinLaboral = parsed.end;
+            } else {
+                // Fallback: hardcoded
+                horaInicioLaboral = diaSemana === 6 ? 8 : 7;
+                horaFinLaboral = diaSemana === 6 ? 12 : 16;
+            }
+        } else {
+            // Sin horario seleccionado: usar defaults
+            horaInicioLaboral = diaSemana === 6 ? 8 : 7;
+            horaFinLaboral = diaSemana === 6 ? 12 : 16;
         }
 
         // Parsear horas del registro
@@ -773,6 +1011,11 @@ export default function CaptureGridScreen({ navigation }) {
         const [hF, mF] = day.horaFin.split(':').map(Number);
         const horaInicioReg = hI + (mI / 60);
         const horaFinReg = hF + (mF / 60);
+
+        // Si las horas son exactamente 00:00 - 00:00 -> Tratar como "horas no registradas" -> 100% bonificable
+        if (horaInicioReg === 0 && horaFinReg === 0) {
+            return 1;
+        }
 
         // Si termina antes del inicio laboral o empieza después del fin laboral -> 0%
         if (horaFinReg <= horaInicioLaboral || horaInicioReg >= horaFinLaboral) {
@@ -809,37 +1052,47 @@ export default function CaptureGridScreen({ navigation }) {
         const OtroMuerto = parseNumberInput(day.otroMuerto);
         const Desperdicio = parseNumberInput(day.desperdicio);
 
-        // Calcular Meta Rendimiento (Mitad si es Sábado)
+        // Inicializar fecha para validaciones laborales (necesario para esFestivo y bonificación)
         const fecha = new Date(anio, mes - 1, day.day);
-        const diaSemana = fecha.getDay();
-        const esSabado = diaSemana === 6;
+        const diaSemana = fecha.getDay(); // 0 = Domingo, 6 = Sábado
 
-        let MetaRendimiento = rowMaquina.metaRendimiento || 0;
+        // Calcular Meta Rendimiento (Por Hora)
 
-        // AJUSTE ENERO 1-14 2026: Meta = MetaBase / Horas Totales
-        // Nota: mes es 1-based (1..12) y anio es el seleccionado en el picker
-        // Pre-calcular TotalHoras aquí para usarlo en el ajuste
-        const TotalHorasProd_Pre = HorasOp + PuestaPunto;
-        const TotalAux_Pre = MantAseo + Descansos + OtrosAux;
-        const TotalMuertos_Pre = FaltaTrabajo + Reparacion + OtroMuerto;
-        const TotalHoras_Pre = TotalHorasProd_Pre + TotalAux_Pre + TotalMuertos_Pre;
+        // Obtener Meta Base (preferir Meta100Porciento si está disponible, sino MetaRendimiento, sino default)
+        // Nota: en getMaquinas, la propiedad suele ser metaRendimiento. Si existe meta100Porciento, usarla.
+        let MetaBase = rowMaquina.meta100Porciento || rowMaquina.metaRendimiento || 0;
 
-        if (anio === 2026 && mes === 1 && day.day >= 1 && day.day <= 14) {
-            if (TotalHoras_Pre > 0) {
-                MetaRendimiento = MetaRendimiento / TotalHoras_Pre;
-            }
-        } else if (esSabado) {
-            MetaRendimiento = MetaRendimiento / 2;
-        }
+        // Calcular Total Horas (Productivas + Aux + Muertos) - Consolidados para uso global
+        const TotalHorasProd = HorasOp + PuestaPunto;
+        const TotalAux = MantAseo + Descansos + OtrosAux;
+        const TotalMuertos = FaltaTrabajo + Reparacion + OtroMuerto;
+        const TotalHoras = TotalHorasProd + TotalAux + TotalMuertos;
+
+        // NUEVA LÓGICA: Meta = (MetaBase / 8) * TotalHorasTrabajadas
+        // Esto maneja automáticamente días parciales, sábados, etc.
+        let MetaPorHora = MetaBase > 0 ? (MetaBase / 8) : 0;
+        let MetaRendimiento = MetaPorHora * TotalHoras;
+
+        // Si Horas son 0, Meta es 0 (correcto)
 
         const TirosRef = rowMaquina.tirosReferencia || 0;
         const TirosEquivalentes = (TirosRef * Cambios) + R_Final;
-        const TotalHorasProd = HorasOp + PuestaPunto;
-        const Promedio = TotalHorasProd > 0 ? (TirosEquivalentes / TotalHorasProd) : 0;
-        // MetaRendimiento already adjusted above
 
-        // Calcular diferencia de meta
-        const Meta75Diff = TirosEquivalentes - MetaRendimiento;
+        // Promedio Productivo (Tiros / Horas PRODUCTIVAS)
+        const Promedio = TotalHorasProd > 0 ? (TirosEquivalentes / TotalHorasProd) : 0;
+
+        // Calcular diferencia de meta (Meta del 75% es MetaRendimiento aqui?? No, MetaRendimiento es el 100%)
+        // El grid mostraba "75% Meta".
+        // Si MetaRendimiento es el 100%, entonces Meta75 = MetaRendimiento * 0.75
+
+        // En la lógica anterior:
+        // const Meta75Diff = TirosEquivalentes - MetaRendimiento;
+        // Si MetaRendimiento era la meta "esperada" para bonificar (que suele ser el 75% del 100%?),
+        // El usuario dijo "dividieindo la meta 100% entre 8... para sacar rendimiento general".
+        // Asumimos que MetaRendimiento calculado arriba es el 100%.
+
+        const Meta75 = MetaRendimiento * 0.75;
+        const Meta75Diff = TirosEquivalentes - Meta75; // Excedente sobre el 75%
 
         // *** NUEVO: Verificar si es festivo o domingo ***
         // fecha and diaSemana already declared above for Saturday logic
@@ -856,15 +1109,20 @@ export default function CaptureGridScreen({ navigation }) {
             VrPagar = VrTiro;
         }
 
-        const TotalAux = MantAseo + Descansos + OtrosAux;
-        const TotalMuertos = FaltaTrabajo + Reparacion + OtroMuerto;
-        const TotalHoras = TotalHorasProd + TotalAux + TotalMuertos;
+        // (Variables TotalAux, TotalMuertos, TotalHoras calculated at top)
 
         // Calcular valores bonificables (proporcional al tiempo en horario laboral)
         const porcentajeBonif = calcularPorcentajeBonificable(day);
+
+        // TIROS BONIFICABLES: Tiros Totales * %TiempoEnHorario (OK)
         const TirosBonificables = Math.round(TirosEquivalentes * porcentajeBonif);
         const DesperdicioBonif = Desperdicio * porcentajeBonif;
-        const Meta75DiffBonif = TirosBonificables - MetaRendimiento;
+
+        // META BONIFICABLE: Usar Meta75 como base para el cálculo de bonificación
+        // El usuario mencionó "75% Bonificable".
+        // Meta75DiffBonif = TirosBonificables - Meta75
+        const Meta75DiffBonif = TirosBonificables - Meta75;
+
         // VrPagarBonif = 0 si es festivo o domingo
         const VrPagarBonif = esNoLaborable ? 0 : Math.max(0, Meta75DiffBonif * (rowMaquina.valorPorTiro || 0));
 
@@ -876,7 +1134,7 @@ export default function CaptureGridScreen({ navigation }) {
             TirosBonificables,
             Meta75DiffBonif,
             VrPagarBonif,
-            MetaRendimiento, // Meta fija del 75% para mostrar en columna
+            MetaRendimiento: Meta75, // Retornar Meta75 para que la columna "75% Meta" muestre el valor correcto
             // Flag para indicar día no laborable
             esNoLaborable
         };
@@ -935,6 +1193,9 @@ export default function CaptureGridScreen({ navigation }) {
                     ReferenciaOP: day.referenciaOP || "",
                     Novedades: day.novedades || "",
                     Desperdicio: parseNumberInput(day.desperdicio),
+                    TirosBonificables: calcs.TirosBonificables || 0,
+                    DesperdicioBonificable: (calcs.DesperdicioBonif || 0),
+                    ValorAPagarBonificable: calcs.VrPagarBonif || 0,
                     DiaLaborado: 1
                 });
             }
@@ -1142,8 +1403,8 @@ export default function CaptureGridScreen({ navigation }) {
                         <TouchableOpacity style={[styles.btnLoad, { backgroundColor: '#28a745', flex: 1, marginRight: 5 }]} onPress={handleOpenExportModal}>
                             <Text style={styles.btnText}>Exp</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity style={[styles.btnLoad, { marginRight: 10 }]} onPress={handleOpenLoadModal}>
-                            <Text style={styles.btnText}>Cargar Datos</Text>
+                        <TouchableOpacity style={[styles.btnLoad, { marginRight: 10, backgroundColor: '#3498db' }]} onPress={handleImportExcel}>
+                            <Text style={styles.btnText}>Importar Excel</Text>
                         </TouchableOpacity>
                         <TouchableOpacity style={[styles.btnLoad, { marginRight: 10, backgroundColor: '#8e44ad' }]} onPress={handleOpenOPSearch}>
                             <Text style={styles.btnText}>Buscar OP</Text>
@@ -1342,6 +1603,7 @@ export default function CaptureGridScreen({ navigation }) {
                                     TotalMuertos: acc.TotalMuertos + (calcs.TotalMuertos || 0),
                                     TotalHoras: acc.TotalHoras + (calcs.TotalHoras || 0),
                                     desperdicio: acc.desperdicio + parseNumberInput(day.desperdicio),
+                                    MetaRendimiento: acc.MetaRendimiento + (calcs.MetaRendimiento || 0), // Sumar Metas
                                 };
                             }, {
                                 rFinal: 0, horasOp: 0, cambios: 0, puestaPunto: 0,
@@ -1350,7 +1612,8 @@ export default function CaptureGridScreen({ navigation }) {
                                 diasConDatos: 0,
                                 mantenimiento: 0, descansos: 0, otrosAux: 0, TotalAux: 0,
                                 faltaTrabajo: 0, reparacion: 0, otroMuerto: 0, TotalMuertos: 0,
-                                TotalHoras: 0, desperdicio: 0
+                                TotalHoras: 0, desperdicio: 0,
+                                MetaRendimiento: 0 // Init MetaRendimiento
                             });
 
                             // Mostrar sumas directas de las columnas
@@ -1366,6 +1629,7 @@ export default function CaptureGridScreen({ navigation }) {
                                     <View style={[styles.row, { backgroundColor: '#E0E0E0' }]}>
                                         <Text style={[styles.cell, { width: 30, color: 'black', fontWeight: 'bold' }]}>TOT</Text>
                                         <Text style={[styles.pickerCell, { color: 'black', fontWeight: 'bold', textAlign: 'center' }]}>TOTALES</Text>
+                                        <Text style={[styles.cell, { width: 100, color: 'black' }]}>--</Text>
                                         <Text style={[styles.cell, styles.timeCell, { color: 'black' }]}>--</Text>
                                         <Text style={[styles.cell, styles.timeCell, { color: 'black' }]}>--</Text>
                                         <Text style={[styles.cell, { color: 'black', fontWeight: 'bold' }]}>{formatNumber(totals.rFinal.toFixed(0))}</Text>
@@ -1376,7 +1640,7 @@ export default function CaptureGridScreen({ navigation }) {
                                         <Text style={[styles.cell, styles.calc, { color: 'black' }]}>{totals.TotalHorasProd.toFixed(2)}</Text>
                                         <Text style={[styles.cell, styles.calc, { color: 'black' }]}>--</Text>
                                         <Text style={[styles.cell, styles.bonif, { color: 'black', fontWeight: 'bold' }]}>{formatNumber(totals.TirosBonificables.toFixed(0))}</Text>
-                                        <Text style={[styles.cell, styles.bonif, { color: 'black' }]}>{formatNumber(tirosExtraBonif.toFixed(0))}</Text>
+                                        <Text style={[styles.cell, styles.bonif, { color: 'black' }]}>{formatNumber(totals.MetaRendimiento.toFixed(0))}</Text>
                                         <Text style={[styles.cell, styles.bonif, { color: 'black', fontWeight: 'bold' }]}>{formatNumber(vrPagarBonif.toFixed(0))}</Text>
                                         <Text style={[styles.cell, styles.calc, { color: 'black' }]}>{formatNumber(tirosExtraTotal.toFixed(0))}</Text>
                                         <Text style={[styles.cell, styles.calc, { color: 'black', fontWeight: 'bold' }]}>{formatNumber(vrPagarTotal.toFixed(0))}</Text>
@@ -1531,22 +1795,24 @@ export default function CaptureGridScreen({ navigation }) {
                             <Text style={{ textAlign: 'center', padding: 20 }}>No se encontraron registros para esta OP</Text>
                         ) : (
                             <ScrollView style={{ maxHeight: 400 }}>
-                                {/* Header */}
+                                { /* Header */}
                                 <View style={{ flexDirection: 'row', backgroundColor: '#8e44ad', padding: 8, borderRadius: 4 }}>
-                                    <Text style={{ flex: 1.5, color: 'white', fontWeight: 'bold' }}>Máquina</Text>
-                                    <Text style={{ flex: 1, color: 'white', fontWeight: 'bold', textAlign: 'center' }}>Fecha</Text>
-                                    <Text style={{ flex: 1.2, color: 'white', fontWeight: 'bold' }}>Proceso</Text>
-                                    <Text style={{ flex: 0.8, color: 'white', fontWeight: 'bold', textAlign: 'center' }}>Tiros</Text>
-                                    <Text style={{ flex: 1.5, color: 'white', fontWeight: 'bold' }}>OP Completa</Text>
+                                    <Text style={{ flex: 1.3, color: 'white', fontWeight: 'bold' }}>Máquina</Text>
+                                    <Text style={{ flex: 0.9, color: 'white', fontWeight: 'bold', textAlign: 'center' }}>Fecha</Text>
+                                    <Text style={{ flex: 1.0, color: 'white', fontWeight: 'bold' }}>Proceso</Text>
+                                    <Text style={{ flex: 0.7, color: 'white', fontWeight: 'bold', textAlign: 'center' }}>Tiros</Text>
+                                    {/* <Text style={{ flex: 0.7, color: 'white', fontWeight: 'bold', textAlign: 'center' }}>Desp.</Text> */}
+                                    <Text style={{ flex: 1.4, color: 'white', fontWeight: 'bold' }}>OP Completa</Text>
                                 </View>
-                                {/* Rows */}
+                                { /* Rows */}
                                 {opResults.map((r, idx) => (
                                     <View key={idx} style={{ flexDirection: 'row', padding: 8, backgroundColor: idx % 2 === 0 ? '#faf5ff' : 'white', borderBottomWidth: 1, borderBottomColor: '#eee', alignItems: 'center' }}>
-                                        <Text style={{ flex: 1.5, fontSize: 11 }}>{r.maquinaNombre || r.MaquinaNombre}</Text>
-                                        <Text style={{ flex: 1, textAlign: 'center', fontSize: 11 }}>{formatDateOP(r.fecha || r.Fecha)}</Text>
-                                        <Text style={{ flex: 1.2, fontSize: 11 }}>{r.actividadNombre || r.ActividadNombre}</Text>
-                                        <Text style={{ flex: 0.8, textAlign: 'center', fontSize: 11, fontWeight: 'bold' }}>{formatForDisplay(r.tiros ?? r.Tiros)}</Text>
-                                        <Text style={{ flex: 1.5, fontSize: 11 }}>{r.referenciaOP || r.ReferenciaOP}</Text>
+                                        <Text style={{ flex: 1.3, fontSize: 11 }}>{r.maquinaNombre || r.MaquinaNombre}</Text>
+                                        <Text style={{ flex: 0.9, textAlign: 'center', fontSize: 11 }}>{formatDateOP(r.fecha || r.Fecha)}</Text>
+                                        <Text style={{ flex: 1.0, fontSize: 11 }}>{r.actividadNombre || r.ActividadNombre}</Text>
+                                        <Text style={{ flex: 0.7, textAlign: 'center', fontSize: 11, fontWeight: 'bold' }}>{formatForDisplay(r.tiros ?? r.Tiros)}</Text>
+                                        {/* <Text style={{ flex: 0.7, textAlign: 'center', fontSize: 11, color: '#e74c3c' }}>{formatForDisplay(r.desperdicio ?? r.Desperdicio ?? 0)}</Text> */}
+                                        <Text style={{ flex: 1.4, fontSize: 11 }}>{r.referenciaOP || r.ReferenciaOP}</Text>
                                     </View>
                                 ))}
                             </ScrollView>
@@ -1559,15 +1825,158 @@ export default function CaptureGridScreen({ navigation }) {
             </Modal>
 
             {contextMenu.visible && (
-                <View style={[styles.contextMenu, { top: contextMenu.y, left: contextMenu.x }]}>
-                    <TouchableOpacity onPress={() => handleOpenDayDetail(contextMenu.rowIndex)} style={[styles.contextMenuItem, { backgroundColor: '#e8f4fd' }]}>
-                        <Text style={{ color: '#2980b9', fontWeight: 'bold' }}>📋 Día Detallado</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={handleDuplicateRow} style={styles.contextMenuItem}><Text>Duplicar Fila</Text></TouchableOpacity>
-                    <TouchableOpacity onPress={handleDeleteRow} style={styles.contextMenuItem}><Text style={{ color: 'red' }}>Eliminar Fila</Text></TouchableOpacity>
-                    <TouchableOpacity onPress={closeContextMenu} style={styles.contextMenuItem}><Text>Cancelar</Text></TouchableOpacity>
-                </View>
+                <>
+                    <TouchableOpacity
+                        activeOpacity={1}
+                        onPress={closeContextMenu}
+                        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }}
+                    />
+                    <View style={[styles.contextMenu, { top: contextMenu.y, left: contextMenu.x }]}>
+                        <TouchableOpacity onPress={() => { closeContextMenu(); handleOpenDayDetail(contextMenu.rowIndex); }} style={[styles.contextMenuItem, { backgroundColor: '#e8f4fd' }]}>
+                            <Text style={{ color: '#2980b9', fontWeight: 'bold' }}>📋 Día Detallado</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={handleDuplicateRow} style={styles.contextMenuItem}><Text>Duplicar Fila</Text></TouchableOpacity>
+                        <TouchableOpacity onPress={handleDeleteRow} style={styles.contextMenuItem}><Text style={{ color: 'red' }}>Eliminar Fila</Text></TouchableOpacity>
+                        <TouchableOpacity onPress={closeContextMenu} style={styles.contextMenuItem}><Text>Cancelar</Text></TouchableOpacity>
+                    </View>
+                </>
             )}
+
+            {/* Excel Import Preview Modal */}
+            <Modal visible={importPreviewVisible} transparent animationType="fade">
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { maxWidth: 700, maxHeight: '85%' }]}>
+                        <Text style={styles.modalTitle}>Previsualizar Importación</Text>
+                        <Text style={{ marginBottom: 15, color: '#666', textAlign: 'center' }}>
+                            Se han agrupado los datos del Excel. Verifique que los operarios y máquinas sean correctos.
+                        </Text>
+
+                        <View style={styles.previewHeader}>
+                            <Text style={[styles.previewHeaderText, { flex: 1 }]}>Fecha</Text>
+                            <Text style={[styles.previewHeaderText, { flex: 2 }]}>Operario</Text>
+                            <Text style={[styles.previewHeaderText, { flex: 2 }]}>Máquina</Text>
+                            <Text style={[styles.previewHeaderText, { flex: 1, textAlign: 'center' }]}>Filas</Text>
+                        </View>
+
+                        <FlatList
+                            data={importPreviewData}
+                            keyExtractor={(item, index) => index.toString()}
+                            renderItem={({ item, index }) => (
+                                <View
+                                    style={styles.previewRow}
+                                >
+                                    <TouchableOpacity
+                                        style={{ flex: 1 }}
+                                        onPress={() => {
+                                            setDetailedPreviewData(item);
+                                            setDetailedPreviewVisible(true);
+                                        }}
+                                    >
+                                        <Text style={styles.previewCell}>{item.fecha}</Text>
+                                    </TouchableOpacity>
+
+                                    <View style={{ flex: 2, borderBottomWidth: 1, borderBottomColor: '#eee' }}>
+                                        <Picker
+                                            selectedValue={item.usuarioId || ''}
+                                            onValueChange={(v) => handleUpdateOperatorInPreview(index, v)}
+                                            style={{ height: 40, width: '100%' }}
+                                        >
+                                            <Picker.Item label="-- Seleccionar --" value="" style={{ fontSize: 12 }} />
+                                            {usuarios.map(u => (
+                                                <Picker.Item key={u.id} label={u.nombre} value={u.id} style={{ fontSize: 12 }} />
+                                            ))}
+                                        </Picker>
+                                    </View>
+
+                                    <TouchableOpacity
+                                        style={{ flex: 2, paddingLeft: 10 }}
+                                        onPress={() => {
+                                            setDetailedPreviewData(item);
+                                            setDetailedPreviewVisible(true);
+                                        }}
+                                    >
+                                        <Text style={styles.previewCell}>{item.maquinaNombre}</Text>
+                                    </TouchableOpacity>
+
+                                    <TouchableOpacity
+                                        style={{ flex: 1 }}
+                                        onPress={() => {
+                                            setDetailedPreviewData(item);
+                                            setDetailedPreviewVisible(true);
+                                        }}
+                                    >
+                                        <Text style={[styles.previewCell, { textAlign: 'center' }]}>{item.filasDetalle}</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+                            style={{ marginBottom: 20 }}
+                        />
+
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                            <TouchableOpacity
+                                style={[styles.btnLoad, { backgroundColor: '#ccc', flex: 1, marginRight: 10, height: 45 }]}
+                                onPress={() => { setImportPreviewVisible(false); setImportPreviewData([]); }}
+                            >
+                                <Text style={styles.btnText}>Cancelar</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.btnLoad, { backgroundColor: '#28a745', flex: 1, height: 45 }]}
+                                onPress={handleConfirmImport}
+                            >
+                                <Text style={styles.btnText}>Confirmar y Guardar</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Detailed Row Preview Modal */}
+            <Modal visible={detailedPreviewVisible} transparent animationType="slide">
+                <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
+                    <View style={[styles.modalContent, { maxWidth: 850, width: '90%', height: '80%' }]}>
+                        <Text style={styles.modalTitle}>Detalle de Registros</Text>
+                        <Text style={{ marginBottom: 15, color: '#666', fontSize: 13 }}>
+                            {detailedPreviewData?.usuarioNombre} - {detailedPreviewData?.maquinaNombre} ({detailedPreviewData?.fecha})
+                        </Text>
+
+                        <View style={[styles.previewHeader, { backgroundColor: '#e9ecef' }]}>
+                            <Text style={[styles.previewHeaderText, { flex: 1 }]}>Inicio</Text>
+                            <Text style={[styles.previewHeaderText, { flex: 1 }]}>Fin</Text>
+                            <Text style={[styles.previewHeaderText, { flex: 1.5 }]}>Actividad</Text>
+                            <Text style={[styles.previewHeaderText, { flex: 1.5 }]}>OP</Text>
+                            <Text style={[styles.previewHeaderText, { flex: 1, textAlign: 'right' }]}>Tiros</Text>
+                        </View>
+
+                        <FlatList
+                            data={detailedPreviewData?.data?.detalles || []}
+                            keyExtractor={(item, index) => index.toString()}
+                            renderItem={({ item }) => (
+                                <View style={[styles.previewRow, { paddingVertical: 8 }]}>
+                                    <Text style={[styles.previewCell, { flex: 1 }]}>{item.horaInicio}</Text>
+                                    <Text style={[styles.previewCell, { flex: 1 }]}>{item.horaFin}</Text>
+                                    <Text style={[styles.previewCell, { flex: 1.5 }]}>{actividades.find(a => a.id === item.actividadId)?.nombre || 'Producción'}</Text>
+                                    <Text style={[styles.previewCell, { flex: 1.5 }]}>{item.referenciaOP || '-'}</Text>
+                                    <Text style={[styles.previewCell, { flex: 1, textAlign: 'right' }]}>{item.tiros || 0}</Text>
+                                </View>
+                            )}
+                        />
+
+                        {detailedPreviewData?.data?.novedades ? (
+                            <View style={{ marginTop: 10, padding: 10, backgroundColor: '#fff3cd', borderRadius: 5 }}>
+                                <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#856404' }}>Observaciones/Novedades:</Text>
+                                <Text style={{ fontSize: 12, color: '#856404' }}>{detailedPreviewData.data.novedades}</Text>
+                            </View>
+                        ) : null}
+
+                        <TouchableOpacity
+                            style={[styles.modalCloseBtn, { backgroundColor: '#6c757d', marginTop: 20 }]}
+                            onPress={() => setDetailedPreviewVisible(false)}
+                        >
+                            <Text style={styles.btnText}>Cerrar Detalle</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
 
             {/* Day Detail Modal */}
             <DayDetailModal
@@ -1611,5 +2020,9 @@ const styles = StyleSheet.create({
     modalItemSub: { fontSize: 12, color: '#666' },
     modalCloseBtn: { marginTop: 15, padding: 10, backgroundColor: '#dc3545', borderRadius: 5, alignItems: 'center' },
     contextMenu: { position: 'absolute', backgroundColor: 'white', elevation: 5, borderRadius: 5, padding: 5, zIndex: 1000, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84 },
-    contextMenuItem: { padding: 10, borderBottomWidth: 1, borderColor: '#eee' }
+    contextMenuItem: { padding: 10, borderBottomWidth: 1, borderColor: '#eee' },
+    previewHeader: { flexDirection: 'row', backgroundColor: '#f8f9fa', padding: 10, borderBottomWidth: 1, borderColor: '#dee2e6', borderTopLeftRadius: 5, borderTopRightRadius: 5 },
+    previewHeaderText: { fontWeight: 'bold', fontSize: 12, color: '#495057' },
+    previewRow: { flexDirection: 'row', padding: 10, borderBottomWidth: 1, borderColor: '#eee', alignItems: 'center' },
+    previewCell: { fontSize: 12, color: '#212529' }
 });

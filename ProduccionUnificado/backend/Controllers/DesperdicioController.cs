@@ -163,7 +163,7 @@ public class DesperdicioController : ControllerBase
     // ==========================================
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<object>>> GetRegistros(int? maquinaId, DateTime? fecha, int? usuarioId, string? ordenProduccion, int? codigoDesperdicioId)
+    public async Task<ActionResult<IEnumerable<object>>> GetRegistros(int? maquinaId, DateTime? fecha, int? usuarioId, string? ordenProduccion, int? codigoDesperdicioId, int? mes, int? anio)
     {
         var query = _context.RegistrosDesperdicio
             .Include(r => r.CodigoDesperdicio)
@@ -176,7 +176,12 @@ public class DesperdicioController : ControllerBase
             query = query.Where(r => r.MaquinaId == maquinaId.Value);
         }
 
-        if (fecha.HasValue)
+        // Month/year filter takes priority over exact date
+        if (mes.HasValue && anio.HasValue)
+        {
+            query = query.Where(r => r.Fecha.Month == mes.Value && r.Fecha.Year == anio.Value);
+        }
+        else if (fecha.HasValue)
         {
             query = query.Where(r => r.Fecha.Date == fecha.Value.Date);
         }

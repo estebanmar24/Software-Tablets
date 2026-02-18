@@ -994,6 +994,9 @@ namespace TiempoProcesos.API.Migrations
                     b.Property<int>("SemaforoNormal")
                         .HasColumnType("integer");
 
+                    b.Property<int>("Tarifa")
+                        .HasColumnType("integer");
+
                     b.Property<int>("TirosReferencia")
                         .HasColumnType("integer");
 
@@ -1090,8 +1093,8 @@ namespace TiempoProcesos.API.Migrations
                         .HasColumnType("decimal(10, 2)");
 
                     b.Property<string>("ReferenciaOP")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<decimal>("RendimientoFinal")
                         .HasColumnType("decimal(10, 2)");
@@ -2269,7 +2272,7 @@ namespace TiempoProcesos.API.Migrations
                         .IsRequired();
 
                     b.HasOne("TiempoProcesos.API.Models.ProduccionDiaria", "ProduccionDiaria")
-                        .WithMany()
+                        .WithMany("Detalles")
                         .HasForeignKey("ProduccionDiariaId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -2618,6 +2621,11 @@ namespace TiempoProcesos.API.Migrations
             modelBuilder.Entity("TiempoProcesos.API.Models.GH_TipoServicio", b =>
                 {
                     b.Navigation("Proveedores");
+                });
+
+            modelBuilder.Entity("TiempoProcesos.API.Models.ProduccionDiaria", b =>
+                {
+                    b.Navigation("Detalles");
                 });
 
             modelBuilder.Entity("TiempoProcesos.API.Models.SST_Rubro", b =>

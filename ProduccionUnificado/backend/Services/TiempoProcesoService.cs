@@ -345,6 +345,7 @@ public class TiempoProcesoService : ITiempoProcesoService
                 HoraFin = new TimeSpan(14, 0, 0) // Default fin turno
             };
             _context.ProduccionDiaria.Add(diario);
+            await _context.SaveChangesAsync(); // FORCE ID GENERATION
         }
 
         // 2. Obtener todos los tiempos del día para recálculo
@@ -427,7 +428,6 @@ public class TiempoProcesoService : ITiempoProcesoService
         diario.ValorAPagarBonificable = 0;
         diario.EsHorarioLaboral = false;
 
-        // 3.1 Calcular Cambios de OP (cuenta transiciones entre diferentes OPs)
         // 3.1 Calcular Cambios de OP (Nueva Lógica: Puesta a Punto + Cambio de OP)
         // REGLAS:
         // 1. Considerar eventos de Puesta a Punto (01) y Producción (02)
@@ -441,9 +441,7 @@ public class TiempoProcesoService : ITiempoProcesoService
             .ToList();
 
         // Obtener la última OP del día anterior (01 o 02, no 460)
-        // Obtener la última OP del día anterior (01 o 02, no 460)
-        // BUGFIX: Antes buscaba solo Fecha == fecha.AddDays(-1). Si era Lunes, fallaba al buscar Domingo.
-        // AHORA: Busca el último registro con Fecha < fecha actual.
+        // CAMBIO: Busca el último registro con Fecha < fecha actual.
         var ultimoRegistroAyer = await _context.TiemposProceso
             .Include(t => t.OrdenProduccion)
             .Include(t => t.Actividad)
@@ -549,22 +547,52 @@ public class TiempoProcesoService : ITiempoProcesoService
         {
             diario.ValorTiroSnapshot = maquina.ValorPorTiro;
             
-            // CAMBIO: La bonificación arranca desde el 75% de la meta
-            var meta75 = (decimal)maquina.MetaRendimiento * 0.75m;
+            // Meta base: El reporte usa Meta100Porciento * 0.75 como umbral de bonificación.
+            decimal meta100Base = maquina.Meta100Porciento > 0 ? (decimal)maquina.Meta100Porciento : 
+                (maquina.MetaRendimiento > 0 ? (decimal)maquina.MetaRendimiento / 0.75m : 0);
+            var meta75 = meta100Base * 0.75m;
+            
+            // Tiros equivalentes por cambios (se suman tanto al total como al bonificable)
+            var tirosEquivalentes = diario.Cambios * maquina.TirosReferencia;
 
-            // ValorAPagar total - considera tiros por encima del 75%
-            var tirosNetosTotales = diario.TirosDiarios - diario.Desperdicio;
+            // 1. ValorAPagar TOTAL (Todas las horas)
+            var tirosNetosTotales = (diario.TirosDiarios + tirosEquivalentes) - diario.Desperdicio;
             var tirosExtraTotales = Math.Max(0, tirosNetosTotales - meta75);
             diario.ValorAPagar = tirosExtraTotales * diario.ValorTiroSnapshot;
             
-            // ValorAPagarBonificable - solo tiros extra dentro del horario laboral (sobre el 75%)
-            var tirosNetosBonif = diario.TirosBonificables - diario.DesperdicioBonificable;
+            // 2. ValorAPagar BONIFICABLE (Solo horas válidas)
+            // Asumimos que los cambios reportados son bonificables (dentro de horario laboral)
+            var tirosNetosBonif = (diario.TirosBonificables + tirosEquivalentes) - diario.DesperdicioBonificable;
             var tirosExtraBonif = Math.Max(0, tirosNetosBonif - meta75);
             diario.ValorAPagarBonificable = tirosExtraBonif * diario.ValorTiroSnapshot;
         }
         
         // Marcar si hay tiros bonificables
         diario.EsHorarioLaboral = diario.TirosBonificables > 0;
+
+        // 6. Sincronizar ProduccionDiariaDetalles (Sincronización en Tiempo Real con Día Detallado)
+        // Eliminamos detalles existentes para esta cabecera y repoblamos desde TiemposProceso
+        var detallesViejos = await _context.ProduccionDiariaDetalles
+            .Where(d => d.ProduccionDiariaId == diario.Id)
+            .ToListAsync();
+        _context.ProduccionDiariaDetalles.RemoveRange(detallesViejos);
+
+        foreach (var t in tiempos.OrderBy(t => t.HoraInicio))
+        {
+            var nuevoDetalle = new ProduccionDiariaDetalle
+            {
+                ProduccionDiariaId = diario.Id,
+                ProduccionDiaria = diario, // Use navigation property for robustness
+                HoraInicio = t.HoraInicio.TimeOfDay,
+                HoraFin = t.HoraFin.TimeOfDay,
+                ActividadId = t.ActividadId,
+                Tiros = t.Tiros,
+                Desperdicio = t.Desperdicio,
+                ReferenciaOP = t.OrdenProduccion?.Numero ?? "",
+                Observaciones = t.Observaciones
+            };
+            _context.ProduccionDiariaDetalles.Add(nuevoDetalle);
+        }
 
         await _context.SaveChangesAsync();
     }
@@ -586,13 +614,112 @@ public class TiempoProcesoService : ITiempoProcesoService
 
             if (existenTiempos)
             {
-                // Flujo normal: Reconstruir desde detalles
+                // Flujo normal: Reconstruir desde TiemposProceso
                 await ActualizarProduccionDiaria(diario.Fecha, diario.MaquinaId, diario.UsuarioId);
             }
             else
             {
-                // Flujo Fallback: Recalcular usando solo los totales del resumen
-                await RecalcularDesdeResumen(diario);
+                // Check if ProduccionDiariaDetalles exist for this record
+                var detalles = await _context.ProduccionDiariaDetalles
+                    .Include(d => d.Actividad)
+                    .Where(d => d.ProduccionDiariaId == diario.Id)
+                    .ToListAsync();
+
+                if (detalles.Any())
+                {
+                    // Recalculate from detail rows
+                    diario.TiempoPuestaPunto = 0;
+                    diario.HorasOperativas = 0;
+                    diario.TirosDiarios = 0;
+                    diario.Desperdicio = 0;
+                    diario.TiempoReparacion = 0;
+                    diario.HorasDescanso = 0;
+                    diario.TiempoOtroMuerto = 0;
+                    diario.HorasMantenimiento = 0;
+                    diario.TiempoFaltaTrabajo = 0;
+                    diario.HorasOtrosAux = 0;
+                    diario.TirosBonificables = 0;
+                    diario.DesperdicioBonificable = 0;
+                    diario.ValorAPagar = 0;
+                    diario.ValorAPagarBonificable = 0;
+
+                    foreach (var d in detalles)
+                    {
+                        decimal horas = 0;
+                        if (d.HoraFin > d.HoraInicio)
+                            horas = (decimal)(d.HoraFin - d.HoraInicio).TotalHours;
+
+                        string codigo = d.Actividad?.Codigo ?? "";
+
+                        switch (codigo)
+                        {
+                            case "01": diario.TiempoPuestaPunto += horas; break;
+                            case "02":
+                                diario.HorasOperativas += horas;
+                                diario.TirosDiarios += d.Tiros;
+                                diario.Desperdicio += d.Desperdicio;
+
+                                // Calcular parte bonificable (si el detalle está en horario laboral)
+                                if (HorarioLaboralHelper.EsRegistroBonificable(diario.Fecha, d.HoraInicio, d.HoraFin))
+                                {
+                                    diario.TirosBonificables += d.Tiros;
+                                    diario.DesperdicioBonificable += d.Desperdicio;
+                                }
+                                break;
+                            case "03": diario.TiempoReparacion += horas; break;
+                            case "04": diario.HorasDescanso += horas; break;
+                            case "08": diario.TiempoOtroMuerto += horas; break;
+                            case "10": diario.HorasMantenimiento += horas; break;
+                            case "13": diario.TiempoFaltaTrabajo += horas; break;
+                            case "14": diario.HorasOtrosAux += horas; break;
+                            default: diario.HorasOtrosAux += horas; break;
+                        }
+                    }
+
+                    diario.TotalHorasProductivas = diario.HorasOperativas + diario.TiempoPuestaPunto;
+                    diario.TotalHorasAuxiliares = diario.HorasMantenimiento + diario.HorasDescanso + diario.HorasOtrosAux;
+                    diario.TotalTiemposMuertos = diario.TiempoFaltaTrabajo + diario.TiempoReparacion + diario.TiempoOtroMuerto;
+                    diario.TotalHoras = diario.TotalHorasProductivas + diario.TotalHorasAuxiliares + diario.TotalTiemposMuertos;
+
+                    if (diario.HorasOperativas > 0)
+                    {
+                        diario.PromedioHoraProductiva = diario.TirosDiarios / diario.HorasOperativas;
+                    }
+
+                    // --- CÁLCULOS ECONÓMICOS POST-DETALLES ---
+                    if (diario.Maquina != null)
+                    {
+                        diario.ValorTiroSnapshot = diario.Maquina.ValorPorTiro;
+
+                        // Meta base: El reporte usa Meta100Porciento * 0.75 como umbral de bonificación.
+                        decimal meta100Base = diario.Maquina.Meta100Porciento > 0 ? (decimal)diario.Maquina.Meta100Porciento : 
+                            (diario.Maquina.MetaRendimiento > 0 ? (decimal)diario.Maquina.MetaRendimiento / 0.75m : 0);
+                        var meta75 = meta100Base * 0.75m;
+
+                        // Tiros equivalentes por cambios
+                        var tirosEquivalentes = diario.Cambios * diario.Maquina.TirosReferencia;
+
+                        // 1. ValorAPagar TOTAL
+                        var tirosNetosTotales = (diario.TirosDiarios + tirosEquivalentes) - diario.Desperdicio;
+                        var tirosExtraTotales = Math.Max(0, tirosNetosTotales - meta75);
+                        diario.ValorAPagar = tirosExtraTotales * diario.ValorTiroSnapshot;
+
+                        // 2. ValorAPagar BONIFICABLE
+                        var tirosNetosBonif = (diario.TirosBonificables + tirosEquivalentes) - diario.DesperdicioBonificable;
+                        var tirosExtraBonif = Math.Max(0, tirosNetosBonif - meta75);
+                        diario.ValorAPagarBonificable = tirosExtraBonif * diario.ValorTiroSnapshot;
+                        
+                        diario.EsHorarioLaboral = diario.TirosBonificables > 0;
+                    }
+                    // -----------------------------------------
+
+                    await _context.SaveChangesAsync();
+                }
+                else
+                {
+                    // No details either - just recalculate bonification from existing totals
+                    await RecalcularDesdeResumen(diario);
+                }
             }
         }
     }
@@ -618,16 +745,22 @@ public class TiempoProcesoService : ITiempoProcesoService
 
         diario.ValorTiroSnapshot = diario.Maquina.ValorPorTiro;
 
-        // 1. ValorAPagar TOTAL (Todas las horas)
-        // Meta base para pago total (suele ser MetaRendimiento, en este caso igual)
-        var meta75 = (decimal)diario.Maquina.MetaRendimiento * 0.75m;
+        // Meta base: El reporte usa Meta100Porciento * 0.75 como umbral de bonificación.
+        decimal meta100Base = diario.Maquina.Meta100Porciento > 0 ? (decimal)diario.Maquina.Meta100Porciento : 
+            (diario.Maquina.MetaRendimiento > 0 ? (decimal)diario.Maquina.MetaRendimiento / 0.75m : 0);
+        var meta75 = meta100Base * 0.75m;
         
-        var tirosNetosTotales = diario.TirosDiarios - diario.Desperdicio;
+        // Incluir cambios en el total de tiros para pago
+        var tirosEquivalentes = diario.Cambios * diario.Maquina.TirosReferencia;
+        
+        // 1. ValorAPagar TOTAL (Todas las horas)
+        var tirosNetosTotales = (diario.TirosDiarios + tirosEquivalentes) - diario.Desperdicio;
         var tirosExtraTotales = Math.Max(0, tirosNetosTotales - meta75);
         diario.ValorAPagar = tirosExtraTotales * diario.ValorTiroSnapshot;
 
         // 2. ValorAPagar BONIFICABLE (Solo horas válidas)
-        var tirosNetosBonif = diario.TirosBonificables - diario.DesperdicioBonificable;
+        // En este recálculo manual/legacy (recalculo desde resumen), consideramos que todo el trabajo del día es bonificable si es día laboral
+        var tirosNetosBonif = (diario.TirosBonificables + tirosEquivalentes) - diario.DesperdicioBonificable;
         var tirosExtraBonif = Math.Max(0, tirosNetosBonif - meta75);
         diario.ValorAPagarBonificable = tirosExtraBonif * diario.ValorTiroSnapshot;
 

@@ -5,6 +5,9 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 
+// EPPlus License Context (EPPlus 8+)
+OfficeOpenXml.ExcelPackage.License.SetNonCommercialPersonal("AlephImpresores");
+
 // Enable legacy timestamp behavior for Npgsql (fixes "Cannot write DateTime with Kind" error)
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
@@ -71,7 +74,15 @@ app.UseCors("AllowAll");
 // app.UseHttpsRedirection();
 
 // Servir archivos estáticos (fotos de calidad)
-app.UseStaticFiles();
+// Servir archivos estáticos (fotos de calidad) con CORS habilitado
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        ctx.Context.Response.Headers.Append("Access-Control-Allow-Origin", "*");
+        ctx.Context.Response.Headers.Append("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+    }
+});
 
 app.UseAuthentication();
 app.UseAuthorization();

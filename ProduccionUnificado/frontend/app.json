@@ -2,7 +2,7 @@
   "expo": {
     "name": "TiempoProcesos.App",
     "slug": "tiempoprocesos-app",
-    "version": "1.7.6",
+    "version": "1.7.7",
     "orientation": "default",
     "icon": "./assets/LOGO_ALEPH_IMPRESORES.jpg",
     "userInterfaceStyle": "light",
