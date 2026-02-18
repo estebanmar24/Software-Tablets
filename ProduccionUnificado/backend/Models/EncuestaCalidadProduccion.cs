@@ -11,6 +11,7 @@ public class EncuestaCalidadProduccion
     public decimal CantidadAProducir { get; set; }
     public decimal CantidadRecuperada { get; set; }
     public decimal CantidadParaDespacho { get; set; }
+    public string? Cliente { get; set; }
     public string? Observaciones { get; set; }
     public DateTime FechaCreacion { get; set; } = DateTime.Now;
 
@@ -24,6 +25,7 @@ public class EncuestaCalidadProduccionProceso
     public int EncuestaId { get; set; }
     public string Proceso { get; set; } = string.Empty;
     public decimal CantidadProducida { get; set; }
+    public string? Observaciones { get; set; }
 
     // Navigation
     public EncuestaCalidadProduccion? Encuesta { get; set; }

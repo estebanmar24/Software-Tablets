@@ -9,6 +9,7 @@ import { api } from '../services/productionApi';
 interface ProcesoEntry {
     proceso: string;
     cantidadProducida: string;
+    observaciones: string;
 }
 
 interface EncuestaResumen {
@@ -17,6 +18,7 @@ interface EncuestaResumen {
     ordenProduccion: string;
     referencia?: string;
     material?: string;
+    cliente?: string;
     cantidadAProducir: number;
     cantidadRecuperada: number;
     cantidadParaDespacho: number;
@@ -30,13 +32,14 @@ interface EncuestaDetalle {
     ordenProduccion: string;
     referencia?: string;
     material?: string;
+    cliente?: string;
     cabida?: string;
     cantidadAProducir: number;
     cantidadRecuperada: number;
     cantidadParaDespacho: number;
     observaciones?: string;
     fechaCreacion: string;
-    procesos: { proceso: string; cantidadProducida: number }[];
+    procesos: { proceso: string; cantidadProducida: number; observaciones?: string }[];
 }
 
 export default function EncuestaCalidadProduccionView() {
@@ -46,6 +49,7 @@ export default function EncuestaCalidadProduccionView() {
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     });
     const [op, setOp] = useState('');
+    const [cliente, setCliente] = useState('');
     const [referencia, setReferencia] = useState('');
     const [material, setMaterial] = useState('');
     const [cabida, setCabida] = useState('');
@@ -53,11 +57,12 @@ export default function EncuestaCalidadProduccionView() {
     const [cantidadRecuperada, setCantidadRecuperada] = useState('');
     const [cantidadParaDespacho, setCantidadParaDespacho] = useState('');
     const [observaciones, setObservaciones] = useState('');
+    const [editingId, setEditingId] = useState<number | null>(null);
 
     // Procesos dinámicos
     const [procesosDisponibles, setProcesosDisponibles] = useState<string[]>([]);
     const [procesosEntries, setProcesosEntries] = useState<ProcesoEntry[]>([
-        { proceso: '', cantidadProducida: '' }
+        { proceso: '', cantidadProducida: '', observaciones: '' }
     ]);
 
     // List state
@@ -116,6 +121,7 @@ export default function EncuestaCalidadProduccionView() {
         const d = new Date();
         setFecha(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
         setOp('');
+        setCliente('');
         setReferencia('');
         setMaterial('');
         setCabida('');
@@ -123,11 +129,12 @@ export default function EncuestaCalidadProduccionView() {
         setCantidadRecuperada('');
         setCantidadParaDespacho('');
         setObservaciones('');
-        setProcesosEntries([{ proceso: '', cantidadProducida: '' }]);
+        setProcesosEntries([{ proceso: '', cantidadProducida: '', observaciones: '' }]);
+        setEditingId(null);
     };
 
     const addProceso = () => {
-        setProcesosEntries(prev => [...prev, { proceso: '', cantidadProducida: '' }]);
+        setProcesosEntries(prev => [...prev, { proceso: '', cantidadProducida: '', observaciones: '' }]);
     };
 
     const updateProceso = (index: number, field: keyof ProcesoEntry, value: string) => {
@@ -157,11 +164,12 @@ export default function EncuestaCalidadProduccionView() {
 
         setSaving(true);
         try {
-            await api.post('calidadproduccion/encuestas', {
+            const data = {
                 fecha: fecha,
                 ordenProduccion: op,
-                referencia: referencia || null,
-                material: material || null,
+                referencia: referencia ? referencia.toUpperCase() : null,
+                material: material ? material.toUpperCase() : null,
+                cliente: cliente ? cliente.toUpperCase() : null,
                 cabida: cabida || null,
                 cantidadAProducir: parseFloat(cantidadAProducir) || 0,
                 cantidadRecuperada: parseFloat(cantidadRecuperada) || 0,
@@ -169,17 +177,24 @@ export default function EncuestaCalidadProduccionView() {
                 observaciones: observaciones || null,
                 procesos: validProcesos.map(p => ({
                     proceso: p.proceso,
-                    cantidadProducida: parseFloat(p.cantidadProducida) || 0
+                    cantidadProducida: parseFloat(p.cantidadProducida) || 0,
+                    observaciones: p.observaciones || null
                 }))
-            });
+            };
 
-            if (Platform.OS === 'web') { window.alert('Encuesta guardada correctamente'); } else { Alert.alert('Éxito', 'Encuesta guardada correctamente'); }
+            if (editingId) {
+                await api.put(`calidadproduccion/encuestas/${editingId}`, data);
+                if (Platform.OS === 'web') { window.alert('Encuesta actualizada correctamente'); } else { Alert.alert('Éxito', 'Encuesta actualizada correctamente'); }
+            } else {
+                await api.post('calidadproduccion/encuestas', data);
+                if (Platform.OS === 'web') { window.alert('Encuesta guardada correctamente'); } else { Alert.alert('Éxito', 'Encuesta guardada correctamente'); }
+            }
             resetForm();
             setShowForm(false);
             loadEncuestas();
         } catch (e: any) {
             console.error('Error guardando:', e);
-            const msg = 'No se pudo guardar la encuesta: ' + (e?.message || '');
+            const msg = (editingId ? 'No se pudo actualizar: ' : 'No se pudo guardar: ') + (e?.message || '');
             if (Platform.OS === 'web') { window.alert(msg); } else { Alert.alert('Error', msg); }
         } finally {
             setSaving(false);
@@ -192,7 +207,37 @@ export default function EncuestaCalidadProduccionView() {
             setSelectedEncuesta(res.data);
             setDetailModalVisible(true);
         } catch (e) {
-            Alert.alert('Error', 'No se pudo cargar el detalle');
+            if (Platform.OS === 'web') { window.alert('No se pudo cargar el detalle'); } else { Alert.alert('Error', 'No se pudo cargar el detalle'); }
+        }
+    };
+
+    const handleEdit = async (id: number) => {
+        try {
+            const res = await api.get(`calidadproduccion/encuestas/${id}`);
+            const e = res.data as EncuestaDetalle;
+
+            setEditingId(e.id);
+            setFecha(e.fecha.split('T')[0]);
+            setOp(e.ordenProduccion);
+            setCliente(e.cliente || '');
+            setReferencia(e.referencia || '');
+            setMaterial(e.material || '');
+            setCabida(e.cabida || '');
+            setCantidadAProducir(e.cantidadAProducir.toString());
+            setCantidadRecuperada(e.cantidadRecuperada.toString());
+            setCantidadParaDespacho(e.cantidadParaDespacho.toString());
+            setObservaciones(e.observaciones || '');
+
+            setProcesosEntries(e.procesos.map(p => ({
+                proceso: p.proceso,
+                cantidadProducida: p.cantidadProducida.toString(),
+                observaciones: p.observaciones || ''
+            })));
+
+            setShowForm(true);
+            // Scroll to top
+        } catch (error) {
+            if (Platform.OS === 'web') { window.alert('No se pudo cargar la encuesta para editar'); } else { Alert.alert('Error', 'No se pudo cargar la encuesta para editar'); }
         }
     };
 
@@ -263,7 +308,9 @@ export default function EncuestaCalidadProduccionView() {
                 {/* FORM */}
                 {showForm && (
                     <View style={styles.formCard}>
-                        <Text style={styles.formTitle}>📋 Nueva Encuesta de Producción</Text>
+                        <Text style={styles.formTitle}>
+                            {editingId ? '✏️ Editar Encuesta de Producción' : '📋 Nueva Encuesta de Producción'}
+                        </Text>
 
                         <View style={styles.formGrid}>
                             {/* Fecha */}
@@ -305,13 +352,34 @@ export default function EncuestaCalidadProduccionView() {
                             {/* Referencia */}
                             <View style={styles.fieldBox}>
                                 <Text style={styles.fieldLabel}>Referencia</Text>
-                                <TextInput style={styles.input} value={referencia} onChangeText={setReferencia} placeholder="Referencia" />
+                                <TextInput
+                                    style={styles.input}
+                                    value={referencia}
+                                    onChangeText={text => setReferencia(text.toUpperCase())}
+                                    placeholder="Referencia"
+                                />
+                            </View>
+
+                            {/* Cliente */}
+                            <View style={styles.fieldBox}>
+                                <Text style={styles.fieldLabel}>Cliente</Text>
+                                <TextInput
+                                    style={styles.input}
+                                    value={cliente}
+                                    onChangeText={text => setCliente(text.toUpperCase())}
+                                    placeholder="Cliente"
+                                />
                             </View>
 
                             {/* Material */}
                             <View style={styles.fieldBox}>
                                 <Text style={styles.fieldLabel}>Material</Text>
-                                <TextInput style={styles.input} value={material} onChangeText={setMaterial} placeholder="Material" />
+                                <TextInput
+                                    style={styles.input}
+                                    value={material}
+                                    onChangeText={text => setMaterial(text.toUpperCase())}
+                                    placeholder="Material"
+                                />
                             </View>
 
                             {/* Cabida */}
@@ -339,7 +407,7 @@ export default function EncuestaCalidadProduccionView() {
 
                             {procesosEntries.map((entry, index) => (
                                 <View key={index} style={styles.procesoRow}>
-                                    <View style={{ flex: 2 }}>
+                                    <View style={{ flex: 1.5 }}>
                                         <Text style={styles.miniLabel}>Proceso</Text>
                                         <View style={styles.pickerWrapProceso}>
                                             <Picker
@@ -357,13 +425,22 @@ export default function EncuestaCalidadProduccionView() {
                                         </View>
                                     </View>
                                     <View style={{ flex: 1, marginLeft: 10 }}>
-                                        <Text style={styles.miniLabel}>Cantidad Producida</Text>
+                                        <Text style={styles.miniLabel}>Cantidad</Text>
                                         <TextInput
                                             style={styles.input}
                                             value={entry.cantidadProducida}
                                             onChangeText={text => updateProceso(index, 'cantidadProducida', text.replace(/[^0-9.]/g, ''))}
                                             placeholder="0"
                                             keyboardType="numeric"
+                                        />
+                                    </View>
+                                    <View style={{ flex: 2, marginLeft: 10 }}>
+                                        <Text style={styles.miniLabel}>Observaciones Proceso</Text>
+                                        <TextInput
+                                            style={styles.input}
+                                            value={entry.observaciones}
+                                            onChangeText={text => updateProceso(index, 'observaciones', text)}
+                                            placeholder="Notas..."
                                         />
                                     </View>
                                     {procesosEntries.length > 1 && (
@@ -407,12 +484,12 @@ export default function EncuestaCalidadProduccionView() {
                         </View>
 
                         <View style={{ marginTop: 10 }}>
-                            <Text style={styles.fieldLabel}>Observaciones</Text>
+                            <Text style={styles.fieldLabel}>Observaciones Generales</Text>
                             <TextInput
                                 style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
                                 value={observaciones}
                                 onChangeText={setObservaciones}
-                                placeholder="Observaciones..."
+                                placeholder="Notas adicionales..."
                                 multiline
                                 numberOfLines={4}
                             />
@@ -426,7 +503,9 @@ export default function EncuestaCalidadProduccionView() {
                         >
                             {saving ?
                                 <ActivityIndicator color="#fff" /> :
-                                <Text style={styles.saveBtnText}>💾 Guardar Encuesta</Text>
+                                <Text style={styles.saveBtnText}>
+                                    {editingId ? '💾 Actualizar Encuesta' : '💾 Guardar Encuesta'}
+                                </Text>
                             }
                         </TouchableOpacity>
                     </View>
@@ -441,6 +520,7 @@ export default function EncuestaCalidadProduccionView() {
                             <Text style={[styles.th, { flex: 0.8 }]}>Fecha</Text>
                             <Text style={[styles.th, { flex: 0.6 }]}>OP</Text>
                             <Text style={[styles.th, { flex: 1 }]}>Referencia</Text>
+                            <Text style={[styles.th, { flex: 1 }]}>Cliente</Text>
                             <Text style={[styles.th, { flex: 1 }]}>Material</Text>
                             <Text style={[styles.th, { flex: 0.8 }]}>Cant. Producir</Text>
                             <Text style={[styles.th, { flex: 0.5 }]}>Procesos</Text>
@@ -457,14 +537,18 @@ export default function EncuestaCalidadProduccionView() {
                                     <Text style={[styles.td, { flex: 0.8 }]}>{formatDate(item.fecha)}</Text>
                                     <Text style={[styles.td, { flex: 0.6 }]}>{item.ordenProduccion}</Text>
                                     <Text style={[styles.td, { flex: 1 }]} numberOfLines={1}>{item.referencia || '-'}</Text>
+                                    <Text style={[styles.td, { flex: 1 }]} numberOfLines={1}>{item.cliente || '-'}</Text>
                                     <Text style={[styles.td, { flex: 1 }]} numberOfLines={1}>{item.material || '-'}</Text>
                                     <Text style={[styles.td, { flex: 0.8, textAlign: 'center' }]}>{item.cantidadAProducir}</Text>
                                     <Text style={[styles.td, { flex: 0.5, textAlign: 'center', fontWeight: 'bold', color: '#3182CE' }]}>{item.totalProcesos}</Text>
                                     <Text style={[styles.td, { flex: 0.8, textAlign: 'center' }]}>{item.cantidadRecuperada}</Text>
                                     <Text style={[styles.td, { flex: 0.8, textAlign: 'center' }]}>{item.cantidadParaDespacho}</Text>
-                                    <View style={{ flex: 0.6, flexDirection: 'row', gap: 6 }}>
+                                    <View style={{ flex: 0.6, flexDirection: 'row', gap: 6, justifyContent: 'center' }}>
                                         <TouchableOpacity style={styles.actionBtn} onPress={() => verDetalle(item.id)}>
                                             <Text style={styles.actionBtnText}>👁</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#EBF4FF' }]} onPress={() => handleEdit(item.id)}>
+                                            <Text style={[styles.actionBtnText, { color: '#3182CE' }]}>✏️</Text>
                                         </TouchableOpacity>
                                         <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#FED7D7' }]} onPress={() => eliminar(item.id)}>
                                             <Text style={[styles.actionBtnText, { color: '#C53030' }]}>🗑</Text>
@@ -499,6 +583,10 @@ export default function EncuestaCalidadProduccionView() {
                                             <Text style={styles.detailValue}>{selectedEncuesta.referencia || '-'}</Text>
                                         </View>
                                         <View style={styles.detailItem}>
+                                            <Text style={styles.detailLabel}>Cliente</Text>
+                                            <Text style={styles.detailValue}>{selectedEncuesta.cliente || '-'}</Text>
+                                        </View>
+                                        <View style={styles.detailItem}>
                                             <Text style={styles.detailLabel}>Material</Text>
                                             <Text style={styles.detailValue}>{selectedEncuesta.material || '-'}</Text>
                                         </View>
@@ -524,9 +612,16 @@ export default function EncuestaCalidadProduccionView() {
                                         <View style={styles.procesosDetail}>
                                             <Text style={styles.sectionTitle}>📦 Procesos</Text>
                                             {selectedEncuesta.procesos.map((p, i) => (
-                                                <View key={i} style={styles.procesoDetailRow}>
-                                                    <Text style={styles.procesoName}>{p.proceso}</Text>
-                                                    <Text style={styles.procesoQty}>{p.cantidadProducida}</Text>
+                                                <View key={i} style={[styles.procesoDetailRow, { flexDirection: 'column', alignItems: 'flex-start' }]}>
+                                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
+                                                        <Text style={styles.procesoName}>{p.proceso}</Text>
+                                                        <Text style={styles.procesoQty}>{p.cantidadProducida}</Text>
+                                                    </View>
+                                                    {p.observaciones && (
+                                                        <Text style={{ fontSize: 12, color: '#4A5568', fontStyle: 'italic', marginTop: 4 }}>
+                                                            Obs: {p.observaciones}
+                                                        </Text>
+                                                    )}
                                                 </View>
                                             ))}
                                         </View>
@@ -534,7 +629,7 @@ export default function EncuestaCalidadProduccionView() {
 
                                     {selectedEncuesta.observaciones && (
                                         <View style={{ marginTop: 15 }}>
-                                            <Text style={styles.detailLabel}>Observaciones</Text>
+                                            <Text style={styles.detailLabel}>Observaciones Generales</Text>
                                             <Text style={styles.detailValue}>{selectedEncuesta.observaciones}</Text>
                                         </View>
                                     )}
@@ -550,7 +645,7 @@ export default function EncuestaCalidadProduccionView() {
                     </View>
                 </View>
             </Modal>
-        </View>
+        </View >
     );
 }
 
@@ -630,7 +725,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row', padding: 10, backgroundColor: '#fff',
         borderBottomWidth: 1, borderBottomColor: '#E2E8F0', alignItems: 'center'
     },
-    td: { fontSize: 13, color: '#2D3748' },
+    td: { fontSize: 13, color: '#2D3748', textAlign: 'center' },
     emptyText: { textAlign: 'center', padding: 30, color: '#A0AEC0', fontSize: 14 },
     actionBtn: {
         width: 30, height: 30, borderRadius: 6, backgroundColor: '#EBF8FF',

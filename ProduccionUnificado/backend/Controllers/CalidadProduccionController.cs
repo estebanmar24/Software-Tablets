@@ -51,6 +51,7 @@ public class CalidadProduccionController : ControllerBase
                 OrdenProduccion = e.OrdenProduccion,
                 Referencia = e.Referencia,
                 Material = e.Material,
+                Cliente = e.Cliente,
                 CantidadAProducir = e.CantidadAProducir,
                 CantidadRecuperada = e.CantidadRecuperada,
                 CantidadParaDespacho = e.CantidadParaDespacho,
@@ -79,6 +80,7 @@ public class CalidadProduccionController : ControllerBase
             OrdenProduccion = encuesta.OrdenProduccion,
             Referencia = encuesta.Referencia,
             Material = encuesta.Material,
+            Cliente = encuesta.Cliente,
             Cabida = encuesta.Cabida,
             CantidadAProducir = encuesta.CantidadAProducir,
             CantidadRecuperada = encuesta.CantidadRecuperada,
@@ -88,7 +90,8 @@ public class CalidadProduccionController : ControllerBase
             Procesos = encuesta.Procesos.Select(p => new ProcesoProduccionDto
             {
                 Proceso = p.Proceso,
-                CantidadProducida = p.CantidadProducida
+                CantidadProducida = p.CantidadProducida,
+                Observaciones = p.Observaciones
             }).ToList()
         });
     }
@@ -104,6 +107,7 @@ public class CalidadProduccionController : ControllerBase
                 OrdenProduccion = dto.OrdenProduccion,
                 Referencia = dto.Referencia,
                 Material = dto.Material,
+                Cliente = dto.Cliente,
                 Cabida = dto.Cabida,
                 CantidadAProducir = dto.CantidadAProducir,
                 CantidadRecuperada = dto.CantidadRecuperada,
@@ -122,7 +126,8 @@ public class CalidadProduccionController : ControllerBase
                 {
                     EncuestaId = encuesta.Id,
                     Proceso = proc.Proceso,
-                    CantidadProducida = proc.CantidadProducida
+                    CantidadProducida = proc.CantidadProducida,
+                    Observaciones = proc.Observaciones
                 });
             }
 
@@ -134,6 +139,54 @@ public class CalidadProduccionController : ControllerBase
         {
             Console.WriteLine($"[CALIDAD PROD ERROR] {ex.Message}");
             return StatusCode(500, new { message = "Error al guardar la encuesta", details = ex.Message });
+        }
+    }
+
+    [HttpPut("encuestas/{id}")]
+    public async Task<ActionResult> ActualizarEncuesta(int id, [FromBody] CrearEncuestaCalidadProduccionDto dto)
+    {
+        try
+        {
+            var encuesta = await _context.EncuestasCalidadProduccion
+                .Include(e => e.Procesos)
+                .FirstOrDefaultAsync(e => e.Id == id);
+
+            if (encuesta == null)
+                return NotFound();
+
+            // Actualizar cabecera
+            encuesta.Fecha = dto.Fecha;
+            encuesta.OrdenProduccion = dto.OrdenProduccion;
+            encuesta.Referencia = dto.Referencia;
+            encuesta.Material = dto.Material;
+            encuesta.Cliente = dto.Cliente;
+            encuesta.Cabida = dto.Cabida;
+            encuesta.CantidadAProducir = dto.CantidadAProducir;
+            encuesta.CantidadRecuperada = dto.CantidadRecuperada;
+            encuesta.CantidadParaDespacho = dto.CantidadParaDespacho;
+            encuesta.Observaciones = dto.Observaciones;
+
+            // Actualizar procesos (borramos y volvemos a añadir)
+            _context.EncuestaCalidadProduccionProcesos.RemoveRange(encuesta.Procesos);
+            
+            foreach (var proc in dto.Procesos)
+            {
+                _context.EncuestaCalidadProduccionProcesos.Add(new EncuestaCalidadProduccionProceso
+                {
+                    EncuestaId = encuesta.Id,
+                    Proceso = proc.Proceso,
+                    CantidadProducida = proc.CantidadProducida,
+                    Observaciones = proc.Observaciones
+                });
+            }
+
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[CALIDAD PROD UPDATE ERROR] {ex.Message}");
+            return StatusCode(500, new { message = "Error al actualizar la encuesta", details = ex.Message });
         }
     }
 
