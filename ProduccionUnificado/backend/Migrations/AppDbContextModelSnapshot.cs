@@ -203,6 +203,81 @@ namespace TiempoProcesos.API.Migrations
                     b.ToTable("EncuestasCalidad", (string)null);
                 });
 
+            modelBuilder.Entity("TiempoProcesos.API.Models.EncuestaCalidadProduccion", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Cabida")
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("CantidadAProducir")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("CantidadParaDespacho")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("CantidadRecuperada")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("Cliente")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("Fecha")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Material")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Observaciones")
+                        .HasColumnType("text");
+
+                    b.Property<string>("OrdenProduccion")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Referencia")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("EncuestasCalidadProduccion", (string)null);
+                });
+
+            modelBuilder.Entity("TiempoProcesos.API.Models.EncuestaCalidadProduccionProceso", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("CantidadProducida")
+                        .HasColumnType("numeric");
+
+                    b.Property<int>("EncuestaId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Observaciones")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Proceso")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EncuestaId");
+
+                    b.ToTable("EncuestaCalidadProduccionProcesos", (string)null);
+                });
+
             modelBuilder.Entity("TiempoProcesos.API.Models.EncuestaNovedad", b =>
                 {
                     b.Property<int>("Id")
@@ -1008,6 +1083,49 @@ namespace TiempoProcesos.API.Migrations
                     b.ToTable("Maquinas", (string)null);
                 });
 
+            modelBuilder.Entity("TiempoProcesos.API.Models.MetaMensual", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Anio")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("Importancia")
+                        .HasColumnType("decimal(5, 2)");
+
+                    b.Property<int>("MaquinaId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Mes")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Meta100Porciento")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MetaRendimiento")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Tarifa")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TirosReferencia")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("ValorPorTiro")
+                        .HasColumnType("decimal(10, 2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MaquinaId", "Mes", "Anio")
+                        .IsUnique();
+
+                    b.ToTable("MetasMensuales", (string)null);
+                });
+
             modelBuilder.Entity("TiempoProcesos.API.Models.OrdenProduccion", b =>
                 {
                     b.Property<int>("Id")
@@ -1161,6 +1279,9 @@ namespace TiempoProcesos.API.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<int>("ActividadId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Desperdicio")
                         .HasColumnType("integer");
 
                     b.Property<TimeSpan>("HoraFin")
@@ -2110,6 +2231,17 @@ namespace TiempoProcesos.API.Migrations
                     b.Navigation("Operario");
                 });
 
+            modelBuilder.Entity("TiempoProcesos.API.Models.EncuestaCalidadProduccionProceso", b =>
+                {
+                    b.HasOne("TiempoProcesos.API.Models.EncuestaCalidadProduccion", "Encuesta")
+                        .WithMany("Procesos")
+                        .HasForeignKey("EncuestaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Encuesta");
+                });
+
             modelBuilder.Entity("TiempoProcesos.API.Models.EncuestaNovedad", b =>
                 {
                     b.HasOne("TiempoProcesos.API.Models.EncuestaCalidad", "Encuesta")
@@ -2236,6 +2368,17 @@ namespace TiempoProcesos.API.Migrations
                         .IsRequired();
 
                     b.Navigation("Equipo");
+                });
+
+            modelBuilder.Entity("TiempoProcesos.API.Models.MetaMensual", b =>
+                {
+                    b.HasOne("TiempoProcesos.API.Models.Maquina", "Maquina")
+                        .WithMany()
+                        .HasForeignKey("MaquinaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Maquina");
                 });
 
             modelBuilder.Entity("TiempoProcesos.API.Models.ProduccionDiaria", b =>
@@ -2597,6 +2740,11 @@ namespace TiempoProcesos.API.Migrations
             modelBuilder.Entity("TiempoProcesos.API.Models.EncuestaCalidad", b =>
                 {
                     b.Navigation("Novedades");
+                });
+
+            modelBuilder.Entity("TiempoProcesos.API.Models.EncuestaCalidadProduccion", b =>
+                {
+                    b.Navigation("Procesos");
                 });
 
             modelBuilder.Entity("TiempoProcesos.API.Models.Equipo", b =>
