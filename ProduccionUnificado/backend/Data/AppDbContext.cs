@@ -66,6 +66,20 @@ public class AppDbContext : DbContext
     public DbSet<Talleres_Gasto> Talleres_Gastos { get; set; }
     public DbSet<Talleres_PresupuestoMensual> Talleres_PresupuestosMensuales { get; set; }
 
+    // Planeación Management
+    public DbSet<Planeacion_Rubro> Planeacion_Rubros { get; set; }
+    public DbSet<Planeacion_Proveedor> Planeacion_Proveedores { get; set; }
+    public DbSet<Planeacion_Cotizacion> Planeacion_Cotizaciones { get; set; }
+    public DbSet<Planeacion_Gasto> Planeacion_Gastos { get; set; }
+    public DbSet<Planeacion_PresupuestoMensual> Planeacion_PresupuestosMensuales { get; set; }
+
+    // Diseño Management
+    public DbSet<Diseno_Rubro> Diseno_Rubros { get; set; }
+    public DbSet<Diseno_Proveedor> Diseno_Proveedores { get; set; }
+    public DbSet<Diseno_Cotizacion> Diseno_Cotizaciones { get; set; }
+    public DbSet<Diseno_Gasto> Diseno_Gastos { get; set; }
+    public DbSet<Diseno_PresupuestoMensual> Diseno_PresupuestosMensuales { get; set; }
+
     // Orden y Aseo Surveys
     public DbSet<EncuestaOrdenAseo> EncuestasOrdenAseo { get; set; }
 
@@ -327,6 +341,92 @@ public class AppDbContext : DbContext
 
         // Unique constraint: One budget per Rubro per month/year
         modelBuilder.Entity<Talleres_PresupuestoMensual>()
+            .HasIndex(p => new { p.RubroId, p.Anio, p.Mes })
+            .IsUnique();
+
+        // Planeación Tables Configuration
+        modelBuilder.Entity<Planeacion_Rubro>().ToTable("Planeacion_Rubros");
+        modelBuilder.Entity<Planeacion_Proveedor>().ToTable("Planeacion_Proveedores");
+        modelBuilder.Entity<Planeacion_Cotizacion>().ToTable("Planeacion_Cotizaciones");
+        modelBuilder.Entity<Planeacion_Gasto>().ToTable("Planeacion_Gastos");
+        modelBuilder.Entity<Planeacion_PresupuestoMensual>().ToTable("Planeacion_PresupuestosMensuales");
+
+        // Planeación Relationships
+        modelBuilder.Entity<Planeacion_Proveedor>()
+            .HasOne(p => p.Rubro)
+            .WithMany(r => r.Proveedores)
+            .HasForeignKey(p => p.RubroId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Planeacion_Cotizacion>()
+            .HasOne(c => c.Proveedor)
+            .WithMany()
+            .HasForeignKey(c => c.ProveedorId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Planeacion_Gasto>()
+            .HasOne(g => g.Proveedor)
+            .WithMany()
+            .HasForeignKey(g => g.ProveedorId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Planeacion_Gasto>()
+            .HasOne(g => g.Rubro)
+            .WithMany(r => r.Gastos)
+            .HasForeignKey(g => g.RubroId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Planeacion_PresupuestoMensual>()
+            .HasOne(p => p.Rubro)
+            .WithMany()
+            .HasForeignKey(p => p.RubroId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Unique constraint: One budget per Rubro per month/year
+        modelBuilder.Entity<Planeacion_PresupuestoMensual>()
+            .HasIndex(p => new { p.RubroId, p.Anio, p.Mes })
+            .IsUnique();
+
+        // Diseño Tables Configuration
+        modelBuilder.Entity<Diseno_Rubro>().ToTable("Diseno_Rubros");
+        modelBuilder.Entity<Diseno_Proveedor>().ToTable("Diseno_Proveedores");
+        modelBuilder.Entity<Diseno_Cotizacion>().ToTable("Diseno_Cotizaciones");
+        modelBuilder.Entity<Diseno_Gasto>().ToTable("Diseno_Gastos");
+        modelBuilder.Entity<Diseno_PresupuestoMensual>().ToTable("Diseno_PresupuestosMensuales");
+
+        // Diseño Relationships
+        modelBuilder.Entity<Diseno_Proveedor>()
+            .HasOne(p => p.Rubro)
+            .WithMany(r => r.Proveedores)
+            .HasForeignKey(p => p.RubroId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Diseno_Cotizacion>()
+            .HasOne(c => c.Proveedor)
+            .WithMany()
+            .HasForeignKey(c => c.ProveedorId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Diseno_Gasto>()
+            .HasOne(g => g.Proveedor)
+            .WithMany()
+            .HasForeignKey(g => g.ProveedorId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Diseno_Gasto>()
+            .HasOne(g => g.Rubro)
+            .WithMany(r => r.Gastos)
+            .HasForeignKey(g => g.RubroId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Diseno_PresupuestoMensual>()
+            .HasOne(p => p.Rubro)
+            .WithMany()
+            .HasForeignKey(p => p.RubroId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Unique constraint: One budget per Rubro per month/year
+        modelBuilder.Entity<Diseno_PresupuestoMensual>()
             .HasIndex(p => new { p.RubroId, p.Anio, p.Mes })
             .IsUnique();
 
