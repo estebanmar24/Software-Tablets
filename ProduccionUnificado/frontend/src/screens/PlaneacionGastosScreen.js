@@ -458,7 +458,7 @@ function GastosTab() {
 function GraficasTab() {
     const [loading, setLoading] = useState(true);
     const [anio, setAnio] = useState(new Date().getFullYear());
-    const [mesSeleccionado, setMesSeleccionado] = useState(new Date().getMonth() + 1);
+    const [mesSeleccionado, setMesSeleccionado] = useState(new Date().getMonth() + 1); // 1-12 o "" para anual
     const [graficasData, setGraficasData] = useState(null);
     const [allGastos, setAllGastos] = useState([]);
     const anios = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
@@ -537,7 +537,7 @@ function GraficasTab() {
             catch (e) { doc.setFontSize(18); doc.text('ALEPH', margin, 25); }
 
             doc.setFontSize(18); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 58, 95);
-            doc.text(`INFORME PLANEACIÓN - ${mesSeleccionado ? MESES[mesSeleccionado - 1].label.toUpperCase() : 'ANUAL'} ${anio}`, pageWidth / 2, 20, { align: 'center' });
+            doc.text(`INFORME PLANEACIÓN - ${mesSeleccionado ? MESES[Number(mesSeleccionado) - 1].label.toUpperCase() : 'ANUAL'} ${anio}`, pageWidth / 2, 20, { align: 'center' });
             yPos = 50;
 
             const totalP = data.totalPresupuesto || 0; const totalG = data.totalGastado || 0;
@@ -597,7 +597,7 @@ function GraficasTab() {
                     <View style={styles.yearSelector}>
                         <Picker selectedValue={anio} onValueChange={setAnio} style={{ width: 100, height: 40, marginRight: 8 }}>{anios.map(a => <Picker.Item key={a} label={a.toString()} value={a} />)}</Picker>
                         <Picker selectedValue={mesSeleccionado} onValueChange={setMesSeleccionado} style={{ width: 130, height: 40 }}>
-                            <Picker.Item label="Todo el Año" value={null} />{MESES.map(m => <Picker.Item key={m.value} label={m.label} value={m.value} />)}
+                            <Picker.Item label="Todo el Año" value="" />{MESES.map(m => <Picker.Item key={m.value} label={m.label} value={m.value} />)}
                         </Picker>
                     </View>
                 </View>
@@ -636,7 +636,7 @@ function GraficasTab() {
                 </Modal>
 
                 <View style={{ marginBottom: 20, backgroundColor: 'white', padding: 15, borderRadius: 8, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5, elevation: 2 }}>
-                    <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 10, color: '#1F2937' }}>{mesSeleccionado ? 'Ejecución Mensual' : 'Ejecución Anual'}</Text>
+                    <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 10, color: '#1F2937' }}>{mesSeleccionado ? 'Ejecución del Mes' : 'Ejecución Anual'}</Text>
                     <View style={{ height: 20, backgroundColor: '#E5E7EB', borderRadius: 10, overflow: 'hidden' }}>
                         <View style={{ width: `${Math.min(100, ((data.totalGastado || 0) / Math.max(1, data.totalPresupuesto || 1)) * 100)}%`, height: '100%', backgroundColor: ((data.totalGastado || 0) > (data.totalPresupuesto || 0)) ? '#DC2626' : '#10B981' }} />
                     </View>
