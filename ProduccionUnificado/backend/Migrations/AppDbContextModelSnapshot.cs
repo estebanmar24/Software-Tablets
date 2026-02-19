@@ -223,6 +223,10 @@ namespace TiempoProcesos.API.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
+                    b.Property<string>("OrdenProduccion")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
                     b.Property<decimal>("Precio")
                         .HasColumnType("decimal(18,2)");
 
@@ -231,6 +235,10 @@ namespace TiempoProcesos.API.Migrations
 
                     b.Property<int>("RubroId")
                         .HasColumnType("integer");
+
+                    b.Property<string>("TipoTrabajo")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.HasKey("Id");
 
@@ -1750,6 +1758,9 @@ namespace TiempoProcesos.API.Migrations
                     b.Property<int?>("CreadoPorId")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("EsPendiente")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("FacturaPdfUrl")
                         .HasColumnType("text");
 
@@ -2309,6 +2320,9 @@ namespace TiempoProcesos.API.Migrations
                     b.Property<int?>("CreadoPorId")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("EsPendiente")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("FacturaPdfUrl")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
@@ -2326,7 +2340,6 @@ namespace TiempoProcesos.API.Migrations
                         .HasColumnType("integer");
 
                     b.Property<string>("NumeroFactura")
-                        .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
@@ -2341,7 +2354,7 @@ namespace TiempoProcesos.API.Migrations
                     b.Property<int?>("PersonalId")
                         .HasColumnType("integer");
 
-                    b.Property<decimal>("Precio")
+                    b.Property<decimal?>("Precio")
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<int?>("ProveedorId")

@@ -573,5 +573,40 @@ public class PlaneacionController : ControllerBase
         });
     }
 
+    /// <summary>
+    /// Get annual summary
+    /// </summary>
+    [HttpGet("graficas/anual/{anio}")]
+    public async Task<ActionResult<object>> GetGraficasAnual(int anio)
+    {
+        var rubros = await _context.Planeacion_Rubros.Where(r => r.Activo).ToListAsync();
+        var presupuestos = await _context.Planeacion_PresupuestosMensuales
+            .Where(p => p.Anio == anio)
+            .GroupBy(p => p.RubroId)
+            .Select(g => new { RubroId = g.Key, Total = g.Sum(x => x.Presupuesto) })
+            .ToListAsync();
+        var gastos = await _context.Planeacion_Gastos
+            .Where(g => g.Anio == anio)
+            .GroupBy(g => g.RubroId)
+            .Select(g => new { RubroId = g.Key, Total = g.Sum(x => x.Precio) })
+            .ToListAsync();
+
+        var porRubro = rubros.Select(r => new
+        {
+            RubroId = r.Id,
+            Rubro = r.Nombre,
+            PresupuestoAnual = presupuestos.FirstOrDefault(p => p.RubroId == r.Id)?.Total ?? 0,
+            GastadoAnual = gastos.FirstOrDefault(g => g.RubroId == r.Id)?.Total ?? 0
+        }).ToList();
+
+        return Ok(new
+        {
+            Anio = anio,
+            PorRubro = porRubro,
+            TotalPresupuesto = porRubro.Sum(x => x.PresupuestoAnual),
+            TotalGastado = porRubro.Sum(x => x.GastadoAnual)
+        });
+    }
+
     #endregion
 }

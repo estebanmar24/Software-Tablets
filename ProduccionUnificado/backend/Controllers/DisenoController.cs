@@ -160,6 +160,8 @@ public class DisenoController : ControllerBase
                 g.Precio,
                 g.Fecha,
                 g.Observaciones,
+                g.TipoTrabajo,
+                g.OrdenProduccion,
                 g.FacturaPdfUrl,
                 g.FechaCreacion,
                 g.FechaModificacion,
@@ -462,6 +464,58 @@ public class DisenoController : ControllerBase
             TotalGastado = porRubro.Sum(x => x.Gastado),
             TotalRestante = porRubro.Sum(x => x.Presupuesto) - porRubro.Sum(x => x.Gastado),
             Alertas = alertas
+        });
+    }
+
+    /// <summary>
+    /// Get graficas data for a full year (all 12 months)
+    /// </summary>
+    [HttpGet("graficas/anual/{anio}")]
+    public async Task<ActionResult<object>> GetGraficasAnual(int anio)
+    {
+        var rubros = await _context.Diseno_Rubros.Where(r => r.Activo).ToListAsync();
+        var presupuestos = await _context.Diseno_PresupuestosMensuales
+            .Where(p => p.Anio == anio)
+            .ToListAsync();
+        var gastos = await _context.Diseno_Gastos
+            .Where(g => g.Anio == anio)
+            .ToListAsync();
+
+        var porMes = Enumerable.Range(1, 12).Select(mes =>
+        {
+            var presupuestoMes = presupuestos.Where(p => p.Mes == mes).Sum(p => p.Presupuesto);
+            var gastadoMes = gastos.Where(g => g.Mes == mes).Sum(g => g.Precio);
+            return new
+            {
+                Mes = mes,
+                Presupuesto = presupuestoMes,
+                Gastado = gastadoMes,
+                Restante = presupuestoMes - gastadoMes
+            };
+        }).ToList();
+
+        var porRubro = rubros.Select(r =>
+        {
+            var presupuesto = presupuestos.Where(p => p.RubroId == r.Id).Sum(p => p.Presupuesto);
+            var gastado = gastos.Where(g => g.RubroId == r.Id).Sum(g => g.Precio);
+            return new
+            {
+                RubroId = r.Id,
+                Rubro = r.Nombre,
+                Presupuesto = presupuesto,
+                Gastado = gastado,
+                Restante = presupuesto - gastado
+            };
+        }).ToList();
+
+        return Ok(new
+        {
+            Anio = anio,
+            PorMes = porMes,
+            PorRubro = porRubro,
+            TotalPresupuesto = porRubro.Sum(x => x.Presupuesto),
+            TotalGastado = porRubro.Sum(x => x.Gastado),
+            TotalRestante = porRubro.Sum(x => x.Presupuesto) - porRubro.Sum(x => x.Gastado)
         });
     }
 

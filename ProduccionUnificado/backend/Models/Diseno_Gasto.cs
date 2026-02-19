@@ -34,6 +34,12 @@ public class Diseno_Gasto
     [MaxLength(500)]
     public string? Observaciones { get; set; }
 
+    [MaxLength(20)]
+    public string? TipoTrabajo { get; set; } // "Nuevo" o "Repetido"
+
+    [MaxLength(50)]
+    public string? OrdenProduccion { get; set; }
+
     [MaxLength(500)]
     public string? FacturaPdfUrl { get; set; }
 

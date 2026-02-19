@@ -165,6 +165,8 @@ public class TalleresController : ControllerBase
             return BadRequest($"Validation Failed: {errors}");
         }
 
+        Console.WriteLine($"[CreateGasto] EsPendiente from Frontend: {gasto.EsPendiente}");
+
         try 
         {
             // Set Creator
@@ -203,6 +205,8 @@ public class TalleresController : ControllerBase
             Console.WriteLine($"[UpdateGasto] Validation Errors: {errors}");
             return BadRequest($"Validation Failed: {errors}");
         }
+
+        Console.WriteLine($"[UpdateGasto] ID: {id}, EsPendiente from Frontend: {gasto.EsPendiente}");
 
         // Preserve FechaCreacion
     var existingEntry = await _context.Talleres_Gastos.AsNoTracking().FirstOrDefaultAsync(g => g.Id == id);
@@ -283,7 +287,8 @@ public class TalleresController : ControllerBase
                 g.FechaCreacion,
                 g.FechaModificacion,
                 g.CreadoPorId,
-                CreadoPorNombre = g.CreadoPor != null ? g.CreadoPor.NombreMostrar : ""
+                CreadoPorNombre = g.CreadoPor != null ? g.CreadoPor.NombreMostrar : "",
+                g.EsPendiente
             })
             .ToListAsync();
 
@@ -329,9 +334,9 @@ public class TalleresController : ControllerBase
                 Id = g.Id,
                 Fecha = g.Fecha,
                 PersonalNombre = g.Personal != null ? g.Personal.Nombre : "N/A",
-                PersonalDocumento = g.Personal != null ? g.Personal.Documento : "", // ADDED
-                Salario = g.Personal != null ? g.Personal.Salario : 0, // ADDED
-                ValorHora = g.Personal != null ? (g.Personal.Salario / 220m) : 0, // ADDED
+                PersonalDocumento = g.Personal != null ? g.Personal.Documento : "",
+                Salario = g.Personal != null ? g.Personal.Salario : 0,
+                ValorHora = g.Personal != null ? (g.Personal.Salario / 220m) : 0,
                 NumeroOP = g.NumeroOP ?? "",
                 TipoHoraNombre = g.TipoHora != null ? g.TipoHora.Nombre : "N/A",
                 Factor = g.TipoHora != null ? g.TipoHora.Factor : 0,
@@ -368,9 +373,9 @@ public class TalleresController : ControllerBase
                 Id = g.Id,
                 Fecha = g.Fecha,
                 PersonalNombre = g.Personal != null ? g.Personal.Nombre : "N/A",
-                PersonalDocumento = g.Personal != null ? g.Personal.Documento : "", // ADDED
-                Salario = g.Personal != null ? g.Personal.Salario : 0, // ADDED
-                ValorHora = g.Personal != null ? (g.Personal.Salario / 220m) : 0, // ADDED
+                PersonalDocumento = g.Personal != null ? g.Personal.Documento : "",
+                Salario = g.Personal != null ? g.Personal.Salario : 0,
+                ValorHora = g.Personal != null ? (g.Personal.Salario / 220m) : 0,
                 NumeroOP = g.NumeroOP ?? "",
                 TipoRecargoNombre = g.TipoRecargo != null ? g.TipoRecargo.Nombre : "N/A",
                 Factor = g.TipoRecargo != null ? g.TipoRecargo.Factor : 0,

@@ -4,8 +4,18 @@
  */
 
 import axios from 'axios';
+import { getToken } from './authStorage';
 
 const api = axios.create();
+
+// Attach auth token to every request so backend can identify user
+api.interceptors.request.use(async (config) => {
+    const token = await getToken();
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+});
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
 
@@ -134,6 +144,11 @@ export async function deleteGasto(id) {
 
 export async function getGraficas(anio, mes) {
     const response = await api.get(`${API_BASE_URL}/diseno/graficas/${anio}/${mes}`);
+    return response.data;
+}
+
+export async function getGraficasAnual(anio) {
+    const response = await api.get(`${API_BASE_URL}/diseno/graficas/anual/${anio}`);
     return response.data;
 }
 

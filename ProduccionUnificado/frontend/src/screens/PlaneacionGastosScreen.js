@@ -19,7 +19,7 @@ import { Asset } from 'expo-asset';
 const TABS = [
     { key: 'gastos', label: 'Captura de Gastos', icon: '💰' },
     { key: 'graficas', label: 'Gráficas', icon: '📊' },
-    { key: 'presupuestos', label: 'Presupuestos', icon: '📋' },
+
     { key: 'rubros', label: 'Rubros', icon: '📁' },
     { key: 'cotizaciones', label: 'Cotizaciones', icon: '📝' },
     { key: 'proveedores', label: 'Proveedores', icon: '🏢' },
@@ -74,7 +74,7 @@ export default function PlaneacionGastosScreen() {
 
             {activeTab === 'gastos' && <GastosTab />}
             {activeTab === 'graficas' && <GraficasTab />}
-            {activeTab === 'presupuestos' && <PresupuestosTab />}
+
             {activeTab === 'rubros' && <RubrosTab />}
             {activeTab === 'cotizaciones' && <CotizacionesTab />}
             {activeTab === 'proveedores' && <ProveedoresTab />}
@@ -977,6 +977,7 @@ function CotizacionesTab() {
                 proveedorId: parseInt(formData.proveedorId),
                 precioCotizado: parseFloat(formData.precio),
                 descripcion: formData.descripcion,
+                fechaCotizacion: new Date().toISOString(),
                 anio, mes, activo: true
             };
             if (editItem) await planeacionApi.updateCotizacion(editItem.id, { ...data, id: editItem.id });

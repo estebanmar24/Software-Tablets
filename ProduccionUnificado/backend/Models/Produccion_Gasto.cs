@@ -52,6 +52,9 @@ public class Produccion_Gasto
     public string? NumeroFactura { get; set; }
     public string? FacturaPdfUrl { get; set; }
     
+    // Status
+    public bool EsPendiente { get; set; }
+    
     // History tracking
     public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;
     public DateTime? FechaModificacion { get; set; }

@@ -25,15 +25,13 @@ public class Talleres_Gasto
     public int Mes { get; set; }
 
     /// <summary>
-    /// Número de factura - Obligatorio para todos los gastos
+    /// Número de factura - Obligatorio para gastos legalizados
     /// </summary>
-    [Required(ErrorMessage = "El número de factura es obligatorio")]
     [MaxLength(100)]
-    public string NumeroFactura { get; set; } = string.Empty;
+    public string? NumeroFactura { get; set; }
 
-    [Required]
     [Column(TypeName = "decimal(18,2)")]
-    public decimal Precio { get; set; }
+    public decimal? Precio { get; set; }
 
     [Required]
     public DateTime Fecha { get; set; }
@@ -62,8 +60,11 @@ public class Talleres_Gasto
     [Column(TypeName = "decimal(18,2)")]
     public decimal? CantidadHoras { get; set; }
 
-    [MaxLength(100)]
+    [System.Text.Json.Serialization.JsonPropertyName("numeroOP")]
     public string? NumeroOP { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("esPendiente")]
+    public bool EsPendiente { get; set; } = false;
 
     [ForeignKey("PersonalId")]
     public virtual Talleres_Personal? Personal { get; set; }

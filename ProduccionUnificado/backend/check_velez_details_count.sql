@@ -1,0 +1,1 @@
+SELECT COUNT(*) FROM "ProduccionDiariaDetalles" pdd JOIN "ProduccionDiaria" pd ON pdd."ProduccionDiariaId" = pd."Id" WHERE pd."UsuarioId" = 13 AND pd."Fecha" >= '2026-01-01' AND pd."Fecha" <= '2026-01-31';

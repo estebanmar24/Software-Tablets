@@ -861,8 +861,21 @@ public static class DbInitializer
                     ""Fecha"" TIMESTAMP NOT NULL,
                     ""Observaciones"" VARCHAR(500) NULL
                 );
+
+                -- Synchronize with current model
+                ALTER TABLE ""Talleres_Gastos"" ALTER COLUMN ""NumeroFactura"" DROP NOT NULL;
+                ALTER TABLE ""Talleres_Gastos"" ADD COLUMN IF NOT EXISTS ""FacturaPdfUrl"" VARCHAR(500) NULL;
+                ALTER TABLE ""Talleres_Gastos"" ADD COLUMN IF NOT EXISTS ""PersonalId"" INTEGER NULL REFERENCES ""Talleres_Personal""(""Id"");
+                ALTER TABLE ""Talleres_Gastos"" ADD COLUMN IF NOT EXISTS ""TipoHoraId"" INTEGER NULL REFERENCES ""Produccion_TiposHora""(""Id"");
+                ALTER TABLE ""Talleres_Gastos"" ADD COLUMN IF NOT EXISTS ""TipoRecargoId"" INTEGER NULL REFERENCES ""Produccion_TiposRecargo""(""Id"");
+                ALTER TABLE ""Talleres_Gastos"" ADD COLUMN IF NOT EXISTS ""CantidadHoras"" DECIMAL(18,2) NULL;
+                ALTER TABLE ""Talleres_Gastos"" ADD COLUMN IF NOT EXISTS ""NumeroOP"" VARCHAR(100) NULL;
+                ALTER TABLE ""Talleres_Gastos"" ADD COLUMN IF NOT EXISTS ""EsPendiente"" BOOLEAN NOT NULL DEFAULT FALSE;
+                ALTER TABLE ""Talleres_Gastos"" ADD COLUMN IF NOT EXISTS ""FechaCreacion"" TIMESTAMP NOT NULL DEFAULT NOW();
+                ALTER TABLE ""Talleres_Gastos"" ADD COLUMN IF NOT EXISTS ""FechaModificacion"" TIMESTAMP NULL;
+                ALTER TABLE ""Talleres_Gastos"" ADD COLUMN IF NOT EXISTS ""CreadoPorId"" INTEGER NULL REFERENCES ""AdminUsuarios""(""Id"");
             ");
-            Console.WriteLine("[DB INIT] Talleres_Gastos created.");
+            Console.WriteLine("[DB INIT] Talleres_Gastos checked/updated.");
 
             // Talleres_PresupuestosMensuales
             context.Database.ExecuteSqlRaw(@"

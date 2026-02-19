@@ -9,6 +9,7 @@ import {
     TouchableOpacity, ActivityIndicator, Alert, Modal, Platform
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as disenoApi from '../services/disenoApi';
 import { ExpenseHistoryModal } from '../components/ExpenseHistoryModal';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -18,7 +19,6 @@ import { Asset } from 'expo-asset';
 const TABS = [
     { key: 'gastos', label: 'Captura de Gastos', icon: '💰' },
     { key: 'graficas', label: 'Gráficas', icon: '📊' },
-    { key: 'presupuestos', label: 'Presupuestos', icon: '📋' },
     { key: 'rubros', label: 'Rubros', icon: '📁' },
     { key: 'cotizaciones', label: 'Cotizaciones', icon: '📝' },
     { key: 'proveedores', label: 'Proveedores', icon: '🏢' },
@@ -73,7 +73,7 @@ export default function DisenoGastosScreen() {
 
             {activeTab === 'gastos' && <GastosTab />}
             {activeTab === 'graficas' && <GraficasTab />}
-            {activeTab === 'presupuestos' && <PresupuestosTab />}
+
             {activeTab === 'rubros' && <RubrosTab />}
             {activeTab === 'cotizaciones' && <CotizacionesTab />}
             {activeTab === 'proveedores' && <ProveedoresTab />}
@@ -106,8 +106,13 @@ function GastosTab() {
         precio: '',
         fecha: new Date().toISOString().split('T')[0],
         observaciones: '',
-        facturaPdfUrl: ''
+        facturaPdfUrl: '',
+        tipoTrabajo: '',
+        ordenProduccion: ''
     });
+    const RUBROS_CON_TIPO = ['planchas', 'positivos', 'troqueles', 'clises', 'marcos', 'pruebas de color', 'impresiones digitales'];
+    const rubroSeleccionado = rubros.find(r => r.id.toString() === formData.rubroId);
+    const requiereTipoTrabajo = rubroSeleccionado && RUBROS_CON_TIPO.includes(rubroSeleccionado.nombre.toLowerCase());
     const [saving, setSaving] = useState(false);
     const anios = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
 
@@ -199,7 +204,8 @@ function GastosTab() {
         setEditItem(null);
         setFormData({
             rubroId: '', proveedorId: '', numeroFactura: '', precio: '',
-            fecha: new Date().toISOString().split('T')[0], observaciones: '', facturaPdfUrl: ''
+            fecha: new Date().toISOString().split('T')[0], observaciones: '', facturaPdfUrl: '',
+            tipoTrabajo: '', ordenProduccion: ''
         });
     };
 
@@ -212,7 +218,9 @@ function GastosTab() {
             precio: gasto.precio?.toString() || '',
             fecha: gasto.fecha?.split('T')[0] || new Date().toISOString().split('T')[0],
             observaciones: gasto.observaciones || '',
-            facturaPdfUrl: gasto.facturaPdfUrl || ''
+            facturaPdfUrl: gasto.facturaPdfUrl || '',
+            tipoTrabajo: gasto.tipoTrabajo || '',
+            ordenProduccion: gasto.ordenProduccion || ''
         });
         setShowModal(true);
     };
@@ -222,6 +230,10 @@ function GastosTab() {
         if (!formData.proveedorId) { showAlert('Error', 'Seleccione un Proveedor'); return; }
         if (!formData.numeroFactura || !formData.numeroFactura.trim()) { showAlert('Error', 'El Número de factura es obligatorio'); return; }
         if (!formData.precio || isNaN(parseFloat(formData.precio))) { showAlert('Error', 'El Precio debe ser un número válido'); return; }
+        if (requiereTipoTrabajo) {
+            if (!formData.tipoTrabajo) { showAlert('Error', 'Seleccione si es Nuevo o Repetido'); return; }
+            if (!formData.ordenProduccion || !formData.ordenProduccion.trim()) { showAlert('Error', 'La OP es obligatoria para este rubro'); return; }
+        }
 
         try {
             setSaving(true);
@@ -233,9 +245,26 @@ function GastosTab() {
                 fecha: formData.fecha,
                 observaciones: formData.observaciones,
                 facturaPdfUrl: formData.facturaPdfUrl || null,
+                tipoTrabajo: requiereTipoTrabajo ? formData.tipoTrabajo : null,
+                ordenProduccion: requiereTipoTrabajo ? formData.ordenProduccion : null,
                 anio: new Date(formData.fecha).getFullYear(),
                 mes: new Date(formData.fecha).getMonth() + 1
             };
+
+            // Intentar obtener el ID del usuario creador
+            try {
+                let adminId = null;
+                if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+                    const stored = window.localStorage.getItem('adminId');
+                    if (stored) adminId = parseInt(stored);
+                } else {
+                    const stored = await AsyncStorage.getItem('adminId');
+                    if (stored) adminId = parseInt(stored);
+                }
+                if (adminId) data.creadoPorId = adminId;
+            } catch (e) {
+                console.log('Error leyendo adminId para gasto:', e);
+            }
 
             // Check quotes
             const quote = cotizaciones.find(c => c.rubroId == gastoData.rubroId && c.proveedorId == gastoData.proveedorId);
@@ -331,17 +360,19 @@ function GastosTab() {
                         filteredGastos.map(gasto => (
                             <View key={gasto.id} style={styles.gastoCard}>
                                 <View style={styles.gastoHeader}>
-                                    <Text style={styles.gastoTipo}>
-                                        {gasto.rubroNombre || 'Sin Rubro'}
-                                        {gasto.creadoPorNombre ? ` - ${gasto.creadoPorNombre}` : ''}
-                                    </Text>
+                                    <Text style={styles.gastoTipo}>{gasto.rubroNombre || 'Sin Rubro'}</Text>
                                     <Text style={styles.gastoPrecio}>{formatCurrency(gasto.precio)}</Text>
                                 </View>
-                                <Text style={styles.gastoRubro}>{gasto.proveedorNombre}</Text>
+                                <Text style={styles.gastoRubro}>
+                                    {gasto.proveedorNombre}
+                                    {gasto.creadoPorNombre ? ` - Registrado por: ${gasto.creadoPorNombre}` : ''}
+                                </Text>
                                 <View style={styles.gastoDetails}>
                                     <Text style={styles.gastoDetail}>🏢 NIT: {gasto.proveedorNit}</Text>
                                     <Text style={styles.gastoDetail}>📄 Factura: {gasto.numeroFactura}</Text>
                                     <Text style={styles.gastoDetail}>📅 {formatDate(gasto.fecha)}</Text>
+                                    {gasto.tipoTrabajo && <Text style={styles.gastoDetail}>🔄 {gasto.tipoTrabajo}</Text>}
+                                    {gasto.ordenProduccion && <Text style={styles.gastoDetail}>📋 OP: {gasto.ordenProduccion}</Text>}
                                 </View>
                                 {gasto.observaciones && <Text style={styles.gastoNota}>💬 {gasto.observaciones}</Text>}
                                 <View style={styles.cardActions}>
@@ -370,6 +401,22 @@ function GastosTab() {
                                 {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
                             </Picker>
                         </View>
+
+                        {requiereTipoTrabajo && (
+                            <>
+                                <Text style={styles.label}>Tipo de Trabajo *</Text>
+                                <View style={styles.pickerContainer}>
+                                    <Picker selectedValue={formData.tipoTrabajo} onValueChange={(v) => setFormData(p => ({ ...p, tipoTrabajo: v }))}>
+                                        <Picker.Item label="Seleccione..." value="" />
+                                        <Picker.Item label="Nuevo" value="Nuevo" />
+                                        <Picker.Item label="Repetido" value="Repetido" />
+                                    </Picker>
+                                </View>
+
+                                <Text style={styles.label}>OP (Orden de Producción) *</Text>
+                                <TextInput style={styles.input} value={formData.ordenProduccion} onChangeText={(t) => setFormData(p => ({ ...p, ordenProduccion: t }))} placeholder="Ej: OP-12345" />
+                            </>
+                        )}
 
                         <Text style={styles.label}>Proveedor *</Text>
                         <View style={styles.pickerContainer}>
@@ -946,6 +993,7 @@ function CotizacionesTab() {
                 proveedorId: parseInt(formData.proveedorId),
                 precioCotizado: parseFloat(formData.precio),
                 descripcion: formData.descripcion,
+                fechaCotizacion: new Date().toISOString(),
                 anio, mes, activo: true
             };
             if (editItem) await disenoApi.updateCotizacion(editItem.id, { ...data, id: editItem.id });

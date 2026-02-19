@@ -233,9 +233,7 @@ export default function CartasScreen({ navigation }) {
                         m.diasLaborados?.toString() || '0',
                         m.meta100Porciento?.toFixed(0) || '0',
                         m.totalTiros?.toString() || '0',
-                        m.totalHorasProductivas?.toFixed(2) || '0', // Keep showing Productive Hours in main table? Or switch to Total? User complained "dice 101". The table header says "H.Prod". So 101 is correct for H.Prod. User wants weighted avg based on 119.
-                        m.promedioHoraProductiva?.toFixed(0) || '0',
-                        `$${(m.valorAPagarBonificable || 0).toLocaleString()}`,
+                        m.totalHorasProductivas?.toFixed(2) || '0',
                         `${colorSem}|${pct100.toFixed(0)}%`
                     ];
                 });
@@ -265,22 +263,20 @@ export default function CartasScreen({ navigation }) {
 
                 autoTable(doc, {
                     startY: 95,
-                    head: [['Máquina', 'Días', 'Tiros 100%', 'Tiros', 'H.Prod', 'Prom/H', 'Valor', 'Sem 100%']],
+                    head: [['Máquina', 'Días', 'Tiros 100%', 'Tiros', 'H.Prod', 'Sem 100%']],
                     body: tableData,
                     styles: { fontSize: 8, cellPadding: 2, halign: 'center' },
                     headStyles: { fillColor: [0, 51, 102], textColor: 255, fontSize: 8, halign: 'center' },
                     columnStyles: {
-                        0: { cellWidth: 40, halign: 'left' },
-                        1: { cellWidth: 15, halign: 'center' },
-                        2: { cellWidth: 22, halign: 'center' },
-                        3: { cellWidth: 22, halign: 'center' },
-                        4: { cellWidth: 18, halign: 'center' },
-                        5: { cellWidth: 18, halign: 'center' },
-                        6: { cellWidth: 25, halign: 'center' },
-                        7: { cellWidth: 20, halign: 'center' }
+                        0: { cellWidth: 50, halign: 'left' },
+                        1: { cellWidth: 20, halign: 'center' },
+                        2: { cellWidth: 25, halign: 'center' },
+                        3: { cellWidth: 25, halign: 'center' },
+                        4: { cellWidth: 25, halign: 'center' },
+                        5: { cellWidth: 25, halign: 'center' }
                     },
                     didParseCell: (data) => {
-                        if (data.section === 'body' && data.column.index === 7) {
+                        if (data.section === 'body' && data.column.index === 5) {
                             setSemaforoColor(data);
                         }
                     }
@@ -359,13 +355,8 @@ export default function CartasScreen({ navigation }) {
                 doc.text(`Rendimiento Promedio del Mes: ${rendimientoPromedio.toFixed(2)}%`, 20, finalY);
                 doc.setTextColor(0, 0, 0);
 
-                if (totalValorPagar > 0) {
-                    finalY += 12;
-                    doc.setFontSize(14);
-                    doc.setTextColor(0, 100, 0);
-                    doc.text(`BONIFICACION TOTAL A PAGAR: $${totalValorPagar.toLocaleString()}`, pageWidth / 2, finalY, { align: 'center' });
-                    doc.setTextColor(0, 0, 0);
-                }
+                // BONIFICACION REMOVED
+
 
                 // ========== GRÁFICA DE RENDIMIENTO POR MÁQUINA ==========
                 if (sortedMaquinas.length > 0) {
