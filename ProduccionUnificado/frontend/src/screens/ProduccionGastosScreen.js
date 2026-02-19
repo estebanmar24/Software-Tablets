@@ -1044,7 +1044,7 @@ function GastosTab() {
 function GraficasTab() {
     const [loading, setLoading] = useState(true);
     const [anio, setAnio] = useState(new Date().getFullYear());
-    const [mesSeleccionado, setMesSeleccionado] = useState(null); // null = anual
+    const [mesSeleccionado, setMesSeleccionado] = useState(''); // '' = anual
     const [graficasData, setGraficasData] = useState(null);
     const [allGastos, setAllGastos] = useState([]); // Almacenar todos los gastos para conteo y detalle
 
@@ -1210,15 +1210,18 @@ function GraficasTab() {
             doc.setTextColor(31, 41, 55);
             doc.text(`Informe de Gastos - Producción Global`, pageWidth / 2, 20, { align: 'center' });
             doc.setFontSize(10);
-            doc.text(`Periodo: ${mesSeleccionado ? MESES.find(m => m.value === mesSeleccionado)?.label : 'Año Completo'} - ${anio}`, pageWidth / 2, 26, { align: 'center' });
+            doc.text(`Periodo: ${mesSeleccionado ? MESES.find(m => m.value === Number(mesSeleccionado))?.label : 'Año Completo'} - ${anio}`, pageWidth / 2, 26, { align: 'center' });
             doc.text(`Fecha GeneraciÃ³n: ${new Date().toLocaleDateString()}`, pageWidth / 2, 31, { align: 'center' });
 
             // KPIs
+            const totalP = data.totalPresupuesto || 0;
+            const totalG = data.totalGastado || 0;
+            const restante = totalP - totalG;
             const kpiData = [[
-                formatCurrency(data.resumenMensual?.reduce((sum, m) => sum + (m.totalPresupuesto || 0), 0) || 0),
-                formatCurrency(data.totalGastado || 0),
-                formatCurrency((data.resumenMensual?.reduce((sum, m) => sum + (m.totalPresupuesto || 0), 0) || 0) - (data.totalGastado || 0)),
-                `${(data.resumenMensual?.reduce((sum, m) => sum + (m.totalPresupuesto || 0), 0) || 0) > 0 ? Math.round(((data.totalGastado || 0) / (data.resumenMensual?.reduce((sum, m) => sum + (m.totalPresupuesto || 0), 0) || 1)) * 100) : 0}% Ejecutado`
+                formatCurrency(totalP),
+                formatCurrency(totalG),
+                formatCurrency(restante),
+                `${totalP > 0 ? Math.round((totalG / totalP) * 100) : 0}% Ejecutado`
             ]];
 
             autoTable(doc, {
@@ -1229,7 +1232,7 @@ function GraficasTab() {
                 headStyles: { fillColor: [30, 58, 95], textColor: 255, halign: 'center', fontSize: 10, fontStyle: 'bold' },
                 bodyStyles: { halign: 'center', fontSize: 10, textColor: 50 },
                 columnStyles: {
-                    2: { textColor: (data.resumenMensual?.reduce((sum, m) => sum + (m.totalPresupuesto || 0), 0) - data.totalGastado) >= 0 ? [5, 150, 105] : [220, 38, 38], fontStyle: 'bold' }
+                    2: { textColor: (totalP - totalG) >= 0 ? [5, 150, 105] : [220, 38, 38], fontStyle: 'bold' }
                 }
             });
 
@@ -1397,7 +1400,7 @@ function GraficasTab() {
                         {anios.map(a => <Picker.Item key={a} label={a.toString()} value={a} />)}
                     </Picker>
                     <Picker selectedValue={mesSeleccionado} onValueChange={setMesSeleccionado} style={styles.picker}>
-                        <Picker.Item label="Todo el Año" value={null} />
+                        <Picker.Item label="Todo el Año" value="" />
                         {MESES.map(m => <Picker.Item key={m.value} label={m.label} value={m.value} />)}
                     </Picker>
                 </View>
@@ -1409,7 +1412,7 @@ function GraficasTab() {
                     <View style={[grafStyles.summaryCardSmall, { backgroundColor: '#EFF6FF' }]}>
                         <Text style={grafStyles.cardLabel}>💰 Presupuesto</Text>
                         <Text style={[grafStyles.cardValue, { color: '#1E40AF' }]}>
-                            {formatCurrency(data.resumenMensual?.reduce((sum, m) => sum + (m.totalPresupuesto || 0), 0) || 0)}
+                            {formatCurrency(data.totalPresupuesto || 0)}
                         </Text>
                     </View>
                     <View style={[grafStyles.summaryCardSmall, { backgroundColor: '#D1FAE5' }]}>
@@ -1421,7 +1424,7 @@ function GraficasTab() {
                     <View style={[grafStyles.summaryCardSmall, { backgroundColor: '#FEF3C7' }]}>
                         <Text style={grafStyles.cardLabel}>✅ Restante</Text>
                         <Text style={[grafStyles.cardValue, { color: '#D97706' }]}>
-                            {formatCurrency((data.resumenMensual?.reduce((sum, m) => sum + (m.totalPresupuesto || 0), 0) || 0) - (data.totalGastado || 0))}
+                            {formatCurrency((data.totalPresupuesto || 0) - (data.totalGastado || 0))}
                         </Text>
                     </View>
                     <View style={[grafStyles.summaryCardSmall, { backgroundColor: '#F3F4F6' }]}>
@@ -1542,7 +1545,7 @@ function GraficasTab() {
 
                 {/* Ejecución Anual Completo - Progress Bar */}
                 <View style={grafStyles.chartSection}>
-                    <Text style={grafStyles.sectionTitle}>{mesSeleccionado ? `Ejecución ${MESES.find(m => m.value === mesSeleccionado)?.label}` : 'Ejecución Anual'} Completo</Text>
+                    <Text style={grafStyles.sectionTitle}>{mesSeleccionado ? 'Ejecución del Mes' : 'Ejecución Anual'} Completo</Text>
                     <View style={grafStyles.progressBarContainer}>
                         <View style={[grafStyles.progressBar, {
                             width: `${Math.min(100, ((data.totalGastado || 0) / Math.max(1, data.totalPresupuesto || 1)) * 100)}%`,
