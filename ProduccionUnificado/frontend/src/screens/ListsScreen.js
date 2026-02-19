@@ -189,10 +189,6 @@ export default function ListsScreen({ navigation }) {
                         placeholder="Salario (Mensual)"
                         keyboardType="numeric"
                     />
-                    <View style={styles.switchContainer}>
-                        <Text>Por Horas:</Text>
-                        <Switch value={esPorHoras} onValueChange={setEsPorHoras} />
-                    </View>
                 </View>
                 <TouchableOpacity style={[styles.addButton, { alignSelf: 'center' }]} onPress={handleAddUsuario}>
                     <Text style={styles.addButtonText}>AGREGAR</Text>

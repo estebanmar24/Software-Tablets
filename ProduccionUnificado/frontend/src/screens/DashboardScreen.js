@@ -570,7 +570,13 @@ export default function DashboardScreen({ navigation }) {
                 });
             } else if (reportType === 'bonificacion') {
                 const columns = ['Operario', 'Maquina', 'Rendimiento %', 'Bonif. Potencial', 'Bonif. Real'];
-                const allOps = (resumen?.resumenOperarios || []);
+                // Filter out hourly workers
+                const allOps = (resumen?.resumenOperarios || []).filter(item => {
+                    const user = usuarios.find(u => u.id == item.usuarioId);
+                    // Safe check for hourly property (handle both casing just in case)
+                    const isHourly = user ? (!!user.esPorHoras || !!user.EsPorHoras) : false;
+                    return !isHourly;
+                });
 
                 if (allOps.length === 0) {
                     alert('No hay datos disponibles en este periodo.');

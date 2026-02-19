@@ -424,12 +424,8 @@ namespace TiempoProcesos.API.Migrations
                     b.Property<decimal>("CantidadRecuperada")
                         .HasColumnType("numeric");
 
-<<<<<<< HEAD
                     b.Property<string>("Cliente")
                         .HasColumnType("text");
-
-=======
->>>>>>> Gloria
                     b.Property<DateTime>("Fecha")
                         .HasColumnType("timestamp without time zone");
 
@@ -468,12 +464,9 @@ namespace TiempoProcesos.API.Migrations
                     b.Property<int>("EncuestaId")
                         .HasColumnType("integer");
 
-<<<<<<< HEAD
                     b.Property<string>("Observaciones")
                         .HasColumnType("text");
 
-=======
->>>>>>> Gloria
                     b.Property<string>("Proceso")
                         .IsRequired()
                         .HasColumnType("text");
@@ -2855,8 +2848,7 @@ namespace TiempoProcesos.API.Migrations
                     b.Navigation("Maquina");
                 });
 
-<<<<<<< HEAD
-=======
+
             modelBuilder.Entity("TiempoProcesos.API.Models.Planeacion_Cotizacion", b =>
                 {
                     b.HasOne("TiempoProcesos.API.Models.Planeacion_Proveedor", "Proveedor")
@@ -2926,7 +2918,7 @@ namespace TiempoProcesos.API.Migrations
                     b.Navigation("Rubro");
                 });
 
->>>>>>> Gloria
+
             modelBuilder.Entity("TiempoProcesos.API.Models.ProduccionDiaria", b =>
                 {
                     b.HasOne("TiempoProcesos.API.Models.Horario", "Horario")

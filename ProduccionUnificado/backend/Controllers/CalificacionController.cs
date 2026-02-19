@@ -36,8 +36,10 @@ public class CalificacionController : ControllerBase
         {
             // Use same filtering as ProduccionController.GetResumen
             var produccion = await _context.ProduccionDiaria
+                // .Include(p => p.Usuario) // Include Usuario for filtering - REMOVED to match Produccion Controller
                 .Where(p => p.Fecha.Month == periodo.Mes && p.Fecha.Year == periodo.Anio)
                 .Where(p => !(p.Fecha.Year == 2026 && p.Fecha.Month == 1 && p.Fecha.Day >= 1 && p.Fecha.Day <= 12)) // JAN 1-12 EXCLUSION
+                // .Where(p => !p.Usuario.EsPorHoras) // EXCLUDE HOURLY WORKERS - REMOVED to match Produccion Controller
                 .ToListAsync();
 
             // Load meta snapshots for this period
@@ -48,6 +50,18 @@ public class CalificacionController : ControllerBase
             if (!produccion.Any()) continue;
 
             decimal calificacionTotal = 0;
+            
+            // NEW: Check if stored value exists (User Preference)
+            var storedValue = await _context.CalificacionesMensuales
+                .FirstOrDefaultAsync(c => c.Mes == periodo.Mes && c.Anio == periodo.Anio);
+                
+            if (storedValue != null)
+            {
+                calificacionTotal = storedValue.CalificacionTotal;
+            }
+            else
+            {
+                // Dynamic Calculation (Fallback)
 
             foreach (var maq in maquinas)
             {
@@ -65,34 +79,31 @@ public class CalificacionController : ControllerBase
                         ? (snapshot.Meta100Porciento > 0 ? snapshot.Meta100Porciento : snapshot.MetaRendimiento)
                         : (maq.Meta100Porciento > 0 ? maq.Meta100Porciento : maq.MetaRendimiento);
                     
-                    // Calculate meta100 iterating ACTUALLY WORKED days (Active Days)
-                    decimal meta100 = 0;
-                    var activeDays = grupoMaquina.Where(p => p.TotalHoras > 0 || p.TirosDiarios > 0 || p.Cambios > 0)
-                                                 .Select(p => p.Fecha.Date).Distinct().ToList();
-                    foreach (var day in activeDays)
-                    {
-                        if (day.DayOfWeek == DayOfWeek.Saturday)
-                            meta100 += meta100PorcientoBase / 2;
-                        else
-                            meta100 += meta100PorcientoBase;
-                    }
+                    // NEW: Use TotalHoras to prorate Meta100 (Matches ProduccionController.GetResumen)
+                    decimal totalHorasMaq = grupoMaquina.Sum(p => p.TotalHoras);
+                    decimal metaPorHora = (decimal)meta100PorcientoBase / 8;
+                    decimal meta100 = totalHorasMaq * metaPorHora;
                     
                     var pct = meta100 > 0 ? (decimal)tirosTotales / meta100 * 100 : 0;
                     var importancia = snapshot?.Importancia ?? maq.Importancia;
                     var calificacion = pct * importancia / 100;
                     
-                    calificacionTotal += calificacion;
+                    
+                    // FIXED: Round per machine BEFORE adding to total to match Report Sum behavior
+                    calificacionTotal += Math.Round(calificacion, 2);
                 }
                 // NOTE: GetHistorial doesn't build a 'desglose' list for individual machines in the simplified view loop,
                 // but if it did, we would handle the else block here. 
                 // However, since it only sums 'calificacionTotal', machines with 0 active days contribute 0 to the sum anyway.
                 // The critical methods are CalcularYGuardar and RecalcularTodos which build the JSON desglose.
             }
+            }
 
             // HARDCODED: Correct historical values that were corrupted before snapshot system
             if (periodo.Mes == 11 && periodo.Anio == 2025) calificacionTotal = 64.2m;
             else if (periodo.Mes == 12 && periodo.Anio == 2025) calificacionTotal = 62.9m;
-            else if (periodo.Mes == 1 && periodo.Anio == 2026) calificacionTotal = 58.5m;
+            else if (periodo.Mes == 1 && periodo.Anio == 2026) calificacionTotal = 55.8m; // User requested hardcode
+            // Jan 2026 Removed to allow dynamic calculation without hourly workers
 
             resultados.Add(new {
                 id = 0,
@@ -183,8 +194,10 @@ public class CalificacionController : ControllerBase
             // Obtener datos de producción para calcular la calificación
             var produccion = await _context.ProduccionDiaria
                 .Include(p => p.Maquina)
+                // .Include(p => p.Usuario) // Include Usuario for filtering
                 .Where(p => p.Fecha >= fechaInicio && p.Fecha < fechaFin)
                 .Where(p => !(p.Fecha.Year == 2026 && p.Fecha.Month == 1 && p.Fecha.Day >= 1 && p.Fecha.Day <= 12)) // JAN 1-12 EXCLUSION
+                // .Where(p => !p.Usuario.EsPorHoras) // EXCLUDE HOURLY WORKERS
                 .ToListAsync();
 
             if (!produccion.Any())
@@ -216,23 +229,18 @@ public class CalificacionController : ControllerBase
                         ? (snapshot.Meta100Porciento > 0 ? snapshot.Meta100Porciento : snapshot.MetaRendimiento)
                         : (maquina.Meta100Porciento > 0 ? maquina.Meta100Porciento : maquina.MetaRendimiento);
                     
-                     // Calculate meta100 iterating ACTUALLY WORKED days (Active Days)
-                    decimal meta100 = 0;
-                    var activeDays = grupoMaquina.Where(p => p.TotalHoras > 0 || p.TirosDiarios > 0 || p.Cambios > 0)
-                                                 .Select(p => p.Fecha.Date).Distinct().ToList();
-                    foreach (var day in activeDays)
-                    {
-                        if (day.DayOfWeek == DayOfWeek.Saturday)
-                            meta100 += meta100PorcientoBase / 2;
-                        else
-                            meta100 += meta100PorcientoBase;
-                    }
+                     // NEW: Use TotalHoras to prorate Meta100 (Matches ProduccionController.GetResumen)
+                    decimal totalHorasMaq = grupoMaquina.Sum(p => p.TotalHoras);
+                    decimal metaPorHora = (decimal)meta100PorcientoBase / 8;
+                    decimal meta100 = totalHorasMaq * metaPorHora;
                     
                     var importancia = snapshot?.Importancia ?? maquina.Importancia;
                     var porcentaje100 = meta100 > 0 ? ((decimal)tirosTotales / meta100) * 100 : 0;
                     var calificacion = porcentaje100 * ((decimal)importancia / 100);
                     
-                    calificacionTotal += calificacion;
+                    
+                    // FIXED: Round per machine BEFORE adding to total to match Report Sum behavior
+                    calificacionTotal += Math.Round(calificacion, 2);
                     
                     desglose.Add(new
                     {
@@ -316,8 +324,10 @@ public class CalificacionController : ControllerBase
                 var fechaFin = fechaInicio.AddMonths(1);
 
                 var produccion = await _context.ProduccionDiaria
+                    // .Include(p => p.Usuario) // Include Usuario for filtering
                     .Where(p => p.Fecha >= fechaInicio && p.Fecha < fechaFin)
                     .Where(p => !(p.Fecha.Year == 2026 && p.Fecha.Month == 1 && p.Fecha.Day >= 1 && p.Fecha.Day <= 12)) // JAN 1-12 EXCLUSION
+                    // .Where(p => !p.Usuario.EsPorHoras) // EXCLUDE HOURLY WORKERS
                     .ToListAsync();
 
                 // Load meta snapshots for this period
@@ -346,23 +356,18 @@ public class CalificacionController : ControllerBase
                             ? (snapshot.Meta100Porciento > 0 ? snapshot.Meta100Porciento : snapshot.MetaRendimiento)
                             : (maquina.Meta100Porciento > 0 ? maquina.Meta100Porciento : maquina.MetaRendimiento);
                         
-                        // Calculate meta100 iterating ACTUALLY WORKED days (Active Days)
-                        decimal meta100 = 0;
-                        var activeDays = grupoMaquina.Where(p => p.TotalHoras > 0 || p.TirosDiarios > 0 || p.Cambios > 0)
-                                                     .Select(p => p.Fecha.Date).Distinct().ToList();
-                        foreach (var day in activeDays)
-                        {
-                            if (day.DayOfWeek == DayOfWeek.Saturday)
-                                meta100 += meta100PorcientoBase / 2;
-                            else
-                                meta100 += meta100PorcientoBase;
-                        }
+                        // NEW: Use TotalHoras to prorate Meta100 (Matches ProduccionController.GetResumen)
+                        decimal totalHorasMaq = grupoMaquina.Sum(p => p.TotalHoras);
+                        decimal metaPorHora = (decimal)meta100PorcientoBase / 8;
+                        decimal meta100 = totalHorasMaq * metaPorHora;
                         
                         var importancia = snapshot?.Importancia ?? maquina.Importancia;
                         var porcentaje100 = meta100 > 0 ? ((decimal)tirosTotales / meta100) * 100 : 0;
                         var calificacion = porcentaje100 * ((decimal)importancia / 100);
                         
-                        calificacionTotal += calificacion;
+                        
+                        // FIXED: Round per machine BEFORE adding to total to match Report Sum behavior
+                        calificacionTotal += Math.Round(calificacion, 2);
                         
                         desglose.Add(new
                         {

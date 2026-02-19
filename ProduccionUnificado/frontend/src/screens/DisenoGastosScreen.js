@@ -319,6 +319,7 @@ function GastosTab() {
                         {anios.map(a => <Picker.Item key={a} label={a.toString()} value={a} />)}
                     </Picker>
                     <Picker selectedValue={mes} onValueChange={setMes} style={styles.picker}>
+                        <Picker.Item label="Todo el Año" value={0} />
                         {MESES.map(m => <Picker.Item key={m.value} label={m.label} value={m.value} />)}
                     </Picker>
                 </View>
@@ -613,7 +614,8 @@ function GraficasTab() {
                     <View style={styles.yearSelector}>
                         <Picker selectedValue={anio} onValueChange={setAnio} style={{ width: 100, height: 40, marginRight: 8 }}>{anios.map(a => <Picker.Item key={a} label={a.toString()} value={a} />)}</Picker>
                         <Picker selectedValue={mesSeleccionado} onValueChange={setMesSeleccionado} style={{ width: 130, height: 40 }}>
-                            <Picker.Item label="Todo el Año" value={null} />{MESES.map(m => <Picker.Item key={m.value} label={m.label} value={m.value} />)}
+                            <Picker.Item label="Todo el Año" value={0} />
+                            {MESES.map(m => <Picker.Item key={m.value} label={m.label} value={m.value} />)}
                         </Picker>
                     </View>
                 </View>

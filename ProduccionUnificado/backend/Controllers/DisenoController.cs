@@ -141,7 +141,7 @@ public class DisenoController : ControllerBase
             .Include(g => g.CreadoPor)
             .Where(g => g.Anio == anio);
 
-        if (mes.HasValue)
+        if (mes.HasValue && mes.Value > 0)
             query = query.Where(g => g.Mes == mes.Value);
 
         var gastos = await query
@@ -177,11 +177,11 @@ public class DisenoController : ControllerBase
     public async Task<ActionResult<object>> GetGastosResumen([FromQuery] int anio, [FromQuery] int? mes)
     {
         var queryGastos = _context.Diseno_Gastos.Where(g => g.Anio == anio);
-        if (mes.HasValue) queryGastos = queryGastos.Where(g => g.Mes == mes.Value);
+        if (mes.HasValue && mes.Value > 0) queryGastos = queryGastos.Where(g => g.Mes == mes.Value);
         var gastos = await queryGastos.ToListAsync();
 
         var queryPresupuestos = _context.Diseno_PresupuestosMensuales.Where(p => p.Anio == anio);
-        if (mes.HasValue) queryPresupuestos = queryPresupuestos.Where(p => p.Mes == mes.Value);
+        if (mes.HasValue && mes.Value > 0) queryPresupuestos = queryPresupuestos.Where(p => p.Mes == mes.Value);
         var presupuestos = await queryPresupuestos.ToListAsync();
 
         var totalPresupuesto = presupuestos.Sum(p => p.Presupuesto);
@@ -435,11 +435,14 @@ public class DisenoController : ControllerBase
     public async Task<ActionResult<object>> GetGraficas(int anio, int mes)
     {
         var rubros = await _context.Diseno_Rubros.Where(t => t.Activo).ToListAsync();
-        var presupuestos = await _context.Diseno_PresupuestosMensuales
-            .Where(p => p.Anio == anio && p.Mes == mes)
-            .ToListAsync();
-        var gastos = await _context.Diseno_Gastos
-            .Where(g => g.Anio == anio && g.Mes == mes)
+        var queryPresupuestos = _context.Diseno_PresupuestosMensuales.Where(p => p.Anio == anio);
+        if (mes > 0) queryPresupuestos = queryPresupuestos.Where(p => p.Mes == mes);
+        var presupuestos = await queryPresupuestos.ToListAsync();
+
+        var queryGastos = _context.Diseno_Gastos.Where(g => g.Anio == anio);
+        if (mes > 0) queryGastos = queryGastos.Where(g => g.Mes == mes);
+        
+        var gastos = await queryGastos
             .GroupBy(g => g.RubroId)
             .Select(g => new { RubroId = g.Key, Total = g.Sum(x => x.Precio) })
             .ToListAsync();
