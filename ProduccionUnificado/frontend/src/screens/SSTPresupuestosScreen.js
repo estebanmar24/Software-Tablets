@@ -20,13 +20,17 @@ import { Picker } from '@react-native-picker/picker';
 import * as sstApi from '../services/sstApi';
 import * as ghApi from '../services/ghApi';
 import * as talleresApi from '../services/talleresApi';
+import * as planeacionApi from '../services/planeacionApi';
+import * as disenoApi from '../services/disenoApi';
 import { produccionApi } from '../services/produccionApi';
 
 const TABS = [
     { key: 'produccion', label: 'Producción', icon: '🏭' },
-    { key: 'talleres', label: 'Talleres y Despachos', icon: '🔧' },
-    { key: 'gh', label: 'Gestión Humana', icon: '👥' },
-    { key: 'sst', label: 'SST', icon: '🦺' }
+    { key: 'talleres', label: 'Talleres', icon: '🔧' },
+    { key: 'gh', label: 'G. Humana', icon: '👥' },
+    { key: 'sst', label: 'SST', icon: '🦺' },
+    { key: 'planeacion', label: 'Planeación', icon: '📅' },
+    { key: 'diseno', label: 'Diseño', icon: '🎨' }
 ];
 
 export default function SSTPresupuestosScreen({ navigation }) {
@@ -53,6 +57,12 @@ export default function SSTPresupuestosScreen({ navigation }) {
                 setGridData(data);
             } else if (activeTab === 'talleres') {
                 const data = await talleresApi.getPresupuestosGrid(anio);
+                setGridData(data);
+            } else if (activeTab === 'planeacion') {
+                const data = await planeacionApi.getPresupuestosGrid(anio);
+                setGridData(data);
+            } else if (activeTab === 'diseno') {
+                const data = await disenoApi.getPresupuestosGrid(anio);
                 setGridData(data);
             } else {
                 setGridData({ tiposServicio: [], totalesMensuales: Array(12).fill(0), totalAnual: 0 });
@@ -142,6 +152,22 @@ export default function SSTPresupuestosScreen({ navigation }) {
                     presupuesto: p.presupuesto
                 }));
                 await talleresApi.setPresupuestosBulk(talleresPresupuestos);
+            } else if (activeTab === 'planeacion') {
+                const mappedPresupuestos = presupuestos.map(p => ({
+                    rubroId: p.tipoServicioId,
+                    anio: p.anio,
+                    mes: p.mes,
+                    presupuesto: p.presupuesto
+                }));
+                await planeacionApi.setPresupuestosBulk(mappedPresupuestos);
+            } else if (activeTab === 'diseno') {
+                const mappedPresupuestos = presupuestos.map(p => ({
+                    rubroId: p.tipoServicioId,
+                    anio: p.anio,
+                    mes: p.mes,
+                    presupuesto: p.presupuesto
+                }));
+                await disenoApi.setPresupuestosBulk(mappedPresupuestos);
             } else {
                 await sstApi.setPresupuestosBulk(presupuestos);
             }
@@ -222,7 +248,7 @@ export default function SSTPresupuestosScreen({ navigation }) {
                     <ActivityIndicator size="large" color="#2563EB" />
                     <Text style={styles.loadingText}>Cargando presupuestos...</Text>
                 </View>
-            ) : (activeTab !== 'sst' && activeTab !== 'gh' && activeTab !== 'produccion' && activeTab !== 'talleres') ? (
+            ) : (activeTab !== 'sst' && activeTab !== 'gh' && activeTab !== 'produccion' && activeTab !== 'talleres' && activeTab !== 'planeacion' && activeTab !== 'diseno') ? (
                 <View style={styles.placeholderContainer}>
                     <Text style={styles.placeholderIcon}>{TABS.find(t => t.key === activeTab)?.icon}</Text>
                     <Text style={styles.placeholderText}>
@@ -238,7 +264,7 @@ export default function SSTPresupuestosScreen({ navigation }) {
                             {/* Table Header */}
                             <View style={styles.tableRow}>
                                 <View style={[styles.tableCell, styles.headerCell, styles.serviceNameCell]}>
-                                    <Text style={styles.headerText}>Tipo de Servicio</Text>
+                                    <Text style={styles.headerText}>{(activeTab === 'planeacion' || activeTab === 'diseno' || activeTab === 'produccion' || activeTab === 'talleres') ? 'Rubro' : 'Tipo de Servicio'}</Text>
                                 </View>
                                 {sstApi.MESES.map(mes => (
                                     <View key={mes.value} style={[styles.tableCell, styles.headerCell, styles.monthCell]}>

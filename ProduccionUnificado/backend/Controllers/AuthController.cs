@@ -67,6 +67,7 @@ public class AuthController : ControllerBase
 
         return Ok(new LoginResponseDto
         {
+            Id = user.Id,
             Token = jwtString,
             Role = user.Role,
             Username = user.Username,

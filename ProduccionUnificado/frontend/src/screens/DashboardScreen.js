@@ -578,17 +578,24 @@ export default function DashboardScreen({ navigation }) {
                     return;
                 }
 
-                const data = allOps.map(item => [
-                    item.operario,
-                    item.maquina,
-                    `${(item.porcentajeRendimiento100 || 0).toFixed(0)}%`,
-                    `$${(item.valorBonifPotencial || 0).toLocaleString()}`,
-                    `$${(item.valorAPagarBonificable || 0).toLocaleString()}`
-                ]);
+                const data = allOps.map(item => {
+                    const vrPagar = item.valorAPagar || 0;
+                    const cumpleMeta = (item.porcentajeRendimiento100 || 0) >= 75;
+                    return [
+                        item.operario,
+                        item.maquina,
+                        `${(item.porcentajeRendimiento100 || 0).toFixed(0)}%`,
+                        `$${vrPagar.toLocaleString()}`,
+                        `$${(cumpleMeta ? vrPagar : 0).toLocaleString()}`
+                    ];
+                });
 
                 // Total sum
-                const totalBonosPotencial = allOps.reduce((sum, item) => sum + (item.valorBonifPotencial || 0), 0);
-                const totalBonosReal = allOps.reduce((sum, item) => sum + (item.valorAPagarBonificable || 0), 0);
+                const totalBonosPotencial = allOps.reduce((sum, item) => sum + (item.valorAPagar || 0), 0);
+                const totalBonosReal = allOps.reduce((sum, item) => {
+                    const cumple = (item.porcentajeRendimiento100 || 0) >= 75;
+                    return sum + (cumple ? (item.valorAPagar || 0) : 0);
+                }, 0);
 
                 data.push([
                     { content: 'TOTALES', colSpan: 3, styles: { halign: 'right', fontStyle: 'bold' } },

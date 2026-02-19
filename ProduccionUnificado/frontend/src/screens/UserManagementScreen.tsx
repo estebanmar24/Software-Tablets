@@ -36,6 +36,8 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
         { label: 'Talleres', value: 'talleres' },
         { label: 'Presupuesto', value: 'presupuesto' },
         { label: 'Equipos (Mantenimiento)', value: 'equipos' },
+        { label: 'Diseño', value: 'diseno' },
+        { label: 'Planeación', value: 'planeacion' },
         { label: 'Desarrollador', value: 'develop' }
     ];
 

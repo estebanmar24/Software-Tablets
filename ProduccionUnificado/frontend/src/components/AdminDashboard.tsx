@@ -18,6 +18,8 @@ import ProduccionGastosScreen from '../screens/ProduccionGastosScreen';
 import TalleresGastosScreen from '../screens/TalleresGastosScreen';
 import DesperdicioScreen from '../screens/DesperdicioScreen';
 import CalidadDashboard from './CalidadDashboard';
+import PlaneacionGastosScreen from '../screens/PlaneacionGastosScreen';
+import DisenoGastosScreen from '../screens/DisenoGastosScreen';
 
 // Theme Provider
 import { ThemeProvider, useTheme } from '../contexts/ThemeContext';
@@ -73,11 +75,11 @@ function DashboardCard({ title, description, icon, onPress, color = '#E6FFFA', d
 }
 
 function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDashboardProps) {
-    // Mode: 'MENU' (Grid de tarjetas) | 'CONTENT' (Tabs existentes) | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS'
-    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD'>(() => {
+    // Mode: 'MENU' (Grid de tarjetas) | 'CONTENT' (Tabs existentes) | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS'
+    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS'>(() => {
         if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
             const savedMode = window.localStorage.getItem('adminDashboardMode');
-            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS' || savedMode === 'PRODUCCION_GASTOS' || savedMode === 'TALLERES_GASTOS' || savedMode === 'CALIDAD') {
+            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS' || savedMode === 'PRODUCCION_GASTOS' || savedMode === 'TALLERES_GASTOS' || savedMode === 'CALIDAD' || savedMode === 'PLANEACION_GASTOS' || savedMode === 'DISENO_GASTOS') {
                 return savedMode;
             }
         }
@@ -300,6 +302,56 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
         );
     }
 
+    // --- VISTA PLANEACION GASTOS ---
+    if (mode === 'PLANEACION_GASTOS') {
+        return (
+            <View style={styles.container}>
+                <View style={styles.header}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => {
+                        setMode('MENU');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                    }}>
+                        <Text style={styles.backButtonText}>← Volver al Panel</Text>
+                    </TouchableOpacity>
+                    <View style={styles.centeredTitleContainer} pointerEvents="box-none">
+                        <Text style={styles.title}>Gastos de Planeación</Text>
+                    </View>
+                    <Image
+                        source={require('../../assets/logo_perla.png')}
+                        style={styles.contentHeaderLogo}
+                        resizeMode="contain"
+                    />
+                </View>
+                <PlaneacionGastosScreen navigation={mockNavigation} />
+            </View>
+        );
+    }
+
+    // --- VISTA DISENO GASTOS ---
+    if (mode === 'DISENO_GASTOS') {
+        return (
+            <View style={styles.container}>
+                <View style={styles.header}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => {
+                        setMode('MENU');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                    }}>
+                        <Text style={styles.backButtonText}>← Volver al Panel</Text>
+                    </TouchableOpacity>
+                    <View style={styles.centeredTitleContainer} pointerEvents="box-none">
+                        <Text style={styles.title}>Gastos de Diseño</Text>
+                    </View>
+                    <Image
+                        source={require('../../assets/logo_perla.png')}
+                        style={styles.contentHeaderLogo}
+                        resizeMode="contain"
+                    />
+                </View>
+                <DisenoGastosScreen navigation={mockNavigation} />
+            </View>
+        );
+    }
+
     // --- VISTA TALLERES Y DESPACHOS GASTOS ---
     if (mode === 'TALLERES_GASTOS') {
         return (
@@ -411,6 +463,8 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
     const isGHEnabled = userRoles.includes('admin') || userRoles.includes('gh');
     const isSSTEnabled = userRoles.includes('admin') || userRoles.includes('sst');
     const isEquiposEnabled = userRoles.includes('admin') || userRoles.includes('equipos');
+    const isPlaneacionEnabled = userRoles.includes('admin') || userRoles.includes('planeacion');
+    const isDisenoEnabled = userRoles.includes('admin') || userRoles.includes('diseno');
 
     const roleDisplayNames: Record<string, string> = {
         'admin': 'Administrador',
@@ -421,7 +475,9 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
         'presupuesto': 'Presupuesto General',
         'calidad': 'Encuestas Calidad',
         'modulo_calidad': 'Módulo Calidad',
-        'equipos': 'Mantenimiento Equipos'
+        'equipos': 'Mantenimiento Equipos',
+        'planeacion': 'Planeación',
+        'diseno': 'Diseño'
     };
 
     return (
@@ -526,6 +582,28 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                             if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'CALIDAD');
                         }}
                         disabled={!isCalidadEnabled}
+                    />
+
+                    <DashboardCard
+                        title="Planeación"
+                        description="Gastos y Presupuestos de Planeación"
+                        icon="📅"
+                        onPress={() => {
+                            setMode('PLANEACION_GASTOS');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'PLANEACION_GASTOS');
+                        }}
+                        disabled={!isPlaneacionEnabled}
+                    />
+
+                    <DashboardCard
+                        title="Diseño"
+                        description="Gastos del Departamento de Diseño"
+                        icon="🎨"
+                        onPress={() => {
+                            setMode('DISENO_GASTOS');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'DISENO_GASTOS');
+                        }}
+                        disabled={!isDisenoEnabled}
                     />
                 </ScrollView>
             </View>

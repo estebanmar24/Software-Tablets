@@ -8,6 +8,7 @@ export default function ListsScreen({ navigation }) {
     const [newDocumento, setNewDocumento] = useState(''); // NEW STATE
     const [newSalario, setNewSalario] = useState(''); // NEW STATE
     const [esPorHoras, setEsPorHoras] = useState(false);
+    const [showHourlyOnly, setShowHourlyOnly] = useState(false); // NEW FILTER STATE
     const [loading, setLoading] = useState(false);
 
     // Edit modal state
@@ -200,14 +201,24 @@ export default function ListsScreen({ navigation }) {
 
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
                 <Text style={styles.subHeader}>Operarios {showInactive ? "Eliminados" : "Activos"}:</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                    <Text>Ver Papelera</Text>
-                    <Switch value={showInactive} onValueChange={setShowInactive} />
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                        <Text style={{ fontSize: 13 }}>Solo x Horas</Text>
+                        <Switch value={showHourlyOnly} onValueChange={setShowHourlyOnly} />
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                        <Text style={{ fontSize: 13 }}>Ver Papelera</Text>
+                        <Switch value={showInactive} onValueChange={setShowInactive} />
+                    </View>
                 </View>
             </View>
 
             <FlatList
-                data={usuarios}
+                data={usuarios.filter(u => {
+                    const isHourly = !!(u.esPorHoras || u.EsPorHoras);
+                    if (showHourlyOnly) return isHourly;
+                    return true;
+                })}
                 keyExtractor={(item) => item.id.toString()}
                 renderItem={({ item }) => (
                     <View style={[styles.item, !item.activo && { opacity: 0.5, backgroundColor: '#f9f9f9' }]}>

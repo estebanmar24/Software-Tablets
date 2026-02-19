@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, ActivityIndicator, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { adminLogin } from '../services/api';
 import { setToken } from '../services/authStorage';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -28,6 +29,13 @@ export function AdminLogin({ onLoginSuccess, onBack }: AdminLoginProps) {
         try {
             const data = await adminLogin(username.trim(), password.trim());
             await setToken(data.token);
+            if (data.id) {
+                if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+                    window.localStorage.setItem('adminId', data.id.toString());
+                } else {
+                    await AsyncStorage.setItem('adminId', data.id.toString());
+                }
+            }
             onLoginSuccess(data.role, data.nombreMostrar, data.username);
         } catch (err: any) {
             setError(err.message || 'Error de autenticación');

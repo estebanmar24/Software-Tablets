@@ -139,6 +139,207 @@ namespace TiempoProcesos.API.Migrations
                     b.ToTable("CodigosDesperdicio", (string)null);
                 });
 
+            modelBuilder.Entity("TiempoProcesos.API.Models.Diseno_Cotizacion", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Anio")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Descripcion")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime>("FechaCotizacion")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("Mes")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("PrecioCotizado")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("ProveedorId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RubroId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProveedorId");
+
+                    b.HasIndex("RubroId");
+
+                    b.ToTable("Diseno_Cotizaciones", (string)null);
+                });
+
+            modelBuilder.Entity("TiempoProcesos.API.Models.Diseno_Gasto", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Anio")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("CreadoPorId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("Diseno_ProveedorId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FacturaPdfUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime>("Fecha")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime?>("FechaModificacion")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("Mes")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("NumeroFactura")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Observaciones")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("OrdenProduccion")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<decimal>("Precio")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int?>("ProveedorId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RubroId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TipoTrabajo")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreadoPorId");
+
+                    b.HasIndex("Diseno_ProveedorId");
+
+                    b.HasIndex("ProveedorId");
+
+                    b.HasIndex("RubroId");
+
+                    b.ToTable("Diseno_Gastos", (string)null);
+                });
+
+            modelBuilder.Entity("TiempoProcesos.API.Models.Diseno_PresupuestoMensual", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Anio")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Mes")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("Presupuesto")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("RubroId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RubroId", "Anio", "Mes")
+                        .IsUnique();
+
+                    b.ToTable("Diseno_PresupuestosMensuales", (string)null);
+                });
+
+            modelBuilder.Entity("TiempoProcesos.API.Models.Diseno_Proveedor", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("NitCedula")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<decimal?>("PrecioCotizado")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("RubroId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Telefono")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RubroId");
+
+                    b.ToTable("Diseno_Proveedores", (string)null);
+                });
+
+            modelBuilder.Entity("TiempoProcesos.API.Models.Diseno_Rubro", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Diseno_Rubros", (string)null);
+                });
+
             modelBuilder.Entity("TiempoProcesos.API.Models.EncuestaCalidad", b =>
                 {
                     b.Property<int>("Id")
@@ -223,9 +424,12 @@ namespace TiempoProcesos.API.Migrations
                     b.Property<decimal>("CantidadRecuperada")
                         .HasColumnType("numeric");
 
+<<<<<<< HEAD
                     b.Property<string>("Cliente")
                         .HasColumnType("text");
 
+=======
+>>>>>>> Gloria
                     b.Property<DateTime>("Fecha")
                         .HasColumnType("timestamp without time zone");
 
@@ -264,9 +468,12 @@ namespace TiempoProcesos.API.Migrations
                     b.Property<int>("EncuestaId")
                         .HasColumnType("integer");
 
+<<<<<<< HEAD
                     b.Property<string>("Observaciones")
                         .HasColumnType("text");
 
+=======
+>>>>>>> Gloria
                     b.Property<string>("Proceso")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1154,6 +1361,199 @@ namespace TiempoProcesos.API.Migrations
                     b.ToTable("OrdenesProduccion", (string)null);
                 });
 
+            modelBuilder.Entity("TiempoProcesos.API.Models.Planeacion_Cotizacion", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Anio")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Descripcion")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime>("FechaCotizacion")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("Mes")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("PrecioCotizado")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("ProveedorId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RubroId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProveedorId");
+
+                    b.HasIndex("RubroId");
+
+                    b.ToTable("Planeacion_Cotizaciones", (string)null);
+                });
+
+            modelBuilder.Entity("TiempoProcesos.API.Models.Planeacion_Gasto", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Anio")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("CreadoPorId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FacturaPdfUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime>("Fecha")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime?>("FechaModificacion")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("Mes")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("NumeroFactura")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Observaciones")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int?>("Planeacion_ProveedorId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("Precio")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int?>("ProveedorId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RubroId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreadoPorId");
+
+                    b.HasIndex("Planeacion_ProveedorId");
+
+                    b.HasIndex("ProveedorId");
+
+                    b.HasIndex("RubroId");
+
+                    b.ToTable("Planeacion_Gastos", (string)null);
+                });
+
+            modelBuilder.Entity("TiempoProcesos.API.Models.Planeacion_PresupuestoMensual", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Anio")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Mes")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("Presupuesto")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("RubroId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RubroId", "Anio", "Mes")
+                        .IsUnique();
+
+                    b.ToTable("Planeacion_PresupuestosMensuales", (string)null);
+                });
+
+            modelBuilder.Entity("TiempoProcesos.API.Models.Planeacion_Proveedor", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("NitCedula")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<decimal?>("PrecioCotizado")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("RubroId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Telefono")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RubroId");
+
+                    b.ToTable("Planeacion_Proveedores", (string)null);
+                });
+
+            modelBuilder.Entity("TiempoProcesos.API.Models.Planeacion_Rubro", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Planeacion_Rubros", (string)null);
+                });
+
             modelBuilder.Entity("TiempoProcesos.API.Models.ProduccionDiaria", b =>
                 {
                     b.Property<long>("Id")
@@ -1369,6 +1769,9 @@ namespace TiempoProcesos.API.Migrations
 
                     b.Property<int?>("CreadoPorId")
                         .HasColumnType("integer");
+
+                    b.Property<bool>("EsPendiente")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("FacturaPdfUrl")
                         .HasColumnType("text");
@@ -1929,6 +2332,9 @@ namespace TiempoProcesos.API.Migrations
                     b.Property<int?>("CreadoPorId")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("EsPendiente")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("FacturaPdfUrl")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
@@ -1946,7 +2352,6 @@ namespace TiempoProcesos.API.Migrations
                         .HasColumnType("integer");
 
                     b.Property<string>("NumeroFactura")
-                        .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
@@ -1961,7 +2366,7 @@ namespace TiempoProcesos.API.Migrations
                     b.Property<int?>("PersonalId")
                         .HasColumnType("integer");
 
-                    b.Property<decimal>("Precio")
+                    b.Property<decimal?>("Precio")
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<int?>("ProveedorId")
@@ -2205,6 +2610,75 @@ namespace TiempoProcesos.API.Migrations
                     b.ToTable("Usuarios", (string)null);
                 });
 
+            modelBuilder.Entity("TiempoProcesos.API.Models.Diseno_Cotizacion", b =>
+                {
+                    b.HasOne("TiempoProcesos.API.Models.Diseno_Proveedor", "Proveedor")
+                        .WithMany()
+                        .HasForeignKey("ProveedorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("TiempoProcesos.API.Models.Diseno_Rubro", "Rubro")
+                        .WithMany()
+                        .HasForeignKey("RubroId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Proveedor");
+
+                    b.Navigation("Rubro");
+                });
+
+            modelBuilder.Entity("TiempoProcesos.API.Models.Diseno_Gasto", b =>
+                {
+                    b.HasOne("TiempoProcesos.API.Models.AdminUsuario", "CreadoPor")
+                        .WithMany()
+                        .HasForeignKey("CreadoPorId");
+
+                    b.HasOne("TiempoProcesos.API.Models.Diseno_Proveedor", null)
+                        .WithMany("Gastos")
+                        .HasForeignKey("Diseno_ProveedorId");
+
+                    b.HasOne("TiempoProcesos.API.Models.Diseno_Proveedor", "Proveedor")
+                        .WithMany()
+                        .HasForeignKey("ProveedorId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("TiempoProcesos.API.Models.Diseno_Rubro", "Rubro")
+                        .WithMany("Gastos")
+                        .HasForeignKey("RubroId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CreadoPor");
+
+                    b.Navigation("Proveedor");
+
+                    b.Navigation("Rubro");
+                });
+
+            modelBuilder.Entity("TiempoProcesos.API.Models.Diseno_PresupuestoMensual", b =>
+                {
+                    b.HasOne("TiempoProcesos.API.Models.Diseno_Rubro", "Rubro")
+                        .WithMany()
+                        .HasForeignKey("RubroId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Rubro");
+                });
+
+            modelBuilder.Entity("TiempoProcesos.API.Models.Diseno_Proveedor", b =>
+                {
+                    b.HasOne("TiempoProcesos.API.Models.Diseno_Rubro", "Rubro")
+                        .WithMany("Proveedores")
+                        .HasForeignKey("RubroId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Rubro");
+                });
+
             modelBuilder.Entity("TiempoProcesos.API.Models.EncuestaCalidad", b =>
                 {
                     b.HasOne("TiempoProcesos.API.Models.Usuario", "Auxiliar")
@@ -2381,6 +2855,78 @@ namespace TiempoProcesos.API.Migrations
                     b.Navigation("Maquina");
                 });
 
+<<<<<<< HEAD
+=======
+            modelBuilder.Entity("TiempoProcesos.API.Models.Planeacion_Cotizacion", b =>
+                {
+                    b.HasOne("TiempoProcesos.API.Models.Planeacion_Proveedor", "Proveedor")
+                        .WithMany()
+                        .HasForeignKey("ProveedorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("TiempoProcesos.API.Models.Planeacion_Rubro", "Rubro")
+                        .WithMany()
+                        .HasForeignKey("RubroId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Proveedor");
+
+                    b.Navigation("Rubro");
+                });
+
+            modelBuilder.Entity("TiempoProcesos.API.Models.Planeacion_Gasto", b =>
+                {
+                    b.HasOne("TiempoProcesos.API.Models.AdminUsuario", "CreadoPor")
+                        .WithMany()
+                        .HasForeignKey("CreadoPorId");
+
+                    b.HasOne("TiempoProcesos.API.Models.Planeacion_Proveedor", null)
+                        .WithMany("Gastos")
+                        .HasForeignKey("Planeacion_ProveedorId");
+
+                    b.HasOne("TiempoProcesos.API.Models.Planeacion_Proveedor", "Proveedor")
+                        .WithMany()
+                        .HasForeignKey("ProveedorId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("TiempoProcesos.API.Models.Planeacion_Rubro", "Rubro")
+                        .WithMany("Gastos")
+                        .HasForeignKey("RubroId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CreadoPor");
+
+                    b.Navigation("Proveedor");
+
+                    b.Navigation("Rubro");
+                });
+
+            modelBuilder.Entity("TiempoProcesos.API.Models.Planeacion_PresupuestoMensual", b =>
+                {
+                    b.HasOne("TiempoProcesos.API.Models.Planeacion_Rubro", "Rubro")
+                        .WithMany()
+                        .HasForeignKey("RubroId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Rubro");
+                });
+
+            modelBuilder.Entity("TiempoProcesos.API.Models.Planeacion_Proveedor", b =>
+                {
+                    b.HasOne("TiempoProcesos.API.Models.Planeacion_Rubro", "Rubro")
+                        .WithMany("Proveedores")
+                        .HasForeignKey("RubroId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Rubro");
+                });
+
+>>>>>>> Gloria
             modelBuilder.Entity("TiempoProcesos.API.Models.ProduccionDiaria", b =>
                 {
                     b.HasOne("TiempoProcesos.API.Models.Horario", "Horario")
@@ -2737,6 +3283,18 @@ namespace TiempoProcesos.API.Migrations
                     b.Navigation("Usuario");
                 });
 
+            modelBuilder.Entity("TiempoProcesos.API.Models.Diseno_Proveedor", b =>
+                {
+                    b.Navigation("Gastos");
+                });
+
+            modelBuilder.Entity("TiempoProcesos.API.Models.Diseno_Rubro", b =>
+                {
+                    b.Navigation("Gastos");
+
+                    b.Navigation("Proveedores");
+                });
+
             modelBuilder.Entity("TiempoProcesos.API.Models.EncuestaCalidad", b =>
                 {
                     b.Navigation("Novedades");
@@ -2768,6 +3326,18 @@ namespace TiempoProcesos.API.Migrations
 
             modelBuilder.Entity("TiempoProcesos.API.Models.GH_TipoServicio", b =>
                 {
+                    b.Navigation("Proveedores");
+                });
+
+            modelBuilder.Entity("TiempoProcesos.API.Models.Planeacion_Proveedor", b =>
+                {
+                    b.Navigation("Gastos");
+                });
+
+            modelBuilder.Entity("TiempoProcesos.API.Models.Planeacion_Rubro", b =>
+                {
+                    b.Navigation("Gastos");
+
                     b.Navigation("Proveedores");
                 });
 

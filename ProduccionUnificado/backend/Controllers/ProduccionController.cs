@@ -933,7 +933,8 @@ public class ProduccionController : ControllerBase
             else
             {
                 // Non-Horas Extras rubros require invoice number
-                if (string.IsNullOrWhiteSpace(gasto.NumeroFactura))
+                // BUT: If it's a pending expense, we allow empty invoice
+                if (!gasto.EsPendiente && string.IsNullOrWhiteSpace(gasto.NumeroFactura))
                     return BadRequest("Número de Factura es requerido para este tipo de rubro");
             }
             // Add more if needed
@@ -1015,14 +1016,14 @@ public class ProduccionController : ControllerBase
                 Fecha = g.Fecha,
                 UsuarioNombre = g.Usuario != null ? g.Usuario.Nombre : "N/A",
                 UsuarioDocumento = g.Usuario != null ? g.Usuario.Documento : "",
-                Salario = g.Usuario != null ? g.Usuario.Salario : 0, // ADDED
-                ValorHora = g.Usuario != null ? (g.Usuario.Salario / 220m) : 0, // ADDED
+                Salario = g.Usuario != null ? g.Usuario.Salario : 0,
+                ValorHora = g.Usuario != null ? (g.Usuario.Salario / 220m) : 0,
                 NumeroOP = g.NumeroOP ?? "",
                 TipoHoraNombre = g.TipoHora != null ? g.TipoHora.Nombre : "N/A",
                 Factor = g.TipoHora != null ? g.TipoHora.Factor : 0,
                 CantidadHoras = g.CantidadHoras ?? 0,
                 Precio = g.Precio,
-                Nota = g.Nota ?? "" // ADDED
+                Nota = g.Nota ?? ""
             })
             .ToListAsync();
 
@@ -1053,9 +1054,9 @@ public class ProduccionController : ControllerBase
                 Id = g.Id,
                 Fecha = g.Fecha,
                 UsuarioNombre = g.Usuario != null ? g.Usuario.Nombre : "N/A",
-                UsuarioDocumento = g.Usuario != null ? g.Usuario.Documento : "", // ADDED
-                Salario = g.Usuario != null ? g.Usuario.Salario : 0, // ADDED
-                ValorHora = g.Usuario != null ? (g.Usuario.Salario / 220m) : 0, // ADDED
+                UsuarioDocumento = g.Usuario != null ? g.Usuario.Documento : "",
+                Salario = g.Usuario != null ? g.Usuario.Salario : 0,
+                ValorHora = g.Usuario != null ? (g.Usuario.Salario / 220m) : 0,
                 NumeroOP = g.NumeroOP ?? "",
                 TipoRecargoNombre = g.TipoRecargo != null ? g.TipoRecargo.Nombre : "N/A",
                 Factor = g.TipoRecargo != null ? g.TipoRecargo.Factor : 0,
@@ -1065,7 +1066,6 @@ public class ProduccionController : ControllerBase
             })
             .ToListAsync();
         
-        // DEBUG LOG TO TRACE MISSING IDS
         Console.WriteLine($"[DEBUG] Found {gastos.Count} recargos records");
         foreach(var g in gastos) {
              Console.WriteLine($"[DEBUG] Recargo User: {g.UsuarioNombre}, ID: '{g.UsuarioDocumento}'");
