@@ -31,6 +31,12 @@ public class Planeacion_Gasto
     [MaxLength(100)]
     public string NumeroFactura { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Número de Orden de Producción (OP) - Required only for specific Rubros (e.g. Insumos)
+    /// </summary>
+    [MaxLength(50)]
+    public string? NumeroOP { get; set; }
+
     [Required]
     [Column(TypeName = "decimal(18,2)")]
     public decimal Precio { get; set; }

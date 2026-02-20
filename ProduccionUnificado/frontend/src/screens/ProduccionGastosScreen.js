@@ -300,6 +300,8 @@ function GastosTab() {
         const selectedRubro = rubros.find(r => r.id == formData.rubroId);
         const isHorasExtras = selectedRubro?.nombre === 'Horas Extras';
         const isRecargo = selectedRubro?.nombre?.toLowerCase() === 'recargo';
+        const isInsumos = selectedRubro?.nombre?.toLowerCase().includes('insumo');
+        const isMaintenance = selectedRubro?.nombre?.toLowerCase().includes('mantenimiento') || selectedRubro?.nombre?.toLowerCase().includes('repuesto');
 
         // Validation for Horas Extras
         if (isHorasExtras && (!formData.usuarioId || !formData.tipoHoraId || !formData.cantidadHoras)) {
@@ -309,9 +311,14 @@ function GastosTab() {
         if (isRecargo && (!formData.usuarioId || !formData.tipoRecargoId || !formData.cantidadHoras)) {
             Alert.alert('Error', 'Complete Operario, Tipo de Recargo y Cantidad de Horas'); return;
         }
-        // Validation for OP number (required for Horas Extras and Recargos)
-        if ((isHorasExtras || isRecargo) && !formData.numeroOP.trim()) {
-            Alert.alert('Error', 'Ingrese el Número de OP (Orden de Producción)'); return;
+        // Validation for OP number (required for Horas Extras, Recargos AND Insumos)
+        if ((isHorasExtras || isRecargo || isInsumos) && !formData.numeroOP.trim()) {
+            Alert.alert('Error', isHorasExtras || isRecargo ? 'Ingrese el Número de OP (Orden de Producción)' : 'Para Insumos, el Número de OP es obligatorio'); return;
+        }
+
+        // Validation for Maintenance/Spares: Machine is Mandatory
+        if (isMaintenance && !formData.maquinaId) {
+            Alert.alert('Error', 'Seleccione la Máquina (Obligatorio para Mantenimiento/Repuesto)'); return;
         }
 
         // Validación de factura y precio (Opcional si es pendiente) para NO Horas extras
@@ -345,7 +352,7 @@ function GastosTab() {
                 anio: new Date(formData.fecha).getFullYear(), mes: new Date(formData.fecha).getMonth() + 1,
                 numeroFactura: (isHorasExtras || isRecargo) ? null : formData.numeroFactura,
                 facturaPdfUrl: (isHorasExtras || isRecargo) ? null : formData.facturaPdfUrl,
-                numeroOP: (isHorasExtras || isRecargo) ? formData.numeroOP : null,
+                numeroOP: (isHorasExtras || isRecargo || isInsumos) ? formData.numeroOP : null,
                 esPendiente: formData.esPendiente || false
             };
 
@@ -393,10 +400,15 @@ function GastosTab() {
         else { Alert.alert('Confirmar', '¿Eliminar este gasto?', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Eliminar', style: 'destructive', onPress: doDelete }]); }
     };
 
-    const selectedRubroName = rubros.find(r => r.id == formData.rubroId)?.nombre?.toLowerCase();
+    const selectedRubroName = rubros.find(r => r.id == formData.rubroId)?.nombre?.toLowerCase() || '';
     const isHorasExtras = selectedRubroName === 'horas extras';
     const isRecargo = selectedRubroName === 'recargo';
-    const isMaintenance = selectedRubroName === 'mantenimiento' || selectedRubroName === 'repuesto';
+    const isInsumos = selectedRubroName.includes('insumo');
+    const isMaintenance = selectedRubroName.includes('mantenimiento') || selectedRubroName.includes('repuesto');
+
+    console.log('DEBUG: rubroId:', formData.rubroId, 'foundRubro:', rubros.find(r => r.id == formData.rubroId));
+    console.log('DEBUG: selectedRubroName:', selectedRubroName);
+    console.log('DEBUG: isMaintenance:', isMaintenance);
 
     // Calculate totals for summary cards - SST style
     const totalMes = resumen?.total || 0;
@@ -784,7 +796,7 @@ function GastosTab() {
 
 
                             {(isMaintenance && !isLegalizing) && (<>
-                                <Text style={styles.label}>Máquina</Text>
+                                <Text style={styles.label}>Máquina *</Text>
                                 <View style={styles.pickerContainer}>
                                     <Picker selectedValue={formData.maquinaId} onValueChange={(v) => setFormData(p => ({ ...p, maquinaId: v }))}>
                                         <Picker.Item label="Seleccione..." value="" />
@@ -835,7 +847,7 @@ function GastosTab() {
                                 ))}
 
                                 {/* OP Number field - ONLY for Horas Extras and Recargos, BEFORE price */}
-                                {(isHorasExtras || isRecargo) && (<>
+                                {(isHorasExtras || isRecargo || isInsumos) && (<>
                                     <Text style={styles.label}>Número de OP (Orden de Producción) *</Text>
                                     <TextInput
                                         style={styles.input}

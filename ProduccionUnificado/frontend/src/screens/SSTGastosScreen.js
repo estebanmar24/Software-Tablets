@@ -3,7 +3,7 @@
  * SST personnel screen for recording monthly expenses and managing master data
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
     View,
     Text,
@@ -2705,6 +2705,7 @@ function OrdenAseoTab() {
     const [reportModalVisible, setReportModalVisible] = useState(false);
     const [reportStartDate, setReportStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1)); // First day of month
     const [reportEndDate, setReportEndDate] = useState(new Date());
+    const cancelReportRef = useRef(false);
 
     const getBase64FromUrl = async (url) => {
         // En WEB: Usar Canvas para redimensionar y comprimir
@@ -2781,6 +2782,7 @@ function OrdenAseoTab() {
 
         console.log('[PDF] 🚀 Starting report generation...');
         setGeneratingReport(true);
+        cancelReportRef.current = false;
         setReportProgress('Filtrando encuestas...');
         try {
             // 0. Filter by Date Range
@@ -2983,6 +2985,12 @@ function OrdenAseoTab() {
                 for (const fullEncuesta of issueDetails) {
                     processedCount++;
                     // Update UI to show progress
+                    if (cancelReportRef.current) {
+                        setGeneratingReport(false);
+                        setReportProgress('');
+                        Alert.alert('Info', 'Generación de reporte cancelada.');
+                        return;
+                    }
                     const progressMsg = `Cargando evidencias (${processedCount}/${surveysWithIssues.length})...`;
                     setReportProgress(progressMsg);
                     // Force UI update
@@ -3397,6 +3405,12 @@ function OrdenAseoTab() {
                             <View style={{ alignItems: 'center', paddingVertical: 20 }}>
                                 <ActivityIndicator size="large" color="#059669" />
                                 <Text style={{ marginTop: 12, color: '#374151', fontSize: 14 }}>{reportProgress || 'Generando...'}</Text>
+                                <TouchableOpacity
+                                    onPress={() => { cancelReportRef.current = true; setReportProgress('Cancelando...'); }}
+                                    style={{ marginTop: 20, paddingHorizontal: 20, paddingVertical: 8, backgroundColor: '#FECACA', borderRadius: 8, borderWidth: 1, borderColor: '#FCA5A5' }}
+                                >
+                                    <Text style={{ color: '#DC2626', fontWeight: 'bold' }}>Cancelar</Text>
+                                </TouchableOpacity>
                             </View>
                         ) : (
                             <View style={styles.modalActions}>

@@ -173,7 +173,7 @@ public class PlaneacionController : ControllerBase
             .Include(g => g.CreadoPor)
             .Where(g => g.Anio == anio);
 
-        if (mes.HasValue)
+        if (mes.HasValue && mes.Value > 0)
             query = query.Where(g => g.Mes == mes.Value);
 
         var gastos = await query
@@ -211,12 +211,12 @@ public class PlaneacionController : ControllerBase
     {
         // 1. Get Expenses
         var queryGastos = _context.Planeacion_Gastos.Where(g => g.Anio == anio);
-        if (mes.HasValue) queryGastos = queryGastos.Where(g => g.Mes == mes.Value);
+        if (mes.HasValue && mes.Value > 0) queryGastos = queryGastos.Where(g => g.Mes == mes.Value);
         var gastos = await queryGastos.ToListAsync();
 
         // 2. Get Budgets
         var queryPresupuestos = _context.Planeacion_PresupuestosMensuales.Where(p => p.Anio == anio);
-        if (mes.HasValue) queryPresupuestos = queryPresupuestos.Where(p => p.Mes == mes.Value);
+        if (mes.HasValue && mes.Value > 0) queryPresupuestos = queryPresupuestos.Where(p => p.Mes == mes.Value);
         var presupuestos = await queryPresupuestos.ToListAsync();
 
         // 3. Totals
@@ -526,12 +526,17 @@ public class PlaneacionController : ControllerBase
     [HttpGet("graficas/{anio}/{mes}")]
     public async Task<ActionResult<object>> GetGraficas(int anio, int mes)
     {
-        var rubros = await _context.Planeacion_Rubros.Where(t => t.Activo).ToListAsync();
-        var presupuestos = await _context.Planeacion_PresupuestosMensuales
-            .Where(p => p.Anio == anio && p.Mes == mes)
-            .ToListAsync();
-        var gastos = await _context.Planeacion_Gastos
-            .Where(g => g.Anio == anio && g.Mes == mes)
+        var queryRubros = _context.Planeacion_Rubros.Where(t => t.Activo);
+        var rubros = await queryRubros.ToListAsync();
+
+        var queryPresupuestos = _context.Planeacion_PresupuestosMensuales.Where(p => p.Anio == anio);
+        if (mes > 0) queryPresupuestos = queryPresupuestos.Where(p => p.Mes == mes);
+        var presupuestos = await queryPresupuestos.ToListAsync();
+
+        var queryGastos = _context.Planeacion_Gastos.Where(g => g.Anio == anio);
+        if (mes > 0) queryGastos = queryGastos.Where(g => g.Mes == mes);
+        
+        var gastos = await queryGastos
             .GroupBy(g => g.RubroId)
             .Select(g => new { RubroId = g.Key, Total = g.Sum(x => x.Precio) })
             .ToListAsync();
@@ -539,7 +544,8 @@ public class PlaneacionController : ControllerBase
         var alertas = new List<string>();
         var porRubro = rubros.Select(t =>
         {
-            var presupuesto = presupuestos.FirstOrDefault(p => p.RubroId == t.Id)?.Presupuesto ?? 0;
+            // If annual (mes=0), sum all budgets for the rubro. If monthly, it's just the one.
+            var presupuesto = presupuestos.Where(p => p.RubroId == t.Id).Sum(p => p.Presupuesto);
             var gastado = gastos.FirstOrDefault(g => g.RubroId == t.Id)?.Total ?? 0;
             var restante = presupuesto - gastado;
 

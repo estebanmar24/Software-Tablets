@@ -774,7 +774,7 @@ function GastosTab() {
                                                 <View style={styles.pickerContainer}>
                                                     <Picker selectedValue={formData.tipoHoraId} onValueChange={(v) => setFormData(p => ({ ...p, tipoHoraId: v }))}>
                                                         <Picker.Item label="Seleccione..." value="" />
-                                                        {tiposHora.map(th => <Picker.Item key={th.id || th.Id} label={`${th.nombre || th.Nombre} (${th.porcentaje || th.Porcentaje}%)`} value={(th.id || th.Id).toString()} />)}
+                                                        {tiposHora.map(th => <Picker.Item key={th.id || th.Id} label={`${th.nombre || th.Nombre} (x${th.factor || th.Factor})`} value={(th.id || th.Id).toString()} />)}
                                                     </Picker>
                                                 </View>
                                             </>
@@ -786,7 +786,7 @@ function GastosTab() {
                                                 <View style={styles.pickerContainer}>
                                                     <Picker selectedValue={formData.tipoRecargoId} onValueChange={(v) => setFormData(p => ({ ...p, tipoRecargoId: v }))}>
                                                         <Picker.Item label="Seleccione..." value="" />
-                                                        {tiposRecargo.map(tr => <Picker.Item key={tr.id || tr.Id} label={`${tr.nombre || tr.Nombre} (${tr.porcentaje || tr.Porcentaje}%)`} value={(tr.id || tr.Id).toString()} />)}
+                                                        {tiposRecargo.map(tr => <Picker.Item key={tr.id || tr.Id} label={`${tr.nombre || tr.Nombre} (x${tr.factor || tr.Factor})`} value={(tr.id || tr.Id).toString()} />)}
                                                     </Picker>
                                                 </View>
                                             </>
@@ -2217,8 +2217,21 @@ function PersonalTab() {
                 talleresApi.getMaestros()
             ]);
             setItems(personalData || []);
-            setHoraExtras(maestrosData.tiposHora || []);
-            setRecargos(maestrosData.tiposRecargo || []);
+
+            // Deduplicate by name to avoid duplicates in the UI
+            const uniqueHE = (maestrosData.tiposHora || []).reduce((acc, curr) => {
+                const name = (curr.nombre || curr.Nombre || "").toLowerCase();
+                if (!acc.find(x => (x.nombre || x.Nombre || "").toLowerCase() === name)) acc.push(curr);
+                return acc;
+            }, []);
+            const uniqueRec = (maestrosData.tiposRecargo || []).reduce((acc, curr) => {
+                const name = (curr.nombre || curr.Nombre || "").toLowerCase();
+                if (!acc.find(x => (x.nombre || x.Nombre || "").toLowerCase() === name)) acc.push(curr);
+                return acc;
+            }, []);
+
+            setHoraExtras(uniqueHE);
+            setRecargos(uniqueRec);
         } catch (e) { console.error(e); } finally { setLoading(false); }
     };
     useEffect(() => { loadData(); }, []);
@@ -2384,7 +2397,7 @@ function PersonalTab() {
                     {horaExtras.map(h => (
                         <View key={h.id} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
                             <Text style={{ fontSize: 13 }}>{h.nombre}</Text>
-                            <Text style={{ fontWeight: 'bold' }}>{h.porcentaje}%</Text>
+                            <Text style={{ fontWeight: 'bold' }}>x{h.factor || h.Factor}</Text>
                         </View>
                     ))}
                 </View>
@@ -2393,7 +2406,7 @@ function PersonalTab() {
                     {recargos.map(r => (
                         <View key={r.id} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
                             <Text style={{ fontSize: 13 }}>{r.nombre}</Text>
-                            <Text style={{ fontWeight: 'bold' }}>{r.porcentaje}%</Text>
+                            <Text style={{ fontWeight: 'bold' }}>x{r.factor || r.Factor}</Text>
                         </View>
                     ))}
                 </View>

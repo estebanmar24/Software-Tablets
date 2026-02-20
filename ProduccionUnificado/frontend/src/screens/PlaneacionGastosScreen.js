@@ -107,7 +107,10 @@ function GastosTab() {
         precio: '',
         fecha: new Date().toISOString().split('T')[0],
         observaciones: '',
-        facturaPdfUrl: ''
+        fecha: new Date().toISOString().split('T')[0],
+        observaciones: '',
+        facturaPdfUrl: '',
+        numeroOP: ''
     });
     const [saving, setSaving] = useState(false);
     const anios = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
@@ -180,27 +183,50 @@ function GastosTab() {
         }
     }, [formData.rubroId, formData.proveedorId, cotizaciones, formData.numeroFactura]);
 
+    // Derived state for conditional fields
+    const isInsumos = useMemo(() => {
+        const selectedRubro = rubros.find(r => r.id.toString() === formData.rubroId);
+        return selectedRubro && (selectedRubro.nombre.toLowerCase().includes('insumo') || selectedRubro.nombre.toLowerCase().includes('materia prima'));
+    }, [formData.rubroId, rubros]);
+
     // Budget info on rubro change
     useEffect(() => {
         const selectedRubro = rubros.find(r => r.id == formData.rubroId);
-        if (selectedRubro && resumen?.porRubro) {
-            const infoMes = resumen.porRubro.find(r => r.rubroId == selectedRubro.id || r.rubro === selectedRubro.nombre);
+        if (selectedRubro) {
+            // Si mes es 0 (Todo el año), usamos resumenAnual como fuente principal
+            const source = (mes === 0 && resumenAnual) ? resumenAnual : resumen;
+
+            // Buscar info en el source seleccionado
+            const info = source?.porRubro?.find(r => r.rubroId == selectedRubro.id || r.rubro === selectedRubro.nombre);
             const infoAnual = resumenAnual?.porRubro?.find(r => r.rubroId == selectedRubro.id || r.rubro === selectedRubro.nombre);
-            setPresupuestoInfo({
-                nombre: selectedRubro.nombre,
-                presupuestoAnual: infoAnual?.presupuestoAnual || 0,
-                presupuestoMensual: infoMes?.presupuesto || 0,
-                gastadoMes: infoMes?.gastado || 0,
-                restanteMes: (infoMes?.presupuesto || 0) - (infoMes?.gastado || 0)
-            });
+
+            if (mes == 0) {
+                // Vista Anual: Presupuesto es el Anual, Gastado es el Anual
+                setPresupuestoInfo({
+                    nombre: selectedRubro.nombre,
+                    presupuestoAnual: infoAnual?.presupuestoAnual || 0, // Visual reference
+                    presupuestoMensual: infoAnual?.presupuestoAnual || 0, // In this context "Mensual" label usually holds the target budget
+                    gastadoMes: infoAnual?.gastadoAnual || infoAnual?.gastado || 0, // Prefer GastadoAnual
+                    restanteMes: (infoAnual?.presupuestoAnual || 0) - (infoAnual?.gastadoAnual || infoAnual?.gastado || 0)
+                });
+            } else {
+                // Vista Mensual Normal
+                setPresupuestoInfo({
+                    nombre: selectedRubro.nombre,
+                    presupuestoAnual: infoAnual?.presupuestoAnual || 0,
+                    presupuestoMensual: info?.presupuesto || 0,
+                    gastadoMes: info?.gastado || 0,
+                    restanteMes: (info?.presupuesto || 0) - (info?.gastado || 0)
+                });
+            }
         } else { setPresupuestoInfo(null); }
-    }, [formData.rubroId, rubros, resumen, resumenAnual]);
+    }, [formData.rubroId, rubros, resumen, resumenAnual, mes]);
 
     const resetForm = () => {
         setEditItem(null);
         setFormData({
             rubroId: '', proveedorId: '', numeroFactura: '', precio: '',
-            fecha: new Date().toISOString().split('T')[0], observaciones: '', facturaPdfUrl: ''
+            fecha: new Date().toISOString().split('T')[0], observaciones: '', facturaPdfUrl: '', numeroOP: ''
         });
     };
 
@@ -213,7 +239,10 @@ function GastosTab() {
             precio: gasto.precio?.toString() || '',
             fecha: gasto.fecha?.split('T')[0] || new Date().toISOString().split('T')[0],
             observaciones: gasto.observaciones || '',
-            facturaPdfUrl: gasto.facturaPdfUrl || ''
+            fecha: gasto.fecha?.split('T')[0] || new Date().toISOString().split('T')[0],
+            observaciones: gasto.observaciones || '',
+            facturaPdfUrl: gasto.facturaPdfUrl || '',
+            numeroOP: gasto.numeroOP || ''
         });
         setShowModal(true);
     };
@@ -222,6 +251,7 @@ function GastosTab() {
         if (!formData.rubroId) { showAlert('Error', 'Seleccione un Rubro'); return; }
         if (!formData.proveedorId) { showAlert('Error', 'Seleccione un Proveedor'); return; }
         if (!formData.numeroFactura || !formData.numeroFactura.trim()) { showAlert('Error', 'El Número de factura es obligatorio'); return; }
+        if (isInsumos && (!formData.numeroOP || !formData.numeroOP.trim())) { showAlert('Error', 'El Número de OP es obligatorio para Insumos'); return; }
         if (!formData.precio || isNaN(parseFloat(formData.precio))) { showAlert('Error', 'El Precio debe ser un número válido'); return; }
 
         try {
@@ -231,9 +261,10 @@ function GastosTab() {
                 proveedorId: parseInt(formData.proveedorId),
                 numeroFactura: formData.numeroFactura,
                 precio: parseFloat(formData.precio),
-                fecha: formData.fecha,
+                fecha: new Date(formData.fecha).toISOString(),
                 observaciones: formData.observaciones,
-                facturaPdfUrl: formData.facturaPdfUrl || null,
+                facturaPdfUrl: formData.facturaPdfUrl,
+                numeroOP: isInsumos ? formData.numeroOP : null,
                 anio: new Date(formData.fecha).getFullYear(),
                 mes: new Date(formData.fecha).getMonth() + 1
             };
@@ -268,9 +299,9 @@ function GastosTab() {
     };
 
     // Summary cards
-    let displayedPresupuesto = resumen?.totalPresupuesto || 0;
-    let displayedGastado = resumen?.totalGastado || 0;
-    let displayedRestante = resumen?.totalRestante || 0;
+    let displayedPresupuesto = (mes == 0 && resumenAnual) ? (resumenAnual.totalPresupuesto || 0) : (resumen?.totalPresupuesto || 0);
+    let displayedGastado = (mes == 0 && resumenAnual) ? (resumenAnual.totalGastado || 0) : (resumen?.totalGastado || 0);
+    let displayedRestante = (mes == 0 && resumenAnual) ? (resumenAnual.totalRestante || 0) : (resumen?.totalRestante || 0);
     if (filterRubro) {
         const selectedRubroName = rubros.find(r => r.id.toString() === filterRubro)?.nombre;
         if (selectedRubroName && resumen?.porRubro) {
@@ -291,6 +322,7 @@ function GastosTab() {
                         {anios.map(a => <Picker.Item key={a} label={a.toString()} value={a} />)}
                     </Picker>
                     <Picker selectedValue={mes} onValueChange={setMes} style={styles.picker}>
+                        <Picker.Item label="Todo el Año" value={0} />
                         {MESES.map(m => <Picker.Item key={m.value} label={m.label} value={m.value} />)}
                     </Picker>
                 </View>
@@ -341,6 +373,7 @@ function GastosTab() {
                                 <Text style={styles.gastoRubro}>{gasto.proveedorNombre}</Text>
                                 <View style={styles.gastoDetails}>
                                     <Text style={styles.gastoDetail}>🏢 NIT: {gasto.proveedorNit}</Text>
+                                    {gasto.numeroOP && <Text style={styles.gastoDetail}>🔢 OP: {gasto.numeroOP}</Text>}
                                     <Text style={styles.gastoDetail}>📄 Factura: {gasto.numeroFactura}</Text>
                                     <Text style={styles.gastoDetail}>📅 {formatDate(gasto.fecha)}</Text>
                                 </View>
@@ -383,6 +416,18 @@ function GastosTab() {
                                         ))}
                                     </Picker>
                                 </View>
+
+                                {isInsumos && (
+                                    <>
+                                        <Text style={styles.label}>Número de OP *</Text>
+                                        <TextInput
+                                            style={styles.input}
+                                            value={formData.numeroOP}
+                                            onChangeText={(t) => setFormData(p => ({ ...p, numeroOP: t }))}
+                                            placeholder="Ej: OP-12345"
+                                        />
+                                    </>
+                                )}
 
                                 <Text style={styles.label}>Número de Factura *</Text>
                                 <TextInput style={styles.input} value={formData.numeroFactura} onChangeText={(t) => setFormData(p => ({ ...p, numeroFactura: t }))} placeholder="Ej: FAC-001" />
@@ -467,7 +512,7 @@ function GraficasTab() {
         try {
             setLoading(true);
             let dataGraf, dataGastos;
-            if (mesSeleccionado) {
+            if (mesSeleccionado && mesSeleccionado != 0) {
                 [dataGraf, dataGastos] = await Promise.all([
                     planeacionApi.getGraficas(anio, mesSeleccionado),
                     planeacionApi.getGastos(anio, mesSeleccionado)
@@ -597,7 +642,8 @@ function GraficasTab() {
                     <View style={styles.yearSelector}>
                         <Picker selectedValue={anio} onValueChange={setAnio} style={{ width: 100, height: 40, marginRight: 8 }}>{anios.map(a => <Picker.Item key={a} label={a.toString()} value={a} />)}</Picker>
                         <Picker selectedValue={mesSeleccionado} onValueChange={setMesSeleccionado} style={{ width: 130, height: 40 }}>
-                            <Picker.Item label="Todo el Año" value="" />{MESES.map(m => <Picker.Item key={m.value} label={m.label} value={m.value} />)}
+                            <Picker.Item label="Todo el Año" value={0} />
+                            {MESES.map(m => <Picker.Item key={m.value} label={m.label} value={m.value} />)}
                         </Picker>
                     </View>
                 </View>
