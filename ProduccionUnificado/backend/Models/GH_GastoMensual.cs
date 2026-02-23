@@ -18,8 +18,11 @@ public class GH_GastoMensual
     [Required]
     public int TipoServicioId { get; set; }
 
-    [Required]
-    public int ProveedorId { get; set; }
+    /// <summary>
+    /// ID del proveedor asociado - Opcional para gastos pendientes
+    /// </summary>
+    [ForeignKey("Proveedor")]
+    public int? ProveedorId { get; set; }
 
     /// <summary>
     /// Optional link to a quotation for price comparison
@@ -33,7 +36,7 @@ public class GH_GastoMensual
     [Range(1, 12)]
     public int Mes { get; set; }
 
-    [Required]
+    [Required(AllowEmptyStrings = true)]
     [MaxLength(100)]
     public string NumeroFactura { get; set; } = string.Empty;
 
@@ -46,6 +49,11 @@ public class GH_GastoMensual
 
     [MaxLength(500)]
     public string? Nota { get; set; }
+
+    /// <summary>
+    /// Indicates if the expense was registered without an invoice and price (pending legalization)
+    /// </summary>
+    public bool EsPendiente { get; set; } = false;
 
     /// <summary>
     /// Base64 encoded PDF file or URL to stored file

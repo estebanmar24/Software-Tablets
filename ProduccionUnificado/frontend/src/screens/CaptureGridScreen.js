@@ -1076,26 +1076,16 @@ export default function CaptureGridScreen({ navigation }) {
         // Si Horas son 0, Meta es 0 (correcto)
 
         const TirosRef = rowMaquina.tirosReferencia || 0;
-        const TirosEquivalentes = (TirosRef * Cambios) + R_Final;
+        const TirosEquivalentes = Math.round((TirosRef * Cambios) + R_Final);
 
         // Promedio Productivo (Tiros / Horas PRODUCTIVAS)
         const Promedio = TotalHorasProd > 0 ? (TirosEquivalentes / TotalHorasProd) : 0;
 
-        // Calcular diferencia de meta (Meta del 75% es MetaRendimiento aqui?? No, MetaRendimiento es el 100%)
-        // El grid mostraba "75% Meta".
-        // Si MetaRendimiento es el 100%, entonces Meta75 = MetaRendimiento * 0.75
-
-        // En la lógica anterior:
-        // const Meta75Diff = TirosEquivalentes - MetaRendimiento;
-        // Si MetaRendimiento era la meta "esperada" para bonificar (que suele ser el 75% del 100%?),
-        // El usuario dijo "dividieindo la meta 100% entre 8... para sacar rendimiento general".
-        // Asumimos que MetaRendimiento calculado arriba es el 100%.
-
-        const Meta75 = MetaRendimiento * 0.75;
+        // Calcular diferencia de meta
+        const Meta75 = Math.round(MetaRendimiento * 0.75); // Redondeo previo para concordancia Matemática
         const Meta75Diff = TirosEquivalentes - Meta75; // Excedente sobre el 75%
 
         // *** NUEVO: Verificar si es festivo o domingo ***
-        // fecha and diaSemana already declared above for Saturday logic
         const esFestivo = esFestivoColombia(fecha);
         const esDomingo = diaSemana === 0;
         const esNoLaborable = esFestivo || esDomingo;
@@ -1105,22 +1095,17 @@ export default function CaptureGridScreen({ navigation }) {
         if (esNoLaborable) {
             VrPagar = 0;
         } else {
-            const VrTiro = Math.max(0, Meta75Diff * (rowMaquina.valorPorTiro || 0));
-            VrPagar = VrTiro;
+            VrPagar = Math.max(0, Meta75Diff * (rowMaquina.valorPorTiro || 0));
         }
-
-        // (Variables TotalAux, TotalMuertos, TotalHoras calculated at top)
 
         // Calcular valores bonificables (proporcional al tiempo en horario laboral)
         const porcentajeBonif = calcularPorcentajeBonificable(day);
 
-        // TIROS BONIFICABLES: Tiros Totales * %TiempoEnHorario (OK)
+        // TIROS BONIFICABLES
         const TirosBonificables = Math.round(TirosEquivalentes * porcentajeBonif);
         const DesperdicioBonif = Desperdicio * porcentajeBonif;
 
-        // META BONIFICABLE: Usar Meta75 como base para el cálculo de bonificación
-        // El usuario mencionó "75% Bonificable".
-        // Meta75DiffBonif = TirosBonificables - Meta75
+        // META BONIFICABLE
         const Meta75DiffBonif = TirosBonificables - Meta75;
 
         // VrPagarBonif = 0 si es festivo o domingo

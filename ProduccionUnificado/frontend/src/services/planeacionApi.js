@@ -153,6 +153,10 @@ export async function uploadFactura(file) {
     return response.data;
 }
 
+export function getBaseUrl() {
+    // API_BASE_URL = http://192.168.100.227:5144/api → server root = http://192.168.100.227:5144
+    return API_BASE_URL.replace(/\/api$/, '');
+}
 // ==================== HELPERS ====================
 
 export const MESES = [

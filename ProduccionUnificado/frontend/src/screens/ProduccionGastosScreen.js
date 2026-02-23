@@ -805,8 +805,8 @@ function GastosTab() {
                                 </View>
                             </>)}
 
-                            {(!isHorasExtras && !isRecargo && formData.rubroId && !isLegalizing) && (<>
-                                <Text style={styles.label}>Proveedor</Text>
+                            {(!isHorasExtras && !isRecargo && formData.rubroId) && (<>
+                                <Text style={styles.label}>Proveedor {formData.esPendiente && !isLegalizing ? '(Opcional por ahora)' : ''}</Text>
                                 <View style={styles.pickerContainer}>
                                     <Picker selectedValue={formData.proveedorId} onValueChange={(v) => {
                                         setFormData(p => ({ ...p, proveedorId: v }));
@@ -907,11 +907,6 @@ function GastosTab() {
                                     placeholder="$ 0"
                                     editable={(isHorasExtras || isRecargo) ? !!formData.numeroOP.trim() : (formData.esPendiente || !!formData.numeroFactura.trim())}
                                 />
-                                {(() => {
-                                    const q = cotizaciones.find(c => c.rubroId.toString() === formData.rubroId && c.proveedorId.toString() === formData.proveedorId);
-                                    if (q) return <Text style={{ fontSize: 13, color: '#059669', marginBottom: 10, marginTop: -5 }}>✅ Cotización vinculada: {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(q.precioCotizado)}</Text>;
-                                    return <Text style={{ fontSize: 12, color: '#6B7280', marginBottom: 10, marginTop: -5 }}>ℹ️ Sin cotización vinculada</Text>;
-                                })()}
                             </>)}
 
                             {/* Cuadro de presupuesto estilo SST - DEBAJO DEL PRECIO */}

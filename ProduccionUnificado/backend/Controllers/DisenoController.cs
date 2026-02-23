@@ -163,6 +163,7 @@ public class DisenoController : ControllerBase
                 g.TipoTrabajo,
                 g.OrdenProduccion,
                 g.FacturaPdfUrl,
+                g.EsPendiente,
                 g.FechaCreacion,
                 g.FechaModificacion,
                 g.CreadoPorId,

@@ -9,6 +9,7 @@ public class Diseno_Gasto
     public int Id { get; set; }
 
     public int? ProveedorId { get; set; }
+    public bool EsPendiente { get; set; } = false;
 
     [Required]
     public int RubroId { get; set; }
@@ -20,11 +21,9 @@ public class Diseno_Gasto
     [Range(1, 12)]
     public int Mes { get; set; }
 
-    [Required(ErrorMessage = "El número de factura es obligatorio")]
     [MaxLength(100)]
     public string NumeroFactura { get; set; } = string.Empty;
 
-    [Required]
     [Column(TypeName = "decimal(18,2)")]
     public decimal Precio { get; set; }
 

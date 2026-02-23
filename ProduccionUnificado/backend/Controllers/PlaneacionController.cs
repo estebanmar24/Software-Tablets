@@ -196,7 +196,8 @@ public class PlaneacionController : ControllerBase
                 g.FechaCreacion,
                 g.FechaModificacion,
                 g.CreadoPorId,
-                CreadoPorNombre = g.CreadoPor != null ? g.CreadoPor.NombreMostrar : ""
+                CreadoPorNombre = g.CreadoPor != null ? g.CreadoPor.NombreMostrar : "",
+                g.EsPendiente
             })
             .ToListAsync();
 

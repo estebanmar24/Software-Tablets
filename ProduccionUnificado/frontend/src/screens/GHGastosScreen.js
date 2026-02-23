@@ -105,8 +105,10 @@ function GastosTab() {
         fechaCompra: new Date().toISOString().split('T')[0],
         nota: '',
         archivoFactura: null,
-        archivoNombre: ''
+        archivoNombre: '',
+        esPendiente: false
     });
+    const [isLegalizing, setIsLegalizing] = useState(false);
     const [saving, setSaving] = useState(false);
 
     // History Modal State
@@ -118,6 +120,7 @@ function GastosTab() {
     // Filters (MATCHING TALLERES/PRODUCCION STYLE)
     const [filterRubro, setFilterRubro] = useState('');
     const [filterFecha, setFilterFecha] = useState('');
+    const [filterPending, setFilterPending] = useState(false);
 
     const filteredGastos = useMemo(() => {
         return gastos.filter(g => {
@@ -138,9 +141,13 @@ function GastosTab() {
                 }
                 if (searchDate && g.fechaCompra && !g.fechaCompra.startsWith(searchDate)) return false;
             }
+
+            // Filtro Pendientes
+            if (filterPending && !g.esPendiente) return false;
+
             return true;
         });
-    }, [gastos, filterRubro, filterFecha]);
+    }, [gastos, filterRubro, filterFecha, filterPending]);
 
     // FILTER RUBROS DROPDOWN (Only show rubros with expenses in current month)
     const rubrosConGastos = useMemo(() => {
@@ -307,8 +314,10 @@ function GastosTab() {
             fechaCompra: new Date().toISOString().split('T')[0],
             nota: '',
             archivoFactura: null,
-            archivoNombre: ''
+            archivoNombre: '',
+            esPendiente: false
         });
+        setIsLegalizing(false);
     };
 
     const handleEdit = (gasto) => {
@@ -323,8 +332,29 @@ function GastosTab() {
             fechaCompra: gasto.fechaCompra?.split('T')[0] || new Date().toISOString().split('T')[0],
             nota: gasto.nota || '',
             archivoFactura: gasto.archivoFactura || null,
-            archivoNombre: gasto.archivoFactura ? 'Archivo adjunto' : ''
+            archivoNombre: gasto.archivoFactura ? 'Archivo adjunto' : '',
+            esPendiente: gasto.esPendiente || false
         });
+        setIsLegalizing(false);
+        setShowModal(true);
+    };
+
+    const handleLegalizar = (gasto) => {
+        setEditItem(gasto);
+        setFormData({
+            rubroId: gasto.rubroId?.toString() || '',
+            tipoServicioId: gasto.tipoServicioId?.toString() || '',
+            proveedorId: gasto.proveedorId?.toString() || '',
+            numeroFactura: '', // Obligar a ponerla
+            precio: '', // Obligar a ponerlo o dejar el actual si lo edita
+            precioDisplay: '',
+            fechaCompra: gasto.fechaCompra?.split('T')[0] || new Date().toISOString().split('T')[0],
+            nota: gasto.nota || '',
+            archivoFactura: null,
+            archivoNombre: '',
+            esPendiente: false // Al guardar esto ya no será pendiente
+        });
+        setIsLegalizing(true);
         setShowModal(true);
     };
 
@@ -405,17 +435,24 @@ function GastosTab() {
     };
 
     const handleSubmit = async () => {
-        if (!formData.rubroId || !formData.tipoServicioId || !formData.proveedorId) {
-            Alert.alert('Error', 'Por favor complete todos los campos requeridos');
+        if (!formData.rubroId || !formData.tipoServicioId) {
+            Alert.alert('Error', 'Por favor complete todos los campos requeridos (*)');
             return;
         }
-        if (!formData.numeroFactura.trim()) {
-            Alert.alert('Error', 'El número de factura es obligatorio');
+        if (!formData.esPendiente && !formData.proveedorId) {
+            Alert.alert('Error', 'Por favor seleccione un proveedor (Obligatorio para legalizar)');
             return;
         }
-        if (!formData.precio) {
-            Alert.alert('Error', 'El precio es obligatorio');
-            return;
+        // Si NO es pendiente, Factura y Precio son obligatorios
+        if (!formData.esPendiente) {
+            if (!formData.numeroFactura.trim()) {
+                Alert.alert('Error', 'El número de factura es obligatorio');
+                return;
+            }
+            if (!formData.precio) {
+                Alert.alert('Error', 'El precio es obligatorio');
+                return;
+            }
         }
 
         try {
@@ -423,15 +460,16 @@ function GastosTab() {
             const gastoData = {
                 rubroId: parseInt(formData.rubroId),
                 tipoServicioId: parseInt(formData.tipoServicioId),
-                proveedorId: parseInt(formData.proveedorId),
+                proveedorId: formData.proveedorId ? parseInt(formData.proveedorId) : null,
                 anio,
                 mes,
-                numeroFactura: formData.numeroFactura,
-                precio: parseFloat(formData.precio),
+                numeroFactura: formData.numeroFactura || '',
+                precio: formData.precio ? parseFloat(formData.precio) : 0,
                 fechaCompra: formData.fechaCompra,
                 nota: formData.nota,
                 archivoFactura: formData.archivoFactura,
-                archivoFacturaNombre: formData.archivoNombre
+                archivoFacturaNombre: formData.archivoNombre,
+                esPendiente: formData.esPendiente
             };
 
             if (editItem) {
@@ -574,6 +612,26 @@ function GastosTab() {
                             {rubrosConGastos.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
                         </Picker>
                     </View>
+
+                    {/* Filter Ver solo Pendientes */}
+                    <TouchableOpacity
+                        style={[
+                            styles.filterItem,
+                            {
+                                paddingHorizontal: 10,
+                                paddingVertical: Platform.OS === 'web' ? 8 : 10,
+                                backgroundColor: filterPending ? '#FEF3C7' : '#F3F4F6',
+                                borderRadius: 6,
+                                borderWidth: 1,
+                                borderColor: filterPending ? '#FCD34D' : '#D1D5DB'
+                            }
+                        ]}
+                        onPress={() => setFilterPending(!filterPending)}
+                    >
+                        <Text style={{ fontSize: 13, color: filterPending ? '#B45309' : '#4B5563', fontWeight: filterPending ? 'bold' : 'normal' }}>
+                            ⏳ Ver solo Pendientes
+                        </Text>
+                    </TouchableOpacity>
                 </View>
             </View>
 
@@ -640,82 +698,110 @@ function GastosTab() {
                             <Text style={styles.emptyText}>No hay gastos registrados (con estos filtros)</Text>
                         </View>
                     ) : (
-                        filteredGastos.map(gasto => (
-                            <View key={gasto.id} style={styles.gastoCard}>
-                                <View style={styles.gastoHeader}>
-                                    <Text style={styles.gastoTipo}>
-                                        {gasto.tipoServicioNombre}
-                                        {(gasto.creadoPorNombre || gasto.CreadoPorNombre) ? ` - ${gasto.creadoPorNombre || gasto.CreadoPorNombre}` : ''}
-                                    </Text>
-                                    <Text style={styles.gastoPrecio}>{formatCurrency(gasto.precio)}</Text>
-                                </View>
-                                <Text style={styles.gastoRubro}>{gasto.rubroNombre}</Text>
-                                <View style={styles.gastoDetails}>
-                                    <Text style={styles.gastoDetail}>🏢 {gasto.proveedorNombre}</Text>
-                                    <Text style={styles.gastoDetail}>📅 {formatDate(gasto.fechaCompra)}</Text>
-                                    <Text style={styles.gastoDetail}>📄 Factura: {gasto.numeroFactura}</Text>
-                                </View>
-                                {gasto.nota && (
-                                    <Text style={styles.gastoNota}>💬 {gasto.nota}</Text>
-                                )}
-                                {/* Budget Info */}
-                                {(() => {
-                                    const budget = getBudgetInfo(gasto.tipoServicioId);
-                                    return (
-                                        <View style={styles.budgetInfoRow}>
-                                            <Text style={styles.budgetInfoLabel}>
-                                                Tipo: Gastado {formatCurrency(budget.gastado)} / Presup. {formatCurrency(budget.presupuesto)}
-                                            </Text>
-                                            <Text style={[
-                                                styles.budgetInfoValue,
-                                                { color: budget.restante >= 0 ? '#059669' : '#DC2626' }
-                                            ]}>
-                                                {budget.restante >= 0 ? 'Disp: ' : 'Exceso: '}{formatCurrency(Math.abs(budget.restante))}
-                                            </Text>
+                        filteredGastos.map(gasto => {
+                            const deadline = new Date(gasto.fechaCompra);
+                            deadline.setDate(deadline.getDate() + 2);
+                            const isOverdue = gasto.esPendiente && new Date() > deadline;
+
+                            return (
+                                <View key={gasto.id} style={[styles.gastoCard, isOverdue && { borderColor: '#DC2626', borderWidth: 2 }]}>
+                                    <View style={styles.gastoHeader}>
+                                        <View>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                <Text style={styles.gastoTipo}>
+                                                    {gasto.tipoServicioNombre}
+                                                    {(gasto.creadoPorNombre || gasto.CreadoPorNombre) ? ` - ${gasto.creadoPorNombre || gasto.CreadoPorNombre}` : ''}
+                                                </Text>
+                                                {gasto.esPendiente && (
+                                                    <View style={{ backgroundColor: isOverdue ? '#DC2626' : '#FEF3C7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                                        <Text style={{ fontSize: 10, color: isOverdue ? '#FFF' : '#B45309', fontWeight: 'bold' }}>⏳ Pendiente</Text>
+                                                    </View>
+                                                )}
+                                            </View>
+                                            {gasto.esPendiente && (
+                                                <Text style={{ fontSize: 11, color: isOverdue ? '#DC2626' : '#6B7280', marginTop: 2, fontWeight: isOverdue ? 'bold' : 'normal' }}>
+                                                    Legalizar antes de: {formatDate(deadline.toISOString())}
+                                                </Text>
+                                            )}
                                         </View>
-                                    );
-                                })()}
-                                <View style={styles.cardActions}>
-                                    {gasto.archivoFactura && (
-                                        <TouchableOpacity
-                                            style={styles.downloadButton}
-                                            onPress={() => {
-                                                if (Platform.OS === 'web') {
-                                                    const link = document.createElement('a');
-                                                    link.href = gasto.archivoFactura;
-                                                    link.download = gasto.archivoFacturaNombre || `factura_${gasto.numeroFactura || gasto.id}.pdf`;
-                                                    document.body.appendChild(link);
-                                                    link.click();
-                                                    document.body.removeChild(link);
-                                                } else {
-                                                    Alert.alert('Info', 'Descarga disponible solo en web');
-                                                }
-                                            }}
-                                        >
-                                            <Text style={styles.downloadButtonText}>📥 Descargar Factura</Text>
-                                        </TouchableOpacity>
+                                        <Text style={styles.gastoPrecio}>{formatCurrency(gasto.precio)}</Text>
+                                    </View>
+                                    <Text style={styles.gastoRubro}>{gasto.rubroNombre}</Text>
+                                    <View style={styles.gastoDetails}>
+                                        <Text style={styles.gastoDetail}>🏢 {gasto.proveedorNombre}</Text>
+                                        <Text style={styles.gastoDetail}>📅 {formatDate(gasto.fechaCompra)}</Text>
+                                        <Text style={styles.gastoDetail}>📄 Factura: {gasto.numeroFactura}</Text>
+                                    </View>
+                                    {gasto.nota && (
+                                        <Text style={styles.gastoNota}>💬 {gasto.nota}</Text>
                                     )}
-                                    <TouchableOpacity
-                                        style={styles.editCardButton}
-                                        onPress={() => handleEdit(gasto)}
-                                    >
-                                        <Text style={styles.editCardButtonText}>✏️ Editar</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        style={styles.historyButton}
-                                        onPress={() => { setSelectedHistoryGasto(gasto); setShowHistoryModal(true); }}
-                                    >
-                                        <Text style={styles.historyButtonText}>🕒 Historial</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        style={styles.deleteButton}
-                                        onPress={() => handleDelete(gasto.id)}
-                                    >
-                                        <Text style={styles.deleteButtonText}>🗑️ Eliminar</Text>
-                                    </TouchableOpacity>
+                                    {/* Budget Info */}
+                                    {(() => {
+                                        const budget = getBudgetInfo(gasto.tipoServicioId);
+                                        return (
+                                            <View style={styles.budgetInfoRow}>
+                                                <Text style={styles.budgetInfoLabel}>
+                                                    Tipo: Gastado {formatCurrency(budget.gastado)} / Presup. {formatCurrency(budget.presupuesto)}
+                                                </Text>
+                                                <Text style={[
+                                                    styles.budgetInfoValue,
+                                                    { color: budget.restante >= 0 ? '#059669' : '#DC2626' }
+                                                ]}>
+                                                    {budget.restante >= 0 ? 'Disp: ' : 'Exceso: '}{formatCurrency(Math.abs(budget.restante))}
+                                                </Text>
+                                            </View>
+                                        );
+                                    })()}
+                                    <View style={styles.cardActions}>
+                                        {gasto.archivoFactura && (
+                                            <TouchableOpacity
+                                                style={styles.downloadButton}
+                                                onPress={() => {
+                                                    if (Platform.OS === 'web') {
+                                                        const link = document.createElement('a');
+                                                        link.href = gasto.archivoFactura;
+                                                        link.download = gasto.archivoFacturaNombre || `factura_${gasto.numeroFactura || gasto.id}.pdf`;
+                                                        document.body.appendChild(link);
+                                                        link.click();
+                                                        document.body.removeChild(link);
+                                                    } else {
+                                                        Alert.alert('Info', 'Descarga disponible solo en web');
+                                                    }
+                                                }}
+                                            >
+                                                <Text style={styles.downloadButtonText}>📥 Descargar Factura</Text>
+                                            </TouchableOpacity>
+                                        )}
+                                        {gasto.esPendiente && (
+                                            <TouchableOpacity
+                                                style={[styles.editCardButton, { backgroundColor: '#10B981', marginRight: 10 }]}
+                                                onPress={() => handleLegalizar(gasto)}
+                                            >
+                                                <Text style={styles.editCardButtonText}>✅ Legalizar</Text>
+                                            </TouchableOpacity>
+                                        )}
+                                        <TouchableOpacity
+                                            style={styles.editCardButton}
+                                            onPress={() => handleEdit(gasto)}
+                                        >
+                                            <Text style={styles.editCardButtonText}>✏️ Editar</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            style={styles.historyButton}
+                                            onPress={() => { setSelectedHistoryGasto(gasto); setShowHistoryModal(true); }}
+                                        >
+                                            <Text style={styles.historyButtonText}>🕒 Historial</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            style={styles.deleteButton}
+                                            onPress={() => handleDelete(gasto.id)}
+                                        >
+                                            <Text style={styles.deleteButtonText}>🗑️ Eliminar</Text>
+                                        </TouchableOpacity>
+                                    </View>
                                 </View>
-                            </View>
-                        ))
+                            );
+                        })
                     )}
                 </ScrollView>
             )}
@@ -732,38 +818,52 @@ function GastosTab() {
                         <Text style={styles.modalTitle}>{editItem ? 'Editar Gasto' : 'Nuevo Gasto'}</Text>
 
                         <ScrollView style={styles.formContainer}>
-                            {/* Rubro */}
-                            <Text style={styles.label}>Rubro *</Text>
-                            <View style={styles.pickerContainer}>
-                                <Picker
-                                    selectedValue={formData.rubroId}
-                                    onValueChange={(value) => setFormData(prev => ({ ...prev, rubroId: value }))}
-                                >
-                                    <Picker.Item label="Seleccione..." value="" />
-                                    {rubros.map(r => (
-                                        <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />
-                                    ))}
-                                </Picker>
-                            </View>
+                            {/* Context Info for Legalization */}
+                            {isLegalizing && (
+                                <View style={{ backgroundColor: '#F0F9FF', padding: 10, borderRadius: 5, marginBottom: 15, borderLeftWidth: 4, borderLeftColor: '#007bff' }}>
+                                    <Text style={{ fontWeight: 'bold', color: '#0056b3' }}>Legalizando:</Text>
+                                    <Text style={{ fontSize: 13, marginTop: 2 }}>{rubros.find(r => r.id == formData.rubroId)?.nombre} - {tiposServicio.find(t => t.id == formData.tipoServicioId)?.nombre}</Text>
+                                    <Text style={{ fontSize: 13, marginTop: 2 }}>Proveedor: {proveedores.find(p => p.id == formData.proveedorId)?.nombre || 'Sin Proveedor'}</Text>
+                                    <Text style={{ fontSize: 13, marginTop: 2 }}>Fecha: {formData.fechaCompra}</Text>
+                                </View>
+                            )}
 
-                            {/* Tipo Servicio */}
-                            <Text style={styles.label}>Tipo de Servicio *</Text>
-                            <View style={styles.pickerContainer}>
-                                <Picker
-                                    selectedValue={formData.tipoServicioId}
-                                    onValueChange={(value) => setFormData(prev => ({ ...prev, tipoServicioId: value }))}
-                                    enabled={filteredTipos.length > 0}
-                                >
-                                    <Picker.Item label="Seleccione..." value="" />
-                                    {filteredTipos.map(t => (
-                                        <Picker.Item key={t.id} label={t.nombre} value={t.id.toString()} />
-                                    ))}
-                                </Picker>
-                            </View>
+                            {/* Rubro */}
+                            {!isLegalizing && (
+                                <>
+                                    <Text style={styles.label}>Rubro *</Text>
+                                    <View style={styles.pickerContainer}>
+                                        <Picker
+                                            selectedValue={formData.rubroId}
+                                            onValueChange={(value) => setFormData(prev => ({ ...prev, rubroId: value }))}
+                                        >
+                                            <Picker.Item label="Seleccione..." value="" />
+                                            {rubros.map(r => (
+                                                <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />
+                                            ))}
+                                        </Picker>
+                                    </View>
+
+                                    {/* Tipo Servicio */}
+                                    <Text style={styles.label}>Tipo de Servicio *</Text>
+                                    <View style={styles.pickerContainer}>
+                                        <Picker
+                                            selectedValue={formData.tipoServicioId}
+                                            onValueChange={(value) => setFormData(prev => ({ ...prev, tipoServicioId: value }))}
+                                            enabled={filteredTipos.length > 0}
+                                        >
+                                            <Picker.Item label="Seleccione..." value="" />
+                                            {filteredTipos.map(t => (
+                                                <Picker.Item key={t.id} label={t.nombre} value={t.id.toString()} />
+                                            ))}
+                                        </Picker>
+                                    </View>
+                                </>
+                            )}
 
                             {/* Proveedor */}
                             <Text style={styles.label}>
-                                Proveedor * {formData.tipoServicioId && filteredProveedores.length === 0 && '(No hay proveedores para este tipo - agrégalos en la pestaña Proveedores)'}
+                                Proveedor {formData.esPendiente && !isLegalizing ? '(Opcional por ahora)' : '*'} {formData.tipoServicioId && filteredProveedores.length === 0 && '(No hay proveedores para este tipo - agrégalo en la pestaña Proveedores)'}
                             </Text>
                             <View style={[styles.pickerContainer, filteredProveedores.length === 0 && styles.pickerDisabled]}>
                                 <Picker
@@ -778,24 +878,40 @@ function GastosTab() {
                                 </Picker>
                             </View>
 
-                            {/* Número de Factura - Required first */}
-                            <Text style={styles.label}>Número de Factura * (ingrese primero)</Text>
+                            {/* Checkbox de Pendiente - Hide when Legalizing */}
+                            {!isLegalizing && formData.rubroId && (
+                                <TouchableOpacity
+                                    style={{ flexDirection: 'row', alignItems: 'center', padding: 10, backgroundColor: '#FEF3C7', borderRadius: 8, marginBottom: 15, borderWidth: 1, borderColor: '#FCD34D' }}
+                                    onPress={() => setFormData(p => ({ ...p, esPendiente: !p.esPendiente }))}
+                                >
+                                    <View style={{ width: 22, height: 22, borderRadius: 4, borderWidth: 2, borderColor: formData.esPendiente ? '#B45309' : '#D1D5DB', backgroundColor: formData.esPendiente ? '#B45309' : '#FFF', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
+                                        {formData.esPendiente && <Text style={{ color: '#FFF', fontSize: 14, fontWeight: 'bold' }}>✓</Text>}
+                                    </View>
+                                    <View>
+                                        <Text style={{ fontWeight: 'bold', color: '#B45309' }}>Marcar como Gasto Pendiente</Text>
+                                        <Text style={{ fontSize: 11, color: '#92400E' }}>Permite guardar sin factura ni precio (2 días plazo)</Text>
+                                    </View>
+                                </TouchableOpacity>
+                            )}
+
+                            {/* Número de Factura - Required unless pending */}
+                            <Text style={styles.label}>Número de Factura {formData.esPendiente ? '(Opcional por ahora)' : '*'}</Text>
                             <TextInput
                                 style={styles.input}
                                 value={formData.numeroFactura}
                                 onChangeText={(value) => setFormData(prev => ({ ...prev, numeroFactura: value }))}
-                                placeholder="Obligatorio para habilitar precio"
+                                placeholder={formData.esPendiente ? "Opcional" : "Obligatorio para habilitar precio"}
                             />
 
-                            {/* Precio with currency formatting - disabled until factura is filled */}
-                            <Text style={styles.label}>Precio * {!isPrecioEnabled && '(ingrese factura primero)'}</Text>
+                            {/* Precio with currency formatting - disabled until factura is filled or it is pending */}
+                            <Text style={styles.label}>Precio {formData.esPendiente ? '(Opcional por ahora)' : '*'} {(!formData.esPendiente && !formData.numeroFactura.trim()) ? '(ingrese factura primero)' : ''}</Text>
                             <TextInput
-                                style={[styles.input, !isPrecioEnabled && styles.inputDisabled]}
+                                style={[styles.input, (!formData.esPendiente && !formData.numeroFactura.trim()) && styles.inputDisabled]}
+                                placeholder="$ 0"
                                 keyboardType="numeric"
                                 value={formData.precioDisplay}
                                 onChangeText={handlePriceChange}
-                                placeholder="$ 0"
-                                editable={isPrecioEnabled}
+                                editable={formData.esPendiente || !!formData.numeroFactura.trim()}
                             />
 
                             {/* Budget Info Panel */}

@@ -810,6 +810,7 @@ function GastosTab() {
                                                 <Picker selectedValue={formData.proveedorId} onValueChange={(v) => setFormData(p => ({ ...p, proveedorId: v }))}>
                                                     <Picker.Item label="Seleccione..." value="" />
                                                     {proveedores
+                                                        .filter(p => !p.rubroId || p.rubroId.toString() === formData.rubroId)
                                                         .sort((a, b) => (a.nombre || a.Nombre || "").localeCompare(b.nombre || b.Nombre || ""))
                                                         .map(p => {
                                                             const pNombre = p.nombre || p.Nombre || "Proveedor";
@@ -909,11 +910,6 @@ function GastosTab() {
                                             placeholder="$ 0"
                                             editable={!isHorasExtras && !isRecargo && (!formData.esPendiente || isLegalizing)}
                                         />
-                                        {(() => {
-                                            const q = cotizaciones.find(c => c.rubroId.toString() === formData.rubroId && c.proveedorId.toString() === formData.proveedorId);
-                                            if (q) return <Text style={{ fontSize: 13, color: '#059669', marginBottom: 10, marginTop: -5 }}>✅ Cotización vinculada: {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(q.precioCotizado)}</Text>;
-                                            return <Text style={{ fontSize: 12, color: '#6B7280', marginBottom: 10, marginTop: -5 }}>ℹ️ Sin cotización vinculada</Text>;
-                                        })()}
 
                                         {/* Budget Status Alert */}
                                         {presupuestoInfo && (
@@ -1681,20 +1677,31 @@ function ProveedoresTab() {
     const [nombre, setNombre] = useState('');
     const [nit, setNit] = useState('');
     const [telefono, setTelefono] = useState('');
+    const [rubroId, setRubroId] = useState('');
     const [saving, setSaving] = useState(false);
 
-    const loadData = async () => { try { setLoading(true); setItems(await talleresApi.getProveedores()); } catch (e) { } finally { setLoading(false); } };
+    // Filter rubros here as well
+    const [rubros, setRubros] = useState([]);
+
+    const loadData = async () => {
+        try {
+            setLoading(true);
+            const [provs, rubs] = await Promise.all([talleresApi.getProveedores(), talleresApi.getRubros()]);
+            setItems(provs);
+            setRubros(rubs.filter(r => r.activo));
+        } catch (e) { } finally { setLoading(false); }
+    };
     useEffect(() => { loadData(); }, []);
 
-    const handleAdd = () => { setEditItem(null); setNombre(''); setNit(''); setTelefono(''); setShowModal(true); };
-    const handleEdit = (item) => { setEditItem(item); setNombre(item.nombre); setNit(item.nitCedula || ''); setTelefono(item.telefono || ''); setShowModal(true); };
+    const handleAdd = () => { setEditItem(null); setNombre(''); setNit(''); setTelefono(''); setRubroId(''); setShowModal(true); };
+    const handleEdit = (item) => { setEditItem(item); setNombre(item.nombre); setNit(item.nitCedula || ''); setTelefono(item.telefono || ''); setRubroId(item.rubroId?.toString() || ''); setShowModal(true); };
 
     const handleSave = async () => {
         if (!nombre.trim()) { showAlert('Error', 'Nombre obligatorio'); return; }
         if (!nit.trim()) { showAlert('Error', 'NIT/Cédula obligatorio'); return; }
         try {
             setSaving(true);
-            const data = { nombre, nitCedula: nit, telefono, activo: true };
+            const data = { nombre, nitCedula: nit, telefono, rubroId: rubroId ? parseInt(rubroId) : null, activo: true };
             if (editItem) { await talleresApi.updateProveedor(editItem.id, data); }
             else { await talleresApi.createProveedor(data); }
             showAlert('Éxito', editItem ? 'Proveedor actualizado' : 'Proveedor registrado');
@@ -1721,6 +1728,7 @@ function ProveedoresTab() {
                     <View key={item.id} style={styles.itemCard}>
                         <View style={styles.itemInfo}>
                             <Text style={styles.itemName}>{item.nombre}</Text>
+                            {item.rubroNombre && <Text style={{ fontSize: 11, color: '#2563EB', fontWeight: 'bold' }}>{item.rubroNombre}</Text>}
                             <Text style={styles.itemParent}>NIT/CC: {item.nitCedula}</Text>
                             {item.telefono && <Text style={styles.itemParent}>📞 {item.telefono}</Text>}
                         </View>
@@ -1738,6 +1746,13 @@ function ProveedoresTab() {
                     <TextInput style={styles.input} value={nombre} onChangeText={setNombre} placeholder="Nombre" />
                     <Text style={styles.label}>NIT o Cédula *</Text>
                     <TextInput style={styles.input} value={nit} onChangeText={setNit} placeholder="NIT o CC" />
+                    <Text style={styles.label}>Rubro Asociado</Text>
+                    <View style={styles.pickerContainer}>
+                        <Picker selectedValue={rubroId} onValueChange={setRubroId}>
+                            <Picker.Item label="Todos los Rubros (Global)" value="" />
+                            {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
+                        </Picker>
+                    </View>
                     <Text style={styles.label}>Teléfono</Text>
                     <TextInput style={styles.input} value={telefono} onChangeText={setTelefono} placeholder="Teléfono" />
                     <View style={styles.modalActions}>
@@ -1931,7 +1946,9 @@ function CotizacionesTab() {
                         <View style={styles.pickerContainer}>
                             <Picker selectedValue={selectedProveedor} onValueChange={setSelectedProveedor}>
                                 <Picker.Item label="Seleccione..." value="" />
-                                {proveedores.map(p => <Picker.Item key={p.id} label={p.nombre} value={p.id.toString()} />)}
+                                {proveedores
+                                    .filter(p => !p.rubroId || p.rubroId.toString() === selectedRubro)
+                                    .map(p => <Picker.Item key={p.id} label={p.nombre} value={p.id.toString()} />)}
                             </Picker>
                         </View>
 

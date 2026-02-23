@@ -320,10 +320,12 @@ export default function OrdenAseoScreen({ navigation }) {
                                         <Text style={styles.encuestaProceso}>{enc.procesoAuditado}</Text>
                                         <View style={[
                                             styles.cumpleBadge,
-                                            enc.totalCumple === 6 && styles.cumpleBadgeFull,
-                                            enc.totalCumple < 4 && styles.cumpleBadgeLow
+                                            enc.totalCumple === (enc.procesoAuditado?.includes('PARQUEO') ? 1 : 6) && styles.cumpleBadgeFull,
+                                            enc.totalCumple < (enc.procesoAuditado?.includes('PARQUEO') ? 1 : 4) && styles.cumpleBadgeLow
                                         ]}>
-                                            <Text style={styles.cumpleBadgeText}>{enc.totalCumple}/6</Text>
+                                            <Text style={styles.cumpleBadgeText}>
+                                                {enc.totalCumple}/{enc.procesoAuditado?.includes('PARQUEO') ? 1 : 6}
+                                            </Text>
                                         </View>
                                     </View>
                                     <Text style={styles.encuestaAuditado}>👤 {enc.nombreAuditado}</Text>
@@ -396,7 +398,9 @@ export default function OrdenAseoScreen({ navigation }) {
                             </View>
 
                             {/* Preguntas CUMPLE/NO CUMPLE */}
-                            {PREGUNTAS.map((pregunta, index) => {
+                            {(formData.procesoAuditado?.includes('PARQUEO') ? [
+                                { key: 'ImplementosAseo', label: '¿Estaciona el vehículo de forma correcta y en reversa?' }
+                            ] : PREGUNTAS).map((pregunta, index) => {
                                 const preguntaKeyLower = pregunta.key.charAt(0).toLowerCase() + pregunta.key.slice(1);
                                 const fotoKey = `foto${pregunta.key}Base64`;
                                 const hasFoto = formData[fotoKey];

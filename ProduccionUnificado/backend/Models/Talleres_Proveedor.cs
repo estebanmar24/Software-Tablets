@@ -34,6 +34,14 @@ public class Talleres_Proveedor
 
     public bool Activo { get; set; } = true;
 
+    /// <summary>
+    /// ID del rubro (Categoría) asociado a este proveedor. Opcional para no romper datos existentes inicialmente.
+    /// </summary>
+    public int? RubroId { get; set; }
+    
+    [ForeignKey("RubroId")]
+    public virtual Talleres_Rubro? Rubro { get; set; }
+
     // Navigation property
     public virtual ICollection<Talleres_Gasto> Gastos { get; set; } = new List<Talleres_Gasto>();
 }

@@ -24,22 +24,23 @@ public class OrdenAseoController : ControllerBase
     private static readonly string[] Procesos = new[]
     {
         "PROCESO DE ALMACEN",
+        "PROCESO DE BARNIZADORA",
         "PROCESO DE COLAMINADORA",
         "PROCESO DE CONVERTIDORA",
         "PROCESO DE CORRUGADORA",
         "PROCESO DE DESPACHOS",
         "PROCESO DE DESPIQUE",
+        "PROCESO DE ESTAMPADORA",
         "PROCESO DE GUILLOTINA",
         "PROCESO DE IMPRESIÓN",
         "PROCESO DE LAMINADO",
+        "PROCESO DE PARQUEO DE VEHÍCULOS",
         "PROCESO DE PEGADORA",
         "PROCESO DE PLANEACIÓN",
+        "PROCESO DE PRODUCCIÓN",
         "PROCESO DE TERMINADOS",
         "PROCESO DE TROQUELADO",
-        "PROCESO TEJEDORA",
-        "PROCESO DE PRODUCCIÓN",
-        "PROCESO DE ESTAMPADORA",
-        "PROCESO DE BARNIZADORA"
+        "PROCESO TEJEDORA"
     };
 
     private static readonly string[] Plantas = new[] { "PLANTA 1", "PLANTA 2" };
@@ -70,9 +71,11 @@ public class OrdenAseoController : ControllerBase
                 e.FechaCreacion,
                 e.CreadoPor,
                 // Calcular cumplimiento total
-                TotalCumple = (e.ImplementosAseo ? 1 : 0) + (e.HerramientasLugar ? 1 : 0) +
-                              (e.TarrosRotulados ? 1 : 0) + (e.AreaDespejada ? 1 : 0) +
-                              (e.RutasEvacuacion ? 1 : 0) + (e.MesasTrabajo ? 1 : 0)
+                TotalCumple = (e.ProcesoAuditado != null && e.ProcesoAuditado.Contains("PARQUEO"))
+                              ? (e.ImplementosAseo ? 1 : 0)
+                              : (e.ImplementosAseo ? 1 : 0) + (e.HerramientasLugar ? 1 : 0) +
+                                (e.TarrosRotulados ? 1 : 0) + (e.AreaDespejada ? 1 : 0) +
+                                (e.RutasEvacuacion ? 1 : 0) + (e.MesasTrabajo ? 1 : 0)
             })
             .ToListAsync();
 

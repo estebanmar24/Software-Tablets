@@ -111,11 +111,22 @@ public class TalleresController : ControllerBase
     /// Get all proveedores
     /// </summary>
     [HttpGet("proveedores")]
-    public async Task<ActionResult<IEnumerable<Talleres_Proveedor>>> GetProveedores()
+    public async Task<ActionResult<IEnumerable<object>>> GetProveedores()
     {
         return await _context.Talleres_Proveedores
+            .Include(p => p.Rubro)
             .Where(p => p.Activo)
             .OrderBy(p => p.Nombre)
+            .Select(p => new {
+                p.Id,
+                p.Nombre,
+                p.NitCedula,
+                p.Telefono,
+                p.PrecioCotizado,
+                p.Activo,
+                p.RubroId,
+                RubroNombre = p.Rubro != null ? p.Rubro.Nombre : ""
+            })
             .ToListAsync();
     }
 
@@ -145,7 +156,17 @@ public class TalleresController : ControllerBase
         {
             return BadRequest("El NIT o Cédula es obligatorio");
         }
-        _context.Entry(proveedor).State = EntityState.Modified;
+
+        var existingProveedor = await _context.Talleres_Proveedores.FindAsync(id);
+        if (existingProveedor == null) return NotFound();
+
+        existingProveedor.Nombre = proveedor.Nombre;
+        existingProveedor.NitCedula = proveedor.NitCedula;
+        existingProveedor.Telefono = proveedor.Telefono;
+        existingProveedor.PrecioCotizado = proveedor.PrecioCotizado;
+        existingProveedor.RubroId = proveedor.RubroId;
+
+        _context.Entry(existingProveedor).State = EntityState.Modified;
         await _context.SaveChangesAsync();
         return NoContent();
     }

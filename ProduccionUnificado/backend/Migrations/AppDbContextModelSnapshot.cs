@@ -198,6 +198,9 @@ namespace TiempoProcesos.API.Migrations
                     b.Property<int?>("Diseno_ProveedorId")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("EsPendiente")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("FacturaPdfUrl")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
@@ -426,6 +429,7 @@ namespace TiempoProcesos.API.Migrations
 
                     b.Property<string>("Cliente")
                         .HasColumnType("text");
+
                     b.Property<DateTime>("Fecha")
                         .HasColumnType("timestamp without time zone");
 
@@ -939,6 +943,9 @@ namespace TiempoProcesos.API.Migrations
                     b.Property<int?>("CreadoPorId")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("EsPendiente")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime>("FechaCompra")
                         .HasColumnType("timestamp without time zone");
 
@@ -963,7 +970,7 @@ namespace TiempoProcesos.API.Migrations
                     b.Property<decimal>("Precio")
                         .HasColumnType("decimal(18,2)");
 
-                    b.Property<int>("ProveedorId")
+                    b.Property<int?>("ProveedorId")
                         .HasColumnType("integer");
 
                     b.Property<int>("RubroId")
@@ -1410,6 +1417,9 @@ namespace TiempoProcesos.API.Migrations
                     b.Property<int?>("CreadoPorId")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("EsPendiente")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("FacturaPdfUrl")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
@@ -1430,6 +1440,10 @@ namespace TiempoProcesos.API.Migrations
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
+
+                    b.Property<string>("NumeroOP")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<string>("Observaciones")
                         .HasMaxLength(500)
@@ -2103,6 +2117,9 @@ namespace TiempoProcesos.API.Migrations
                     b.Property<int?>("CreadoPorId")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("EsPendiente")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime>("FechaCompra")
                         .HasColumnType("timestamp without time zone");
 
@@ -2127,7 +2144,7 @@ namespace TiempoProcesos.API.Migrations
                     b.Property<decimal>("Precio")
                         .HasColumnType("decimal(18,2)");
 
-                    b.Property<int>("ProveedorId")
+                    b.Property<int?>("ProveedorId")
                         .HasColumnType("integer");
 
                     b.Property<int>("RubroId")
@@ -2326,7 +2343,8 @@ namespace TiempoProcesos.API.Migrations
                         .HasColumnType("integer");
 
                     b.Property<bool>("EsPendiente")
-                        .HasColumnType("boolean");
+                        .HasColumnType("boolean")
+                        .HasAnnotation("Relational:JsonPropertyName", "esPendiente");
 
                     b.Property<string>("FacturaPdfUrl")
                         .HasMaxLength(500)
@@ -2349,8 +2367,8 @@ namespace TiempoProcesos.API.Migrations
                         .HasColumnType("character varying(100)");
 
                     b.Property<string>("NumeroOP")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                        .HasColumnType("text")
+                        .HasAnnotation("Relational:JsonPropertyName", "numeroOP");
 
                     b.Property<string>("Observaciones")
                         .HasMaxLength(500)
@@ -2479,11 +2497,16 @@ namespace TiempoProcesos.API.Migrations
                     b.Property<decimal?>("PrecioCotizado")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<int?>("RubroId")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Telefono")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("RubroId");
 
                     b.ToTable("Talleres_Proveedores", (string)null);
                 });
@@ -2756,8 +2779,7 @@ namespace TiempoProcesos.API.Migrations
                     b.HasOne("TiempoProcesos.API.Models.GH_Proveedor", "Proveedor")
                         .WithMany()
                         .HasForeignKey("ProveedorId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("TiempoProcesos.API.Models.GH_Rubro", "Rubro")
                         .WithMany()
@@ -2848,7 +2870,6 @@ namespace TiempoProcesos.API.Migrations
                     b.Navigation("Maquina");
                 });
 
-
             modelBuilder.Entity("TiempoProcesos.API.Models.Planeacion_Cotizacion", b =>
                 {
                     b.HasOne("TiempoProcesos.API.Models.Planeacion_Proveedor", "Proveedor")
@@ -2917,7 +2938,6 @@ namespace TiempoProcesos.API.Migrations
 
                     b.Navigation("Rubro");
                 });
-
 
             modelBuilder.Entity("TiempoProcesos.API.Models.ProduccionDiaria", b =>
                 {
@@ -3106,8 +3126,7 @@ namespace TiempoProcesos.API.Migrations
                     b.HasOne("TiempoProcesos.API.Models.SST_Proveedor", "Proveedor")
                         .WithMany()
                         .HasForeignKey("ProveedorId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("TiempoProcesos.API.Models.SST_Rubro", "Rubro")
                         .WithMany()
@@ -3231,6 +3250,15 @@ namespace TiempoProcesos.API.Migrations
                         .HasForeignKey("RubroId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Rubro");
+                });
+
+            modelBuilder.Entity("TiempoProcesos.API.Models.Talleres_Proveedor", b =>
+                {
+                    b.HasOne("TiempoProcesos.API.Models.Talleres_Rubro", "Rubro")
+                        .WithMany()
+                        .HasForeignKey("RubroId");
 
                     b.Navigation("Rubro");
                 });
