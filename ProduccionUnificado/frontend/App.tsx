@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Alert, Platform, ScrollView, useWindowDimensions, BackHandler } from 'react-native';
+import { View, StyleSheet, Alert, Platform, ScrollView, useWindowDimensions, BackHandler, TouchableOpacity, Text } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { usePersistence } from './src/hooks/usePersistence';
 import { StatusBar } from 'expo-status-bar';
@@ -33,15 +33,62 @@ import CalidadScreen from './src/screens/CalidadScreen';
 import OrdenAseoScreen from './src/screens/OrdenAseoScreen';
 import UserManagementScreen from './src/screens/UserManagementScreen';
 
+import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
+
+export const ThemeToggle = () => {
+  const { isDarkMode, toggleTheme } = useTheme();
+  return (
+    <TouchableOpacity
+      style={[themeStyles.themeToggle, { backgroundColor: isDarkMode ? '#1F2937' : '#E2E8F0' }]}
+      onPress={toggleTheme}
+      activeOpacity={0.8}
+    >
+      <Text style={[themeStyles.themeToggleText, { filter: 'grayscale(100%) brightness(1.2)' }]}>
+        {isDarkMode ? '☀️' : '🌙'}
+      </Text>
+    </TouchableOpacity>
+  );
+};
+
+const themeStyles = StyleSheet.create({
+  themeToggle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
+    marginLeft: 15,
+  },
+  themeToggleText: {
+    fontSize: 20,
+  }
+});
+
 export default function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
+  );
+}
+
+function AppContent() {
   // Persistence
   const { saveState, loadState, clearState } = usePersistence();
   const [isRestored, setIsRestored] = useState(false);
+  const { isDarkMode, colors } = useTheme();
 
   // Responsive check
   const { width } = useWindowDimensions();
   const isMobile = width < 900;
   const isPhone = width < 600; // Unicamente teléfonos
+
+  // ... (rest of the state and effects from former App component)
 
   // Enforce Orientation
   // Enforce Orientation
@@ -737,12 +784,12 @@ export default function App() {
   // Wrapper for mobile scroll
   const MainWrapper: React.ElementType = isMobile ? ScrollView : View;
   const wrapperProps = isMobile
-    ? { style: { flex: 1 }, contentContainerStyle: { flexDirection: 'column' as const } }
-    : { style: styles.container };
+    ? { style: { flex: 1, backgroundColor: colors.background }, contentContainerStyle: { flexDirection: 'column' as const } }
+    : { style: [styles.container, { backgroundColor: colors.background }] };
 
   return (
     <MainWrapper {...wrapperProps}>
-      <StatusBar style="dark" />
+      <StatusBar style={isDarkMode ? 'light' : 'dark'} />
 
       {/* Sidebar */}
       <Sidebar
@@ -904,7 +951,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     flexDirection: 'row',
-    backgroundColor: '#F5F7FA',
   },
   mainContent: {
     flex: 1,

@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useTheme } from '../contexts/ThemeContext';
 import {
     View,
     Text,
@@ -39,6 +40,7 @@ const TABS = [
 ];
 
 export default function SSTGastosScreen({ navigation }) {
+    const { colors } = useTheme();
     const [activeTab, setActiveTab] = useState('gastos');
 
     return (
@@ -2041,7 +2043,7 @@ function GraficasTab() {
     };
 
     // Logo source for PDF
-    const logoSource = require('../../assets/LOGO_ALEPH_IMPRESORES.jpg');
+    const logoSource = colors.alephLogo;
 
     // Helper: Load Image as Base64 for PDF (matching DashboardScreen pattern)
     const getBase64FromUrl = async (url) => {
@@ -2938,7 +2940,7 @@ function OrdenAseoTab() {
 
             let logoBase64 = null;
             try {
-                const asset = Asset.fromModule(require('../../assets/LOGO_ALEPH_IMPRESORES.jpg'));
+                const asset = Asset.fromModule(colors.alephLogo);
                 await asset.downloadAsync();
                 logoBase64 = await getBase64FromUrl(asset.uri);
             } catch (e) { console.log('Logo load error', e); }

@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTheme } from '../contexts/ThemeContext';
 import {
     View,
     Text,
@@ -33,7 +34,8 @@ const TABS = [
     { key: 'diseno', label: 'Diseño', icon: '🎨' }
 ];
 
-export default function SSTPresupuestosScreen({ navigation }) {
+export default function SSTPresupuestosScreen() {
+    const { colors, isDarkMode } = useTheme();
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [activeTab, setActiveTab] = useState('talleres'); // Default to talleres as requested? No user asked to be located there but let's default to sst or whatever was default. User asked "quiero que te ubiques en gestion de presupuestos, donde se ubica talleres y despachos". Let's set 'talleres' as default if that's what is implied.
@@ -198,13 +200,16 @@ export default function SSTPresupuestosScreen({ navigation }) {
     };
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
             {/* Tabs */}
-            <View style={styles.tabsContainer}>
+            <View style={[styles.tabsContainer, { backgroundColor: isDarkMode ? '#020617' : '#1E3A5F' }]}>
                 {TABS.map(tab => (
                     <TouchableOpacity
                         key={tab.key}
-                        style={[styles.tab, activeTab === tab.key && styles.activeTab]}
+                        style={[
+                            styles.tab,
+                            activeTab === tab.key && [styles.activeTab, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.1)' }]
+                        ]}
                         onPress={() => setActiveTab(tab.key)}
                     >
                         <Text style={styles.tabIcon}>{tab.icon}</Text>
@@ -216,17 +221,18 @@ export default function SSTPresupuestosScreen({ navigation }) {
             </View>
 
             {/* Header */}
-            <View style={styles.header}>
-                <Text style={styles.title}>{getTabTitle()}</Text>
+            <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+                <Text style={[styles.title, { color: colors.text }]}>{getTabTitle()}</Text>
                 <View style={styles.yearSelector}>
-                    <Text style={styles.yearLabel}>Año:</Text>
+                    <Text style={[styles.yearLabel, { color: colors.subText }]}>Año:</Text>
                     <Picker
                         selectedValue={anio}
                         onValueChange={setAnio}
-                        style={styles.yearPicker}
+                        style={[styles.yearPicker, { color: '#000000' }]}
+                        dropdownIconColor={colors.subText}
                     >
                         {anios.map(a => (
-                            <Picker.Item key={a} label={a.toString()} value={a} />
+                            <Picker.Item key={a} label={a.toString()} value={a} color={'#000000'} />
                         ))}
                     </Picker>
                 </View>
@@ -234,9 +240,9 @@ export default function SSTPresupuestosScreen({ navigation }) {
 
             {/* Summary */}
             {gridData && (
-                <View style={styles.summaryCard}>
-                    <Text style={styles.summaryTitle}>Resumen {anio}</Text>
-                    <Text style={styles.summaryTotal}>
+                <View style={[styles.summaryCard, { backgroundColor: isDarkMode ? '#1E293B' : '#EBF5FF', borderLeftColor: colors.primary }]}>
+                    <Text style={[styles.summaryTitle, { color: isDarkMode ? colors.primary : '#1E40AF' }]}>Resumen {anio}</Text>
+                    <Text style={[styles.summaryTotal, { color: isDarkMode ? colors.primary : '#1E40AF' }]}>
                         Total Anual: {formatCurrency(gridData.totalAnual)}
                     </Text>
                 </View>
@@ -244,9 +250,9 @@ export default function SSTPresupuestosScreen({ navigation }) {
 
             {/* Loading or Content */}
             {loading ? (
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color="#2563EB" />
-                    <Text style={styles.loadingText}>Cargando presupuestos...</Text>
+                <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+                    <ActivityIndicator size="large" color={colors.primary} />
+                    <Text style={[styles.loadingText, { color: colors.subText }]}>Cargando presupuestos...</Text>
                 </View>
             ) : (activeTab !== 'sst' && activeTab !== 'gh' && activeTab !== 'produccion' && activeTab !== 'talleres' && activeTab !== 'planeacion' && activeTab !== 'diseno') ? (
                 <View style={styles.placeholderContainer}>
@@ -263,15 +269,15 @@ export default function SSTPresupuestosScreen({ navigation }) {
                         <View>
                             {/* Table Header */}
                             <View style={styles.tableRow}>
-                                <View style={[styles.tableCell, styles.headerCell, styles.serviceNameCell]}>
+                                <View style={[styles.tableCell, styles.headerCell, styles.serviceNameCell, { backgroundColor: colors.headerBackground, borderColor: colors.border }]}>
                                     <Text style={styles.headerText}>{(activeTab === 'planeacion' || activeTab === 'diseno' || activeTab === 'produccion' || activeTab === 'talleres') ? 'Rubro' : 'Tipo de Servicio'}</Text>
                                 </View>
                                 {sstApi.MESES.map(mes => (
-                                    <View key={mes.value} style={[styles.tableCell, styles.headerCell, styles.monthCell]}>
+                                    <View key={mes.value} style={[styles.tableCell, styles.headerCell, styles.monthCell, { backgroundColor: colors.headerBackground, borderColor: colors.border }]}>
                                         <Text style={styles.headerText}>{mes.label.substring(0, 3)}</Text>
                                     </View>
                                 ))}
-                                <View style={[styles.tableCell, styles.headerCell, styles.totalCell]}>
+                                <View style={[styles.tableCell, styles.headerCell, styles.totalCell, { backgroundColor: colors.headerBackground, borderColor: colors.border }]}>
                                     <Text style={styles.headerText}>Total</Text>
                                 </View>
                             </View>
@@ -288,10 +294,10 @@ export default function SSTPresupuestosScreen({ navigation }) {
                                     return (
                                         <View
                                             key={tipo.tipoServicioId}
-                                            style={[styles.tableRow, index % 2 === 0 ? styles.evenRow : styles.oddRow]}
+                                            style={[styles.tableRow, { backgroundColor: index % 2 === 0 ? colors.card : (isDarkMode ? '#0F172A' : '#F9FAFB') }]}
                                         >
-                                            <View style={[styles.tableCell, styles.serviceNameCell]}>
-                                                <Text style={styles.serviceName} numberOfLines={2}>
+                                            <View style={[styles.tableCell, styles.serviceNameCell, { borderColor: colors.border }]}>
+                                                <Text style={[styles.serviceName, { color: colors.text }]} numberOfLines={2}>
                                                     {tipo.tipoServicioNombre}
                                                 </Text>
                                             </View>
@@ -299,11 +305,12 @@ export default function SSTPresupuestosScreen({ navigation }) {
                                                 const key = `${tipo.tipoServicioId}-${mesData.mes}`;
                                                 const isEdited = editedValues[key] !== undefined;
                                                 return (
-                                                    <View key={mesData.mes} style={[styles.tableCell, styles.monthCell]}>
+                                                    <View key={mesData.mes} style={[styles.tableCell, styles.monthCell, { borderColor: colors.border }]}>
                                                         <TextInput
                                                             style={[
                                                                 styles.input,
-                                                                isEdited && styles.inputEdited
+                                                                { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text },
+                                                                isEdited && [styles.inputEdited, { backgroundColor: isDarkMode ? '#451A03' : '#FEF3C7', borderColor: '#F59E0B' }]
                                                             ]}
                                                             keyboardType="numeric"
                                                             value={getDisplayValue(tipo.tipoServicioId, mesData)}
@@ -311,12 +318,13 @@ export default function SSTPresupuestosScreen({ navigation }) {
                                                                 handleValueChange(tipo.tipoServicioId, mesData.mes, value)
                                                             }
                                                             placeholder="0"
+                                                            placeholderTextColor={colors.subText}
                                                         />
                                                     </View>
                                                 );
                                             })}
-                                            <View style={[styles.tableCell, styles.totalCell]}>
-                                                <Text style={styles.totalText}>{formatCurrency(rowTotal)}</Text>
+                                            <View style={[styles.tableCell, styles.totalCell, { backgroundColor: isDarkMode ? '#064E3B' : '#F0FDF4', borderColor: colors.border }]}>
+                                                <Text style={[styles.totalText, { color: isDarkMode ? '#6EE7B7' : '#047857' }]}>{formatCurrency(rowTotal)}</Text>
                                             </View>
                                         </View>
                                     );
@@ -324,16 +332,16 @@ export default function SSTPresupuestosScreen({ navigation }) {
 
                                 {/* Monthly Totals Row */}
                                 {gridData && (
-                                    <View style={[styles.tableRow, styles.totalsRow]}>
-                                        <View style={[styles.tableCell, styles.serviceNameCell]}>
+                                    <View style={[styles.tableRow, styles.totalsRow, { backgroundColor: isDarkMode ? '#020617' : '#1E3A5F' }]}>
+                                        <View style={[styles.tableCell, styles.serviceNameCell, { borderColor: colors.border }]}>
                                             <Text style={styles.totalRowLabel}>TOTAL MENSUAL</Text>
                                         </View>
                                         {gridData.totalesMensuales.map((total, index) => (
-                                            <View key={index} style={[styles.tableCell, styles.monthCell]}>
+                                            <View key={index} style={[styles.tableCell, styles.monthCell, { borderColor: colors.border }]}>
                                                 <Text style={styles.monthTotalText}>{formatCurrency(total)}</Text>
                                             </View>
                                         ))}
-                                        <View style={[styles.tableCell, styles.totalCell]}>
+                                        <View style={[styles.tableCell, styles.totalCell, { backgroundColor: isDarkMode ? '#020617' : '#1E3A5F', borderColor: colors.border }]}>
                                             <Text style={styles.grandTotalText}>{formatCurrency(gridData.totalAnual)}</Text>
                                         </View>
                                     </View>
@@ -343,14 +351,14 @@ export default function SSTPresupuestosScreen({ navigation }) {
                     </ScrollView>
 
                     {/* Actions */}
-                    <View style={styles.actions}>
+                    <View style={[styles.actions, { backgroundColor: colors.footerBackground || colors.card, borderTopColor: colors.border }]}>
                         {Object.keys(editedValues).length > 0 && (
                             <Text style={styles.pendingChanges}>
                                 {Object.keys(editedValues).length} cambios pendientes
                             </Text>
                         )}
                         <TouchableOpacity
-                            style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+                            style={[styles.saveButton, { backgroundColor: colors.primary }, (saving || Object.keys(editedValues).length === 0) && styles.saveButtonDisabled]}
                             onPress={handleSave}
                             disabled={saving || Object.keys(editedValues).length === 0}
                         >

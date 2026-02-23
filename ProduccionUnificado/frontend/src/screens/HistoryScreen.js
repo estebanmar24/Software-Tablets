@@ -108,7 +108,7 @@ const HistoryScreen = ({ navigation }) => { // Recibimos navigation prop
         return `${h}:${m}:${s}`;
     };
 
-    const logoSource = require('../../assets/LOGO_ALEPH_IMPRESORES.jpg');
+    const logoSource = colors.alephLogo;
 
     return (
         <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>

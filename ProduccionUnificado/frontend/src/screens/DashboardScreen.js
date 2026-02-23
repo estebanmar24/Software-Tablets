@@ -12,6 +12,7 @@ import { Asset } from 'expo-asset';
 import { Chart, registerables } from 'chart.js';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
 // CustomNavBar removed - navigation handled by AdminDashboard
+import { ThemeToggle } from '../../App';
 import { useTheme } from '../contexts/ThemeContext';
 
 // Register Chart.js components
@@ -32,7 +33,7 @@ export default function DashboardScreen({ navigation }) {
     const [semana, setSemana] = useState(1);
     const [generatingPdf, setGeneratingPdf] = useState(false);
 
-    const logoSource = require('../../assets/LOGO_ALEPH_IMPRESORES.jpg');
+    const logoSource = colors.alephLogo;
 
     // Data Lists
     const [usuarios, setUsuarios] = useState([]);
@@ -1508,8 +1509,11 @@ export default function DashboardScreen({ navigation }) {
     return (
         <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
             {/* Header with Logo */}
-            <View style={styles.headerContainer}>
-                <Image source={logoSource} style={styles.logo} resizeMode="contain" />
+            <View style={[styles.headerContainer, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Image source={logoSource} style={styles.logo} resizeMode="contain" />
+                    <ThemeToggle />
+                </View>
                 <Text style={[styles.header, { color: colors.text }]}>Tablero Semáforos</Text>
             </View>
 

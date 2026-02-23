@@ -22,7 +22,7 @@ import PlaneacionGastosScreen from '../screens/PlaneacionGastosScreen';
 import DisenoGastosScreen from '../screens/DisenoGastosScreen';
 
 // Theme Provider
-import { ThemeProvider, useTheme } from '../contexts/ThemeContext';
+import { ThemeProvider, useTheme, ThemeContext, lightColors } from '../contexts/ThemeContext';
 
 interface AdminDashboardProps {
     onBack: () => void;
@@ -55,16 +55,28 @@ interface DashboardCardProps {
     disabled?: boolean;
 }
 
-function DashboardCard({ title, description, icon, onPress, color = '#E6FFFA', disabled }: DashboardCardProps) {
+function DashboardCard({ title, description, icon, onPress, color, disabled }: DashboardCardProps) {
+    const { colors, isDarkMode } = useTheme();
+
+    const cardBg = disabled
+        ? (isDarkMode ? '#1F2937' : '#E0E0E0')
+        : (isDarkMode ? '#111827' : (color || '#E6FFFA'));
+
+    const iconContainerBg = isDarkMode ? '#020617' : '#FFFFFF';
+
     return (
-        <View style={[styles.cardContainer, { backgroundColor: disabled ? '#E0E0E0' : color }, disabled && { opacity: 0.7 }]}>
-            <View style={styles.cardIconContainer}>
+        <View style={[
+            styles.cardContainer,
+            { backgroundColor: cardBg, borderColor: isDarkMode ? '#1F2937' : colors.border, borderWidth: isDarkMode ? 1 : 0 },
+            disabled && { opacity: 0.6 }
+        ]}>
+            <View style={[styles.cardIconContainer, { backgroundColor: iconContainerBg }]}>
                 <Text style={[styles.cardIcon, disabled && { opacity: 0.5 }]}>{icon}</Text>
             </View>
-            <Text style={[styles.cardTitle, disabled && { color: '#757575' }]}>{title}</Text>
-            <Text style={[styles.cardDescription, disabled && { color: '#9E9E9E' }]}>{description}</Text>
+            <Text style={[styles.cardTitle, { color: colors.text }]}>{title}</Text>
+            <Text style={[styles.cardDescription, { color: colors.subText }]}>{description}</Text>
             <TouchableOpacity
-                style={[styles.cardButton, disabled && { backgroundColor: '#BDBDBD' }]}
+                style={[styles.cardButton, { backgroundColor: isDarkMode ? colors.primary : '#3182CE' }, disabled && { backgroundColor: isDarkMode ? '#374151' : '#BDBDBD' }]}
                 onPress={onPress}
                 disabled={disabled}
             >
@@ -75,6 +87,7 @@ function DashboardCard({ title, description, icon, onPress, color = '#E6FFFA', d
 }
 
 function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDashboardProps) {
+    const { colors, isDarkMode } = useTheme();
     // Mode: 'MENU' (Grid de tarjetas) | 'CONTENT' (Tabs existentes) | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS'
     const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS'>(() => {
         if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
@@ -180,8 +193,8 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
     // --- VISTA EQUIPOS (MANTENIMIENTO) ---
     if (mode === 'EQUIPOS') {
         return (
-            <View style={styles.container}>
-                <View style={styles.header}>
+            <View style={[styles.container, { backgroundColor: colors.background }]}>
+                <View style={[styles.header, { backgroundColor: colors.headerBackground }]}>
                     <TouchableOpacity style={styles.backButton} onPress={() => {
                         setMode('MENU');
                         if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
@@ -193,7 +206,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                     </View>
                     <Image
                         source={require('../../assets/logo_perla.png')}
-                        style={styles.contentHeaderLogo}
+                        style={[styles.contentHeaderLogo, isDarkMode && { opacity: 0.95 }]}
                         resizeMode="contain"
                     />
                 </View>
@@ -218,11 +231,11 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                     </View>
                     <Image
                         source={require('../../assets/logo_perla.png')}
-                        style={styles.contentHeaderLogo}
+                        style={[styles.contentHeaderLogo, isDarkMode && { opacity: 0.95 }]}
                         resizeMode="contain"
                     />
                 </View>
-                <SSTPresupuestosScreen navigation={mockNavigation} />
+                <SSTPresupuestosScreen />
             </View>
         );
     }
@@ -243,7 +256,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                     </View>
                     <Image
                         source={require('../../assets/logo_perla.png')}
-                        style={styles.contentHeaderLogo}
+                        style={[styles.contentHeaderLogo, isDarkMode && { opacity: 0.95 }]}
                         resizeMode="contain"
                     />
                 </View>
@@ -268,7 +281,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                     </View>
                     <Image
                         source={require('../../assets/logo_perla.png')}
-                        style={styles.contentHeaderLogo}
+                        style={[styles.contentHeaderLogo, isDarkMode && { opacity: 0.95 }]}
                         resizeMode="contain"
                     />
                 </View>
@@ -293,7 +306,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                     </View>
                     <Image
                         source={require('../../assets/logo_perla.png')}
-                        style={styles.contentHeaderLogo}
+                        style={[styles.contentHeaderLogo, isDarkMode && { opacity: 0.95 }]}
                         resizeMode="contain"
                     />
                 </View>
@@ -318,11 +331,11 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                     </View>
                     <Image
                         source={require('../../assets/logo_perla.png')}
-                        style={styles.contentHeaderLogo}
+                        style={[styles.contentHeaderLogo, isDarkMode && { opacity: 0.95 }]}
                         resizeMode="contain"
                     />
                 </View>
-                <PlaneacionGastosScreen navigation={mockNavigation} />
+                <PlaneacionGastosScreen />
             </View>
         );
     }
@@ -343,11 +356,11 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                     </View>
                     <Image
                         source={require('../../assets/logo_perla.png')}
-                        style={styles.contentHeaderLogo}
+                        style={[styles.contentHeaderLogo, isDarkMode && { opacity: 0.95 }]}
                         resizeMode="contain"
                     />
                 </View>
-                <DisenoGastosScreen navigation={mockNavigation} />
+                <DisenoGastosScreen />
             </View>
         );
     }
@@ -368,11 +381,11 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                     </View>
                     <Image
                         source={require('../../assets/logo_perla.png')}
-                        style={styles.contentHeaderLogo}
+                        style={[styles.contentHeaderLogo, isDarkMode && { opacity: 0.95 }]}
                         resizeMode="contain"
                     />
                 </View>
-                <TalleresGastosScreen navigation={mockNavigation} />
+                <TalleresGastosScreen />
             </View>
         );
     }
@@ -393,7 +406,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                     </View>
                     <Image
                         source={require('../../assets/logo_perla.png')}
-                        style={styles.contentHeaderLogo}
+                        style={[styles.contentHeaderLogo, isDarkMode && { opacity: 0.95 }]}
                         resizeMode="contain"
                     />
                 </View>
@@ -405,48 +418,57 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
     // --- VISTA CONTENT (SISTEMA ACTUAL) ---
     if (mode === 'CONTENT') {
         return (
-            <View style={styles.container}>
-                {/* Header */}
-                <View style={styles.header}>
-                    <TouchableOpacity style={styles.backButton} onPress={() => {
-                        setMode('MENU');
-                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
-                    }}>
-                        <Text style={styles.backButtonText}>← Volver al Panel</Text>
-                    </TouchableOpacity>
-                    <View style={styles.centeredTitleContainer} pointerEvents="box-none">
-                        <Text style={styles.title}>Administración Master</Text>
+            <ThemeContext.Provider value={{ isDarkMode: false, toggleTheme: () => { }, colors: lightColors }}>
+                <View style={[styles.container, { backgroundColor: lightColors.background }]}>
+                    {/* Header */}
+                    <View style={[styles.header, { backgroundColor: lightColors.headerBackground }]}>
+                        <TouchableOpacity style={styles.backButton} onPress={() => {
+                            setMode('MENU');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                        }}>
+                            <Text style={styles.backButtonText}>← Volver al Panel</Text>
+                        </TouchableOpacity>
+                        <View style={styles.centeredTitleContainer} pointerEvents="box-none">
+                            <Text style={styles.title}>Administración Master</Text>
+                        </View>
+                        <Image
+                            source={require('../../assets/logo_perla.png')}
+                            style={[styles.contentHeaderLogo]}
+                            resizeMode="contain"
+                        />
                     </View>
-                    <Image
-                        source={require('../../assets/logo_perla.png')}
-                        style={styles.contentHeaderLogo}
-                        resizeMode="contain"
-                    />
-                </View>
 
-                {/* Tab Navigation */}
-                <View style={styles.tabBar}>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabScrollContent}>
-                        {tabs.map((tab) => (
-                            <TouchableOpacity
-                                key={tab.key}
-                                style={[styles.tab, activeTab === tab.key && styles.activeTab]}
-                                onPress={() => setActiveTab(tab.key)}
-                            >
-                                <Text style={styles.tabIcon}>{tab.icon}</Text>
-                                <Text style={[styles.tabText, activeTab === tab.key && styles.activeTabText]}>
-                                    {tab.label}
-                                </Text>
-                            </TouchableOpacity>
-                        ))}
-                    </ScrollView>
-                </View>
+                    {/* Tab Navigation */}
+                    <View style={[styles.tabBar, { backgroundColor: lightColors.card, borderBottomColor: lightColors.border }]}>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabScrollContent}>
+                            {tabs.map((tab) => (
+                                <TouchableOpacity
+                                    key={tab.key}
+                                    style={[
+                                        styles.tab,
+                                        activeTab === tab.key && [styles.activeTab, { borderBottomColor: '#4299E1', backgroundColor: '#EBF8FF' }]
+                                    ]}
+                                    onPress={() => setActiveTab(tab.key)}
+                                >
+                                    <Text style={[styles.tabIcon, { color: activeTab === tab.key ? '#4299E1' : lightColors.subText }]}>{tab.icon}</Text>
+                                    <Text style={[
+                                        styles.tabText,
+                                        { color: lightColors.subText },
+                                        activeTab === tab.key && [styles.activeTabText, { color: '#4299E1' }]
+                                    ]}>
+                                        {tab.label}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+                    </View>
 
-                {/* Content */}
-                <View style={styles.content}>
-                    {renderActiveScreen()}
+                    {/* Content */}
+                    <View style={styles.content}>
+                        {renderActiveScreen()}
+                    </View>
                 </View>
-            </View>
+            </ThemeContext.Provider>
         );
     }
 
@@ -481,15 +503,15 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
     };
 
     return (
-        <View style={styles.menuContainer}>
-            <View style={styles.panelContainer}>
-                <View style={styles.menuHeader}>
+        <View style={[styles.menuContainer, { backgroundColor: isDarkMode ? colors.background : '#96BDF0' }]}>
+            <View style={[styles.panelContainer, { backgroundColor: isDarkMode ? '#05070A' : '#FFFFFF' }]}>
+                <View style={[styles.menuHeader, { borderBottomColor: colors.border }]}>
                     <TouchableOpacity style={styles.backButtonSimple} onPress={onBack}>
-                        <Text style={styles.backButtonSimpleText}>← Salir</Text>
+                        <Text style={[styles.backButtonSimpleText, { color: colors.text }]}>← Salir</Text>
                     </TouchableOpacity>
                     <View style={{ flex: 1 }}>
-                        <Text style={styles.menuTitle}>Panel del Administrador</Text>
-                        <Text style={styles.menuSubtitle}>
+                        <Text style={[styles.menuTitle, { color: colors.text }]}>Panel del Administrador</Text>
+                        <Text style={[styles.menuSubtitle, { color: colors.subText }]}>
                             Usuario: {displayName || roleDisplayNames[role] || role.toUpperCase()}
                         </Text>
                     </View>
@@ -612,25 +634,21 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
 }
 
 export function AdminDashboard({ onBack, role, displayName }: AdminDashboardProps) {
-    return (
-        <ThemeProvider>
-            <AdminDashboardContent onBack={onBack} role={role} displayName={displayName} />
-        </ThemeProvider>
-    );
+    return <AdminDashboardContent onBack={onBack} role={role} displayName={displayName} />;
 }
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#F5F7FA',
+        backgroundColor: 'transparent', // Inherit from parent
     },
     // Styles for MENU Mode
     menuContainer: {
         flex: 1,
-        backgroundColor: '#96BDF0', // Updated blue color requested by user
-        padding: 40, // Padding around the main white panel
-        justifyContent: 'center', // Center vertically
-        alignItems: 'center', // Center horizontally
+        backgroundColor: 'transparent', // Use container background
+        padding: 40,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     panelContainer: {
         backgroundColor: '#FFFFFF',

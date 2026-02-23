@@ -1,5 +1,5 @@
-import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface DailyTotalsProps {
     tirosTotales: number;
@@ -104,6 +104,7 @@ function esHorarioBonificable(): { esBonificable: boolean; mensaje?: string } {
 }
 
 export function DailyTotals({ tirosTotales, desperdicioTotal, meta = 0, valorPorTiro = 0 }: DailyTotalsProps) {
+    const { colors, isDarkMode } = useTheme();
     const formatNumber = (num: number): string => {
         return num.toLocaleString('es-CO');
     };
@@ -123,57 +124,73 @@ export function DailyTotals({ tirosTotales, desperdicioTotal, meta = 0, valorPor
     const bonificacion = esBonificable ? tirosExcedente * valorPorTiro : 0;
 
     return (
-        <View style={styles.container}>
-            <Text style={styles.title}>Producción del Día</Text>
+        <View style={[styles.container, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.title, { color: colors.text }]}>Producción del Día</Text>
 
             {/* Non-bonificable warning banner */}
             {!esBonificable && (
-                <View style={styles.warningBanner}>
-                    <Text style={styles.warningText}>⚠️ {mensaje}</Text>
+                <View style={[styles.warningBanner, { backgroundColor: isDarkMode ? '#1E1B10' : '#FEF3C7', borderColor: isDarkMode ? '#B45309' : '#F59E0B' }]}>
+                    <Text style={[styles.warningText, { color: isDarkMode ? '#FDE68A' : '#92400E' }]}>⚠️ {mensaje}</Text>
                 </View>
             )}
 
             {/* Primera fila: Tiros y Desperdicio */}
             <View style={styles.cardsRow}>
-                <View style={[styles.card, styles.cardTiros]}>
-                    <Text style={styles.cardValue}>{formatNumber(tirosTotales)}</Text>
-                    <Text style={styles.cardLabel}>Tiros</Text>
+                <View style={[
+                    styles.card,
+                    isDarkMode ? { backgroundColor: '#0F172A', borderColor: '#1E3A8A' } : styles.cardTiros
+                ]}>
+                    <Text style={[styles.cardValue, { color: colors.text }]}>{formatNumber(tirosTotales)}</Text>
+                    <Text style={[styles.cardLabel, { color: colors.subText }]}>Tiros</Text>
                 </View>
-                <View style={[styles.card, styles.cardDesperdicio]}>
-                    <Text style={styles.cardValue}>{formatNumber(desperdicioTotal)}</Text>
-                    <Text style={styles.cardLabel}>Desperdicio</Text>
+                <View style={[
+                    styles.card,
+                    isDarkMode ? { backgroundColor: '#1E1B10', borderColor: '#78350F' } : styles.cardDesperdicio
+                ]}>
+                    <Text style={[styles.cardValue, { color: colors.text }]}>{formatNumber(desperdicioTotal)}</Text>
+                    <Text style={[styles.cardLabel, { color: colors.subText }]}>Desperdicio</Text>
                 </View>
             </View>
 
             {/* Segunda fila: Rendimiento y Bonificación */}
             <View style={[styles.cardsRow, { marginTop: 12 }]}>
-                <View style={[styles.card, styles.cardRendimiento]}>
+                <View style={[
+                    styles.card,
+                    isDarkMode ? { backgroundColor: '#062016', borderColor: '#064E3B' } : styles.cardRendimiento
+                ]}>
                     {meta > 0 ? (
                         <>
                             <Text style={[styles.cardValue, rendimiento >= 100 ? styles.valueGood : styles.valueLow]}>
                                 {rendimiento.toFixed(1)}%
                             </Text>
-                            <Text style={styles.cardLabel}>Rendimiento</Text>
-                            <Text style={styles.cardSubLabel}>Meta: {formatNumber(meta)}</Text>
+                            <Text style={[styles.cardLabel, { color: colors.subText }]}>Rendimiento</Text>
+                            <Text style={[styles.cardSubLabel, { color: colors.subText }]}>Meta: {formatNumber(meta)}</Text>
                         </>
                     ) : (
                         <>
-                            <Text style={[styles.cardValue, { color: '#A0AEC0' }]}>--%</Text>
-                            <Text style={styles.cardLabel}>Rendimiento</Text>
-                            <Text style={styles.cardSubLabel}>Seleccione Máquina</Text>
+                            <Text style={[styles.cardValue, { color: colors.subText }]}>--%</Text>
+                            <Text style={[styles.cardLabel, { color: colors.subText }]}>Rendimiento</Text>
+                            <Text style={[styles.cardSubLabel, { color: colors.subText }]}>Seleccione Máquina</Text>
                         </>
                     )}
                 </View>
-                <View style={[styles.card, !esBonificable ? styles.cardDisabled : styles.cardBonificacion]}>
-                    <Text style={[styles.cardValue, !esBonificable ? styles.valueDisabled : (bonificacion > 0 ? styles.valueGood : { color: '#A0AEC0' })]}>
+                <View style={[
+                    styles.card,
+                    !esBonificable ? (isDarkMode ? { backgroundColor: '#1F2937', borderColor: '#374151' } : styles.cardDisabled)
+                        : (isDarkMode ? { backgroundColor: '#1E1B4B', borderColor: '#3730A3' } : styles.cardBonificacion)
+                ]}>
+                    <Text style={[
+                        styles.cardValue,
+                        !esBonificable ? styles.valueDisabled : (bonificacion > 0 ? styles.valueGood : { color: colors.subText })
+                    ]}>
                         {esBonificable ? formatCurrency(bonificacion) : '$0'}
                     </Text>
-                    <Text style={styles.cardLabel}>Bonificación</Text>
+                    <Text style={[styles.cardLabel, { color: colors.subText }]}>Bonificación</Text>
                     {esBonificable && bonificacion > 0 && (
-                        <Text style={styles.cardSubLabel}>+{formatNumber(tirosExcedente)} tiros extra</Text>
+                        <Text style={[styles.cardSubLabel, { color: colors.subText }]}>+{formatNumber(tirosExcedente)} tiros extra</Text>
                     )}
                     {!esBonificable && (
-                        <Text style={styles.cardSubLabel}>No aplica</Text>
+                        <Text style={[styles.cardSubLabel, { color: colors.subText }]}>No aplica</Text>
                     )}
                 </View>
             </View>

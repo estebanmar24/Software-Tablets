@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { TiempoProceso } from '../types';
+import { useTheme } from '../contexts/ThemeContext';
 import { HistoryModal } from './HistoryModal';
 
 interface ActivityHistoryProps {
@@ -9,16 +10,17 @@ interface ActivityHistoryProps {
 
 export function ActivityHistory({ historial }: Omit<ActivityHistoryProps, 'onClearData'>) {
     const [modalVisible, setModalVisible] = useState(false);
+    const { colors, isDarkMode } = useTheme();
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.header}>
-                <Text style={styles.title}>Historial de Actividades</Text>
+                <Text style={[styles.title, { color: colors.text }]}>Historial de Actividades</Text>
                 <TouchableOpacity
-                    style={styles.historyButton}
+                    style={[styles.historyButton, { backgroundColor: isDarkMode ? '#1F2937' : '#EDF2F7' }]}
                     onPress={() => setModalVisible(true)}
                 >
-                    <Text style={styles.historyButtonText}>Ver Historial</Text>
+                    <Text style={[styles.historyButtonText, { color: colors.text }]}>Ver Historial</Text>
                 </TouchableOpacity>
             </View>
 
@@ -32,22 +34,22 @@ export function ActivityHistory({ historial }: Omit<ActivityHistoryProps, 'onCle
             ) : (
                 <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
                     {historial.slice(0, 5).map((item, index) => (
-                        <View key={item.id || index} style={styles.historyItem}>
+                        <View key={item.id || index} style={[styles.historyItem, { borderBottomColor: colors.border }]}>
                             {/* Hora */}
                             <View style={styles.timeColumn}>
-                                <Text style={styles.timeText}>{item.horaFin}</Text>
+                                <Text style={[styles.timeText, { color: colors.primary }]}>{item.horaFin}</Text>
                             </View>
 
                             {/* Actividad */}
                             <View style={styles.activityColumn}>
-                                <Text style={styles.activityCode}>{item.actividadCodigo}</Text>
+                                <Text style={[styles.activityCode, { backgroundColor: colors.primary }]}>{item.actividadCodigo}</Text>
                                 <View style={styles.activityDetails}>
-                                    <Text style={styles.activityName} numberOfLines={1}>
+                                    <Text style={[styles.activityName, { color: colors.text }]} numberOfLines={1}>
                                         {item.actividadNombre}
                                     </Text>
                                     {/* Mostrar observaciones si existen */}
                                     {item.observaciones ? (
-                                        <Text style={styles.observacionesText} numberOfLines={1}>
+                                        <Text style={[styles.observacionesText, { color: colors.subText }]} numberOfLines={1}>
                                             {item.observaciones}
                                         </Text>
                                     ) : null}
@@ -58,13 +60,13 @@ export function ActivityHistory({ historial }: Omit<ActivityHistoryProps, 'onCle
                             <View style={styles.metricsColumn}>
                                 {item.tiros > 0 && (
                                     <View style={styles.metricItem}>
-                                        <Text style={styles.metricLabel}>Tiros:</Text>
+                                        <Text style={[styles.metricLabel, { color: colors.subText }]}>Tiros:</Text>
                                         <Text style={styles.metricValueGood}>{item.tiros}</Text>
                                     </View>
                                 )}
                                 {item.desperdicio > 0 && (
                                     <View style={styles.metricItem}>
-                                        <Text style={styles.metricLabel}>Desperdicio:</Text>
+                                        <Text style={[styles.metricLabel, { color: colors.subText }]}>Desperdicio:</Text>
                                         <Text style={styles.metricValueWaste}>{item.desperdicio}</Text>
                                     </View>
                                 )}
@@ -72,7 +74,7 @@ export function ActivityHistory({ historial }: Omit<ActivityHistoryProps, 'onCle
 
                             {/* Duración */}
                             <View style={styles.durationColumn}>
-                                <Text style={styles.durationText}>{item.duracion}</Text>
+                                <Text style={[styles.durationText, { color: colors.text }]}>{item.duracion}</Text>
                             </View>
                         </View>
                     ))}

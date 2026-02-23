@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { useTheme } from '../contexts/ThemeContext';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, Button, Modal, TextInput, ScrollView, Alert, Image, Switch, Platform } from 'react-native';
 import { getMaquinas, updateMaquina, createMaquina, deleteMaquina } from '../services/productionApi';
 
 export default function MachineParamsScreen({ navigation }) {
+    const { colors } = useTheme();
     const [maquinas, setMaquinas] = useState([]);
     const [loading, setLoading] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
@@ -165,7 +167,7 @@ export default function MachineParamsScreen({ navigation }) {
         }
     };
 
-    const logoSource = require('../../assets/LOGO_ALEPH_IMPRESORES.jpg');
+    const logoSource = colors.alephLogo;
 
     return (
         <View style={styles.container}>

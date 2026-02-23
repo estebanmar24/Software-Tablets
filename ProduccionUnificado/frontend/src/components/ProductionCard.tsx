@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Platform, Alert } from 'react-native';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface ProductionCardProps {
     onAddTiros: (value: number) => void;
@@ -9,6 +10,7 @@ interface ProductionCardProps {
 
 export function ProductionCard({ onAddTiros, onOpenWasteModal, disabled = false }: ProductionCardProps) {
     const [tirosInput, setTirosInput] = useState('');
+    const { colors, isDarkMode } = useTheme();
 
     const handleAddTiros = () => {
         if (disabled) return;
@@ -20,15 +22,20 @@ export function ProductionCard({ onAddTiros, onOpenWasteModal, disabled = false 
     };
 
     return (
-        <View style={[styles.container, disabled && styles.containerDisabled]}>
-            <Text style={[styles.title, disabled && styles.textDisabled]}>REGISTRO DE PRODUCCIÓN</Text>
+        <View style={[
+            styles.container,
+            { backgroundColor: colors.card, borderColor: colors.border },
+            disabled && [styles.containerDisabled, { backgroundColor: isDarkMode ? '#1F2937' : '#F7FAFC' }]
+        ]}>
+            <Text style={[styles.title, { color: colors.subText }, disabled && styles.textDisabled]}>REGISTRO DE PRODUCCIÓN</Text>
 
             <View style={styles.section}>
-                <Text style={[styles.label, disabled && styles.textDisabled]}>Tiros</Text>
+                <Text style={[styles.label, { color: colors.subText }, disabled && styles.textDisabled]}>Tiros</Text>
                 <View style={styles.inputContainer}>
                     <TextInput
                         style={[
                             styles.input,
+                            { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text },
                             disabled && styles.inputDisabled,
                             // @ts-ignore
                             Platform.OS === 'web' && { outlineWidth: 0 }
@@ -43,11 +50,11 @@ export function ProductionCard({ onAddTiros, onOpenWasteModal, disabled = false 
                         }}
                         keyboardType="numeric"
                         placeholder="0"
-                        placeholderTextColor={disabled ? "#CBD5E0" : "#A0AEC0"}
+                        placeholderTextColor={disabled ? colors.subText : colors.subText}
                         editable={!disabled}
                     />
                     <TouchableOpacity
-                        style={[styles.addButton, disabled && styles.buttonDisabled]}
+                        style={[styles.addButton, { backgroundColor: isDarkMode ? colors.primary : '#9AE6B4' }, disabled && styles.buttonDisabled]}
                         onPress={handleAddTiros}
                         disabled={disabled}
                     >
@@ -58,7 +65,7 @@ export function ProductionCard({ onAddTiros, onOpenWasteModal, disabled = false 
 
             <View style={[styles.section, { marginTop: 10 }]}>
                 <TouchableOpacity
-                    style={[styles.wasteButton, disabled && styles.buttonDisabled]}
+                    style={[styles.wasteButton, { backgroundColor: colors.danger }, disabled && styles.buttonDisabled]}
                     onPress={onOpenWasteModal}
                     disabled={disabled}
                 >

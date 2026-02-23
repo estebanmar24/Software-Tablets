@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useTheme } from '../contexts/ThemeContext';
 import {
     View,
     Text,
@@ -61,7 +62,8 @@ const formatDate = (dateString) => {
 };
 
 // ===================== MAIN COMPONENT =====================
-export default function TalleresGastosScreen() {
+export default function TalleresGastosScreen({ navigation }) {
+    const { colors } = useTheme();
     const [activeTab, setActiveTab] = useState('gastos');
 
     return (
@@ -1172,7 +1174,7 @@ function GraficasTab() {
     }));
 
     // Logo source for PDF
-    const logoSource = require('../../assets/LOGO_ALEPH_IMPRESORES.jpg');
+    const logoSource = colors.alephLogo;
 
     const getBase64FromUrl = async (url) => {
         if (Platform.OS !== 'web') {

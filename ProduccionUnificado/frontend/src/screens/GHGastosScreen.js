@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useTheme } from '../contexts/ThemeContext';
 import {
     View,
     Text,
@@ -37,6 +38,7 @@ const TABS = [
 ];
 
 export default function GHGastosScreen({ navigation }) {
+    const { colors } = useTheme();
     const [activeTab, setActiveTab] = useState('gastos');
 
     return (
@@ -1824,7 +1826,7 @@ function GraficasTab() {
     };
 
     // Logo source for PDF
-    const logoSource = require('../../assets/LOGO_ALEPH_IMPRESORES.jpg');
+    const logoSource = colors.alephLogo;
 
     // Helper: Load Image as Base64 for PDF (matching DashboardScreen pattern)
     const getBase64FromUrl = async (url) => {
