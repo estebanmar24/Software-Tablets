@@ -539,3 +539,23 @@
 [23/02/2026 9:44:29 a. m.] RegistrarTiempo - HorarioId Request: 2, Maquina: 9
 [23/02/2026 9:44:29 a. m.] UpdateProdDiaria - Fecha: 23/02/2026 12:00:00 a. m., Maq: 9, Usu: 40, Tiempos: 5, PrimerHorario: 2
 [23/02/2026 9:44:29 a. m.] Asignando HorarioId 2 a ProduccionDiaria
+[23/02/2026 11:52:26 a. m.] UpdateProdDiaria - Fecha: 23/02/2026 12:00:00 a. m., Maq: 9, Usu: 40, Tiempos: 5, PrimerHorario: 2
+[23/02/2026 11:52:26 a. m.] Asignando HorarioId 2 a ProduccionDiaria
+[23/02/2026 11:52:28 a. m.] RegistrarTiempo - HorarioId Request: 2, Maquina: 9
+[23/02/2026 11:52:28 a. m.] UpdateProdDiaria - Fecha: 23/02/2026 12:00:00 a. m., Maq: 9, Usu: 40, Tiempos: 6, PrimerHorario: 2
+[23/02/2026 11:52:28 a. m.] Asignando HorarioId 2 a ProduccionDiaria
+[23/02/2026 11:54:31 a. m.] UpdateProdDiaria - Fecha: 23/02/2026 12:00:00 a. m., Maq: 8, Usu: 3, Tiempos: 6, PrimerHorario: 2
+[23/02/2026 11:54:31 a. m.] Asignando HorarioId 2 a ProduccionDiaria
+[23/02/2026 11:54:37 a. m.] RegistrarTiempo - HorarioId Request: 2, Maquina: 8
+[23/02/2026 11:54:37 a. m.] UpdateProdDiaria - Fecha: 23/02/2026 12:00:00 a. m., Maq: 8, Usu: 3, Tiempos: 7, PrimerHorario: 2
+[23/02/2026 11:54:37 a. m.] Asignando HorarioId 2 a ProduccionDiaria
+[23/02/2026 12:53:42 p. m.] UpdateProdDiaria - Fecha: 23/02/2026 12:00:00 a. m., Maq: 9, Usu: 40, Tiempos: 6, PrimerHorario: 2
+[23/02/2026 12:53:42 p. m.] Asignando HorarioId 2 a ProduccionDiaria
+[23/02/2026 12:53:59 p. m.] RegistrarTiempo - HorarioId Request: 2, Maquina: 9
+[23/02/2026 12:53:59 p. m.] UpdateProdDiaria - Fecha: 23/02/2026 12:00:00 a. m., Maq: 9, Usu: 40, Tiempos: 7, PrimerHorario: 2
+[23/02/2026 12:53:59 p. m.] Asignando HorarioId 2 a ProduccionDiaria
+[23/02/2026 12:55:07 p. m.] UpdateProdDiaria - Fecha: 23/02/2026 12:00:00 a. m., Maq: 8, Usu: 3, Tiempos: 7, PrimerHorario: 2
+[23/02/2026 12:55:07 p. m.] Asignando HorarioId 2 a ProduccionDiaria
+[23/02/2026 12:55:31 p. m.] RegistrarTiempo - HorarioId Request: 2, Maquina: 8
+[23/02/2026 12:55:31 p. m.] UpdateProdDiaria - Fecha: 23/02/2026 12:00:00 a. m., Maq: 8, Usu: 3, Tiempos: 8, PrimerHorario: 2
+[23/02/2026 12:55:31 p. m.] Asignando HorarioId 2 a ProduccionDiaria

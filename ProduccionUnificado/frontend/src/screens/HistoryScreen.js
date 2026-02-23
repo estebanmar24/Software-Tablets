@@ -1,23 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Image, TextInput } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import axios from 'axios';
 import { api, API_URL } from '../services/productionApi';
 // CustomNavBar removed - navigation handled by AdminDashboard
 import { useTheme } from '../contexts/ThemeContext';
 
-const HistoryScreen = ({ navigation }) => { // Recibimos navigation prop
+const HistoryScreen = ({ navigation }) => {
     const { colors } = useTheme();
-    // State for filters
-    const [mesInicio, setMesInicio] = useState(new Date().getMonth() + 1);
-    const [anioInicio, setAnioInicio] = useState(new Date().getFullYear());
-    const [mesFin, setMesFin] = useState(new Date().getMonth() + 1);
-    const [anioFin, setAnioFin] = useState(new Date().getFullYear());
+
+    // Helper to format date as YYYY-MM-DD
+    const toDateStr = (d) => {
+        const yyyy = d.getFullYear();
+        const mm = (d.getMonth() + 1).toString().padStart(2, '0');
+        const dd = d.getDate().toString().padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+    };
+
+    // State for filters — default to today
+    const [selectedDate, setSelectedDate] = useState(toDateStr(new Date()));
 
     const [maquinas, setMaquinas] = useState([]);
     const [operarios, setOperarios] = useState([]);
-    const [selectedMaquina, setSelectedMaquina] = useState(''); // Empty = All
-    const [selectedOperario, setSelectedOperario] = useState(''); // Empty = All
+    const [selectedMaquina, setSelectedMaquina] = useState('');
+    const [selectedOperario, setSelectedOperario] = useState('');
 
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -40,39 +46,24 @@ const HistoryScreen = ({ navigation }) => { // Recibimos navigation prop
 
     // Polling for auto-refresh
     useEffect(() => {
-        // Initial load
         handleSearch();
-
         const interval = setInterval(() => {
-            handleSearch(true); // true = silent match
-        }, 4000); // 4 seconds (Real-time feel)
-
+            handleSearch(true);
+        }, 4000);
         return () => clearInterval(interval);
-    }, [mesInicio, anioInicio, mesFin, anioFin, selectedMaquina, selectedOperario]); // Re-run if filters change
+    }, [selectedDate, selectedMaquina, selectedOperario]);
 
     const handleSearch = async (silent = false) => {
         if (!silent) setLoading(true);
         try {
-            // Construct params
-            const fechaInicio = `${anioInicio}-${mesInicio.toString().padStart(2, '0')}-01`;
-            const lastDay = new Date(anioFin, mesFin, 0).getDate();
-            const fechaFin = `${anioFin}-${mesFin.toString().padStart(2, '0')}-${lastDay}`;
-
             const params = {
-                fechaInicio,
-                fechaFin,
+                fechaInicio: selectedDate,
+                fechaFin: selectedDate,
                 usuarioId: selectedOperario || null,
                 maquinaId: selectedMaquina || null
             };
-
-            // Use the new granular history endpoint
             const response = await api.get(`tiempoproceso/historial`, { params });
             setResults(response.data);
-
-            if (!silent && response.data.length === 0) {
-                // if (Platform.OS === 'web') alert('No se encontraron registros con estos filtros.');
-            }
-
         } catch (error) {
             console.error("Search error", error);
             if (!silent) {
@@ -84,16 +75,24 @@ const HistoryScreen = ({ navigation }) => { // Recibimos navigation prop
         }
     };
 
+    // Day navigation helpers
+    const changeDay = (offset) => {
+        const d = new Date(selectedDate + 'T12:00:00');
+        d.setDate(d.getDate() + offset);
+        setSelectedDate(toDateStr(d));
+    };
+    const goToToday = () => setSelectedDate(toDateStr(new Date()));
+    const isToday = selectedDate === toDateStr(new Date());
+
+    // Format display date
+    const displayDate = (() => {
+        const d = new Date(selectedDate + 'T12:00:00');
+        const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+        const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+        return `${days[d.getDay()]} ${d.getDate()} de ${months[d.getMonth()]} ${d.getFullYear()}`;
+    })();
+
     // Helpers
-    const getMesNombre = (mes) => {
-        const meses = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-        return meses[mes] || '';
-    };
-
-    const formatCurrency = (val) => {
-        return `$${(val || 0).toFixed(0)}`;
-    };
-
     const parseDuration = (str) => {
         if (!str) return 0;
         const parts = str.split(':');
@@ -120,42 +119,54 @@ const HistoryScreen = ({ navigation }) => { // Recibimos navigation prop
 
             {/* Filters Section */}
             <View style={[styles.filtersContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>Filtros de Búsqueda</Text>
 
-                {/* Date Range Row */}
-                <View style={styles.filterRow}>
-                    <View style={styles.filterGroup}>
-                        <Text style={[styles.label, { color: colors.text }]}>Desde:</Text>
-                        <View style={{ flexDirection: 'row', gap: 5 }}>
-                            <View style={[styles.pickerContainer, { minWidth: 100 }]}>
-                                <Picker selectedValue={mesInicio} onValueChange={(v) => setMesInicio(parseInt(v))} style={styles.picker}>
-                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => <Picker.Item key={m} label={getMesNombre(m)} value={m} />)}
-                                </Picker>
-                            </View>
-                            <View style={[styles.pickerContainer, { minWidth: 80 }]}>
-                                <Picker selectedValue={anioInicio} onValueChange={(v) => setAnioInicio(parseInt(v))} style={styles.picker}>
-                                    {[2024, 2025, 2026].map(a => <Picker.Item key={a} label={a.toString()} value={a} />)}
-                                </Picker>
-                            </View>
-                        </View>
+                {/* Day Navigation Row */}
+                <View style={styles.dayNavRow}>
+                    <TouchableOpacity style={styles.dayNavButton} onPress={() => changeDay(-1)}>
+                        <Text style={styles.dayNavButtonText}>◀ Día Anterior</Text>
+                    </TouchableOpacity>
+
+                    <View style={styles.dayNavCenter}>
+                        <Text style={[styles.dayNavDate, { color: colors.text }]}>{displayDate}</Text>
+                        {Platform.OS === 'web' && (
+                            <input
+                                type="date"
+                                value={selectedDate}
+                                onChange={(e) => setSelectedDate(e.target.value)}
+                                style={{
+                                    padding: 6,
+                                    borderRadius: 6,
+                                    border: `1px solid ${colors.border}`,
+                                    backgroundColor: colors.inputBackground,
+                                    color: colors.text,
+                                    fontSize: 13,
+                                    marginTop: 4,
+                                    cursor: 'pointer',
+                                    textAlign: 'center',
+                                }}
+                            />
+                        )}
+                        {Platform.OS !== 'web' && (
+                            <TextInput
+                                style={[styles.dateInput, { borderColor: colors.border, color: colors.text }]}
+                                value={selectedDate}
+                                onChangeText={setSelectedDate}
+                                placeholder="YYYY-MM-DD"
+                            />
+                        )}
                     </View>
 
-                    <View style={styles.filterGroup}>
-                        <Text style={[styles.label, { color: colors.text }]}>Hasta:</Text>
-                        <View style={{ flexDirection: 'row', gap: 5 }}>
-                            <View style={[styles.pickerContainer, { minWidth: 100 }]}>
-                                <Picker selectedValue={mesFin} onValueChange={(v) => setMesFin(parseInt(v))} style={styles.picker}>
-                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => <Picker.Item key={m} label={getMesNombre(m)} value={m} />)}
-                                </Picker>
-                            </View>
-                            <View style={[styles.pickerContainer, { minWidth: 80 }]}>
-                                <Picker selectedValue={anioFin} onValueChange={(v) => setAnioFin(parseInt(v))} style={styles.picker}>
-                                    {[2024, 2025, 2026].map(a => <Picker.Item key={a} label={a.toString()} value={a} />)}
-                                </Picker>
-                            </View>
-                        </View>
-                    </View>
+                    <TouchableOpacity style={styles.dayNavButton} onPress={() => changeDay(1)}>
+                        <Text style={styles.dayNavButtonText}>Día Siguiente ▶</Text>
+                    </TouchableOpacity>
                 </View>
+
+                {/* Today button */}
+                {!isToday && (
+                    <TouchableOpacity style={styles.todayButton} onPress={goToToday}>
+                        <Text style={styles.todayButtonText}>📅 Ir a Hoy</Text>
+                    </TouchableOpacity>
+                )}
 
                 {/* Entity Filters Row */}
                 <View style={styles.filterRow}>
@@ -204,7 +215,6 @@ const HistoryScreen = ({ navigation }) => { // Recibimos navigation prop
                     <Text style={[styles.columnHeader, { flex: 0.6, textAlign: 'right' }]}>Pago</Text>
                 </View>
 
-                {/* Rows */}
                 {/* Rows */}
                 {results.map((item, index) => {
                     const isActive = (item.horaInicio && item.horaFin && item.horaInicio.trim() === item.horaFin.trim());
@@ -269,39 +279,6 @@ const styles = StyleSheet.create({
     },
     headerContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, justifyContent: 'center' },
     logo: { width: 50, height: 50, marginRight: 15 },
-    // Navigation Styles (Shared)
-    navBar: {
-        flexDirection: 'row',
-        justifyContent: 'center',
-        gap: 10,
-        paddingVertical: 10,
-        marginBottom: 20,
-        backgroundColor: '#f5f5f5',
-        borderBottomWidth: 1,
-        borderColor: '#ddd',
-        flexWrap: 'wrap' // Allow wrapping on small screens
-    },
-    navButton: {
-        padding: 8,
-        backgroundColor: 'white',
-        borderRadius: 5,
-        borderWidth: 1,
-        borderColor: '#ccc',
-        minWidth: 100,
-        alignItems: 'center'
-    },
-    activeNavButton: {
-        backgroundColor: '#e8f0fe',
-        borderColor: '#2196f3',
-    },
-    navButtonText: {
-        color: '#333',
-        fontSize: 12
-    },
-    activeNavButtonText: {
-        color: '#1565c0',
-        fontWeight: 'bold',
-    },
     // Filter Styles
     filtersContainer: {
         backgroundColor: '#f8f9fa',
@@ -311,11 +288,55 @@ const styles = StyleSheet.create({
         borderColor: '#e9ecef',
         marginBottom: 20,
     },
-    sectionTitle: {
-        fontSize: 16,
+    // Day nav styles
+    dayNavRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 12,
+        gap: 10,
+    },
+    dayNavButton: {
+        backgroundColor: '#6c757d',
+        paddingVertical: 8,
+        paddingHorizontal: 14,
+        borderRadius: 6,
+    },
+    dayNavButtonText: {
+        color: '#fff',
         fontWeight: 'bold',
-        marginBottom: 10,
-        color: '#495057',
+        fontSize: 13,
+    },
+    dayNavCenter: {
+        flex: 1,
+        alignItems: 'center',
+    },
+    dayNavDate: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        textAlign: 'center',
+    },
+    dateInput: {
+        borderWidth: 1,
+        borderRadius: 6,
+        padding: 6,
+        marginTop: 4,
+        textAlign: 'center',
+        fontSize: 13,
+        width: 150,
+    },
+    todayButton: {
+        backgroundColor: '#007bff',
+        paddingVertical: 6,
+        paddingHorizontal: 16,
+        borderRadius: 6,
+        alignSelf: 'center',
+        marginBottom: 12,
+    },
+    todayButtonText: {
+        color: '#fff',
+        fontWeight: 'bold',
+        fontSize: 13,
     },
     filterRow: {
         flexDirection: 'row',
@@ -331,24 +352,6 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         marginBottom: 5,
         color: '#6c757d',
-    },
-    select: {
-        padding: 8,
-        borderRadius: 4,
-        borderColor: '#ced4da',
-        borderWidth: 1,
-        backgroundColor: 'white',
-        minWidth: 200,
-        height: 35
-    },
-    selectSmall: {
-        padding: 8,
-        borderRadius: 4,
-        borderColor: '#ced4da',
-        borderWidth: 1,
-        backgroundColor: 'white',
-        minWidth: 80,
-        height: 35
     },
     searchButton: {
         backgroundColor: '#007bff',
@@ -388,12 +391,6 @@ const styles = StyleSheet.create({
         padding: 10,
         borderBottomWidth: 1,
         borderBottomColor: '#dee2e6',
-    },
-    evenRow: {
-        backgroundColor: 'white',
-    },
-    oddRow: {
-        backgroundColor: '#f8f9fa',
     },
     cell: {
         fontSize: 12,
