@@ -1856,6 +1856,7 @@ function CotizacionesTab() {
 
 // ===================== GRAFICAS TAB =====================
 function GraficasTab() {
+    const { colors } = useTheme();
     const [loading, setLoading] = useState(true);
     const [anio, setAnio] = useState(new Date().getFullYear());
     const [mesSeleccionado, setMesSeleccionado] = useState(''); // '' = Todos (Anual), 1-12 = Mes

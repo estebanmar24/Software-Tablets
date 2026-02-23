@@ -1046,6 +1046,7 @@ function GastosTab() {
 
 // ===================== GRAFICAS TAB =====================
 function GraficasTab() {
+    const { colors } = useTheme();
     const [loading, setLoading] = useState(true);
     const [anio, setAnio] = useState(new Date().getFullYear());
     const [mesSeleccionado, setMesSeleccionado] = useState(new Date().getMonth() + 1); // 1-12 o "" para anual
