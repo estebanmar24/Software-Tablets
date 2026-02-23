@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useTheme } from '../contexts/ThemeContext';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, ActivityIndicator, Modal, Image, Alert, Dimensions } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import axios from 'axios';
@@ -51,6 +52,7 @@ interface EncuestaResumen {
 }
 
 export default function QualityView() {
+    const { colors } = useTheme();
     const [loading, setLoading] = useState(false);
     const [mes, setMes] = useState(new Date().getMonth() + 1);
     const [anio, setAnio] = useState(new Date().getFullYear());
@@ -308,7 +310,7 @@ export default function QualityView() {
             const drawHeader = async () => {
                 // Logo
                 try {
-                    const asset = Asset.fromModule(require('../../assets/LOGO_ALEPH_IMPRESORES.jpg'));
+                    const asset = Asset.fromModule(colors.alephLogo);
                     await asset.downloadAsync();
                     let logoData = null;
                     if (Platform.OS === 'web') {

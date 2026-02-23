@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTheme } from '../contexts/ThemeContext';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, FlatList, TextInput, Alert, ScrollView, Platform, ActivityIndicator } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { Asset } from 'expo-asset';
@@ -7,7 +8,8 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
 
-const DesperdicioScreen = () => {
+export default function DesperdicioScreen({ navigation }) {
+    const { colors } = useTheme();
     // Estados principales
     const [maquinas, setMaquinas] = useState([]);
     const [usuarios, setUsuarios] = useState([]);
@@ -17,7 +19,7 @@ const DesperdicioScreen = () => {
     const [loading, setLoading] = useState(false);
     const [generatingPdf, setGeneratingPdf] = useState(false);
 
-    const logoSource = require('../../assets/LOGO_ALEPH_IMPRESORES.jpg');
+    const logoSource = colors.alephLogo;
 
     // Filtros
     const [selectedMaquina, setSelectedMaquina] = useState('');
@@ -976,4 +978,5 @@ const styles = StyleSheet.create({
     readOnlyValue: { color: '#333' }
 });
 
-export default DesperdicioScreen;
+
+// export default DesperdicioScreen;

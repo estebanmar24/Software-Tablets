@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { adminLogin } from '../services/api';
 import { setToken } from '../services/authStorage';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface AdminLoginProps {
     onLoginSuccess: (role: string, nombreMostrar: string, username: string) => void;
@@ -16,6 +17,7 @@ export function AdminLogin({ onLoginSuccess, onBack }: AdminLoginProps) {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
+    const { colors, isDarkMode } = useTheme();
 
     const handleLogin = async () => {
         if (!username || !password) {
@@ -45,32 +47,33 @@ export function AdminLogin({ onLoginSuccess, onBack }: AdminLoginProps) {
     };
 
     return (
-        <View style={styles.container}>
-            <View style={styles.card}>
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
+            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: isDarkMode ? 1 : 0 }]}>
                 <Image
-                    source={require('../../assets/LOGO ALEPH IMPRESORES_page-0001.jpg')}
-                    style={styles.logo}
+                    source={colors.alephLogo}
+                    style={[styles.logo, isDarkMode && { opacity: 0.95 }]}
                     resizeMode="contain"
                 />
 
-                <Text style={styles.title}>Acceso Administrativo</Text>
+                <Text style={[styles.title, { color: colors.text }]}>Acceso Administrativo</Text>
 
                 <View style={styles.inputContainer}>
-                    <Text style={styles.label}>Usuario</Text>
+                    <Text style={[styles.label, { color: colors.text }]}>Usuario</Text>
                     <TextInput
-                        style={styles.input}
+                        style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }]}
                         value={username}
                         onChangeText={setUsername}
                         placeholder="Ingrese usuario"
+                        placeholderTextColor={colors.subText}
                         autoCapitalize="none"
                     />
                 </View>
 
                 <View style={styles.inputContainer}>
-                    <Text style={styles.label}>Contraseña</Text>
-                    <View style={styles.passwordWrapper}>
+                    <Text style={[styles.label, { color: colors.text }]}>Contraseña</Text>
+                    <View style={[styles.passwordWrapper, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
                         <TextInput
-                            style={styles.passwordInput}
+                            style={[styles.passwordInput, { color: colors.text }]}
                             secureTextEntry={!showPassword}
                             value={password}
                             autoCapitalize="none"
@@ -79,6 +82,7 @@ export function AdminLogin({ onLoginSuccess, onBack }: AdminLoginProps) {
                                 setError('');
                             }}
                             placeholder="Ingrese contraseña"
+                            placeholderTextColor={colors.subText}
                         />
                         <TouchableOpacity
                             onPress={() => setShowPassword(!showPassword)}
@@ -88,7 +92,7 @@ export function AdminLogin({ onLoginSuccess, onBack }: AdminLoginProps) {
                             <MaterialIcons
                                 name={showPassword ? "visibility" : "visibility-off"}
                                 size={24}
-                                color="#718096"
+                                color={colors.subText}
                             />
                         </TouchableOpacity>
                     </View>
@@ -96,7 +100,7 @@ export function AdminLogin({ onLoginSuccess, onBack }: AdminLoginProps) {
                 </View>
 
                 <TouchableOpacity
-                    style={[styles.loginButton, loading && { backgroundColor: '#A0AEC0' }]}
+                    style={[styles.loginButton, { backgroundColor: colors.primary }, loading && { backgroundColor: isDarkMode ? '#374151' : '#A0AEC0' }]}
                     onPress={handleLogin}
                     disabled={loading}
                 >
@@ -104,7 +108,7 @@ export function AdminLogin({ onLoginSuccess, onBack }: AdminLoginProps) {
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.backButton} onPress={onBack}>
-                    <Text style={styles.backButtonText}>Volver al Timer</Text>
+                    <Text style={[styles.backButtonText, { color: colors.subText }]}>Volver al Timer</Text>
                 </TouchableOpacity>
             </View>
         </View>
@@ -114,7 +118,7 @@ export function AdminLogin({ onLoginSuccess, onBack }: AdminLoginProps) {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#F5F7FA',
+        backgroundColor: 'transparent', // Use dynamic theme background
         justifyContent: 'center',
         alignItems: 'center',
         padding: 20,

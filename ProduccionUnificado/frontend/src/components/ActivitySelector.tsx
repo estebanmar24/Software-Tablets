@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { Actividad } from '../types';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface ActivitySelectorProps {
     actividades: Actividad[];
@@ -15,9 +16,10 @@ export function ActivitySelector({
     onSelect,
     disabled,
 }: ActivitySelectorProps) {
+    const { colors, isDarkMode } = useTheme();
     return (
-        <View style={styles.container}>
-            <Text style={styles.title}>Seleccionar Actividad</Text>
+        <View style={[styles.container, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.title, { color: colors.text }]}>Seleccionar Actividad</Text>
             <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
                 <View style={styles.chipsContainer}>
                     {actividades.map((actividad) => {
@@ -27,16 +29,18 @@ export function ActivitySelector({
                                 key={actividad.id}
                                 style={[
                                     styles.chip,
-                                    isSelected && styles.chipSelected,
+                                    { backgroundColor: colors.inputBackground, borderColor: colors.border },
+                                    isSelected && [styles.chipSelected, { backgroundColor: colors.primary, borderColor: colors.primary }],
                                     disabled && styles.chipDisabled,
                                 ]}
                                 onPress={() => !disabled && onSelect(actividad)}
                                 disabled={disabled}
                             >
-                                <Text style={styles.chipCode}>{actividad.codigo}</Text>
+                                <Text style={[styles.chipCode, { backgroundColor: isSelected ? 'rgba(255,255,255,0.2)' : colors.primary }]}>{actividad.codigo}</Text>
                                 <Text
                                     style={[
                                         styles.chipName,
+                                        { color: colors.text },
                                         isSelected && styles.chipNameSelected,
                                     ]}
                                     numberOfLines={2}

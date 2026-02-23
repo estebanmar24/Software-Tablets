@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Modal, TextInput, Alert, ScrollView, Platform } from 'react-native';
 import { getUsers, createUser, updateUser, deleteUser } from '../services/api';
 import { MaterialIcons } from '@expo/vector-icons';
+import { ThemeToggle } from '../../App';
 
 interface User {
     id: number;
@@ -180,7 +181,10 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
                 <TouchableOpacity onPress={onBack} style={styles.backBtn}>
                     <Text style={styles.backText}>← Salir</Text>
                 </TouchableOpacity>
-                <Text style={styles.title}>Gestión de Usuarios (DB)</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={styles.title}>Gestión de Usuarios (DB)</Text>
+                    <ThemeToggle />
+                </View>
                 <TouchableOpacity onPress={openNew} style={styles.addBtn}>
                     <Text style={styles.addBtnText}>+ Nuevo Usuario</Text>
                 </TouchableOpacity>

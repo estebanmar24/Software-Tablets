@@ -23,6 +23,7 @@ import { Asset } from 'expo-asset';
 import { Picker } from '@react-native-picker/picker';
 import { produccionApi } from '../services/produccionApi';
 import { ExpenseHistoryModal } from '../components/ExpenseHistoryModal';
+import { useTheme } from '../contexts/ThemeContext';
 
 // TABS - Same structure as SST
 const TABS = [
@@ -53,7 +54,7 @@ const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('es-CO');
 };
 
-const logoSource = require('../../assets/LOGO_ALEPH_IMPRESORES.jpg'); // Asegúrate de tener este logo
+
 const getBase64FromUrl = async (url) => {
     const data = await fetch(url);
     const blob = await data.blob();
@@ -66,6 +67,7 @@ const getBase64FromUrl = async (url) => {
 
 
 export default function ProduccionGastosScreen() {
+    const { colors } = useTheme();
     const [activeTab, setActiveTab] = useState('gastos');
 
     return (
@@ -1185,6 +1187,7 @@ function GraficasTab() {
             const doc = new jsPDF();
             const pageWidth = doc.internal.pageSize.width;
             const margin = 15;
+            const logoSource = colors.alephLogo;
 
             // Logo
             // Logo Handling - Web & Native Compatible

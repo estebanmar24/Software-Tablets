@@ -18,7 +18,7 @@ export default function CaptureGridScreen({ navigation }) {
     const [mes, setMes] = useState(new Date().getMonth() + 1);
     const [anio, setAnio] = useState(new Date().getFullYear());
 
-    const logoSource = require('../../assets/LOGO_ALEPH_IMPRESORES.jpg');
+    const logoSource = colors.alephLogo;
 
     // Lists
     const [maquinas, setMaquinas] = useState([]);

@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useTheme } from '../contexts/ThemeContext';
 import {
     View, Text, StyleSheet, ScrollView, TextInput,
     TouchableOpacity, ActivityIndicator, Alert, Modal, Platform
@@ -52,7 +53,8 @@ const formatDate = (dateString) => {
 };
 
 // ===================== MAIN COMPONENT =====================
-export default function PlaneacionGastosScreen() {
+export default function PlaneacionGastosScreen({ navigation }) {
+    const { colors } = useTheme();
     const [activeTab, setActiveTab] = useState('gastos');
 
     return (
@@ -512,7 +514,7 @@ function GraficasTab() {
     const totalRegistrosReal = allGastos.length;
     const normalizedPorRubro = (data.porRubro || []).map(r => ({ ...r, nombre: r.nombre || r.rubro, total: r.total || r.gastado }));
 
-    const logoSource = require('../../assets/LOGO_ALEPH_IMPRESORES.jpg');
+    const logoSource = colors.alephLogo;
 
     const getBase64FromUrl = async (url) => {
         if (Platform.OS !== 'web') { try { const base64 = await FileSystem.readAsStringAsync(url, { encoding: 'base64' }); return `data:image/jpeg;base64,${base64}`; } catch (err) { return null; } }

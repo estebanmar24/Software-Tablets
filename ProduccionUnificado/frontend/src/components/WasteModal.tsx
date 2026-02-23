@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, ActivityIndicator, Alert, Platform } from 'react-native';
 import { Picker } from '@react-native-picker/picker'; // Necesita ser instalado o usar el de react-native si es version vieja, pero expo usa este.
 import { CodigoDesperdicio } from '../types';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface WasteModalProps {
     visible: boolean;
@@ -13,6 +14,7 @@ interface WasteModalProps {
 export function WasteModal({ visible, onClose, onAdd, codigos }: WasteModalProps) {
     const [selectedCodigo, setSelectedCodigo] = useState<number | null>(null);
     const [cantidad, setCantidad] = useState('');
+    const { colors, isDarkMode } = useTheme();
 
     useEffect(() => {
         if (visible) {
@@ -47,26 +49,33 @@ export function WasteModal({ visible, onClose, onAdd, codigos }: WasteModalProps
             onRequestClose={onClose}
         >
             <View style={styles.centeredView}>
-                <View style={styles.modalView}>
-                    <Text style={styles.modalTitle}>Agregar Desperdicio</Text>
+                <View style={[styles.modalView, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <Text style={[styles.modalTitle, { color: colors.text }]}>Agregar Desperdicio</Text>
 
-                    <Text style={styles.label}>Motivo / Código:</Text>
-                    <View style={styles.pickerContainer}>
+                    <Text style={[styles.label, { color: colors.text }]}>Motivo / Código:</Text>
+                    <View style={[styles.pickerContainer, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
                         <Picker
                             selectedValue={selectedCodigo}
                             onValueChange={(itemValue) => setSelectedCodigo(itemValue)}
-                            style={styles.picker}
+                            style={[styles.picker, { color: colors.text }]}
+                            dropdownIconColor={colors.subText}
                         >
                             {codigos.map((cod) => (
-                                <Picker.Item key={cod.id} label={`${cod.codigo} - ${cod.descripcion}`} value={cod.id} />
+                                <Picker.Item
+                                    key={cod.id}
+                                    label={`${cod.codigo} - ${cod.descripcion}`}
+                                    value={cod.id}
+                                    color={isDarkMode ? '#FFFFFF' : '#000000'}
+                                />
                             ))}
                         </Picker>
                     </View>
 
-                    <Text style={styles.label}>Cantidad:</Text>
+                    <Text style={[styles.label, { color: colors.text }]}>Cantidad:</Text>
                     <TextInput
-                        style={styles.input}
+                        style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }]}
                         placeholder="Ingrese cantidad..."
+                        placeholderTextColor={colors.subText}
                         keyboardType="numeric"
                         value={cantidad}
                         onChangeText={setCantidad}
@@ -75,13 +84,13 @@ export function WasteModal({ visible, onClose, onAdd, codigos }: WasteModalProps
 
                     <View style={styles.buttonContainer}>
                         <TouchableOpacity
-                            style={[styles.button, styles.buttonClose]}
+                            style={[styles.button, styles.buttonClose, { backgroundColor: isDarkMode ? '#374151' : '#718096' }]}
                             onPress={onClose}
                         >
                             <Text style={styles.textStyle}>Cancelar</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
-                            style={[styles.button, styles.buttonAdd]}
+                            style={[styles.button, styles.buttonAdd, { backgroundColor: colors.danger }]}
                             onPress={handleAdd}
                         >
                             <Text style={styles.textStyle}>Agregar</Text>

@@ -2,6 +2,8 @@ import { View, Text, StyleSheet, Image, TextInput, TouchableOpacity, ScrollView,
 import React, { useState, useEffect } from 'react';
 // import { Picker } from '@react-native-picker/picker'; // Reemplazado por CustomDropdown
 import { Usuario, Maquina, OrdenProduccion, Actividad, Horario } from '../types';
+import { useTheme } from '../contexts/ThemeContext';
+import { ThemeToggle } from '../../App';
 
 interface SidebarProps {
     usuarios: Usuario[];
@@ -44,41 +46,51 @@ function CustomDropdown({
 }) {
     const [isOpen, setIsOpen] = useState(false);
     const selectedItem = items.find(i => i.id === selectedValue);
+    const { colors, isDarkMode } = useTheme();
 
     return (
         <View style={styles.dropdownWrapper}>
-            <Text style={styles.label}>{label}</Text>
+            <Text style={[styles.label, { color: colors.text }]}>{label}</Text>
             <TouchableOpacity
-                style={[styles.dropdownButton, isOpen && styles.dropdownButtonOpen]}
+                style={[
+                    styles.dropdownButton,
+                    { backgroundColor: colors.inputBackground, borderColor: colors.border },
+                    isOpen && [styles.dropdownButtonOpen, { borderColor: colors.primary }]
+                ]}
                 onPress={() => setIsOpen(!isOpen)}
                 activeOpacity={0.7}
             >
-                <Text style={[styles.dropdownButtonText, !selectedItem && { color: '#A0AEC0' }]}>
+                <Text style={[styles.dropdownButtonText, { color: colors.text }, !selectedItem && { color: colors.subText }]}>
                     {selectedItem ? selectedItem.nombre : placeholder}
                 </Text>
-                <Text style={{ fontSize: 12, color: '#A0AEC0' }}>{isOpen ? '▲' : '▼'}</Text>
+                <Text style={{ fontSize: 12, color: colors.subText }}>{isOpen ? '▲' : '▼'}</Text>
             </TouchableOpacity>
 
             {isOpen && (
-                <View style={styles.dropdownList}>
+                <View style={[styles.dropdownList, { backgroundColor: colors.card, borderColor: colors.border }]}>
                     <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
                         <TouchableOpacity
-                            style={styles.dropdownItem}
+                            style={[styles.dropdownItem, { borderBottomColor: colors.border }]}
                             onPress={() => { onValueChange(null); setIsOpen(false); }}
                         >
-                            <Text style={[styles.dropdownItemText, { color: '#A0AEC0', fontStyle: 'italic' }]}>
+                            <Text style={[styles.dropdownItemText, { color: colors.subText, fontStyle: 'italic' }]}>
                                 {placeholder}
                             </Text>
                         </TouchableOpacity>
                         {items.map(item => (
                             <TouchableOpacity
                                 key={item.id}
-                                style={[styles.dropdownItem, item.id === selectedValue && styles.dropdownItemSelected]}
+                                style={[
+                                    styles.dropdownItem,
+                                    { borderBottomColor: colors.border },
+                                    item.id === selectedValue && [styles.dropdownItemSelected, { backgroundColor: isDarkMode ? '#1E293B' : '#EBF8FF' }]
+                                ]}
                                 onPress={() => { onValueChange(item.id); setIsOpen(false); }}
                             >
                                 <Text style={[
                                     styles.dropdownItemText,
-                                    item.id === selectedValue && styles.dropdownItemTextSelected
+                                    { color: colors.text },
+                                    item.id === selectedValue && [styles.dropdownItemTextSelected, { color: colors.primary }]
                                 ]}>
                                     {item.nombre}
                                 </Text>
@@ -143,16 +155,21 @@ export function Sidebar({
         // setShowOpList(false);
     };
 
+    const { colors, isDarkMode } = useTheme();
+
     return (
-        <View style={[styles.container, style]}>
+        <View style={[styles.container, { backgroundColor: colors.card, borderRightColor: colors.border }, style]}>
             {/* Logo siempre visible */}
-            <View style={styles.logoContainer}>
-                <Image
-                    source={require('../../assets/LOGO ALEPH IMPRESORES_page-0001.jpg')}
-                    style={styles.logo}
-                    resizeMode="contain"
-                />
-                <Text style={{ fontSize: 10, color: '#718096', marginTop: 4 }}>v1.7.6 - Changeover Weekend Fix 🛠️</Text>
+            <View style={[styles.logoOuterContainer, { borderBottomColor: colors.border }]}>
+                <View style={styles.logoRowContainer}>
+                    <Image
+                        source={colors.alephLogo}
+                        style={[styles.logo, isDarkMode && { opacity: 0.95 }]}
+                        resizeMode="contain"
+                    />
+                    <ThemeToggle />
+                </View>
+                <Text style={{ fontSize: 10, color: colors.subText, marginTop: 4 }}>v1.7.6 - Changeover Weekend Fix 🛠️</Text>
             </View>
 
             {/* Toggle Button for Phones */}
@@ -208,29 +225,30 @@ export function Sidebar({
                             />
 
 
-                            <Text style={styles.label}>Orden de Producción</Text>
+                            <Text style={[styles.label, { color: colors.text }]}>Orden de Producción</Text>
                             <View>
                                 <TextInput
                                     style={[
                                         styles.pickerContainer,
-                                        isOpDisabled && { backgroundColor: '#EDF2F7', color: '#A0AEC0' }
+                                        { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text },
+                                        isOpDisabled && { backgroundColor: isDarkMode ? '#1F2937' : '#EDF2F7', color: colors.subText }
                                     ]} // Reusing container style for border
                                     placeholder={isOpDisabled ? "Bloqueado" : "Buscar OP (Números)"}
-                                    placeholderTextColor="#A0AEC0"
+                                    placeholderTextColor={colors.subText}
                                     value={opSearchText}
                                     keyboardType="numeric"
                                     onChangeText={handleOpSearch}
                                     editable={!isOpDisabled}
                                 />
                                 {opSearchText !== '' && filteredOrdenes.length > 0 && (
-                                    <View style={styles.autocompleteList}>
+                                    <View style={[styles.autocompleteList, { backgroundColor: colors.card, borderColor: colors.border }]}>
                                         {filteredOrdenes.map(op => (
                                             <TouchableOpacity
                                                 key={op.id}
-                                                style={styles.autocompleteItem}
+                                                style={[styles.autocompleteItem, { borderBottomColor: colors.border }]}
                                                 onPress={() => selectOp(op)}
                                             >
-                                                <Text style={styles.autocompleteText}>{op.numero}</Text>
+                                                <Text style={[styles.autocompleteText, { color: colors.text }]}>{op.numero}</Text>
                                             </TouchableOpacity>
                                         ))}
                                     </View>
@@ -240,12 +258,12 @@ export function Sidebar({
 
                         {/* Observaciones Input */}
                         <View style={styles.observationsContainer}>
-                            <Text style={styles.label}>Observaciones</Text>
+                            <Text style={[styles.label, { color: colors.text }]}>Observaciones</Text>
                             <TextInput
-                                style={styles.observationsInput}
+                                style={[styles.observationsInput, { backgroundColor: isDarkMode ? '#0F172A' : '#F7FAFC', borderColor: colors.border, color: colors.text }]}
                                 multiline
                                 placeholder="---"
-                                placeholderTextColor="#A0AEC0"
+                                placeholderTextColor={colors.subText}
                                 value={observaciones}
                                 onChangeText={onObservacionesChange}
                             />
@@ -253,8 +271,8 @@ export function Sidebar({
                     </Container>
 
                     {/* Botón Admin - Fijo abajo si está expandido */}
-                    <TouchableOpacity style={styles.adminButton} onPress={onAdminPress}>
-                        <Text style={styles.adminButtonText}>⚙ Admin</Text>
+                    <TouchableOpacity style={[styles.adminButton, { backgroundColor: isDarkMode ? '#1F2937' : '#EDF2F7' }]} onPress={onAdminPress}>
+                        <Text style={[styles.adminButtonText, { color: colors.text }]}>⚙ Admin</Text>
                     </TouchableOpacity>
                 </>
             )}
@@ -285,6 +303,20 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         fontSize: 14,
     },
+    logoOuterContainer: {
+        alignItems: 'center',
+        marginBottom: 30,
+        paddingBottom: 20,
+        borderBottomWidth: 1,
+        borderBottomColor: '#E8ECF0',
+    },
+    logoRowContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        width: '100%',
+        paddingHorizontal: 10,
+    },
     logoContainer: {
         alignItems: 'center',
         marginBottom: 30,
@@ -293,8 +325,8 @@ const styles = StyleSheet.create({
         borderBottomColor: '#E8ECF0',
     },
     logo: {
-        width: 180,
-        height: 60,
+        width: 140, // Reduced from 180 to fit the button
+        height: 50, // Reduced from 60
     },
     selectorsContainer: {
         marginBottom: 20,

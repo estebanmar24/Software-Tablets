@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTheme } from '../contexts/ThemeContext';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, Alert, Platform } from 'react-native';
 import { Picker } from '@react-native-picker/picker'; // Added Picker
 import api from '../services/productionApi';
@@ -11,13 +12,14 @@ import { Asset } from 'expo-asset';
 // CustomNavBar removed - navigation handled by AdminDashboard
 
 export default function CartasScreen({ navigation }) {
+    const { colors } = useTheme();
     const [loading, setLoading] = useState(false);
     const [periodosDisponibles, setPeriodosDisponibles] = useState([]);
     const [mes, setMes] = useState(new Date().getMonth() + 1);
     const [anio, setAnio] = useState(new Date().getFullYear());
     const [statusText, setStatusText] = useState('');
 
-    const logoSource = require('../../assets/LOGO_ALEPH_IMPRESORES.jpg');
+    const logoSource = colors.alephLogo;
 
     useEffect(() => {
         cargarPeriodos();

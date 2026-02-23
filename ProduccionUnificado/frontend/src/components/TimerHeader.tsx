@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { Actividad } from '../types';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface TimerHeaderProps {
     formattedTime: string;
@@ -27,13 +28,14 @@ export function TimerHeader({
 }: TimerHeaderProps) {
     const { width } = useWindowDimensions();
     const isPhone = width < 600;
+    const { colors, isDarkMode } = useTheme();
 
     const isStartDisabled = isRunning && !isPaused;
     const isPauseDisabled = !isRunning || isPaused;
     const isStopDisabled = !isRunning && !isPaused;
 
     return (
-        <View style={[styles.container, isPhone && styles.containerMobile]}>
+        <View style={[styles.container, { backgroundColor: colors.primary }, isPhone && styles.containerMobile]}>
             <View style={[styles.leftContent, isPhone && styles.leftContentMobile]}>
                 {/* Cronómetro */}
                 <Text style={[styles.timer, isPhone && styles.timerMobile]}>{formattedTime}</Text>
@@ -57,7 +59,7 @@ export function TimerHeader({
             <View style={[styles.buttonsContainer, isPhone && styles.buttonsContainerMobile]}>
                 {/* Botón START (Verde) */}
                 <TouchableOpacity
-                    style={[styles.button, styles.startButton, isStartDisabled && styles.buttonDisabled]}
+                    style={[styles.button, { backgroundColor: isDarkMode ? '#10B981' : '#A8D5BA' }, isStartDisabled && styles.buttonDisabled]}
                     onPress={isPaused ? onResume : onStart}
                     disabled={isStartDisabled && !isPaused}
                 >
@@ -66,7 +68,7 @@ export function TimerHeader({
 
                 {/* Botón PAUSE (Beige/Amarillo) */}
                 <TouchableOpacity
-                    style={[styles.button, styles.pauseButton, isPauseDisabled && styles.buttonDisabled]}
+                    style={[styles.button, { backgroundColor: isDarkMode ? '#F59E0B' : '#E6D5A7' }, isPauseDisabled && styles.buttonDisabled]}
                     onPress={onPause}
                     disabled={isPauseDisabled}
                 >
@@ -75,7 +77,7 @@ export function TimerHeader({
 
                 {/* Botón STOP (Rojo) */}
                 <TouchableOpacity
-                    style={[styles.button, styles.stopButton, isStopDisabled && styles.buttonDisabled]}
+                    style={[styles.button, { backgroundColor: isDarkMode ? '#EF4444' : '#D68C8C' }, isStopDisabled && styles.buttonDisabled]}
                     onPress={onStop}
                     disabled={isStopDisabled}
                 >
