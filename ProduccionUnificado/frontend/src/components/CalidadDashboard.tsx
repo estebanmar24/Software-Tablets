@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import QualityView from './QualityView';
 import EncuestaCalidadProduccionView from './EncuestaCalidadProduccionView';
+import ConsolidadoNCView from './ConsolidadoNCView';
 
-type CalidadTab = 'encuestas' | 'produccion';
+type CalidadTab = 'encuestas' | 'produccion' | 'consolidadoNC';
 
 interface TabDef {
     key: CalidadTab;
@@ -14,6 +15,7 @@ interface TabDef {
 const tabs: TabDef[] = [
     { key: 'encuestas', label: 'Encuestas Calidad', icon: '✅' },
     { key: 'produccion', label: 'Encuesta Producción', icon: '📦' },
+    { key: 'consolidadoNC', label: 'Consolidado de NC', icon: '📋' },
 ];
 
 export default function CalidadDashboard() {
@@ -25,6 +27,8 @@ export default function CalidadDashboard() {
                 return <QualityView />;
             case 'produccion':
                 return <EncuestaCalidadProduccionView />;
+            case 'consolidadoNC':
+                return <ConsolidadoNCView />;
             default:
                 return null;
         }

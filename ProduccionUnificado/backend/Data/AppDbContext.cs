@@ -93,6 +93,9 @@ public class AppDbContext : DbContext
     public DbSet<EncuestaCalidadProduccion> EncuestasCalidadProduccion { get; set; }
     public DbSet<EncuestaCalidadProduccionProceso> EncuestaCalidadProduccionProcesos { get; set; }
 
+    // Consolidado NC (No Conformidad)
+    public DbSet<ConsolidadoNC> ConsolidadosNC { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -469,6 +472,14 @@ public class AppDbContext : DbContext
             .WithOne(p => p.Encuesta)
             .HasForeignKey(p => p.EncuestaId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // Consolidado NC Configuration
+        modelBuilder.Entity<ConsolidadoNC>().ToTable("ConsolidadosNC");
+        modelBuilder.Entity<ConsolidadoNC>()
+            .HasOne(nc => nc.EncuestaProduccion)
+            .WithMany()
+            .HasForeignKey(nc => nc.EncuestaProduccionId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<RegistroDesperdicio>()
             .HasOne(r => r.CodigoDesperdicio)
