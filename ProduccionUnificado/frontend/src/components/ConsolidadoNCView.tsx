@@ -226,41 +226,41 @@ export default function ConsolidadoNCView() {
                                             <Text style={[styles.cell, { width: 65, fontWeight: 'bold' }]}>{row.ordenProduccion}</Text>
                                             <Text style={[styles.cell, { width: 120 }]}>{row.cliente || '-'}</Text>
                                             <Text style={[styles.cell, { width: 150 }]} numberOfLines={1}>{row.referencia || '-'}</Text>
-                                            <Text style={[styles.cell, { width: 110, color: row.tipoReclamacion ? '#2D3748' : '#CBD5E0' }]}>
+                                            <Text style={[styles.cell, { width: 110, color: row.tipoReclamacion ? '#2D3748' : '#E57373' }]}>
                                                 {row.tipoReclamacion || 'Sin llenar'}
                                             </Text>
-                                            <Text style={[styles.cell, { width: 70, fontWeight: 'bold', color: row.cantidadNC > 0 ? '#E53E3E' : '#CBD5E0' }]}>
+                                            <Text style={[styles.cell, { width: 70, fontWeight: 'bold', color: row.cantidadNC > 0 ? '#E53E3E' : '#E57373' }]}>
                                                 {row.cantidadNC}
                                             </Text>
                                             <Text style={[styles.cell, { width: 80 }]}>{row.cantidadTotal}</Text>
-                                            <Text style={[styles.cell, { width: 90, color: row.item ? '#2D3748' : '#CBD5E0' }]}>
+                                            <Text style={[styles.cell, { width: 90, color: row.item ? '#2D3748' : '#E57373' }]}>
                                                 {row.item || 'Sin llenar'}
                                             </Text>
                                             <Text style={[styles.cell, { width: 160 }]} numberOfLines={2}>
                                                 {row.descripcionNovedad || '-'}
                                             </Text>
-                                            <Text style={[styles.cell, { width: 110, color: row.tipoDefecto ? '#2D3748' : '#CBD5E0' }]}>
+                                            <Text style={[styles.cell, { width: 110, color: row.tipoDefecto ? '#2D3748' : '#E57373' }]}>
                                                 {row.tipoDefecto || 'Sin llenar'}
                                             </Text>
-                                            <Text style={[styles.cell, { width: 110, color: row.responsable ? '#2D3748' : '#CBD5E0' }]}>
+                                            <Text style={[styles.cell, { width: 110, color: row.responsable ? '#2D3748' : '#E57373' }]}>
                                                 {row.responsable || 'Sin llenar'}
                                             </Text>
-                                            <Text style={[styles.cell, { width: 110, color: row.areaInvolucrada ? '#2D3748' : '#CBD5E0' }]}>
+                                            <Text style={[styles.cell, { width: 110, color: row.areaInvolucrada ? '#2D3748' : '#E57373' }]}>
                                                 {row.areaInvolucrada || 'Sin llenar'}
                                             </Text>
-                                            <Text style={[styles.cell, { width: 90, color: row.cargo ? '#2D3748' : '#CBD5E0' }]}>
+                                            <Text style={[styles.cell, { width: 90, color: row.cargo ? '#2D3748' : '#E57373' }]}>
                                                 {row.cargo || 'Sin llenar'}
                                             </Text>
-                                            <Text style={[styles.cell, { width: 100, fontWeight: 'bold', color: row.valorNC > 0 ? '#38A169' : '#CBD5E0' }]}>
+                                            <Text style={[styles.cell, { width: 100, fontWeight: 'bold', color: row.valorNC > 0 ? '#38A169' : '#E57373' }]}>
                                                 {row.valorNC > 0 ? formatCurrency(row.valorNC) : '$0'}
                                             </Text>
-                                            <Text style={[styles.cell, { width: 110, color: row.producto ? '#2D3748' : '#CBD5E0' }]}>
+                                            <Text style={[styles.cell, { width: 110, color: row.producto ? '#2D3748' : '#E57373' }]}>
                                                 {row.producto || 'Sin llenar'}
                                             </Text>
-                                            <Text style={[styles.cell, { width: 110, color: row.salidaNC ? '#2D3748' : '#CBD5E0' }]}>
+                                            <Text style={[styles.cell, { width: 110, color: row.salidaNC ? '#2D3748' : '#E57373' }]}>
                                                 {row.salidaNC || 'Sin llenar'}
                                             </Text>
-                                            <Text style={[styles.cell, { width: 110, color: row.controles ? '#2D3748' : '#CBD5E0' }]}>
+                                            <Text style={[styles.cell, { width: 110, color: row.controles ? '#2D3748' : '#E57373' }]}>
                                                 {row.controles || 'Sin llenar'}
                                             </Text>
                                             <View style={[styles.cell, { width: 70, alignItems: 'center' }]}>

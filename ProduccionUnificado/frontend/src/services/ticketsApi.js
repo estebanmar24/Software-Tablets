@@ -1,0 +1,54 @@
+import axios from 'axios';
+
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
+
+const api = axios.create({
+    timeout: 15000,
+});
+
+// ============ TICKETS ============
+export const fetchTicketStats = async () => {
+    const response = await api.get(`${API_BASE_URL}/tickets/stats`);
+    return response.data;
+};
+
+export const fetchTickets = async (filtros = {}) => {
+    let url = `${API_BASE_URL}/tickets?`;
+    if (filtros.estado) url += `estado=${filtros.estado}&`;
+    if (filtros.prioridad) url += `prioridad=${filtros.prioridad}&`;
+    if (filtros.modulo) url += `modulo=${filtros.modulo}&`;
+    if (filtros.buscar) url += `buscar=${encodeURIComponent(filtros.buscar)}&`;
+    const response = await api.get(url);
+    return response.data;
+};
+
+export const fetchTicket = async (id) => {
+    const response = await api.get(`${API_BASE_URL}/tickets/${id}`);
+    return response.data;
+};
+
+export const createTicket = async (ticket) => {
+    const response = await api.post(`${API_BASE_URL}/tickets`, ticket);
+    return response.data;
+};
+
+export const updateTicket = async (id, ticket) => {
+    const response = await api.put(`${API_BASE_URL}/tickets/${id}`, { ...ticket, id });
+    return response.data;
+};
+
+export const cambiarEstadoTicket = async (id, estado, comentarios) => {
+    const response = await api.patch(`${API_BASE_URL}/tickets/${id}/estado`, { estado, comentarios });
+    return response.data;
+};
+
+export const deleteTicket = async (id) => {
+    await api.delete(`${API_BASE_URL}/tickets/${id}`);
+};
+
+export const uploadTicketImagen = async (formData) => {
+    const response = await api.post(`${API_BASE_URL}/tickets/upload-imagen`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+};

@@ -20,6 +20,7 @@ import DesperdicioScreen from '../screens/DesperdicioScreen';
 import CalidadDashboard from './CalidadDashboard';
 import PlaneacionGastosScreen from '../screens/PlaneacionGastosScreen';
 import DisenoGastosScreen from '../screens/DisenoGastosScreen';
+import TicketsScreen from '../screens/TicketsScreen';
 
 // Theme Provider
 import { ThemeProvider, useTheme, ThemeContext, lightColors } from '../contexts/ThemeContext';
@@ -88,11 +89,11 @@ function DashboardCard({ title, description, icon, onPress, color, disabled }: D
 
 function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDashboardProps) {
     const { colors, isDarkMode } = useTheme();
-    // Mode: 'MENU' (Grid de tarjetas) | 'CONTENT' (Tabs existentes) | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS'
-    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS'>(() => {
+    // Mode: 'MENU' (Grid de tarjetas) | 'CONTENT' (Tabs existentes) | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS' | 'TICKETS'
+    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS' | 'TICKETS'>(() => {
         if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
             const savedMode = window.localStorage.getItem('adminDashboardMode');
-            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS' || savedMode === 'PRODUCCION_GASTOS' || savedMode === 'TALLERES_GASTOS' || savedMode === 'CALIDAD' || savedMode === 'PLANEACION_GASTOS' || savedMode === 'DISENO_GASTOS') {
+            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS' || savedMode === 'PRODUCCION_GASTOS' || savedMode === 'TALLERES_GASTOS' || savedMode === 'CALIDAD' || savedMode === 'PLANEACION_GASTOS' || savedMode === 'DISENO_GASTOS' || savedMode === 'TICKETS') {
                 return savedMode;
             }
         }
@@ -415,6 +416,31 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
         );
     }
 
+    // --- VISTA TICKETS ---
+    if (mode === 'TICKETS') {
+        return (
+            <View style={[styles.container, { backgroundColor: colors.background }]}>
+                <View style={[styles.header, { backgroundColor: colors.headerBackground }]}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => {
+                        setMode('MENU');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                    }}>
+                        <Text style={styles.backButtonText}>← Volver al Panel</Text>
+                    </TouchableOpacity>
+                    <View style={styles.centeredTitleContainer} pointerEvents="box-none">
+                        <Text style={styles.title}>Tickets de Errores</Text>
+                    </View>
+                    <Image
+                        source={require('../../assets/logo_perla.png')}
+                        style={[styles.contentHeaderLogo, isDarkMode && { opacity: 0.95 }]}
+                        resizeMode="contain"
+                    />
+                </View>
+                <TicketsScreen displayName={displayName} />
+            </View>
+        );
+    }
+
     // --- VISTA CONTENT (SISTEMA ACTUAL) ---
     if (mode === 'CONTENT') {
         return (
@@ -515,6 +541,16 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                             Usuario: {displayName || roleDisplayNames[role] || role.toUpperCase()}
                         </Text>
                     </View>
+                    <TouchableOpacity
+                        style={styles.ticketHeaderBtn}
+                        onPress={() => {
+                            setMode('TICKETS');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'TICKETS');
+                        }}
+                    >
+                        <Text style={{ fontSize: 20 }}>🎫</Text>
+                        <Text style={[styles.ticketHeaderBtnText, { color: colors.text }]}>Tickets</Text>
+                    </TouchableOpacity>
                     <Image
                         source={require('../../assets/logo_perla.png')}
                         style={styles.headerLogo}
@@ -850,5 +886,21 @@ const styles = StyleSheet.create({
         top: 5,
         right: 15,
         zIndex: 10, // Added
+    },
+    ticketHeaderBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(49, 130, 206, 0.12)',
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        borderRadius: 10,
+        marginRight: 240,
+        gap: 6,
+        borderWidth: 1,
+        borderColor: 'rgba(49, 130, 206, 0.25)',
+    },
+    ticketHeaderBtnText: {
+        fontSize: 13,
+        fontWeight: '700',
     },
 });

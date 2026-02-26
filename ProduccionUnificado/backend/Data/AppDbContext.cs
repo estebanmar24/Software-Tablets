@@ -96,6 +96,10 @@ public class AppDbContext : DbContext
     // Consolidado NC (No Conformidad)
     public DbSet<ConsolidadoNC> ConsolidadosNC { get; set; }
 
+    // Tickets de Reporte de Errores
+    public DbSet<Ticket> Tickets { get; set; }
+    public DbSet<TicketImagen> TicketImagenes { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -498,5 +502,15 @@ public class AppDbContext : DbContext
             .WithMany()
             .HasForeignKey(r => r.UsuarioId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // Tickets Configuration
+        modelBuilder.Entity<Ticket>().ToTable("Tickets");
+        modelBuilder.Entity<TicketImagen>().ToTable("TicketImagenes");
+
+        modelBuilder.Entity<TicketImagen>()
+            .HasOne(ti => ti.Ticket)
+            .WithMany(t => t.Imagenes)
+            .HasForeignKey(ti => ti.TicketId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }
