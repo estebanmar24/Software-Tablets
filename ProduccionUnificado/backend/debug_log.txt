@@ -727,3 +727,13 @@
 [26/02/2026 12:56:49 p. m.] RegistrarTiempo - HorarioId Request: 2, Maquina: 8
 [26/02/2026 12:56:49 p. m.] UpdateProdDiaria - Fecha: 26/02/2026 12:00:00 a. m., Maq: 8, Usu: 40, Tiempos: 6, PrimerHorario: 2
 [26/02/2026 12:56:49 p. m.] Asignando HorarioId 2 a ProduccionDiaria
+[26/2/2026 13:44:47] UpdateProdDiaria - Fecha: 26/2/2026 00:00:00, Maq: 8, Usu: 3, Tiempos: 6, PrimerHorario: 2
+[26/2/2026 13:44:47] Asignando HorarioId 2 a ProduccionDiaria
+[26/2/2026 13:45:02] RegistrarTiempo - HorarioId Request: 2, Maquina: 8
+[26/2/2026 13:45:02] UpdateProdDiaria - Fecha: 26/2/2026 00:00:00, Maq: 8, Usu: 3, Tiempos: 7, PrimerHorario: 2
+[26/2/2026 13:45:02] Asignando HorarioId 2 a ProduccionDiaria
+[26/2/2026 14:27:38] UpdateProdDiaria - Fecha: 26/2/2026 00:00:00, Maq: 8, Usu: 3, Tiempos: 7, PrimerHorario: 2
+[26/2/2026 14:27:38] Asignando HorarioId 2 a ProduccionDiaria
+[26/2/2026 14:27:51] RegistrarTiempo - HorarioId Request: 2, Maquina: 8
+[26/2/2026 14:27:51] UpdateProdDiaria - Fecha: 26/2/2026 00:00:00, Maq: 8, Usu: 3, Tiempos: 8, PrimerHorario: 2
+[26/2/2026 14:27:51] Asignando HorarioId 2 a ProduccionDiaria

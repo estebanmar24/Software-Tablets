@@ -16,6 +16,7 @@ import { ExpenseHistoryModal } from '../components/ExpenseHistoryModal';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { Asset } from 'expo-asset';
+import PlaneacionPersonalScreen from './PlaneacionPersonalScreen';
 
 const TABS = [
     { key: 'gastos', label: 'Captura de Gastos', icon: '💰' },
@@ -24,6 +25,7 @@ const TABS = [
     { key: 'rubros', label: 'Rubros', icon: '📁' },
     { key: 'cotizaciones', label: 'Cotizaciones', icon: '📝' },
     { key: 'proveedores', label: 'Proveedores', icon: '🏢' },
+    { key: 'personal', label: 'Personal', icon: '👥' },
 ];
 
 const MESES = [
@@ -80,6 +82,7 @@ export default function PlaneacionGastosScreen({ navigation }) {
             {activeTab === 'rubros' && <RubrosTab />}
             {activeTab === 'cotizaciones' && <CotizacionesTab />}
             {activeTab === 'proveedores' && <ProveedoresTab />}
+            {activeTab === 'personal' && <PlaneacionPersonalScreen />}
         </View>
     );
 }
@@ -91,6 +94,8 @@ function GastosTab() {
     const [mes, setMes] = useState(new Date().getMonth() + 1);
     const [rubros, setRubros] = useState([]);
     const [proveedores, setProveedores] = useState([]);
+    const [personal, setPersonal] = useState([]);
+    const [tiposHorasRecargos, setTiposHorasRecargos] = useState({ tiposHora: [], tiposRecargo: [] });
     const [gastos, setGastos] = useState([]);
     const [resumen, setResumen] = useState(null);
     const [resumenAnual, setResumenAnual] = useState(null);
@@ -109,11 +114,14 @@ function GastosTab() {
         precio: '',
         fecha: new Date().toISOString().split('T')[0],
         observaciones: '',
-        fecha: new Date().toISOString().split('T')[0],
-        observaciones: '',
         facturaPdfUrl: '',
         numeroOP: '',
-        esPendiente: false
+        esPendiente: false,
+        tipoGasto: 'normal', // 'normal', 'extra', 'recargo'
+        personalId: '',
+        tipoHoraId: '',
+        tipoRecargoId: '',
+        cantidadHoras: ''
     });
     const [filterPending, setFilterPending] = useState(false);
     const [isLegalizing, setIsLegalizing] = useState(false);
@@ -152,16 +160,20 @@ function GastosTab() {
     const loadData = useCallback(async () => {
         setLoading(true);
         try {
-            const [rubrosData, proveedoresData, gastosData, graficasData, cotData] = await Promise.all([
+            const [rubrosData, proveedoresData, gastosData, graficasData, cotData, personalData, thrData] = await Promise.all([
                 planeacionApi.getRubros(),
                 planeacionApi.getProveedores(),
                 planeacionApi.getGastos(anio, mes),
                 planeacionApi.getGraficas(anio, mes),
-                planeacionApi.getCotizaciones(null, anio, mes)
+                planeacionApi.getCotizaciones(null, anio, mes),
+                planeacionApi.getPersonal(),
+                planeacionApi.getTiposHorasRecargos()
             ]);
             setRubros(rubrosData);
             setProveedores(proveedoresData);
             setCotizaciones(cotData);
+            setPersonal(personalData);
+            setTiposHorasRecargos(thrData);
             const sortedGastos = (gastosData || []).sort((a, b) => {
                 const dateA = new Date(a.fecha); const dateB = new Date(b.fecha);
                 if (dateB - dateA !== 0) return dateB - dateA;
@@ -236,13 +248,18 @@ function GastosTab() {
         setFormData({
             rubroId: '', proveedorId: '', numeroFactura: '', precio: '',
             fecha: new Date().toISOString().split('T')[0], observaciones: '', facturaPdfUrl: '', numeroOP: '',
-            esPendiente: false
+            esPendiente: false,
+            tipoGasto: 'normal', personalId: '', tipoHoraId: '', tipoRecargoId: '', cantidadHoras: ''
         });
         setIsLegalizing(false);
     };
 
     const handleEdit = (gasto) => {
         setEditItem(gasto);
+        let tipoGasto = 'normal';
+        if (gasto.tipoHoraId) tipoGasto = 'extra';
+        else if (gasto.tipoRecargoId) tipoGasto = 'recargo';
+
         setFormData({
             rubroId: gasto.rubroId?.toString() || '',
             proveedorId: gasto.proveedorId?.toString() || '',
@@ -250,12 +267,14 @@ function GastosTab() {
             precio: gasto.precio?.toString() || '',
             fecha: gasto.fecha?.split('T')[0] || new Date().toISOString().split('T')[0],
             observaciones: gasto.observaciones || '',
-            fecha: gasto.fecha?.split('T')[0] || new Date().toISOString().split('T')[0],
-            observaciones: gasto.observaciones || '',
-            observaciones: gasto.observaciones || '',
             facturaPdfUrl: gasto.facturaPdfUrl || '',
             numeroOP: gasto.numeroOP || '',
-            esPendiente: gasto.esPendiente || false
+            esPendiente: gasto.esPendiente || false,
+            tipoGasto: tipoGasto,
+            personalId: gasto.personalId?.toString() || '',
+            tipoHoraId: gasto.tipoHoraId?.toString() || '',
+            tipoRecargoId: gasto.tipoRecargoId?.toString() || '',
+            cantidadHoras: gasto.cantidadHoras?.toString() || ''
         });
         setIsLegalizing(false);
         setShowModal(true);
@@ -272,16 +291,42 @@ function GastosTab() {
             observaciones: gasto.observaciones || '',
             facturaPdfUrl: null,
             numeroOP: gasto.numeroOP || '',
-            esPendiente: false // Al guardar esto ya no será pendiente
+            esPendiente: false, // Al guardar esto ya no será pendiente
+            tipoGasto: 'normal', personalId: '', tipoHoraId: '', tipoRecargoId: '', cantidadHoras: ''
         });
         setIsLegalizing(true);
         setShowModal(true);
     };
 
+    // Calculation for Overtime/Surcharge
+    useEffect(() => {
+        if (formData.tipoGasto === 'normal') return;
+        if (!formData.personalId || !formData.cantidadHoras) return;
+
+        const person = personal.find(p => p.id.toString() === formData.personalId);
+        if (!person) return;
+
+        let factor = 1;
+        if (formData.tipoGasto === 'extra') {
+            const type = tiposHorasRecargos.tiposHora.find(t => t.id.toString() === formData.tipoHoraId);
+            if (type) factor = type.factor;
+            else return; // Don't calculate if type is not selected
+        } else if (formData.tipoGasto === 'recargo') {
+            const type = tiposHorasRecargos.tiposRecargo.find(t => t.id.toString() === formData.tipoRecargoId);
+            if (type) factor = type.factor;
+            else return; // Don't calculate if type is not selected
+        }
+
+        const hours = parseFloat(formData.cantidadHoras) || 0;
+        // Formula: (Salario / 220) * Factor * Horas
+        const total = (person.salario / 220) * factor * hours;
+        setFormData(prev => ({ ...prev, precio: Math.round(total).toString() }));
+    }, [formData.tipoGasto, formData.personalId, formData.tipoHoraId, formData.tipoRecargoId, formData.cantidadHoras, personal, tiposHorasRecargos]);
+
     const handleSubmit = async () => {
         if (!formData.rubroId) { showAlert('Error', 'Seleccione un Rubro'); return; }
         if (!formData.esPendiente && !formData.proveedorId) { showAlert('Error', 'Seleccione un Proveedor (Obligatorio para legalizar)'); return; }
-        if (isInsumos && (!formData.numeroOP || !formData.numeroOP.trim())) { showAlert('Error', 'El Número de OP es obligatorio para Insumos'); return; }
+        if ((isInsumos || formData.tipoGasto !== 'normal') && (!formData.numeroOP || !formData.numeroOP.trim())) { showAlert('Error', 'El Número de OP es obligatorio'); return; }
 
         if (!formData.esPendiente) {
             if (!formData.numeroFactura || !formData.numeroFactura.trim()) { showAlert('Error', 'El Número de factura es obligatorio'); return; }
@@ -301,7 +346,11 @@ function GastosTab() {
                 numeroOP: isInsumos ? formData.numeroOP : null,
                 anio: new Date(formData.fecha).getFullYear(),
                 mes: new Date(formData.fecha).getMonth() + 1,
-                esPendiente: formData.esPendiente
+                esPendiente: formData.esPendiente,
+                personalId: formData.personalId ? parseInt(formData.personalId) : null,
+                tipoHoraId: formData.tipoGasto === 'extra' ? parseInt(formData.tipoHoraId) : null,
+                tipoRecargoId: formData.tipoGasto === 'recargo' ? parseInt(formData.tipoRecargoId) : null,
+                cantidadHoras: formData.cantidadHoras ? parseFloat(formData.cantidadHoras) : null
             };
 
             // Check quotes
@@ -444,11 +493,20 @@ function GastosTab() {
                                         </View>
                                         <Text style={styles.gastoPrecio}>{formatCurrency(gasto.precio)}</Text>
                                     </View>
-                                    <Text style={styles.gastoRubro}>{gasto.proveedorNombre}</Text>
+                                    <Text style={styles.gastoRubro}>{gasto.proveedorNombre || gasto.personalNombre}</Text>
                                     <View style={styles.gastoDetails}>
-                                        <Text style={styles.gastoDetail}>🏢 NIT: {gasto.proveedorNit}</Text>
-                                        {gasto.numeroOP && <Text style={styles.gastoDetail}>🔢 OP: {gasto.numeroOP}</Text>}
-                                        <Text style={styles.gastoDetail}>📄 Factura: {gasto.numeroFactura}</Text>
+                                        {gasto.personalId ? (
+                                            <>
+                                                <Text style={styles.gastoDetail}>👤 CC: {gasto.personalCedula}</Text>
+                                                <Text style={styles.gastoDetail}>⏱️ {gasto.tipoHoraNombre || gasto.tipoRecargoNombre}: {gasto.cantidadHoras} hrs</Text>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Text style={styles.gastoDetail}>🏢 NIT: {gasto.proveedorNit}</Text>
+                                                {gasto.numeroOP && <Text style={styles.gastoDetail}>🔢 OP: {gasto.numeroOP}</Text>}
+                                                <Text style={styles.gastoDetail}>📄 Factura: {gasto.numeroFactura}</Text>
+                                            </>
+                                        )}
                                         {gasto.facturaPdfUrl && (
                                             <TouchableOpacity onPress={() => { if (Platform.OS === 'web') window.open(`${planeacionApi.getBaseUrl()}${gasto.facturaPdfUrl}`, '_blank'); }}>
                                                 <Text style={[styles.gastoDetail, { color: '#2563EB', textDecorationLine: 'underline' }]}>📎 Ver PDF Factura</Text>
@@ -502,7 +560,24 @@ function GastosTab() {
                                 <Text style={styles.label}>Rubro *</Text>
                                 <View style={styles.pickerContainer}>
                                     <Picker selectedValue={formData.rubroId} onValueChange={(v) => {
-                                        setFormData(p => ({ ...p, rubroId: v, proveedorId: '' }));
+                                        const rubroObj = rubros.find(r => r.id.toString() === v);
+                                        let newTipo = 'normal';
+                                        if (rubroObj) {
+                                            const name = rubroObj.nombre.toLowerCase();
+                                            if (name.includes('extra')) newTipo = 'extra';
+                                            else if (name.includes('recargo')) newTipo = 'recargo';
+                                        }
+                                        setFormData(p => ({
+                                            ...p,
+                                            rubroId: v,
+                                            proveedorId: '',
+                                            tipoGasto: newTipo,
+                                            personalId: '',
+                                            tipoHoraId: '',
+                                            tipoRecargoId: '',
+                                            cantidadHoras: '',
+                                            numeroFactura: ''
+                                        }));
                                     }}>
                                         <Picker.Item label="Seleccione..." value="" />
                                         {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
@@ -513,38 +588,149 @@ function GastosTab() {
 
                         {formData.rubroId ? (
                             <>
-                                {/* Proveedor is required for legalization, optional for pending */}
-                                <Text style={styles.label}>Proveedor {formData.esPendiente && !isLegalizing ? '(Opcional por ahora)' : '*'}</Text>
-                                <View style={styles.pickerContainer}>
-                                    <Picker selectedValue={formData.proveedorId} onValueChange={(v) => setFormData(p => ({ ...p, proveedorId: v }))}>
-                                        <Picker.Item label="Seleccione..." value="" />
-                                        {proveedores.filter(p => p.rubroId == formData.rubroId).map(p => (
-                                            <Picker.Item key={p.id} label={`${p.nombre} (${p.nitCedula})`} value={p.id.toString()} />
-                                        ))}
-                                    </Picker>
-                                </View>
-                            </>
-                        ) : null}
-
-                        {formData.rubroId ? (
-                            <>
-
-                                {isInsumos && (
+                                {formData.tipoGasto === 'normal' ? (
                                     <>
-                                        <Text style={styles.label}>Número de OP *</Text>
+                                        <Text style={styles.label}>Proveedor *</Text>
+                                        <View style={styles.pickerContainer}>
+                                            <Picker selectedValue={formData.proveedorId} onValueChange={(v) => setFormData(p => ({ ...p, proveedorId: v }))}>
+                                                <Picker.Item label="Seleccione..." value="" />
+                                                {proveedores.filter(p => p.rubroId == formData.rubroId).map(p => (
+                                                    <Picker.Item key={p.id} label={`${p.nombre} (${p.nitCedula})`} value={p.id.toString()} />
+                                                ))}
+                                            </Picker>
+                                        </View>
+
+                                        <Text style={styles.label}>Número de Factura {formData.esPendiente ? '(Opcional por ahora)' : '*'}</Text>
+                                        <TextInput style={styles.input} value={formData.numeroFactura} onChangeText={(t) => setFormData(p => ({ ...p, numeroFactura: t }))} placeholder={formData.esPendiente ? "Opcional" : "Obligatorio para habilitar precio"} />
+                                    </>
+                                ) : (
+                                    <>
+                                        <Text style={styles.label}>Personal de Almacen *</Text>
+                                        <View style={[styles.pickerContainer, { marginBottom: 15 }]}>
+                                            <Picker
+                                                selectedValue={formData.personalId}
+                                                onValueChange={(v) => setFormData(p => ({ ...p, personalId: v }))}
+                                            >
+                                                <Picker.Item label="Seleccione..." value="" />
+                                                {personal.map(p => (
+                                                    <Picker.Item key={p.id} label={`${p.nombre} (${p.cedula})`} value={p.id.toString()} />
+                                                ))}
+                                            </Picker>
+                                        </View>
+
+                                        {formData.tipoGasto === 'extra' && (
+                                            <>
+                                                <Text style={styles.label}>Tipo de Hora Extra *</Text>
+                                                <View style={[styles.pickerContainer, { marginBottom: 15 }]}>
+                                                    <Picker
+                                                        selectedValue={formData.tipoHoraId}
+                                                        onValueChange={(v) => setFormData(p => ({ ...p, tipoHoraId: v }))}
+                                                    >
+                                                        <Picker.Item label="Seleccione..." value="" />
+                                                        {tiposHorasRecargos.tiposHora.map(t => (
+                                                            <Picker.Item key={t.id} label={`${t.nombre} (${t.factor}x)`} value={t.id.toString()} />
+                                                        ))}
+                                                    </Picker>
+                                                </View>
+                                            </>
+                                        )}
+
+                                        {formData.tipoGasto === 'recargo' && (
+                                            <>
+                                                <Text style={styles.label}>Tipo de Recargo *</Text>
+                                                <View style={[styles.pickerContainer, { marginBottom: 15 }]}>
+                                                    <Picker
+                                                        selectedValue={formData.tipoRecargoId}
+                                                        onValueChange={(v) => setFormData(p => ({ ...p, tipoRecargoId: v }))}
+                                                    >
+                                                        <Picker.Item label="Seleccione..." value="" />
+                                                        {tiposHorasRecargos.tiposRecargo.map(t => (
+                                                            <Picker.Item key={t.id} label={`${t.nombre} (${t.factor}x)`} value={t.id.toString()} />
+                                                        ))}
+                                                    </Picker>
+                                                </View>
+                                            </>
+                                        )}
+
+                                        <Text style={styles.label}>Cantidad de Horas *</Text>
                                         <TextInput
-                                            style={styles.input}
-                                            value={formData.numeroOP}
-                                            onChangeText={(t) => setFormData(p => ({ ...p, numeroOP: t }))}
-                                            placeholder="Ej: OP-12345"
+                                            style={[styles.input, { marginBottom: 15 }]}
+                                            value={formData.cantidadHoras}
+                                            onChangeText={(t) => setFormData(p => ({ ...p, cantidadHoras: t }))}
+                                            keyboardType="numeric"
+                                            placeholder="Ej: 5.5"
                                         />
                                     </>
                                 )}
 
+                                {(isInsumos || formData.tipoGasto !== 'normal') && (
+                                    <>
+                                        <Text style={styles.label}>Número de OP (Orden de Producción) *</Text>
+                                        <TextInput
+                                            style={styles.input}
+                                            value={formData.numeroOP}
+                                            onChangeText={(t) => setFormData(p => ({ ...p, numeroOP: t }))}
+                                            placeholder="Ej: OP-12345 o número de orden"
+                                        />
+                                    </>
+                                )}
+
+                                {presupuestoInfo && (
+                                    <View style={styles.budgetContainer}>
+                                        <View style={styles.budgetHeader}>
+                                            <Text style={styles.budgetTitle}>📊 Presupuesto: {presupuestoInfo.nombre}</Text>
+                                        </View>
+                                        {(() => {
+                                            const currentPrice = parseFloat(formData.precio) || 0;
+                                            const originalPrice = editItem ? (editItem.precio || 0) : 0;
+                                            const adjustedGastadoMes = (presupuestoInfo.gastadoMes || 0) - originalPrice;
+                                            const liveGastado = adjustedGastadoMes + currentPrice;
+                                            const mensual = (presupuestoInfo.presupuestoMensual || 0);
+                                            const anual = (presupuestoInfo.presupuestoAnual || 0);
+                                            const liveRestante = mensual - liveGastado;
+                                            return (<>
+                                                <View style={styles.budgetInfoRow}>
+                                                    <View style={[styles.budgetInfoItem, { backgroundColor: '#EBF5FF' }]}>
+                                                        <Text style={styles.budgetInfoLabel}>Presupuesto Anual</Text>
+                                                        <Text style={[styles.budgetInfoValue, { color: '#2563EB' }]}>{formatCurrency(anual)}</Text>
+                                                    </View>
+                                                    <View style={[styles.budgetInfoItem, { backgroundColor: '#FFFBEB' }]}>
+                                                        <Text style={styles.budgetInfoLabel}>Gastado</Text>
+                                                        <Text style={[styles.budgetInfoValue, { color: '#D97706' }]}>{formatCurrency(liveGastado)}</Text>
+                                                    </View>
+                                                    <View style={[styles.budgetInfoItem, { backgroundColor: '#F0F9FF' }]}>
+                                                        <Text style={styles.budgetInfoLabel}>Presupuesto Mensual</Text>
+                                                        <Text style={[styles.budgetInfoValue, { color: '#0369A1' }]}>{formatCurrency(mensual)}</Text>
+                                                    </View>
+                                                </View>
+                                                <View style={{ marginTop: 12, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
+                                                    <Text style={{ fontSize: 13, color: '#4B5563' }}>Restante Mensual:</Text>
+                                                    <Text style={{ fontWeight: 'bold', fontSize: 15, color: liveRestante >= 0 ? '#059669' : '#DC2626' }}>{formatCurrency(liveRestante)}</Text>
+                                                </View>
+                                                {liveRestante < 0 && (
+                                                    <Text style={styles.budgetWarning}>
+                                                        ⚠️ Este gasto excederá el presupuesto mensual en {formatCurrency(Math.abs(liveRestante))}
+                                                    </Text>
+                                                )}
+                                            </>);
+                                        })()}
+                                    </View>
+                                )}
+
+                                <Text style={styles.label}>Precio * {((isInsumos || formData.tipoGasto !== 'normal') && !formData.numeroOP) ? '(ingrese OP primero)' : ''}</Text>
+                                <TextInput
+                                    style={[styles.input, ((isInsumos || formData.tipoGasto !== 'normal') && !formData.numeroOP) && { backgroundColor: '#F3F4F6' }]}
+                                    value={formData.precio}
+                                    onChangeText={(t) => setFormData(p => ({ ...p, precio: t }))}
+                                    keyboardType="numeric"
+                                    placeholder="$ 0"
+                                    editable={(!isInsumos && formData.tipoGasto === 'normal') || !!formData.numeroOP}
+                                />
+
                                 {/* Checkbox de Pendiente - Hide when Legalizing */}
                                 {!isLegalizing && formData.rubroId && (
                                     <TouchableOpacity
-                                        style={{ flexDirection: 'row', alignItems: 'center', padding: 10, backgroundColor: '#FEF3C7', borderRadius: 8, marginBottom: 15, borderWidth: 1, borderColor: '#FCD34D' }}
+                                        style={{ flexDirection: 'row', alignItems: 'center', padding: 12, backgroundColor: '#FEF3C7', borderRadius: 8, marginTop: 20, marginBottom: 15, borderWidth: 1, borderColor: '#FCD34D' }}
                                         onPress={() => setFormData(p => ({ ...p, esPendiente: !p.esPendiente }))}
                                     >
                                         <View style={{ width: 22, height: 22, borderRadius: 4, borderWidth: 2, borderColor: formData.esPendiente ? '#B45309' : '#D1D5DB', backgroundColor: formData.esPendiente ? '#B45309' : '#FFF', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
@@ -552,13 +738,20 @@ function GastosTab() {
                                         </View>
                                         <View>
                                             <Text style={{ fontWeight: 'bold', color: '#B45309' }}>Marcar como Gasto Pendiente</Text>
-                                            <Text style={{ fontSize: 11, color: '#92400E' }}>Permite guardar sin factura ni precio (2 días plazo)</Text>
+                                            <Text style={{ fontSize: 11, color: '#92400E' }}>Sin factura ni precio (2 días plazo)</Text>
                                         </View>
                                     </TouchableOpacity>
                                 )}
 
-                                <Text style={styles.label}>Número de Factura {formData.esPendiente ? '(Opcional por ahora)' : '*'}</Text>
-                                <TextInput style={styles.input} value={formData.numeroFactura} onChangeText={(t) => setFormData(p => ({ ...p, numeroFactura: t }))} placeholder={formData.esPendiente ? "Opcional" : "Obligatorio para habilitar precio"} />
+                                <Text style={styles.label}>Observaciones</Text>
+                                <TextInput
+                                    style={[styles.input, styles.textArea]}
+                                    value={formData.observaciones}
+                                    onChangeText={(t) => setFormData(p => ({ ...p, observaciones: t }))}
+                                    placeholder="Opcional..."
+                                    multiline
+                                    numberOfLines={3}
+                                />
 
                                 <Text style={styles.label}>PDF Factura</Text>
                                 {Platform.OS === 'web' && (
@@ -578,39 +771,7 @@ function GastosTab() {
                                     <TextInput style={styles.input} value={formData.fecha} onChangeText={(t) => setFormData(p => ({ ...p, fecha: t }))} placeholder="YYYY-MM-DD" />
                                 )}
 
-                                <Text style={styles.label}>Precio {formData.esPendiente ? '(Opcional por ahora)' : '*'} {(!formData.esPendiente && !formData.numeroFactura.trim()) ? '(ingrese factura primero)' : ''}</Text>
-                                <TextInput style={[styles.input, (!formData.esPendiente && !formData.numeroFactura.trim()) && { backgroundColor: '#F3F4F6' }]} value={formData.precio} onChangeText={(t) => setFormData(p => ({ ...p, precio: t }))} keyboardType="numeric" placeholder="$ 0" editable={formData.esPendiente || !!formData.numeroFactura.trim()} />
-
-                                {presupuestoInfo && (
-                                    <View style={styles.budgetContainer}>
-                                        <View style={styles.budgetHeader}><Text style={styles.budgetTitle}>📊 Presupuesto: {presupuestoInfo.nombre}</Text></View>
-                                        {(() => {
-                                            const currentPrice = parseFloat(formData.precio) || 0;
-                                            const originalPrice = editItem ? (editItem.precio || 0) : 0;
-                                            const adjustedGastadoMes = (presupuestoInfo.gastadoMes || 0) - originalPrice;
-                                            const liveGastado = adjustedGastadoMes + currentPrice;
-                                            const mensual = presupuestoInfo.presupuestoMensual || 0;
-                                            const liveRestante = mensual - liveGastado;
-                                            return (<>
-                                                <View style={styles.budgetInfoRow}>
-                                                    <View style={[styles.budgetInfoItem, { backgroundColor: '#E0E7FF' }]}><Text style={styles.budgetInfoLabel}>Presupuesto Anual</Text><Text style={styles.budgetInfoValue}>{formatCurrency(presupuestoInfo.presupuestoAnual || 0)}</Text></View>
-                                                    <View style={[styles.budgetInfoItem, { backgroundColor: '#FEF3C7' }]}><Text style={styles.budgetInfoLabel}>Gastado</Text><Text style={[styles.budgetInfoValue, { color: '#D97706' }]}>{formatCurrency(liveGastado)}</Text></View>
-                                                    <View style={[styles.budgetInfoItem, { backgroundColor: '#E0F2FE' }]}><Text style={styles.budgetInfoLabel}>Presupuesto Mensual</Text><Text style={styles.budgetInfoValue}>{formatCurrency(mensual)}</Text></View>
-                                                </View>
-                                                <View style={{ marginTop: 8, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
-                                                    <Text style={{ fontSize: 12, color: '#4B5563' }}>Restante Mensual:</Text>
-                                                    <Text style={{ fontWeight: 'bold', fontSize: 14, color: liveRestante >= 0 ? '#059669' : '#DC2626' }}>{formatCurrency(liveRestante)}</Text>
-                                                </View>
-                                                {liveRestante < 0 && (<Text style={styles.budgetWarning}>⚠️ Este gasto excederá el presupuesto mensual en {formatCurrency(Math.abs(liveRestante))}</Text>)}
-                                            </>);
-                                        })()}
-                                        {presupuestoInfo.presupuestoMensual === 0 && (<Text style={styles.budgetNoData}>ℹ️ No hay presupuesto mensual asignado</Text>)}
-                                    </View>
-                                )}
                             </>) : null}
-
-                        <Text style={styles.label}>Observaciones</Text>
-                        <TextInput style={[styles.input, { height: 80, textAlignVertical: 'top' }]} value={formData.observaciones} onChangeText={(t) => setFormData(p => ({ ...p, observaciones: t }))} multiline placeholder="Opcional..." />
 
                         <View style={styles.modalActions}>
                             <TouchableOpacity style={styles.cancelButton} onPress={() => setShowModal(false)}><Text style={styles.cancelButtonText}>Cancelar</Text></TouchableOpacity>

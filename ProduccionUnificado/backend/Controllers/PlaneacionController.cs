@@ -159,6 +159,59 @@ public class PlaneacionController : ControllerBase
 
     #endregion
 
+    #region Personal (Horas Extras y Recargos)
+
+    /// <summary>
+    /// Get all personal records
+    /// </summary>
+    [HttpGet("personal")]
+    public async Task<ActionResult<IEnumerable<Planeacion_Personal>>> GetPersonal()
+    {
+        return await _context.Planeacion_Personal
+            .Where(p => p.Activo)
+            .OrderBy(p => p.Nombre)
+            .ToListAsync();
+    }
+
+    /// <summary>
+    /// Create a new personal record
+    /// </summary>
+    [HttpPost("personal")]
+    public async Task<ActionResult<Planeacion_Personal>> CreatePersonal(Planeacion_Personal personal)
+    {
+        personal.FechaCreacion = DateTime.Now;
+        _context.Planeacion_Personal.Add(personal);
+        await _context.SaveChangesAsync();
+        return Ok(new { id = personal.Id });
+    }
+
+    /// <summary>
+    /// Update a personal record
+    /// </summary>
+    [HttpPut("personal/{id}")]
+    public async Task<IActionResult> UpdatePersonal(int id, Planeacion_Personal personal)
+    {
+        if (id != personal.Id) return BadRequest();
+        _context.Entry(personal).State = EntityState.Modified;
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Delete (deactivate) a personal record
+    /// </summary>
+    [HttpDelete("personal/{id}")]
+    public async Task<IActionResult> DeletePersonal(int id)
+    {
+        var personal = await _context.Planeacion_Personal.FindAsync(id);
+        if (personal == null) return NotFound();
+        personal.Activo = false;
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    #endregion
+
     #region Gastos
 
     /// <summary>
@@ -171,6 +224,9 @@ public class PlaneacionController : ControllerBase
             .Include(g => g.Proveedor)
             .Include(g => g.Rubro)
             .Include(g => g.CreadoPor)
+            .Include(g => g.Personal)
+            .Include(g => g.TipoHora)
+            .Include(g => g.TipoRecargo)
             .Where(g => g.Anio == anio);
 
         if (mes.HasValue && mes.Value > 0)
@@ -197,7 +253,15 @@ public class PlaneacionController : ControllerBase
                 g.FechaModificacion,
                 g.CreadoPorId,
                 CreadoPorNombre = g.CreadoPor != null ? g.CreadoPor.NombreMostrar : "",
-                g.EsPendiente
+                g.EsPendiente,
+                g.PersonalId,
+                PersonalNombre = g.Personal != null ? g.Personal.Nombre : "",
+                PersonalCedula = g.Personal != null ? g.Personal.Cedula : "",
+                g.TipoHoraId,
+                TipoHoraNombre = g.TipoHora != null ? g.TipoHora.Nombre : "",
+                g.TipoRecargoId,
+                TipoRecargoNombre = g.TipoRecargo != null ? g.TipoRecargo.Nombre : "",
+                g.CantidadHoras
             })
             .ToListAsync();
 
@@ -325,6 +389,22 @@ public class PlaneacionController : ControllerBase
         }
 
         return Ok(new { url = $"/uploads/facturas/{uniqueFileName}" });
+    }
+
+    /// <summary>
+    /// Get Overtime and Surcharges Types
+    /// </summary>
+    [HttpGet("tipos-horas-recargos")]
+    public async Task<ActionResult<object>> GetTiposHorasRecargos()
+    {
+        var horas = await _context.Produccion_TiposHora.Where(h => h.Activo).ToListAsync();
+        var recargos = await _context.Produccion_TiposRecargo.Where(r => r.Activo).ToListAsync();
+
+        return Ok(new
+        {
+            TiposHora = horas,
+            TiposRecargo = recargos
+        });
     }
 
     #endregion

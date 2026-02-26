@@ -72,6 +72,7 @@ public class AppDbContext : DbContext
     public DbSet<Planeacion_Cotizacion> Planeacion_Cotizaciones { get; set; }
     public DbSet<Planeacion_Gasto> Planeacion_Gastos { get; set; }
     public DbSet<Planeacion_PresupuestoMensual> Planeacion_PresupuestosMensuales { get; set; }
+    public DbSet<Planeacion_Personal> Planeacion_Personal { get; set; }
 
     // Diseño Management
     public DbSet<Diseno_Rubro> Diseno_Rubros { get; set; }
@@ -357,6 +358,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Planeacion_Cotizacion>().ToTable("Planeacion_Cotizaciones");
         modelBuilder.Entity<Planeacion_Gasto>().ToTable("Planeacion_Gastos");
         modelBuilder.Entity<Planeacion_PresupuestoMensual>().ToTable("Planeacion_PresupuestosMensuales");
+        modelBuilder.Entity<Planeacion_Personal>().ToTable("Planeacion_Personal");
 
         // Planeación Relationships
         modelBuilder.Entity<Planeacion_Proveedor>()
@@ -381,6 +383,24 @@ public class AppDbContext : DbContext
             .HasOne(g => g.Rubro)
             .WithMany(r => r.Gastos)
             .HasForeignKey(g => g.RubroId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Planeacion_Gasto>()
+            .HasOne(g => g.Personal)
+            .WithMany()
+            .HasForeignKey(g => g.PersonalId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Planeacion_Gasto>()
+            .HasOne(g => g.TipoHora)
+            .WithMany()
+            .HasForeignKey(g => g.TipoHoraId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Planeacion_Gasto>()
+            .HasOne(g => g.TipoRecargo)
+            .WithMany()
+            .HasForeignKey(g => g.TipoRecargoId)
             .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<Planeacion_PresupuestoMensual>()

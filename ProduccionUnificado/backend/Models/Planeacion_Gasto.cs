@@ -22,11 +22,10 @@ public class Planeacion_Gasto
     public int Mes { get; set; }
 
     /// <summary>
-    /// Número de factura - Obligatorio para todos los gastos
+    /// Número de factura - Obligatorio para todos los gastos (excepto personal)
     /// </summary>
-    [Required(AllowEmptyStrings = true, ErrorMessage = "El número de factura es obligatorio")]
     [MaxLength(100)]
-    public string NumeroFactura { get; set; } = string.Empty;
+    public string? NumeroFactura { get; set; }
 
     /// <summary>
     /// Número de Orden de Producción (OP) - Required only for specific Rubros (e.g. Insumos)
@@ -45,10 +44,34 @@ public class Planeacion_Gasto
     public string? Observaciones { get; set; }
 
     /// <summary>
-    /// ID del proveedor asociado - Opcional para gastos pendientes
+    /// ID del proveedor asociado - Opcional para gastos de personal o pendientes
     /// </summary>
     [ForeignKey("Proveedor")]
     public int? ProveedorId { get; set; }
+
+    /// <summary>
+    /// ID del personal asociado - Para horas extras y recargos
+    /// </summary>
+    [ForeignKey("Personal")]
+    public int? PersonalId { get; set; }
+
+    /// <summary>
+    /// ID del tipo de hora extra
+    /// </summary>
+    [ForeignKey("TipoHora")]
+    public int? TipoHoraId { get; set; }
+
+    /// <summary>
+    /// ID del tipo de recargo
+    /// </summary>
+    [ForeignKey("TipoRecargo")]
+    public int? TipoRecargoId { get; set; }
+
+    /// <summary>
+    /// Cantidad de horas o recargos
+    /// </summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? CantidadHoras { get; set; }
 
     /// <summary>
     /// URL to the uploaded invoice PDF file
@@ -67,6 +90,15 @@ public class Planeacion_Gasto
 
     [ForeignKey("RubroId")]
     public virtual Planeacion_Rubro? Rubro { get; set; }
+
+    [ForeignKey("PersonalId")]
+    public virtual Planeacion_Personal? Personal { get; set; }
+
+    [ForeignKey("TipoHoraId")]
+    public virtual Produccion_TipoHora? TipoHora { get; set; }
+
+    [ForeignKey("TipoRecargoId")]
+    public virtual Produccion_TipoRecargo? TipoRecargo { get; set; }
 
     // History tracking
     public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;

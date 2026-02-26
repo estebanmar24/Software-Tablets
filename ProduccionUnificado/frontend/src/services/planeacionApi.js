@@ -57,6 +57,28 @@ export async function deleteProveedor(id) {
     return true;
 }
 
+// ==================== PERSONAL (HORAS EXTRAS) ====================
+
+export async function getPersonal() {
+    const response = await api.get(`${API_BASE_URL}/planeacion/personal`);
+    return response.data;
+}
+
+export async function createPersonal(personal) {
+    const response = await api.post(`${API_BASE_URL}/planeacion/personal`, personal);
+    return response.data;
+}
+
+export async function updatePersonal(id, personal) {
+    const response = await api.put(`${API_BASE_URL}/planeacion/personal/${id}`, { ...personal, id });
+    return response.data;
+}
+
+export async function deletePersonal(id) {
+    await api.delete(`${API_BASE_URL}/planeacion/personal/${id}`);
+    return true;
+}
+
 // ==================== COTIZACIONES ====================
 
 export async function getCotizaciones(proveedorId = null, anio = null, mes = null) {
@@ -139,6 +161,13 @@ export async function getGraficas(anio, mes) {
 
 export async function getGraficasAnual(anio) {
     const response = await api.get(`${API_BASE_URL}/planeacion/graficas/anual/${anio}`);
+    return response.data;
+}
+
+// ==================== TIPOS HORAS/RECARGOS ====================
+
+export async function getTiposHorasRecargos() {
+    const response = await api.get(`${API_BASE_URL}/planeacion/tipos-horas-recargos`);
     return response.data;
 }
 
