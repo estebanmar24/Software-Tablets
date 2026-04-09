@@ -7,7 +7,6 @@ import axios from 'axios';
 import { getToken } from './authStorage';
 
 const api = axios.create();
-/*
 api.interceptors.request.use(async (config) => {
     const token = await getToken();
     if (token) {
@@ -15,7 +14,6 @@ api.interceptors.request.use(async (config) => {
     }
     return config;
 }, error => Promise.reject(error));
-*/
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
 
@@ -28,6 +26,11 @@ export async function getRubros() {
 
 export async function getMaestros() {
     const response = await api.get(`${API_BASE_URL}/produccion/maestros`);
+    return response.data;
+}
+
+export async function getHorarios() {
+    const response = await api.get(`${API_BASE_URL}/talleres/horarios`);
     return response.data;
 }
 

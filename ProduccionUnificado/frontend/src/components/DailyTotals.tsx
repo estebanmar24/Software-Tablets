@@ -6,7 +6,9 @@ interface DailyTotalsProps {
     desperdicioTotal: number;
     meta?: number;
     valorPorTiro?: number;
+    planeacionActual?: any;
 }
+
 
 // Colombian holidays calculation (mirrors backend HorarioLaboralHelper)
 function esFestivoColombia(fecha: Date): boolean {
@@ -103,7 +105,8 @@ function esHorarioBonificable(): { esBonificable: boolean; mensaje?: string } {
     return { esBonificable: false, mensaje: 'Fuera de horario (L-V 7am-4pm)' };
 }
 
-export function DailyTotals({ tirosTotales, desperdicioTotal, meta = 0, valorPorTiro = 0 }: DailyTotalsProps) {
+export function DailyTotals({ tirosTotales, desperdicioTotal, meta = 0, valorPorTiro = 0, planeacionActual }: DailyTotalsProps) {
+
     const { colors, isDarkMode } = useTheme();
     const formatNumber = (num: number): string => {
         return num.toLocaleString('es-CO');
@@ -116,8 +119,10 @@ export function DailyTotals({ tirosTotales, desperdicioTotal, meta = 0, valorPor
     // Check if current time is bonificable
     const { esBonificable, mensaje } = esHorarioBonificable();
 
-    // Calcular rendimiento (%)
-    const rendimiento = meta > 0 ? ((tirosTotales / meta) * 100) : 0;
+    // Calcular rendimiento (%) prioritizando la meta planeada
+    const metaEfectiva = (planeacionActual && planeacionActual.metaTiros > 0) ? planeacionActual.metaTiros : (meta || 0);
+    const rendimiento = metaEfectiva > 0 ? ((tirosTotales / metaEfectiva) * 100) : 0;
+
 
     // Calcular bonificación: (tiros - meta) * valorPorTiro (solo si supera la meta Y es bonificable)
     const tirosExcedente = Math.max(0, tirosTotales - meta);
@@ -133,6 +138,16 @@ export function DailyTotals({ tirosTotales, desperdicioTotal, meta = 0, valorPor
                     <Text style={[styles.warningText, { color: isDarkMode ? '#FDE68A' : '#92400E' }]}>⚠️ {mensaje}</Text>
                 </View>
             )}
+
+            {/* Planeación Actual Banner */}
+            {planeacionActual && (
+                <View style={[styles.planeacionBanner, { backgroundColor: isDarkMode ? '#062016' : '#DCFCE7', borderColor: '#22C55E' }]}>
+                    <Text style={[styles.planeacionText, { color: isDarkMode ? '#86EFAC' : '#166534' }]}>
+                        📅 TRABAJO PLANEADO: OP {planeacionActual.ordenProduccion?.numero} (Meta: {formatNumber(planeacionActual.metaTiros)} tiros)
+                    </Text>
+                </View>
+            )}
+
 
             {/* Primera fila: Tiros y Desperdicio */}
             <View style={styles.cardsRow}>
@@ -152,53 +167,70 @@ export function DailyTotals({ tirosTotales, desperdicioTotal, meta = 0, valorPor
                 </View>
             </View>
 
-            {/* Segunda fila: Rendimiento y Bonificación */}
-            <View style={[styles.cardsRow, { marginTop: 12 }]}>
-                <View style={[
-                    styles.card,
-                    isDarkMode ? { backgroundColor: '#062016', borderColor: '#064E3B' } : styles.cardRendimiento
-                ]}>
-                    {meta > 0 ? (
-                        <>
-                            <Text style={[styles.cardValue, rendimiento >= 100 ? styles.valueGood : styles.valueLow]}>
-                                {rendimiento.toFixed(1)}%
+            {/* Detalles extendidos de planeación si existe */}
+
+            {planeacionActual && (
+                <View style={[styles.planeacionDetalle, { backgroundColor: isDarkMode ? '#111827' : '#F9FAFB', borderColor: colors.border }]}>
+                    <View style={styles.detalleRow}>
+                        <Text style={[styles.detalleLabel, { color: colors.subText }]}>Descripción OP:</Text>
+                        <Text style={[styles.detalleValue, { color: colors.text }]}>{planeacionActual.referencia || planeacionActual.ordenProduccion?.descripcion || 'Sin descripción'}</Text>
+                    </View>
+
+                    <View style={styles.detalleRow}>
+                        <Text style={[styles.detalleLabel, { color: colors.subText }]}>Horario Asignado:</Text>
+                        <Text style={[styles.detalleValue, { color: colors.text }]}>
+                            {new Date(planeacionActual.fechaInicio).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(planeacionActual.fechaFin).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </Text>
+                    </View>
+                    <View style={styles.detalleRow}>
+                        <Text style={[styles.detalleLabel, { color: colors.subText }]}>Meta Planeada:</Text>
+                        <Text style={[styles.detalleValue, { color: colors.text, fontWeight: 'bold' }]}>{formatNumber(planeacionActual.metaTiros)} tiros</Text>
+                    </View>
+
+                    {/* Progress Bar */}
+                    <View style={{ marginTop: 12 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                            <Text style={{ fontSize: 13, fontWeight: 'bold', color: colors.text }}>Progreso de Producción:</Text>
+                            <Text style={{ fontSize: 13, fontWeight: 'bold', color: colors.primary }}>
+                                {formatNumber(tirosTotales)} / {formatNumber(planeacionActual.metaTiros)}
                             </Text>
-                            <Text style={[styles.cardLabel, { color: colors.subText }]}>Rendimiento</Text>
-                            <Text style={[styles.cardSubLabel, { color: colors.subText }]}>Meta: {formatNumber(meta)}</Text>
-                        </>
-                    ) : (
-                        <>
-                            <Text style={[styles.cardValue, { color: colors.subText }]}>--%</Text>
-                            <Text style={[styles.cardLabel, { color: colors.subText }]}>Rendimiento</Text>
-                            <Text style={[styles.cardSubLabel, { color: colors.subText }]}>Seleccione Máquina</Text>
-                        </>
-                    )}
+                        </View>
+                        <View style={{ height: 12, backgroundColor: isDarkMode ? '#374151' : '#E5E7EB', borderRadius: 6, overflow: 'hidden' }}>
+                            <View style={{
+                                height: '100%',
+                                backgroundColor: rendimiento >= 100 ? '#22C55E' : colors.primary,
+                                width: `${Math.min(100, rendimiento)}%`
+                            }} />
+                        </View>
+                    </View>
                 </View>
-                <View style={[
-                    styles.card,
-                    !esBonificable ? (isDarkMode ? { backgroundColor: '#1F2937', borderColor: '#374151' } : styles.cardDisabled)
-                        : (isDarkMode ? { backgroundColor: '#1E1B4B', borderColor: '#3730A3' } : styles.cardBonificacion)
-                ]}>
-                    <Text style={[
-                        styles.cardValue,
-                        !esBonificable ? styles.valueDisabled : (bonificacion > 0 ? styles.valueGood : { color: colors.subText })
-                    ]}>
-                        {esBonificable ? formatCurrency(bonificacion) : '$0'}
-                    </Text>
-                    <Text style={[styles.cardLabel, { color: colors.subText }]}>Bonificación</Text>
-                    {esBonificable && bonificacion > 0 && (
-                        <Text style={[styles.cardSubLabel, { color: colors.subText }]}>+{formatNumber(tirosExcedente)} tiros extra</Text>
-                    )}
-                    {!esBonificable && (
-                        <Text style={[styles.cardSubLabel, { color: colors.subText }]}>No aplica</Text>
-                    )}
-                </View>
-            </View>
+            )}
+
         </View>
     );
 }
 
 const styles = StyleSheet.create({
+    planeacionDetalle: {
+        marginTop: 15,
+        padding: 12,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderStyle: 'dashed',
+    },
+    detalleRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 4,
+    },
+    detalleLabel: {
+        fontSize: 12,
+        fontWeight: '500',
+    },
+    detalleValue: {
+        fontSize: 12,
+    },
+
     container: {
         backgroundColor: '#FFFFFF',
         borderRadius: 12,
@@ -293,5 +325,17 @@ const styles = StyleSheet.create({
     valueDisabled: {
         color: '#94A3B8',
     },
+    planeacionBanner: {
+        borderWidth: 1,
+        borderRadius: 8,
+        padding: 10,
+        marginBottom: 12,
+        alignItems: 'center',
+    },
+    planeacionText: {
+        fontWeight: 'bold',
+        fontSize: 13,
+    },
 });
+
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, ActivityIndicator, Modal, Image, Alert, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, ActivityIndicator, Modal, Image, Alert, Dimensions, TextInput } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import axios from 'axios';
 import { api, API_URL } from '../services/productionApi';
@@ -51,7 +51,11 @@ interface EncuestaResumen {
     tiposNovedad: string[];
 }
 
-export default function QualityView() {
+interface QualityViewProps {
+    navigation: any;
+}
+
+export default function QualityView({ navigation }: QualityViewProps) {
     const { colors } = useTheme();
     const [loading, setLoading] = useState(false);
     const [mes, setMes] = useState(new Date().getMonth() + 1);
@@ -75,6 +79,16 @@ export default function QualityView() {
 
 
     const [generatingPdf, setGeneratingPdf] = useState(false);
+
+    // Excel Export States
+    const [excelModalVisible, setExcelModalVisible] = useState(false);
+    const [exportFechaInicio, setExportFechaInicio] = useState(() => {
+        const d = new Date(); d.setDate(1);
+        return d.toISOString().split('T')[0];
+    });
+    const [exportFechaFin, setExportFechaFin] = useState(() => new Date().toISOString().split('T')[0]);
+    const [generatingExcel, setGeneratingExcel] = useState(false);
+    const [generatingOPPdf, setGeneratingOPPdf] = useState(false);
 
     const openImageModal = (uri: string) => {
         setEnlargedImageUri(uri);
@@ -507,6 +521,224 @@ export default function QualityView() {
         }
     };
 
+    // --- EXCEL EXPORT ---
+    const generateExcel = async () => {
+        setGeneratingExcel(true);
+        try {
+            const url = `${API_URL}/calidad/export-excel?fechaInicio=${exportFechaInicio}&fechaFin=${exportFechaFin}`;
+
+            if (Platform.OS === 'web') {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({ message: 'Error del servidor' }));
+                    Alert.alert('Sin datos', err.message || 'No se encontraron datos en el rango seleccionado');
+                    return;
+                }
+                const blob = await response.blob();
+                const blobUrl = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = `Calidad_${exportFechaInicio}_${exportFechaFin}.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(blobUrl);
+                setExcelModalVisible(false);
+            } else {
+                const fileUri = (FileSystem as any).documentDirectory + `Calidad_${exportFechaInicio}_${exportFechaFin}.xlsx`;
+                const result = await FileSystem.downloadAsync(url, fileUri);
+                if (result.status !== 200) {
+                    Alert.alert('Sin datos', 'No se encontraron datos en el rango seleccionado');
+                    return;
+                }
+                setExcelModalVisible(false);
+                if (await Sharing.isAvailableAsync()) {
+                    await Sharing.shareAsync(fileUri, {
+                        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        dialogTitle: 'Exportar Excel Calidad',
+                    });
+                } else {
+                    Alert.alert('Guardado', `Excel guardado en: ${fileUri}`);
+                }
+            }
+        } catch (error: any) {
+            console.error(error);
+            Alert.alert('Error', 'No se pudo generar el Excel: ' + error.message);
+        } finally {
+            setGeneratingExcel(false);
+        }
+    };
+
+
+    // --- OP DETAILS PDF ---
+    const generateOPDetailsPDF = async () => {
+        setGeneratingOPPdf(true);
+        try {
+            const response = await api.get(`calidad/detalles-op?mes=${mes}&anio=${anio}`);
+            const data = response.data;
+
+            const { jsPDF } = require('jspdf');
+            const autoTable = require('jspdf-autotable').default;
+            const doc = new jsPDF();
+            const width = doc.internal.pageSize.getWidth();
+
+            // Logo
+            try {
+                const asset = Asset.fromModule(colors.alephLogo);
+                await asset.downloadAsync();
+                let logoData = null;
+                if (Platform.OS === 'web') {
+                    logoData = asset.uri;
+                } else {
+                    const base64 = await FileSystem.readAsStringAsync(asset.localUri || asset.uri, { encoding: 'base64' });
+                    logoData = `data:image/jpeg;base64,${base64}`;
+                }
+                doc.addImage(logoData, 'JPEG', 15, 10, 50, 20);
+            } catch (e: any) { console.warn('Logo error', e); }
+
+            doc.setFontSize(16);
+            doc.setTextColor(0, 51, 102);
+            doc.text('ALEPH IMPRESORES S.A.S.', width - 15, 20, { align: 'right' });
+            doc.setFontSize(13);
+            doc.setTextColor(51, 51, 51);
+            doc.text('DETALLES DE OP - CALIDAD', width - 15, 28, { align: 'right' });
+            doc.setFontSize(10);
+            doc.setTextColor(100);
+            const mesNombre = meses.find(m => m.id === Number(mes))?.nombre || mes;
+            doc.text(`Periodo: ${mesNombre} ${anio}`, width - 15, 35, { align: 'right' });
+            doc.text(`Generado: ${new Date().toLocaleString()}`, width - 15, 41, { align: 'right' });
+
+            let y = 55;
+
+            // TABLA 1: Resumen
+            doc.setFontSize(13);
+            doc.setTextColor(0, 51, 102);
+            doc.setFont(undefined, 'bold');
+            doc.text('Resumen de Inspecciones del Mes', 15, y);
+            y += 5;
+
+            autoTable(doc, {
+                startY: y,
+                head: [['Concepto', 'Cantidad']],
+                body: [
+                    ['OPs Trabajadas en el Mes', data.totalOPsTrabajadas.toString()],
+                    ['OPs Inspeccionadas (únicas)', data.totalOPsInspeccionadas.toString()],
+                    ['% Cobertura de Inspección', data.totalOPsTrabajadas > 0
+                        ? ((data.totalOPsInspeccionadas / data.totalOPsTrabajadas) * 100).toFixed(1) + '%'
+                        : '0%'
+                    ],
+                ],
+                theme: 'grid',
+                headStyles: { fillColor: [0, 51, 102], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 11 },
+                bodyStyles: { fontSize: 11 },
+                columnStyles: {
+                    0: { cellWidth: 120 },
+                    1: { cellWidth: 40, halign: 'center', fontStyle: 'bold' },
+                },
+                margin: { left: 15, right: 15 },
+            });
+
+            y = (doc as any).lastAutoTable.finalY + 20;
+
+            // TABLA 2: Detalle por OP
+            doc.setFontSize(13);
+            doc.setTextColor(0, 51, 102);
+            doc.setFont(undefined, 'bold');
+            doc.text('Detalle de Inspecciones por OP', 15, y);
+            y += 5;
+
+            const detalleRows = data.detalleOPs.map((item: any, idx: number) => [
+                (idx + 1).toString(),
+                item.op,
+                item.cantidadInspecciones.toString(),
+            ]);
+
+            autoTable(doc, {
+                startY: y,
+                head: [['#', 'Orden de Producción', 'N° Inspecciones']],
+                body: detalleRows,
+                theme: 'striped',
+                headStyles: { fillColor: [0, 51, 102], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 10 },
+                bodyStyles: { fontSize: 10 },
+                columnStyles: {
+                    0: { cellWidth: 15, halign: 'center' },
+                    1: { cellWidth: 100 },
+                    2: { cellWidth: 45, halign: 'center', fontStyle: 'bold' },
+                },
+                margin: { left: 15, right: 15 },
+                alternateRowStyles: { fillColor: [245, 247, 250] },
+            });
+
+            // TABLA 3: Listado de todas las OPs trabajadas en el mes
+            y = (doc as any).lastAutoTable.finalY + 20;
+
+            // Check if we need a new page
+            if (y > doc.internal.pageSize.getHeight() - 40) {
+                doc.addPage();
+                y = 20;
+            }
+
+            doc.setFontSize(13);
+            doc.setTextColor(0, 51, 102);
+            doc.setFont(undefined, 'bold');
+            doc.text('Listado de OPs Trabajadas en el Mes', 15, y);
+            y += 5;
+
+            const listaOPsRows = (data.listaOPsTrabajadas || [])
+                .map((item: any, idx: number) => [
+                    (idx + 1).toString(),
+                    item.op,
+                ]);
+
+            autoTable(doc, {
+                startY: y,
+                head: [['#', 'Número de OP']],
+                body: listaOPsRows,
+                theme: 'striped',
+                headStyles: { fillColor: [0, 51, 102], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 10 },
+                bodyStyles: { fontSize: 10 },
+                columnStyles: {
+                    0: { cellWidth: 15, halign: 'center' },
+                    1: { cellWidth: 80 },
+                },
+                margin: { left: 15, right: 15 },
+                alternateRowStyles: { fillColor: [245, 247, 250] },
+            });
+
+            // Footer
+            const totalPages = doc.internal.getNumberOfPages();
+            for (let i = 1; i <= totalPages; i++) {
+                doc.setPage(i);
+                doc.setFontSize(8);
+                doc.setTextColor(150);
+                doc.text(`Página ${i} de ${totalPages}`, width - 15, doc.internal.pageSize.getHeight() - 10, { align: 'right' });
+            }
+
+            const fileName = `Detalles_OP_Calidad_${anio}_${mes}.pdf`;
+
+            if (Platform.OS === 'web') {
+                doc.save(fileName);
+            } else {
+                const fileUri = (FileSystem as any).documentDirectory + fileName;
+                const pdfBase64 = doc.output('datauristring').split(',')[1];
+                await FileSystem.writeAsStringAsync(fileUri, pdfBase64, { encoding: 'base64' });
+                if (await Sharing.isAvailableAsync()) {
+                    await Sharing.shareAsync(fileUri, {
+                        mimeType: 'application/pdf',
+                        dialogTitle: 'Detalles de OP',
+                        UTI: 'com.adobe.pdf'
+                    });
+                } else {
+                    Alert.alert('Guardado', `PDF guardado en: ${fileUri}`);
+                }
+            }
+        } catch (error: any) {
+            console.error(error);
+            Alert.alert('Error', 'No se pudo generar el PDF: ' + error.message);
+        } finally {
+            setGeneratingOPPdf(false);
+        }
+    };
 
     const renderItem = ({ item }: { item: EncuestaResumen }) => (
         <TouchableOpacity style={styles.row} onPress={() => openDetalle(item.id)}>
@@ -570,6 +802,25 @@ export default function QualityView() {
                         <ActivityIndicator color="white" size="small" />
                     ) : (
                         <Text style={styles.refreshBtnText}>📄 PDF</Text>
+                    )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={[styles.refreshBtn, { backgroundColor: '#1B5E20', marginLeft: 10 }]}
+                    onPress={() => setExcelModalVisible(true)}
+                >
+                    <Text style={styles.refreshBtnText}>📊 Excel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={[styles.refreshBtn, { backgroundColor: '#0D47A1', marginLeft: 10, opacity: generatingOPPdf ? 0.7 : 1 }]}
+                    onPress={generateOPDetailsPDF}
+                    disabled={generatingOPPdf}
+                >
+                    {generatingOPPdf ? (
+                        <ActivityIndicator color="white" size="small" />
+                    ) : (
+                        <Text style={styles.refreshBtnText}>📝 Detalles de OP</Text>
                     )}
                 </TouchableOpacity>
             </View>
@@ -898,7 +1149,12 @@ export default function QualityView() {
                                                 ) : null}
                                             </View>
 
-                                            {nov.descripcion ? <Text style={styles.noveltyText}>{nov.descripcion}</Text> : null}
+                                            {nov.descripcion ? (
+                                                <View style={{ marginTop: 8, backgroundColor: '#F3F4F6', padding: 8, borderRadius: 4 }}>
+                                                    <Text style={{ fontWeight: 'bold', color: '#4B5563', marginBottom: 2, fontSize: 12 }}>Observaciones:</Text>
+                                                    <Text style={{ color: '#1F2937', fontStyle: 'italic', fontSize: 13 }}>{nov.descripcion}</Text>
+                                                </View>
+                                            ) : null}
 
                                             {nov.fotoUrl ? (
                                                 <TouchableOpacity
@@ -957,6 +1213,70 @@ export default function QualityView() {
                         </TouchableOpacity>
                     </View>
                 </TouchableOpacity>
+            </Modal>
+
+            {/* Modal para exportar Excel */}
+            <Modal
+                animationType="fade"
+                transparent={true}
+                visible={excelModalVisible}
+                onRequestClose={() => setExcelModalVisible(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { width: 420, height: 'auto', maxHeight: 340 }]}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>📊 Exportar Excel - Calidad</Text>
+                            <TouchableOpacity onPress={() => setExcelModalVisible(false)} style={styles.closeButton}>
+                                <Text style={styles.closeButtonText}>X</Text>
+                            </TouchableOpacity>
+                        </View>
+                        <View style={{ padding: 20 }}>
+                            <Text style={{ fontWeight: 'bold', marginBottom: 5, color: '#333' }}>Fecha Inicio:</Text>
+                            {Platform.OS === 'web' ? (
+                                <input
+                                    type="date"
+                                    value={exportFechaInicio}
+                                    onChange={(e: any) => setExportFechaInicio(e.target.value)}
+                                    style={{ border: '1px solid #ccc', borderRadius: 6, padding: '8px 12px', fontSize: 15, width: '100%', boxSizing: 'border-box' as any }}
+                                />
+                            ) : (
+                                <TextInput
+                                    style={excelStyles.dateInput}
+                                    value={exportFechaInicio}
+                                    onChangeText={setExportFechaInicio}
+                                    placeholder="YYYY-MM-DD"
+                                />
+                            )}
+                            <Text style={{ fontWeight: 'bold', marginBottom: 5, marginTop: 12, color: '#333' }}>Fecha Fin:</Text>
+                            {Platform.OS === 'web' ? (
+                                <input
+                                    type="date"
+                                    value={exportFechaFin}
+                                    onChange={(e: any) => setExportFechaFin(e.target.value)}
+                                    style={{ border: '1px solid #ccc', borderRadius: 6, padding: '8px 12px', fontSize: 15, width: '100%', boxSizing: 'border-box' as any }}
+                                />
+                            ) : (
+                                <TextInput
+                                    style={excelStyles.dateInput}
+                                    value={exportFechaFin}
+                                    onChangeText={setExportFechaFin}
+                                    placeholder="YYYY-MM-DD"
+                                />
+                            )}
+                            <TouchableOpacity
+                                style={[excelStyles.exportBtn, { opacity: generatingExcel ? 0.7 : 1 }]}
+                                onPress={generateExcel}
+                                disabled={generatingExcel}
+                            >
+                                {generatingExcel ? (
+                                    <ActivityIndicator color="white" size="small" />
+                                ) : (
+                                    <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 15 }}>📥 Descargar Excel</Text>
+                                )}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
             </Modal>
         </View>
     );
@@ -1312,5 +1632,24 @@ const styles = StyleSheet.create({
         color: '#333',
         fontWeight: 'bold',
         fontSize: 16,
+    },
+});
+
+const excelStyles = StyleSheet.create({
+    dateInput: {
+        borderWidth: 1,
+        borderColor: '#ccc',
+        borderRadius: 6,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        fontSize: 15,
+        backgroundColor: '#fff',
+    },
+    exportBtn: {
+        backgroundColor: '#1B5E20',
+        paddingVertical: 12,
+        borderRadius: 6,
+        alignItems: 'center' as const,
+        marginTop: 20,
     },
 });

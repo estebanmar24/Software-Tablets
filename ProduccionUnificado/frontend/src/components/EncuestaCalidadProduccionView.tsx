@@ -266,8 +266,7 @@ export default function EncuestaCalidadProduccionView() {
         return d.toLocaleDateString();
     };
 
-    // Processes already used in current entries
-    const usedProcesos = procesosEntries.map(p => p.proceso).filter(Boolean);
+
 
     return (
         <View style={styles.container}>
@@ -416,11 +415,9 @@ export default function EncuestaCalidadProduccionView() {
                                                 style={styles.picker}
                                             >
                                                 <Picker.Item label="-- Seleccionar --" value="" />
-                                                {procesosDisponibles
-                                                    .filter(p => p === entry.proceso || !usedProcesos.includes(p))
-                                                    .map(p => (
-                                                        <Picker.Item key={p} label={p} value={p} />
-                                                    ))}
+                                                {procesosDisponibles.map(p => (
+                                                    <Picker.Item key={p} label={p} value={p} />
+                                                ))}
                                             </Picker>
                                         </View>
                                     </View>

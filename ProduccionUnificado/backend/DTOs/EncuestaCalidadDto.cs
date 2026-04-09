@@ -14,6 +14,7 @@ public class CrearEncuestaCalidadDto
     public bool CorrectoRegistroFormatos { get; set; }
     public bool AprobacionArranque { get; set; }
     public string? Observacion { get; set; }
+    public bool ContieneMuestraFisica { get; set; } = true;
     public List<NovedadDto> Novedades { get; set; } = new();
 }
 
@@ -59,6 +60,7 @@ public class EncuestaCalidadDetalleDto
     public bool CorrectoRegistroFormatos { get; set; }
     public bool AprobacionArranque { get; set; }
     public string? Observacion { get; set; }
+    public bool ContieneMuestraFisica { get; set; }
     public DateTime FechaCreacion { get; set; }
     public List<NovedadDetalleDto> Novedades { get; set; } = new();
 }

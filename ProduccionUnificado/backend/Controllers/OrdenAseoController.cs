@@ -52,9 +52,18 @@ public class OrdenAseoController : ControllerBase
     public ActionResult<string[]> GetPlantas() => Ok(Plantas);
 
     [HttpGet("encuestas")]
-    public async Task<ActionResult<List<object>>> GetEncuestas()
+    public async Task<ActionResult<List<object>>> GetEncuestas([FromQuery] DateTime? fecha = null)
     {
-        var encuestas = await _context.EncuestasOrdenAseo
+        var query = _context.EncuestasOrdenAseo.AsQueryable();
+
+        // Filter by date if provided (only show surveys from that day)
+        if (fecha.HasValue)
+        {
+            var fechaLocal = fecha.Value.Date;
+            query = query.Where(e => e.FechaCreacion.Date == fechaLocal);
+        }
+
+        var encuestas = await query
             .OrderByDescending(e => e.FechaCreacion)
             .Select(e => new
             {

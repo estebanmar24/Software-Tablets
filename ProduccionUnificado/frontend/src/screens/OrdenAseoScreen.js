@@ -59,8 +59,10 @@ export default function OrdenAseoScreen({ navigation }) {
     const loadData = useCallback(async () => {
         try {
             setLoading(true);
+            // Only load today's surveys for performance
+            const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
             const [enc, proc, plan] = await Promise.all([
-                getEncuestas(),
+                getEncuestas(today),
                 getProcesos(),
                 getPlantas()
             ]);
@@ -300,7 +302,7 @@ export default function OrdenAseoScreen({ navigation }) {
             </TouchableOpacity>
 
             <View style={styles.statsBar}>
-                <Text style={styles.statsText}>{encuestas.length} encuestas registradas</Text>
+                <Text style={styles.statsText}>{encuestas.length} encuestas de hoy</Text>
             </View>
 
             {/* Survey List */}

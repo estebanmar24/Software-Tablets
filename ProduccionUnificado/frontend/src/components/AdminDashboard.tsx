@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Alert, useWindowDimensions, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Alert, useWindowDimensions, Image, Dimensions } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Import screens from the Production System
@@ -17,10 +17,14 @@ import GHGastosScreen from '../screens/GHGastosScreen';
 import ProduccionGastosScreen from '../screens/ProduccionGastosScreen';
 import TalleresGastosScreen from '../screens/TalleresGastosScreen';
 import DesperdicioScreen from '../screens/DesperdicioScreen';
+// @ts-ignore
+const DesperdicioScreenComp: any = DesperdicioScreen;
 import CalidadDashboard from './CalidadDashboard';
 import PlaneacionGastosScreen from '../screens/PlaneacionGastosScreen';
 import DisenoGastosScreen from '../screens/DisenoGastosScreen';
 import TicketsScreen from '../screens/TicketsScreen';
+import PlaneadorMaquinasScreen from '../screens/PlaneadorMaquinasScreen';
+
 
 // Theme Provider
 import { ThemeProvider, useTheme, ThemeContext, lightColors } from '../contexts/ThemeContext';
@@ -40,7 +44,7 @@ const allTabs: { key: TabName; label: string; icon: string; roles: string[] }[] 
     { key: 'historial', label: 'Historial', icon: '📋', roles: ['admin', 'master'] },
     { key: 'maquinas', label: 'Config Máquinas', icon: '⚙️', roles: ['admin', 'master', 'talleres'] },
     { key: 'operarios', label: 'Operarios', icon: '👥', roles: ['admin', 'master', 'gh'] },
-    { key: 'calidad', label: 'Calidad', icon: '✅', roles: ['admin', 'master', 'calidad'] },
+    { key: 'calidad', label: 'Novedades de OP y Calidad', icon: '✅', roles: ['admin', 'master', 'calidad'] },
     { key: 'cartas', label: 'Cartas', icon: '📄', roles: ['admin', 'master'] },
 ];
 
@@ -89,18 +93,23 @@ function DashboardCard({ title, description, icon, onPress, color, disabled }: D
 
 function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDashboardProps) {
     const { colors, isDarkMode } = useTheme();
-    // Mode: 'MENU' (Grid de tarjetas) | 'CONTENT' (Tabs existentes) | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS' | 'TICKETS'
-    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS' | 'TICKETS'>(() => {
+    // Mode: 'MENU' (Grid de tarjetas) | 'CONTENT' (Tabs existentes) | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS' | 'TICKETS' | 'PLANEADOR_MAQUINAS'
+    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS' | 'TICKETS' | 'PLANEADOR_MAQUINAS'>(() => {
+
         if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
             const savedMode = window.localStorage.getItem('adminDashboardMode');
-            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS' || savedMode === 'PRODUCCION_GASTOS' || savedMode === 'TALLERES_GASTOS' || savedMode === 'CALIDAD' || savedMode === 'PLANEACION_GASTOS' || savedMode === 'DISENO_GASTOS' || savedMode === 'TICKETS') {
+            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS' || savedMode === 'PRODUCCION_GASTOS' || savedMode === 'TALLERES_GASTOS' || savedMode === 'CALIDAD' || savedMode === 'PLANEACION_GASTOS' || savedMode === 'DISENO_GASTOS' || savedMode === 'TICKETS' || savedMode === 'PLANEADOR_MAQUINAS') {
+
                 return savedMode;
             }
         }
         return 'MENU';
     });
-    const [activeTab, setActiveTab] = useState<TabName>('captura');
+    const [activeTab, setActiveTab] = useState<string>('captura');
+    const [qualityTitle, setQualityTitle] = useState<string>('Control en Proceso de Calidad y Novedades');
+    const [resumen, setResumen] = useState<any>(null);
     const { width } = useWindowDimensions();
+    const isMobile = width < 768;
 
     const userRoles = role.split(',').map(r => r.trim().toLowerCase());
     const tabs = allTabs.filter(t => t.roles.some(r => userRoles.includes(r)));
@@ -173,7 +182,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
             case 'captura':
                 return <CaptureGridScreen navigation={mockNavigation} />;
             case 'desperdicio':
-                return <DesperdicioScreen />;
+                return <DesperdicioScreenComp navigation={mockNavigation} />;
             case 'tablero':
                 return <DashboardScreen navigation={mockNavigation} />;
             case 'historial':
@@ -183,7 +192,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
             case 'operarios':
                 return <ListsScreen navigation={mockNavigation} />;
             case 'calidad':
-                return <QualityView />;
+                return <QualityView navigation={mockNavigation} />;
             case 'cartas':
                 return <CartasScreen navigation={mockNavigation} />;
             default:
@@ -336,10 +345,36 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                         resizeMode="contain"
                     />
                 </View>
-                <PlaneacionGastosScreen />
+                <PlaneacionGastosScreen navigation={{ goBack: () => setMode('MENU') } as any} />
             </View>
         );
     }
+
+    // --- VISTA PLANEADOR DE MAQUINAS ---
+    if (mode === 'PLANEADOR_MAQUINAS') {
+        return (
+            <View style={styles.container}>
+                <View style={styles.header}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => {
+                        setMode('MENU');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                    }}>
+                        <Text style={styles.backButtonText}>← Volver al Panel</Text>
+                    </TouchableOpacity>
+                    <View style={styles.centeredTitleContainer} pointerEvents="box-none">
+                        <Text style={styles.title}>Planeación de Máquinas</Text>
+                    </View>
+                    <Image
+                        source={require('../../assets/logo_perla.png')}
+                        style={[styles.contentHeaderLogo, isDarkMode && { opacity: 0.95 }]}
+                        resizeMode="contain"
+                    />
+                </View>
+                <PlaneadorMaquinasScreen />
+            </View>
+        );
+    }
+
 
     // --- VISTA DISENO GASTOS ---
     if (mode === 'DISENO_GASTOS') {
@@ -386,7 +421,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                         resizeMode="contain"
                     />
                 </View>
-                <TalleresGastosScreen />
+                <TalleresGastosScreen navigation={{ goBack: () => setMode('MENU') } as any} />
             </View>
         );
     }
@@ -403,7 +438,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                         <Text style={styles.backButtonText}>← Volver al Panel</Text>
                     </TouchableOpacity>
                     <View style={styles.centeredTitleContainer} pointerEvents="box-none">
-                        <Text style={styles.title}>Calidad</Text>
+                        <Text style={styles.title}>{qualityTitle}</Text>
                     </View>
                     <Image
                         source={require('../../assets/logo_perla.png')}
@@ -411,7 +446,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                         resizeMode="contain"
                     />
                 </View>
-                <CalidadDashboard />
+                <CalidadDashboard onTabChange={setQualityTitle} navigation={mockNavigation} />
             </View>
         );
     }
@@ -521,8 +556,8 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
         'produccion': 'Producción',
         'talleres': 'Talleres y Despachos',
         'presupuesto': 'Presupuesto General',
-        'calidad': 'Encuestas Calidad',
-        'modulo_calidad': 'Módulo Calidad',
+        'calidad': 'Control en proceso de Novedades de OP y Calidad',
+        'modulo_calidad': 'Módulo Novedades de OP y Calidad',
         'equipos': 'Mantenimiento Equipos',
         'planeacion': 'Planeación',
         'diseno': 'Diseño'
@@ -535,28 +570,43 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                     <TouchableOpacity style={styles.backButtonSimple} onPress={onBack}>
                         <Text style={[styles.backButtonSimpleText, { color: colors.text }]}>← Salir</Text>
                     </TouchableOpacity>
-                    <View style={{ flex: 1 }}>
-                        <Text style={[styles.menuTitle, { color: colors.text }]}>Panel del Administrador</Text>
-                        <Text style={[styles.menuSubtitle, { color: colors.subText }]}>
+                    <View style={{ flex: 1, paddingRight: isMobile ? 0 : 250 }}>
+                        <Text style={[styles.menuTitle, { color: colors.text, fontSize: isMobile ? 22 : 28 }]}>Panel del Administrador</Text>
+                        <Text style={[styles.menuSubtitle, { color: colors.subText, fontSize: isMobile ? 14 : 16 }]}>
                             Usuario: {displayName || roleDisplayNames[role] || role.toUpperCase()}
                         </Text>
                     </View>
+                    {!isMobile && (
+                        <TouchableOpacity
+                            style={styles.ticketHeaderBtn}
+                            onPress={() => {
+                                setMode('TICKETS');
+                                if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'TICKETS');
+                            }}
+                        >
+                            <Text style={{ fontSize: 20 }}>🎫</Text>
+                            <Text style={[styles.ticketHeaderBtnText, { color: colors.text }]}>Tickets</Text>
+                        </TouchableOpacity>
+                    )}
+                    <Image
+                        source={require('../../assets/logo_perla.png')}
+                        style={[styles.headerLogo, isMobile && styles.headerLogoMobile]}
+                        resizeMode="contain"
+                    />
+                </View>
+
+                {isMobile && (
                     <TouchableOpacity
-                        style={styles.ticketHeaderBtn}
+                        style={[styles.ticketHeaderBtn, { alignSelf: 'center', marginBottom: 20, width: '100%', justifyContent: 'center' }]}
                         onPress={() => {
                             setMode('TICKETS');
                             if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'TICKETS');
                         }}
                     >
                         <Text style={{ fontSize: 20 }}>🎫</Text>
-                        <Text style={[styles.ticketHeaderBtnText, { color: colors.text }]}>Tickets</Text>
+                        <Text style={[styles.ticketHeaderBtnText, { color: colors.text }]}>Tickets de Errores</Text>
                     </TouchableOpacity>
-                    <Image
-                        source={require('../../assets/logo_perla.png')}
-                        style={styles.headerLogo}
-                        resizeMode="contain"
-                    />
-                </View>
+                )}
 
                 <ScrollView contentContainerStyle={styles.cardsGrid} showsVerticalScrollIndicator={false}>
                     <DashboardCard
@@ -632,8 +682,8 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                         disabled={!isEquiposEnabled}
                     />
                     <DashboardCard
-                        title="Calidad"
-                        description="Encuestas y control de calidad"
+                        title="Novedades de OP y Calidad"
+                        description="Control en proceso y NC"
                         icon="✅"
                         onPress={() => {
                             setMode('CALIDAD');
@@ -663,7 +713,19 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                         }}
                         disabled={!isDisenoEnabled}
                     />
+
+                    <DashboardCard
+                        title="Planeador Máquinas"
+                        description="Programación de OPs por Horarios"
+                        icon="🚜"
+                        onPress={() => {
+                            setMode('PLANEADOR_MAQUINAS');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'PLANEADOR_MAQUINAS');
+                        }}
+                        disabled={!isPlaneacionEnabled}
+                    />
                 </ScrollView>
+
             </View>
         </View>
     );
@@ -682,14 +744,14 @@ const styles = StyleSheet.create({
     menuContainer: {
         flex: 1,
         backgroundColor: 'transparent', // Use container background
-        padding: 40,
+        padding: Platform.OS === 'web' && Dimensions.get('window').width >= 768 ? 40 : 10,
         justifyContent: 'center',
         alignItems: 'center',
     },
     panelContainer: {
         backgroundColor: '#FFFFFF',
         borderRadius: 20,
-        padding: 30,
+        padding: Platform.OS === 'web' && Dimensions.get('window').width >= 768 ? 30 : 15,
         width: '100%',
         maxWidth: 1200, // Max width for large screens
         flex: 1, // Take available height
@@ -703,10 +765,11 @@ const styles = StyleSheet.create({
         marginBottom: 30,
         flexDirection: 'row',
         alignItems: 'center',
+        flexWrap: 'wrap',
     },
     backButtonSimple: {
-        marginRight: 20,
-        padding: 10,
+        marginRight: 15,
+        padding: 5,
         zIndex: 10,
     },
     backButtonSimpleText: {
@@ -733,7 +796,8 @@ const styles = StyleSheet.create({
     },
     // Card Component Styles
     cardContainer: {
-        width: 280,
+        width: Platform.OS === 'web' && Dimensions.get('window').width >= 768 ? 280 : '100%',
+        maxWidth: 350,
         height: 320,
         backgroundColor: '#E6FFFA', // Light green-ish tint from screenshot
         borderRadius: 20,
@@ -878,6 +942,12 @@ const styles = StyleSheet.create({
         position: 'absolute',
         top: 0,
         right: 0,
+    },
+    headerLogoMobile: {
+        position: 'relative',
+        width: 120,
+        height: 60,
+        marginTop: 10,
     },
     contentHeaderLogo: {
         width: 140,

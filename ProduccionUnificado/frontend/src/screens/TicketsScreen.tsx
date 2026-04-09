@@ -107,10 +107,11 @@ export default function TicketsScreen({ displayName }: TicketsScreenProps) {
             if (filtroEstado) filtros.estado = filtroEstado;
             if (filtroPrioridad) filtros.prioridad = filtroPrioridad;
             if (buscar) filtros.buscar = buscar;
+            if (displayName) filtros.reportadoPor = displayName;
 
             const [ticketsData, statsData] = await Promise.all([
                 fetchTickets(filtros),
-                fetchTicketStats(),
+                fetchTicketStats(displayName),
             ]);
             setTickets(ticketsData);
             setStats(statsData);
@@ -120,7 +121,7 @@ export default function TicketsScreen({ displayName }: TicketsScreenProps) {
         } finally {
             setLoading(false);
         }
-    }, [filtroEstado, filtroPrioridad, buscar]);
+    }, [filtroEstado, filtroPrioridad, buscar, displayName]);
 
     useEffect(() => {
         loadData();
@@ -245,25 +246,39 @@ export default function TicketsScreen({ displayName }: TicketsScreenProps) {
     };
 
     const handleDelete = async (ticket: Ticket) => {
-        Alert.alert(
-            'Confirmar eliminación',
-            `¿Desea eliminar el ticket "${ticket.titulo}"?`,
-            [
-                { text: 'Cancelar', style: 'cancel' },
-                {
-                    text: 'Eliminar', style: 'destructive', onPress: async () => {
-                        try {
-                            await deleteTicket(ticket.id!);
-                            Alert.alert('Éxito', 'Ticket eliminado');
-                            setShowDetailModal(false);
-                            loadData();
-                        } catch (err) {
-                            Alert.alert('Error', 'No se pudo eliminar el ticket');
-                        }
-                    }
-                },
-            ]
-        );
+        const doDelete = async () => {
+            try {
+                await deleteTicket(ticket.id!);
+                setShowDetailModal(false);
+                loadData();
+                if (Platform.OS === 'web') {
+                    alert('Ticket eliminado');
+                } else {
+                    Alert.alert('Éxito', 'Ticket eliminado');
+                }
+            } catch (err) {
+                if (Platform.OS === 'web') {
+                    alert('No se pudo eliminar el ticket');
+                } else {
+                    Alert.alert('Error', 'No se pudo eliminar el ticket');
+                }
+            }
+        };
+
+        if (Platform.OS === 'web') {
+            if (window.confirm(`¿Desea eliminar el ticket "${ticket.titulo}"?`)) {
+                await doDelete();
+            }
+        } else {
+            Alert.alert(
+                'Confirmar eliminación',
+                `¿Desea eliminar el ticket "${ticket.titulo}"?`,
+                [
+                    { text: 'Cancelar', style: 'cancel' },
+                    { text: 'Eliminar', style: 'destructive', onPress: doDelete },
+                ]
+            );
+        }
     };
 
     const openDetail = (ticket: Ticket) => {
@@ -464,7 +479,7 @@ export default function TicketsScreen({ displayName }: TicketsScreenProps) {
 
                         {/* Módulo Afectado */}
                         <Text style={[styles.fieldLabel, { color: colors.text }]}>Módulo Afectado</Text>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.modulosScroll}>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={true} style={styles.modulosScroll}>
                             <View style={styles.selectorRow}>
                                 {MODULOS.map(m => (
                                     <TouchableOpacity

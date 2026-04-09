@@ -1,0 +1,695 @@
+{
+  "horarios": [
+    {
+      "id": 1,
+      "codigo": "1",
+      "nombre": "6am - 2pm",
+      "inicioSemana": "06:00:00",
+      "finSemana": "14:00:00",
+      "inicioSabado": "08:00:00",
+      "finSabado": "12:00:00",
+      "activo": true
+    },
+    {
+      "id": 2,
+      "codigo": "2",
+      "nombre": "7am - 4pm",
+      "inicioSemana": "07:00:00",
+      "finSemana": "16:00:00",
+      "inicioSabado": "08:00:00",
+      "finSabado": "12:00:00",
+      "activo": true
+    },
+    {
+      "id": 3,
+      "codigo": "3",
+      "nombre": "8am - 12pm",
+      "inicioSemana": "08:00:00",
+      "finSemana": "12:00:00",
+      "inicioSabado": "08:00:00",
+      "finSabado": "12:00:00",
+      "activo": true
+    },
+    {
+      "id": 4,
+      "codigo": "4",
+      "nombre": "2pm - 10pm",
+      "inicioSemana": "14:00:00",
+      "finSemana": "22:00:00",
+      "inicioSabado": "08:00:00",
+      "finSabado": "12:00:00",
+      "activo": true
+    }
+  ],
+  "maestros": {
+    "rubros": [
+      {
+        "id": 1,
+        "nombre": "Horas Extras",
+        "activo": true
+      },
+      {
+        "id": 2,
+        "nombre": "Mantenimiento",
+        "activo": true
+      },
+      {
+        "id": 3,
+        "nombre": "Repuesto",
+        "activo": true
+      },
+      {
+        "id": 4,
+        "nombre": "Refrigerios",
+        "activo": true
+      },
+      {
+        "id": 6,
+        "nombre": "Recargo",
+        "activo": true
+      },
+      {
+        "id": 7,
+        "nombre": "Prestadores de Servicios",
+        "activo": true
+      },
+      {
+        "id": 8,
+        "nombre": "PAPELERIA",
+        "activo": true
+      }
+    ],
+    "proveedores": [
+      {
+        "id": 3,
+        "nombre": "FERRELOPEZ",
+        "nit": "",
+        "telefono": "",
+        "rubroId": 2,
+        "rubro": {
+          "id": 2,
+          "nombre": "Mantenimiento",
+          "activo": true
+        },
+        "precioCotizado": null,
+        "activo": true
+      },
+      {
+        "id": 5,
+        "nombre": "CALI BANDAS",
+        "nit": "900.985.0979-2",
+        "telefono": "3162664451",
+        "rubroId": 3,
+        "rubro": {
+          "id": 3,
+          "nombre": "Repuesto",
+          "activo": true
+        },
+        "precioCotizado": 130000,
+        "activo": true
+      },
+      {
+        "id": 7,
+        "nombre": "José Ramiro Puerta Gallego",
+        "nit": "901.442.622",
+        "telefono": "",
+        "rubroId": 2,
+        "rubro": {
+          "id": 2,
+          "nombre": "Mantenimiento",
+          "activo": true
+        },
+        "precioCotizado": null,
+        "activo": true
+      },
+      {
+        "id": 6,
+        "nombre": "Transmisiones y mecánica industrial Ltda.",
+        "nit": "900.699.864-1",
+        "telefono": "3168655273",
+        "rubroId": 2,
+        "rubro": {
+          "id": 2,
+          "nombre": "Mantenimiento",
+          "activo": true
+        },
+        "precioCotizado": null,
+        "activo": true
+      },
+      {
+        "id": 8,
+        "nombre": "Tecnigraf sas",
+        "nit": "901.022.337-1",
+        "telefono": "3176428527",
+        "rubroId": 2,
+        "rubro": {
+          "id": 2,
+          "nombre": "Mantenimiento",
+          "activo": true
+        },
+        "precioCotizado": null,
+        "activo": true
+      },
+      {
+        "id": 9,
+        "nombre": "Screen Marketing sas",
+        "nit": "901.782.615-2",
+        "telefono": "3108569873",
+        "rubroId": 2,
+        "rubro": {
+          "id": 2,
+          "nombre": "Mantenimiento",
+          "activo": true
+        },
+        "precioCotizado": null,
+        "activo": true
+      },
+      {
+        "id": 10,
+        "nombre": "summa lift",
+        "nit": "",
+        "telefono": "316 347 6859",
+        "rubroId": 7,
+        "rubro": {
+          "id": 7,
+          "nombre": "Prestadores de Servicios",
+          "activo": true
+        },
+        "precioCotizado": null,
+        "activo": true
+      },
+      {
+        "id": 11,
+        "nombre": "Jorge Alexander Piedrahita",
+        "nit": "94400948",
+        "telefono": "3174292864",
+        "rubroId": 2,
+        "rubro": {
+          "id": 2,
+          "nombre": "Mantenimiento",
+          "activo": true
+        },
+        "precioCotizado": null,
+        "activo": true
+      },
+      {
+        "id": 12,
+        "nombre": "Jhon Rubiano",
+        "nit": "1130650245",
+        "telefono": "3044114920",
+        "rubroId": 7,
+        "rubro": {
+          "id": 7,
+          "nombre": "Prestadores de Servicios",
+          "activo": true
+        },
+        "precioCotizado": null,
+        "activo": true
+      },
+      {
+        "id": 13,
+        "nombre": "FERRELOPEZ",
+        "nit": "",
+        "telefono": "",
+        "rubroId": 3,
+        "rubro": {
+          "id": 3,
+          "nombre": "Repuesto",
+          "activo": true
+        },
+        "precioCotizado": null,
+        "activo": true
+      },
+      {
+        "id": 14,
+        "nombre": "Charly Ruiz",
+        "nit": "12345",
+        "telefono": "3043473121",
+        "rubroId": 7,
+        "rubro": {
+          "id": 7,
+          "nombre": "Prestadores de Servicios",
+          "activo": true
+        },
+        "precioCotizado": null,
+        "activo": true
+      },
+      {
+        "id": 15,
+        "nombre": "CO Partes y suministros",
+        "nit": "1234",
+        "telefono": "3137909205",
+        "rubroId": 3,
+        "rubro": {
+          "id": 3,
+          "nombre": "Repuesto",
+          "activo": true
+        },
+        "precioCotizado": null,
+        "activo": true
+      },
+      {
+        "id": 16,
+        "nombre": "UMACO",
+        "nit": "",
+        "telefono": "3146828925",
+        "rubroId": 2,
+        "rubro": {
+          "id": 2,
+          "nombre": "Mantenimiento",
+          "activo": true
+        },
+        "precioCotizado": null,
+        "activo": true
+      },
+      {
+        "id": 17,
+        "nombre": "Romulo Montes",
+        "nit": "123",
+        "telefono": "3003471496",
+        "rubroId": null,
+        "rubro": null,
+        "precioCotizado": null,
+        "activo": true
+      },
+      {
+        "id": 18,
+        "nombre": "SOLUCIONES NEUMATICAS",
+        "nit": "123",
+        "telefono": "6023868614",
+        "rubroId": 3,
+        "rubro": {
+          "id": 3,
+          "nombre": "Repuesto",
+          "activo": true
+        },
+        "precioCotizado": null,
+        "activo": true
+      },
+      {
+        "id": 19,
+        "nombre": "Inmagraf ingenieria sas ",
+        "nit": "123",
+        "telefono": "3176369820",
+        "rubroId": 3,
+        "rubro": {
+          "id": 3,
+          "nombre": "Repuesto",
+          "activo": true
+        },
+        "precioCotizado": null,
+        "activo": true
+      },
+      {
+        "id": 20,
+        "nombre": "SUPER K",
+        "nit": "315",
+        "telefono": "",
+        "rubroId": 8,
+        "rubro": {
+          "id": 8,
+          "nombre": "PAPELERIA",
+          "activo": true
+        },
+        "precioCotizado": null,
+        "activo": true
+      }
+    ],
+    "tiposHora": [
+      {
+        "id": 1,
+        "nombre": "Extra Diurna",
+        "porcentaje": 25,
+        "factor": 1.25,
+        "activo": true
+      },
+      {
+        "id": 3,
+        "nombre": "Dominical o Festivo",
+        "porcentaje": 115,
+        "factor": 1.8,
+        "activo": true
+      },
+      {
+        "id": 5,
+        "nombre": "hora extra nocturna",
+        "porcentaje": 0,
+        "factor": 1.7,
+        "activo": true
+      }
+    ],
+    "tiposRecargo": [
+      {
+        "id": 1,
+        "nombre": "Recargo Nocturno",
+        "porcentaje": 35,
+        "factor": 0.35,
+        "activo": true
+      }
+    ],
+    "maquinas": [
+      {
+        "id": 1,
+        "nombre": "1A CONVERTIDORA"
+      },
+      {
+        "id": 2,
+        "nombre": "1B CONVERTIDORA"
+      },
+      {
+        "id": 3,
+        "nombre": "2A Guillotina polar132"
+      },
+      {
+        "id": 4,
+        "nombre": "2B Guillotina org- Perfecta 107"
+      },
+      {
+        "id": 5,
+        "nombre": "3 Sord Z"
+      },
+      {
+        "id": 6,
+        "nombre": "4 Sord Z"
+      },
+      {
+        "id": 7,
+        "nombre": "5 Sord Z"
+      },
+      {
+        "id": 8,
+        "nombre": "6 SpeedMaster"
+      },
+      {
+        "id": 9,
+        "nombre": "7 SpeedMaster"
+      },
+      {
+        "id": 10,
+        "nombre": "8A Troqueladora de Papel"
+      },
+      {
+        "id": 11,
+        "nombre": "8B Troqueladora de Papel"
+      },
+      {
+        "id": 12,
+        "nombre": "8C Estampadora"
+      },
+      {
+        "id": 13,
+        "nombre": "9 Troqueladora Rollo"
+      },
+      {
+        "id": 14,
+        "nombre": "10A Colaminadora Carton"
+      },
+      {
+        "id": 15,
+        "nombre": "10B Colaminadora Carton"
+      },
+      {
+        "id": 16,
+        "nombre": "11 Laminadora BOPP"
+      },
+      {
+        "id": 17,
+        "nombre": "12 Maquina de Cordon"
+      },
+      {
+        "id": 19,
+        "nombre": "13A Corrugadora FLTE"
+      },
+      {
+        "id": 20,
+        "nombre": "13b Corrugadora FLTB"
+      },
+      {
+        "id": 21,
+        "nombre": "14 Pegadora de Cajas"
+      },
+      {
+        "id": 23,
+        "nombre": "16 Barnizadora UV"
+      }
+    ],
+    "usuarios": [
+      {
+        "id": 16,
+        "nombre": "Bedoya Maria Fernanda",
+        "salario": 2090905
+      },
+      {
+        "id": 1,
+        "nombre": "Blandon Moreno Jose Lizandro",
+        "salario": 2150905
+      },
+      {
+        "id": 30,
+        "nombre": "Cristian Felipe Echavarria",
+        "salario": 1750905
+      },
+      {
+        "id": 2,
+        "nombre": "Cruz Pinto Alberto",
+        "salario": 2090905
+      },
+      {
+        "id": 3,
+        "nombre": "Enrique Muñoz Hector Hilde",
+        "salario": 2750905
+      },
+      {
+        "id": 4,
+        "nombre": "Escobar Cardona John Fredy",
+        "salario": 2650905
+      },
+      {
+        "id": 18,
+        "nombre": "Gomez Ruiz William Hernan",
+        "salario": 1850905
+      },
+      {
+        "id": 35,
+        "nombre": "helder valencia",
+        "salario": 1423500
+      },
+      {
+        "id": 28,
+        "nombre": "Jose Fernando Ruiz",
+        "salario": 1423500
+      },
+      {
+        "id": 40,
+        "nombre": "Josue lopez",
+        "salario": 2650905
+      },
+      {
+        "id": 37,
+        "nombre": "Juan Ochoa",
+        "salario": 1750905
+      },
+      {
+        "id": 5,
+        "nombre": "Martinez Osorno Karen Lizeth",
+        "salario": 1750905
+      },
+      {
+        "id": 6,
+        "nombre": "Millan Salazar Magaly",
+        "salario": 1750905
+      },
+      {
+        "id": 17,
+        "nombre": "Morales Grueso Claudia Patricia",
+        "salario": 1750905
+      },
+      {
+        "id": 7,
+        "nombre": "Moreno Mendez Angel Julio",
+        "salario": 1950905
+      },
+      {
+        "id": 8,
+        "nombre": "Moreno Urrea Marlene",
+        "salario": 1750905
+      },
+      {
+        "id": 15,
+        "nombre": "Moriano Chiguas Yurde Arley",
+        "salario": 1850905
+      },
+      {
+        "id": 9,
+        "nombre": "Motta Talaga Leidy Jhoanna",
+        "salario": 1850905
+      },
+      {
+        "id": 43,
+        "nombre": "NOGUERA VALENCIA FABIAN",
+        "salario": 1900000
+      },
+      {
+        "id": 10,
+        "nombre": "Obando Higuita Jose Luis",
+        "salario": 2000905
+      },
+      {
+        "id": 14,
+        "nombre": "Perdomo Rincon Gustavo Adolfo",
+        "salario": 1900905
+      },
+      {
+        "id": 27,
+        "nombre": "Preciado Rivas Johan Alexander",
+        "salario": 2000905
+      },
+      {
+        "id": 11,
+        "nombre": "Ramirez Romero Andres Mauricio",
+        "salario": 1850905
+      },
+      {
+        "id": 23,
+        "nombre": "Renteria Mejia Nestor Alfonso",
+        "salario": 1750905
+      },
+      {
+        "id": 21,
+        "nombre": "Riascos Castillo Andres Felipe",
+        "salario": 2090905
+      },
+      {
+        "id": 19,
+        "nombre": "Rodriguez Castaño Maria Alejandra",
+        "salario": 1750905
+      },
+      {
+        "id": 20,
+        "nombre": "Rojas Collazos Joan Mauricio",
+        "salario": 1900905
+      },
+      {
+        "id": 22,
+        "nombre": "Roldan Barona Erik Esteban",
+        "salario": 2090905
+      },
+      {
+        "id": 41,
+        "nombre": "SANDRA VIVIANA PEREZ",
+        "salario": 1750905
+      },
+      {
+        "id": 36,
+        "nombre": "santiago agudelo",
+        "salario": 1423500
+      },
+      {
+        "id": 12,
+        "nombre": "Sarmiento Rincon Yhan Otoniel",
+        "salario": 2090905
+      },
+      {
+        "id": 26,
+        "nombre": "Uran Quintero Yohao Alexander",
+        "salario": 1750905
+      },
+      {
+        "id": 13,
+        "nombre": "Velez Arana Robert De Jesus",
+        "salario": 1850905
+      },
+      {
+        "id": 42,
+        "nombre": "VELEZ GOYES JONATHAN ALEZANDER",
+        "salario": 1750905
+      }
+    ]
+  },
+  "personal": [
+    {
+      "id": 12,
+      "nombre": "CONSUELO BENITEZ CASTRO",
+      "documento": "31685030",
+      "cargo": "FACTURACION Y DESPACHOS ",
+      "salario": 2000095,
+      "activo": true,
+      "estado": true,
+      "fechaCreacion": "2026-02-11T11:04:42.72645",
+      "horarioId": null,
+      "horario": null
+    },
+    {
+      "id": 5,
+      "nombre": "Edison Martinez",
+      "documento": "",
+      "cargo": "Conductor",
+      "salario": 1750905,
+      "activo": true,
+      "estado": true,
+      "fechaCreacion": "2026-01-16T13:54:52.887928",
+      "horarioId": null,
+      "horario": null
+    },
+    {
+      "id": 7,
+      "nombre": "Eleonora Mirquez",
+      "documento": "29106329",
+      "cargo": "Calidad Externa",
+      "salario": 1750905,
+      "activo": true,
+      "estado": true,
+      "fechaCreacion": "2026-01-16T13:55:34.621151",
+      "horarioId": null,
+      "horario": null
+    },
+    {
+      "id": 10,
+      "nombre": "Leidy Vanessa Niño Rada",
+      "documento": "1005861977",
+      "cargo": "LIDER DESPACHOS Y TALLERES",
+      "salario": 3700000,
+      "activo": true,
+      "estado": true,
+      "fechaCreacion": "2026-01-24T11:19:23.220047",
+      "horarioId": null,
+      "horario": null
+    },
+    {
+      "id": 9,
+      "nombre": "Maria Carmen Gomez",
+      "documento": "31565688",
+      "cargo": "Auxiliar - Oficios Varios",
+      "salario": 1750905,
+      "activo": true,
+      "estado": true,
+      "fechaCreacion": "2026-01-16T13:57:14.577176",
+      "horarioId": null,
+      "horario": null
+    },
+    {
+      "id": 6,
+      "nombre": "Robinson Hernandez",
+      "documento": "1006184121",
+      "cargo": "Auxiliar ruta",
+      "salario": 1750905,
+      "activo": true,
+      "estado": true,
+      "fechaCreacion": "2026-01-16T13:55:12.358733",
+      "horarioId": null,
+      "horario": null
+    },
+    {
+      "id": 8,
+      "nombre": "Yohao Uran",
+      "documento": "1107044979",
+      "cargo": "Supernumerario Exportaciones",
+      "salario": 1750905,
+      "activo": true,
+      "estado": true,
+      "fechaCreacion": "2026-01-16T13:56:24.072575",
+      "horarioId": null,
+      "horario": null
+    }
+  ]
+}

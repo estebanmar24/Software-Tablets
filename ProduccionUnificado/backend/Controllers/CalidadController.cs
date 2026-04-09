@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
 using TiempoProcesos.API.DTOs;
+using OfficeOpenXml;
+using OfficeOpenXml.Style;
 
 using Microsoft.AspNetCore.Authorization;
 
@@ -128,6 +130,7 @@ public class CalidadController : ControllerBase
             CorrectoRegistroFormatos = encuesta.CorrectoRegistroFormatos,
             AprobacionArranque = encuesta.AprobacionArranque,
             Observacion = encuesta.Observacion,
+            ContieneMuestraFisica = encuesta.ContieneMuestraFisica,
             FechaCreacion = encuesta.FechaCreacion,
             Novedades = encuesta.Novedades.Select(n => new NovedadDetalleDto
             {
@@ -146,7 +149,9 @@ public class CalidadController : ControllerBase
         try 
         {
             Console.WriteLine($"[SAVE CALIDAD] Iniciando guardado para OP: {dto.OrdenProduccion}");
-            Console.WriteLine($"[SAVE CALIDAD] Operario: {dto.OperarioId}, Maquina: {dto.MaquinaId}, Novedades: {dto.Novedades.Count}");
+            Console.WriteLine($"[SAVE CALIDAD] Operario: {dto.OperarioId}, Maquina: {dto.MaquinaId}, Novedades: {dto.Novedades?.Count ?? 0}");
+            Console.WriteLine($"[SAVE CALIDAD] CantidadProducir={dto.CantidadProducir}, CantidadEvaluada={dto.CantidadEvaluada}");
+            Console.WriteLine($"[SAVE CALIDAD] ContieneMuestraFisica={dto.ContieneMuestraFisica}");
 
             // Crear la encuesta
             var encuesta = new EncuestaCalidad
@@ -163,10 +168,12 @@ public class CalidadController : ControllerBase
                 CorrectoRegistroFormatos = dto.CorrectoRegistroFormatos,
                 AprobacionArranque = dto.AprobacionArranque,
                 Observacion = dto.Observacion,
-                FechaCreacion = DateTime.Now
+                ContieneMuestraFisica = dto.ContieneMuestraFisica,
+                FechaCreacion = DateTime.UtcNow
             };
 
             _context.EncuestasCalidad.Add(encuesta);
+            Console.WriteLine("[SAVE CALIDAD] Guardando encuesta principal...");
             await _context.SaveChangesAsync();
             Console.WriteLine($"[SAVE CALIDAD] Encuesta creada con ID: {encuesta.Id}");
 
@@ -175,21 +182,15 @@ public class CalidadController : ControllerBase
             if (!Directory.Exists(fotosDir))
                 Directory.CreateDirectory(fotosDir);
 
-            foreach (var novedadDto in dto.Novedades)
+            foreach (var novedadDto in dto.Novedades ?? new List<NovedadDto>())
             {
-                var novedad = new EncuestaNovedad
-                {
-                    EncuestaId = encuesta.Id,
-                    TipoNovedad = novedadDto.TipoNovedad,
-                    Descripcion = novedadDto.Descripcion,
-                    CantidadDefectuosa = novedadDto.CantidadDefectuosa
-                };
+                var fileName = string.Empty;
 
                 if (!string.IsNullOrEmpty(novedadDto.FotoBase64))
                 {
                     try
                     {
-                        var fileName = $"{Guid.NewGuid()}.jpg";
+                        fileName = $"{Guid.NewGuid()}.jpg";
                         var filePath = Path.Combine(fotosDir, fileName);
                         
                         var base64Data = novedadDto.FotoBase64;
@@ -198,29 +199,42 @@ public class CalidadController : ControllerBase
                         
                         var imageBytes = Convert.FromBase64String(base64Data);
                         await System.IO.File.WriteAllBytesAsync(filePath, imageBytes);
-                        
-                        novedad.FotoPath = fileName; // Guardar solo el nombre o ruta relativa
                         Console.WriteLine($"[SAVE CALIDAD] Foto guardada: {fileName}");
                     }
                     catch (Exception ex)
                     {
                         Console.WriteLine($"[SAVE CALIDAD] Error guardando foto: {ex.Message}");
+                        fileName = string.Empty; // Reset on failure so we don't store a bad path
                     }
                 }
                 else if (!string.IsNullOrEmpty(novedadDto.FotoUrl))
                 {
                     try
                     {
-                        var fileName = Path.GetFileName(new Uri(novedadDto.FotoUrl, UriKind.RelativeOrAbsolute).AbsolutePath);
-                        if (string.IsNullOrEmpty(fileName)) fileName = novedadDto.FotoUrl.Split('/').LastOrDefault() ?? "";
-                        novedad.FotoPath = fileName;
-                        Console.WriteLine($"[SAVE CALIDAD] Foto preservada: {fileName}");
+                        // Simple and safe: just take the last segment of the URL
+                        var url = novedadDto.FotoUrl;
+                        // Remove query strings if any
+                        var urlWithoutQuery = url.Split('?')[0];
+                        fileName = urlWithoutQuery.Split('/').LastOrDefault(s => !string.IsNullOrEmpty(s)) ?? "";
+                        // Only keep if it looks like a file name (has an extension)
+                        if (!Path.HasExtension(fileName)) fileName = "";
+                        if (!string.IsNullOrEmpty(fileName))
+                            Console.WriteLine($"[SAVE CALIDAD] Foto preservada: {fileName}");
                     }
                     catch (Exception ex)
                     {
                         Console.WriteLine($"[SAVE CALIDAD] Error preservando foto: {ex.Message}");
                     }
                 }
+
+                var novedad = new EncuestaNovedad
+                {
+                    EncuestaId = encuesta.Id,
+                    TipoNovedad = novedadDto.TipoNovedad ?? "",
+                    Descripcion = novedadDto.Descripcion,
+                    CantidadDefectuosa = novedadDto.CantidadDefectuosa,
+                    FotoPath = string.IsNullOrEmpty(fileName) ? null : fileName
+                };
 
                 _context.EncuestaNovedades.Add(novedad);
             }
@@ -232,12 +246,15 @@ public class CalidadController : ControllerBase
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[SAVE CALIDAD ERROR] {ex.Message}");
-            Console.WriteLine($"[SAVE CALIDAD ERROR] Stack: {ex.StackTrace}");
+            var fullMsg = $"[SAVE CALIDAD ERROR] {ex.GetType().Name}: {ex.Message}\nStack: {ex.StackTrace}";
             if (ex.InnerException != null)
-                Console.WriteLine($"[SAVE CALIDAD ERROR] Inner: {ex.InnerException.Message}");
+                fullMsg += $"\nInner ({ex.InnerException.GetType().Name}): {ex.InnerException.Message}\nInner Stack: {ex.InnerException.StackTrace}";
             
-            return StatusCode(500, new { message = "Error interno al guardar la encuesta", details = ex.Message });
+            Console.WriteLine(fullMsg);
+            // Write to file so we can read it
+            try { System.IO.File.AppendAllText("calidad_error.txt", $"{DateTime.Now}: {fullMsg}\n\n"); } catch {}
+            
+            return StatusCode(500, new { message = "Error interno al guardar la encuesta", details = ex.Message, inner = ex.InnerException?.Message, type = ex.GetType().Name });
         }
     }
 
@@ -363,6 +380,196 @@ public class CalidadController : ControllerBase
         await _context.SaveChangesAsync();
 
         return Ok(new { message = "Foto eliminada correctamente" });
+    }
+
+    [HttpGet("export-excel")]
+    public async Task<IActionResult> ExportExcel([FromQuery] DateTime fechaInicio, [FromQuery] DateTime fechaFin)
+    {
+        // Ajustar fechaFin al final del día
+        fechaFin = fechaFin.Date.AddDays(1).AddTicks(-1);
+
+        var encuestas = await _context.EncuestasCalidad
+            .Include(e => e.Operario)
+            .Include(e => e.Auxiliar)
+            .Include(e => e.Maquina)
+            .Include(e => e.Novedades)
+            .Where(e => e.FechaCreacion >= fechaInicio && e.FechaCreacion <= fechaFin)
+            .OrderByDescending(e => e.FechaCreacion)
+            .ToListAsync();
+
+        if (!encuestas.Any())
+            return NotFound(new { message = "No se encontraron encuestas en el rango de fechas seleccionado" });
+
+        using var package = new ExcelPackage();
+
+        // ===== HOJA 1: ENCUESTAS =====
+        var wsEncuestas = package.Workbook.Worksheets.Add("Encuestas");
+        var encHeaders = new[] { "Fecha", "Operario", "Auxiliar", "Máquina", "OP", "Proceso",
+            "Cant. Producir", "Cant. Evaluada", "Estado", "Ficha Técnica", "Registro Formatos", "Arranque",
+            "Observación", "N° Novedades", "Tipos de Novedad", "Cant. Defectuosa Total" };
+
+        for (int i = 0; i < encHeaders.Length; i++)
+        {
+            wsEncuestas.Cells[1, i + 1].Value = encHeaders[i];
+            wsEncuestas.Cells[1, i + 1].Style.Font.Bold = true;
+            wsEncuestas.Cells[1, i + 1].Style.Fill.PatternType = ExcelFillStyle.Solid;
+            wsEncuestas.Cells[1, i + 1].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.FromArgb(0, 51, 102));
+            wsEncuestas.Cells[1, i + 1].Style.Font.Color.SetColor(System.Drawing.Color.White);
+        }
+
+        int row = 2;
+        foreach (var e in encuestas)
+        {
+            wsEncuestas.Cells[row, 1].Value = e.FechaCreacion.ToString("dd/MM/yyyy HH:mm");
+            wsEncuestas.Cells[row, 2].Value = e.Operario?.Nombre ?? "";
+            wsEncuestas.Cells[row, 3].Value = e.Auxiliar?.Nombre ?? "";
+            wsEncuestas.Cells[row, 4].Value = e.Maquina?.Nombre ?? "";
+            wsEncuestas.Cells[row, 5].Value = e.OrdenProduccion;
+            wsEncuestas.Cells[row, 6].Value = e.Proceso;
+            wsEncuestas.Cells[row, 7].Value = (double)e.CantidadProducir;
+            wsEncuestas.Cells[row, 8].Value = (double)e.CantidadEvaluada;
+            wsEncuestas.Cells[row, 9].Value = e.EstadoProceso;
+            wsEncuestas.Cells[row, 10].Value = e.TieneFichaTecnica ? "Sí" : "No";
+            wsEncuestas.Cells[row, 11].Value = e.CorrectoRegistroFormatos ? "Sí" : "No";
+            wsEncuestas.Cells[row, 12].Value = e.AprobacionArranque ? "Sí" : "No";
+            wsEncuestas.Cells[row, 13].Value = e.Observacion ?? "";
+            wsEncuestas.Cells[row, 14].Value = e.Novedades.Count;
+            wsEncuestas.Cells[row, 15].Value = e.Novedades.Any() 
+                ? string.Join(", ", e.Novedades.Select(n => n.TipoNovedad)) 
+                : "Sin novedades";
+            wsEncuestas.Cells[row, 16].Value = e.Novedades.Sum(n => n.CantidadDefectuosa);
+
+            // Color de fondo alterno
+            if (row % 2 == 0)
+            {
+                for (int i = 1; i <= encHeaders.Length; i++)
+                {
+                    wsEncuestas.Cells[row, i].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                    wsEncuestas.Cells[row, i].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.FromArgb(245, 247, 250));
+                }
+            }
+            row++;
+        }
+
+        wsEncuestas.Cells[wsEncuestas.Dimension.Address].AutoFitColumns();
+
+        // ===== HOJA 2: NOVEDADES (DETALLE) =====
+        var wsNovedades = package.Workbook.Worksheets.Add("Novedades");
+        var novHeaders = new[] { "Fecha Encuesta", "Operario", "Máquina", "OP", "Proceso",
+            "Estado", "Cant. Producir", "Tipo Novedad", "Descripción", "Cant. Defectuosa", "Observación Encuesta" };
+
+        for (int i = 0; i < novHeaders.Length; i++)
+        {
+            wsNovedades.Cells[1, i + 1].Value = novHeaders[i];
+            wsNovedades.Cells[1, i + 1].Style.Font.Bold = true;
+            wsNovedades.Cells[1, i + 1].Style.Fill.PatternType = ExcelFillStyle.Solid;
+            wsNovedades.Cells[1, i + 1].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.FromArgb(200, 0, 0));
+            wsNovedades.Cells[1, i + 1].Style.Font.Color.SetColor(System.Drawing.Color.White);
+        }
+
+        row = 2;
+        foreach (var e in encuestas)
+        {
+            foreach (var n in e.Novedades)
+            {
+                wsNovedades.Cells[row, 1].Value = e.FechaCreacion.ToString("dd/MM/yyyy HH:mm");
+                wsNovedades.Cells[row, 2].Value = e.Operario?.Nombre ?? "";
+                wsNovedades.Cells[row, 3].Value = e.Maquina?.Nombre ?? "";
+                wsNovedades.Cells[row, 4].Value = e.OrdenProduccion;
+                wsNovedades.Cells[row, 5].Value = e.Proceso;
+                wsNovedades.Cells[row, 6].Value = e.EstadoProceso;
+                wsNovedades.Cells[row, 7].Value = (double)e.CantidadProducir;
+                wsNovedades.Cells[row, 8].Value = n.TipoNovedad;
+                wsNovedades.Cells[row, 9].Value = n.Descripcion ?? "";
+                wsNovedades.Cells[row, 10].Value = n.CantidadDefectuosa;
+                wsNovedades.Cells[row, 11].Value = e.Observacion ?? "";
+
+                if (row % 2 == 0)
+                {
+                    for (int i = 1; i <= novHeaders.Length; i++)
+                    {
+                        wsNovedades.Cells[row, i].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                        wsNovedades.Cells[row, i].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.FromArgb(255, 245, 245));
+                    }
+                }
+                row++;
+            }
+        }
+
+        wsNovedades.Cells[wsNovedades.Dimension.Address].AutoFitColumns();
+
+        var fileName = $"Calidad_{fechaInicio:yyyyMMdd}_{fechaFin:yyyyMMdd}.xlsx";
+        var content = package.GetAsByteArray();
+
+        return File(content,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            fileName);
+    }
+
+    [HttpGet("detalles-op")]
+    public async Task<IActionResult> DetallesOP(int mes, int anio)
+    {
+        // 1. Total OPs trabajadas en el mes - combinar TODAS las fuentes
+
+        // Fuente 1: TiemposProceso (timer)
+        var opsTimer = await _context.TiemposProceso
+            .Include(t => t.OrdenProduccion)
+            .Where(t => t.Fecha.Month == mes && t.Fecha.Year == anio && t.OrdenProduccionId != null)
+            .Select(t => t.OrdenProduccion!.Numero)
+            .ToListAsync();
+
+        // Fuente 2: ProduccionDiaria (reporte diario)
+        var opsProduccion = await _context.ProduccionDiaria
+            .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio 
+                && !string.IsNullOrEmpty(p.ReferenciaOP))
+            .Select(p => p.ReferenciaOP!)
+            .ToListAsync();
+
+        // Fuente 3: ProduccionDiariaDetalle (detalle granular)
+        var opsDetalle = await _context.ProduccionDiariaDetalles
+            .Include(d => d.ProduccionDiaria)
+            .Where(d => d.ProduccionDiaria!.Fecha.Month == mes 
+                && d.ProduccionDiaria.Fecha.Year == anio 
+                && !string.IsNullOrEmpty(d.ReferenciaOP))
+            .Select(d => d.ReferenciaOP!)
+            .ToListAsync();
+
+        // Combine all sources, split compound OPs (e.g. "7439-7440-7422"), 
+        // exclude OP 460 (internal use only), and deduplicate
+        var todasLasOPs = opsTimer
+            .Union(opsProduccion)
+            .Union(opsDetalle)
+            .SelectMany(op => op.Contains("-") 
+                ? op.Split('-', StringSplitOptions.RemoveEmptyEntries) 
+                : new[] { op })
+            .Select(op => op.Trim())
+            .Where(op => !string.IsNullOrEmpty(op) && op != "460")
+            .Distinct()
+            .OrderBy(op => op)
+            .ToList();
+
+        // Build the list for the PDF table
+        var listaOPsTrabajadas = todasLasOPs
+            .Select(op => new { op })
+            .ToList();
+
+        // 2. OPs inspeccionadas (de EncuestasCalidad)
+        var opsInspeccionadas = await _context.EncuestasCalidad
+            .Where(e => e.FechaCreacion.Month == mes && e.FechaCreacion.Year == anio)
+            .GroupBy(e => e.OrdenProduccion)
+            .Select(g => new { OP = g.Key, CantidadInspecciones = g.Count() })
+            .OrderByDescending(x => x.CantidadInspecciones)
+            .ToListAsync();
+
+        var opsInspeccionadasUnicas = opsInspeccionadas.Select(x => x.OP).Distinct().Count();
+
+        return Ok(new
+        {
+            totalOPsTrabajadas = todasLasOPs.Count,
+            totalOPsInspeccionadas = opsInspeccionadasUnicas,
+            detalleOPs = opsInspeccionadas,
+            listaOPsTrabajadas = listaOPsTrabajadas
+        });
     }
 
 }

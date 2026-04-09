@@ -34,17 +34,16 @@ export default function DesperdicioScreen({ navigation }) {
     const [modalConfigVisible, setModalConfigVisible] = useState(false);
     const [modalRegistroVisible, setModalRegistroVisible] = useState(false);
 
-    // Estado para nuevo registro
+    // Estado para nuevo registro (encabezado: máquina, operario, fecha)
+    const emptyCodigoItem = { codigoDesperdicioId: '', cantidad: '', ordenProduccion: '', nota: '' };
     const [newRegistro, setNewRegistro] = useState({
         id: null,
         maquinaId: '',
         usuarioId: '',
         fecha: new Date(),
-        ordenProduccion: '',
-        codigoDesperdicioId: '',
-        cantidad: '',
-        nota: ''
     });
+    // Lista de entradas de código (múltiples por guardado)
+    const [codigoItems, setCodigoItems] = useState([{ ...emptyCodigoItem }]);
 
     // Estado para gestión de códigos
     const [newCodigo, setNewCodigo] = useState({ codigo: '', descripcion: '', activo: true });
@@ -115,75 +114,78 @@ export default function DesperdicioScreen({ navigation }) {
     };
 
     const handleSaveRegistro = async () => {
-        // Código ahora es opcional. Solo Maquina, Usuario y Cantidad obligatorios.
-        if (!newRegistro.maquinaId || !newRegistro.usuarioId || !newRegistro.cantidad) {
-            Alert.alert('Error', 'Máquina, Operario y Cantidad son obligatorios');
+        if (!newRegistro.maquinaId || !newRegistro.usuarioId) {
+            Alert.alert('Error', 'Máquina y Operario son obligatorios');
             return;
         }
-
         if (isNaN(newRegistro.fecha.getTime())) {
             Alert.alert('Error', 'Fecha inválida');
             return;
         }
+        // Validate all code items
+        const validItems = codigoItems.filter(item => item.cantidad && !isNaN(parseFloat(item.cantidad)) && parseFloat(item.cantidad) > 0);
+        if (validItems.length === 0) {
+            Alert.alert('Error', 'Agrega al menos un código con cantidad válida');
+            return;
+        }
 
         try {
-            const body = {
-                maquinaId: parseInt(newRegistro.maquinaId),
-                usuarioId: parseInt(newRegistro.usuarioId),
-                ordenProduccion: newRegistro.ordenProduccion,
-                codigoDesperdicioId: newRegistro.codigoDesperdicioId ? parseInt(newRegistro.codigoDesperdicioId) : null,
-                cantidad: parseFloat(newRegistro.cantidad),
-                fecha: newRegistro.fecha.toISOString(),
-                nota: newRegistro.nota
-            };
-
-            console.log("PAYLOAD:", JSON.stringify(body)); // DEBUG
-
             if (newRegistro.id) {
-                body.id = newRegistro.id;
-            }
-
-            let res;
-            if (newRegistro.id) {
-                // UPDATE (PUT)
-                res = await fetch(`${API_URL}/desperdicio/${newRegistro.id}`, {
+                // EDIT MODE: update the single record (legacy flow)
+                const item = validItems[0];
+                const body = {
+                    id: newRegistro.id,
+                    maquinaId: parseInt(newRegistro.maquinaId),
+                    usuarioId: parseInt(newRegistro.usuarioId),
+                    ordenProduccion: item.ordenProduccion,
+                    codigoDesperdicioId: item.codigoDesperdicioId ? parseInt(item.codigoDesperdicioId) : null,
+                    cantidad: parseFloat(item.cantidad),
+                    fecha: newRegistro.fecha.toISOString(),
+                    nota: item.nota
+                };
+                const res = await fetch(`${API_URL}/desperdicio/${newRegistro.id}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body)
                 });
+                if (!res.ok) {
+                    const txt = await res.text();
+                    Alert.alert('Error', `No se pudo actualizar: ${txt}`);
+                    return;
+                }
             } else {
-                // CREATE (POST)
-                res = await fetch(`${API_URL}/desperdicio`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                });
+                // CREATE MODE: post each valid item as a separate record
+                for (const item of validItems) {
+                    const body = {
+                        maquinaId: parseInt(newRegistro.maquinaId),
+                        usuarioId: parseInt(newRegistro.usuarioId),
+                        ordenProduccion: item.ordenProduccion,
+                        codigoDesperdicioId: item.codigoDesperdicioId ? parseInt(item.codigoDesperdicioId) : null,
+                        cantidad: parseFloat(item.cantidad),
+                        fecha: newRegistro.fecha.toISOString(),
+                        nota: item.nota
+                    };
+                    const res = await fetch(`${API_URL}/desperdicio`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+                    if (!res.ok) {
+                        const txt = await res.text();
+                        Alert.alert('Error', `Error guardando código: ${txt}`);
+                        return;
+                    }
+                }
             }
 
-            if (res.ok) {
-                Alert.alert('Éxito', newRegistro.id ? 'Desperdicio actualizado' : 'Desperdicio registrado');
-                setModalRegistroVisible(false);
+            Alert.alert('Éxito', newRegistro.id ? 'Desperdicio actualizado' : `${validItems.length} registro(s) guardado(s)`);
+            setModalRegistroVisible(false);
+            setSelectedFecha(newRegistro.fecha);
+            loadRegistros();
 
-                // Actualizar filtro a la fecha del registro guardado para verlo inmediatamente
-                // Si la fecha es la misma, el useEffect no disparará, así que forzamos la recarga
-                setSelectedFecha(newRegistro.fecha);
-                loadRegistros(); // Explicit reload to ensure UI update
-
-                // Resetear form
-                setNewRegistro({
-                    id: null,
-                    maquinaId: '',
-                    usuarioId: '',
-                    fecha: new Date(),
-                    ordenProduccion: '',
-                    codigoDesperdicioId: '',
-                    cantidad: '',
-                    nota: ''
-                });
-            } else {
-                const txt = await res.text();
-                Alert.alert('Error', `No se pudo guardar: ${txt}`);
-            }
+            // Reset form
+            setNewRegistro({ id: null, maquinaId: '', usuarioId: '', fecha: new Date() });
+            setCodigoItems([{ ...emptyCodigoItem }]);
         } catch (error) {
             console.error(error);
             Alert.alert('Error', 'Error de conexión');
@@ -191,23 +193,19 @@ export default function DesperdicioScreen({ navigation }) {
     };
 
     const handleEditRegistro = (item) => {
-        // Parsear fecha
         const date = new Date(item.fecha);
-        // Ajustar zona horaria local manualmente si viene UTC
-        // const localDate = new Date(date.getTime() + date.getTimezoneOffset() * 60000); 
-        // El backend devuelve DateTime, el navegador lo parsea como local o UTC según formato.
-        // Asumimos que viene ISO y new Date lo maneja.
-
         setNewRegistro({
             id: item.id,
             maquinaId: item.maquinaId,
             usuarioId: item.usuarioId,
             fecha: date,
-            ordenProduccion: item.ordenProduccion || '',
+        });
+        setCodigoItems([{
             codigoDesperdicioId: item.codigoDesperdicioId || '',
             cantidad: item.cantidad.toString(),
+            ordenProduccion: item.ordenProduccion || '',
             nota: item.nota || ''
-        });
+        }]);
         setModalRegistroVisible(true);
     };
 
@@ -736,11 +734,8 @@ export default function DesperdicioScreen({ navigation }) {
                                 maquinaId: '',
                                 usuarioId: '',
                                 fecha: selectedFecha || new Date(),
-                                ordenProduccion: '',
-                                codigoDesperdicioId: '',
-                                cantidad: '',
-                                nota: ''
                             });
+                            setCodigoItems([{ ...emptyCodigoItem }]);
                             setModalRegistroVisible(true);
                         }}
                     >
@@ -836,104 +831,157 @@ export default function DesperdicioScreen({ navigation }) {
             {/* MODAL AGREGAR DESPERDICIO */}
             <Modal visible={modalRegistroVisible} animationType="slide" transparent>
                 <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>{newRegistro.id ? 'Editar Desperdicio' : 'Registrar Desperdicio'}</Text>
+                    <View style={[styles.modalContent, { padding: 0, maxHeight: '90%' }]}>
 
-                        {/* Siempre mostrar selector de máquina ya que se ocultó afuera */}
-                        <Text style={styles.label}>Máquina</Text>
-                        <Picker
-                            selectedValue={newRegistro.maquinaId}
-                            onValueChange={(v) => setNewRegistro({ ...newRegistro, maquinaId: v })}
-                            style={styles.picker}
-                        >
-                            <Picker.Item label="Seleccionar..." value="" />
-                            {maquinas.map(m => (
-                                <Picker.Item key={m.id} label={m.nombre} value={m.id} />
-                            ))}
-                        </Picker>
+                        {/* ── HEADER FIJO ── */}
+                        <View style={{ backgroundColor: '#2c3e50', padding: 14, borderTopLeftRadius: 12, borderTopRightRadius: 12 }}>
+                            <Text style={[styles.modalTitle, { color: '#fff', marginBottom: 8 }]}>
+                                {newRegistro.id ? '✏️ Editar Desperdicio' : '🗑️ Registrar Desperdicio'}
+                            </Text>
 
-                        <Text style={styles.label}>Operario</Text>
-                        <Picker
-                            selectedValue={newRegistro.usuarioId}
-                            onValueChange={(v) => setNewRegistro({ ...newRegistro, usuarioId: v })}
-                            style={styles.picker}
-                        >
-                            <Picker.Item label="Seleccionar..." value="" />
-                            {usuarios.map(u => (
-                                <Picker.Item key={u.id} label={u.nombre} value={u.id} />
-                            ))}
-                        </Picker>
-
-                        {Platform.OS === 'web' ? (
-                            <View style={{ marginBottom: 10 }}>
-                                <Text style={styles.label}>Fecha</Text>
-                                <input
-                                    type="date"
-                                    value={formatDate(newRegistro.fecha)}
-                                    onChange={(e) => {
-                                        const d = new Date(e.target.value);
-                                        if (isNaN(d.getTime())) return;
-                                        // Ajustar zona horaria si es necesario, o usar string directo
-                                        // Simple date parse
-                                        setNewRegistro({ ...newRegistro, fecha: new Date(d.getTime() + d.getTimezoneOffset() * 60000) });
-                                    }}
-                                    style={{
-                                        padding: 8,
-                                        borderRadius: 4,
-                                        border: '1px solid #ddd',
-                                        fontSize: 16,
-                                        width: '100%',
-                                        backgroundColor: 'white' // Asegurar fondo blanco para editable
-                                    }}
-                                />
+                            {/* Máquina + Operario en fila */}
+                            <View style={{ flexDirection: 'row', gap: 10 }}>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={[styles.label, { color: '#aed6f1', marginBottom: 2 }]}>Máquina</Text>
+                                    <View style={{ backgroundColor: '#fff', borderRadius: 6 }}>
+                                        <Picker
+                                            selectedValue={newRegistro.maquinaId}
+                                            onValueChange={(v) => setNewRegistro({ ...newRegistro, maquinaId: v })}
+                                            style={{ height: 36 }}
+                                        >
+                                            <Picker.Item label="Seleccionar..." value="" />
+                                            {maquinas.map(m => (
+                                                <Picker.Item key={m.id} label={m.nombre} value={m.id} />
+                                            ))}
+                                        </Picker>
+                                    </View>
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={[styles.label, { color: '#aed6f1', marginBottom: 2 }]}>Operario</Text>
+                                    <View style={{ backgroundColor: '#fff', borderRadius: 6 }}>
+                                        <Picker
+                                            selectedValue={newRegistro.usuarioId}
+                                            onValueChange={(v) => setNewRegistro({ ...newRegistro, usuarioId: v })}
+                                            style={{ height: 36 }}
+                                        >
+                                            <Picker.Item label="Seleccionar..." value="" />
+                                            {usuarios.map(u => (
+                                                <Picker.Item key={u.id} label={u.nombre} value={u.id} />
+                                            ))}
+                                        </Picker>
+                                    </View>
+                                </View>
                             </View>
-                        ) : null}
 
-                        <Text style={styles.label}>Código Desperdicio</Text>
-                        <Picker
-                            selectedValue={newRegistro.codigoDesperdicioId}
-                            onValueChange={(v) => setNewRegistro({ ...newRegistro, codigoDesperdicioId: v })}
-                            style={styles.picker}
-                        >
-                            <Picker.Item label="Seleccionar..." value="" />
-                            {codigos.filter(c => c.activo).map(c => (
-                                <Picker.Item key={c.id} label={`${c.codigo} - ${c.descripcion}`} value={c.id} />
+                            {/* Fecha */}
+                            {Platform.OS === 'web' && (
+                                <View style={{ marginTop: 8 }}>
+                                    <Text style={[styles.label, { color: '#aed6f1', marginBottom: 2 }]}>Fecha</Text>
+                                    <input
+                                        type="date"
+                                        value={formatDate(newRegistro.fecha)}
+                                        onChange={(e) => {
+                                            const d = new Date(e.target.value);
+                                            if (isNaN(d.getTime())) return;
+                                            setNewRegistro({ ...newRegistro, fecha: new Date(d.getTime() + d.getTimezoneOffset() * 60000) });
+                                        }}
+                                        style={{
+                                            padding: 7, borderRadius: 6, border: 'none',
+                                            fontSize: 15, width: '100%', backgroundColor: 'white'
+                                        }}
+                                    />
+                                </View>
+                            )}
+                        </View>
+
+                        {/* ── CUERPO SCROLLEABLE: tarjetas de código ── */}
+                        <ScrollView style={{ flex: 1, paddingHorizontal: 14, paddingTop: 10 }} contentContainerStyle={{ paddingBottom: 8 }}>
+                            {codigoItems.map((item, idx) => (
+                                <View key={idx} style={{
+                                    borderWidth: 1, borderColor: '#3498db', borderRadius: 8,
+                                    padding: 10, marginBottom: 10, backgroundColor: '#f0f8ff'
+                                }}>
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                        <Text style={{ fontWeight: 'bold', color: '#2980b9', fontSize: 13 }}>Código #{idx + 1}</Text>
+                                        {codigoItems.length > 1 && (
+                                            <TouchableOpacity
+                                                onPress={() => setCodigoItems(prev => prev.filter((_, i) => i !== idx))}
+                                                style={{ backgroundColor: '#e74c3c', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 }}
+                                            >
+                                                <Text style={{ color: '#fff', fontSize: 11, fontWeight: 'bold' }}>✕ Quitar</Text>
+                                            </TouchableOpacity>
+                                        )}
+                                    </View>
+
+                                    <Text style={styles.label}>Código Desperdicio</Text>
+                                    <Picker
+                                        selectedValue={item.codigoDesperdicioId}
+                                        onValueChange={(v) => setCodigoItems(prev => prev.map((it, i) => i === idx ? { ...it, codigoDesperdicioId: v } : it))}
+                                        style={styles.picker}
+                                    >
+                                        <Picker.Item label="Seleccionar..." value="" />
+                                        {codigos.filter(c => c.activo).map(c => (
+                                            <Picker.Item key={c.id} label={`${c.codigo} - ${c.descripcion}`} value={c.id} />
+                                        ))}
+                                    </Picker>
+
+                                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.label}>Cantidad</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="0"
+                                                keyboardType="numeric"
+                                                value={item.cantidad}
+                                                onChangeText={t => setCodigoItems(prev => prev.map((it, i) => i === idx ? { ...it, cantidad: t } : it))}
+                                            />
+                                        </View>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.label}>OP</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="OP..."
+                                                value={item.ordenProduccion}
+                                                onChangeText={t => setCodigoItems(prev => prev.map((it, i) => i === idx ? { ...it, ordenProduccion: t } : it))}
+                                            />
+                                        </View>
+                                    </View>
+
+                                    <Text style={styles.label}>Nota (Opcional)</Text>
+                                    <TextInput
+                                        style={[styles.input, { height: 50 }]}
+                                        placeholder="Nota adicional..."
+                                        multiline
+                                        value={item.nota}
+                                        onChangeText={t => setCodigoItems(prev => prev.map((it, i) => i === idx ? { ...it, nota: t } : it))}
+                                    />
+                                </View>
                             ))}
-                        </Picker>
 
-                        <Text style={styles.label}>Cantidad</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="0"
-                            keyboardType="numeric"
-                            value={newRegistro.cantidad}
-                            onChangeText={t => setNewRegistro({ ...newRegistro, cantidad: t })}
-                        />
+                            {/* Botón Agregar nuevo código (solo en modo creación) */}
+                            {!newRegistro.id && (
+                                <TouchableOpacity
+                                    style={{
+                                        borderWidth: 2, borderColor: '#2ecc71', borderStyle: 'dashed',
+                                        borderRadius: 8, padding: 10, alignItems: 'center', marginBottom: 4
+                                    }}
+                                    onPress={() => setCodigoItems(prev => [...prev, { ...emptyCodigoItem }])}
+                                >
+                                    <Text style={{ color: '#27ae60', fontWeight: 'bold', fontSize: 14 }}>＋ Agregar nuevo código</Text>
+                                </TouchableOpacity>
+                            )}
+                        </ScrollView>
 
-                        <TextInput
-                            style={styles.input}
-                            placeholder="OP..."
-                            value={newRegistro.ordenProduccion}
-                            onChangeText={t => setNewRegistro({ ...newRegistro, ordenProduccion: t })}
-                        />
-
-                        <Text style={styles.label}>Nota (Opcional)</Text>
-                        <TextInput
-                            style={[styles.input, { height: 60 }]}
-                            placeholder="Nota adicional..."
-                            multiline
-                            value={newRegistro.nota}
-                            onChangeText={t => setNewRegistro({ ...newRegistro, nota: t })}
-                        />
-
-                        <View style={styles.modalButtons}>
-                            <TouchableOpacity style={[styles.button, { backgroundColor: '#ccc' }]} onPress={() => setModalRegistroVisible(false)}>
+                        {/* ── FOOTER FIJO ── */}
+                        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', padding: 12, gap: 10, borderTopWidth: 1, borderTopColor: '#e0e0e0', backgroundColor: '#fff', borderBottomLeftRadius: 12, borderBottomRightRadius: 12 }}>
+                            <TouchableOpacity style={[styles.button, { backgroundColor: '#95a5a6' }]} onPress={() => setModalRegistroVisible(false)}>
                                 <Text style={styles.buttonText}>Cancelar</Text>
                             </TouchableOpacity>
                             <TouchableOpacity style={[styles.button, styles.addButton]} onPress={handleSaveRegistro}>
-                                <Text style={styles.buttonText}>Guardar</Text>
+                                <Text style={styles.buttonText}>💾 Guardar</Text>
                             </TouchableOpacity>
                         </View>
+
                     </View>
                 </View>
             </Modal>

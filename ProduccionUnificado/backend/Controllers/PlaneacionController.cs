@@ -14,7 +14,7 @@ namespace TiempoProcesos.API.Controllers;
 /// Handles Rubros, Proveedores, Cotizaciones, Presupuestos, and Gastos.
 /// hierarchy: Rubro -> Proveedor
 /// </summary>
-// [Authorize]
+// [Authorize] removed - auth middleware still processes tokens so User.Claims works
 [ApiController]
 [Route("api/[controller]")]
 public class PlaneacionController : ControllerBase
@@ -257,11 +257,15 @@ public class PlaneacionController : ControllerBase
                 g.PersonalId,
                 PersonalNombre = g.Personal != null ? g.Personal.Nombre : "",
                 PersonalCedula = g.Personal != null ? g.Personal.Cedula : "",
+                PersonalSalario = g.Personal != null ? g.Personal.Salario : 0,
                 g.TipoHoraId,
                 TipoHoraNombre = g.TipoHora != null ? g.TipoHora.Nombre : "",
+                TipoHoraFactor = g.TipoHora != null ? g.TipoHora.Factor : (decimal?)null,
                 g.TipoRecargoId,
                 TipoRecargoNombre = g.TipoRecargo != null ? g.TipoRecargo.Nombre : "",
-                g.CantidadHoras
+                TipoRecargoFactor = g.TipoRecargo != null ? g.TipoRecargo.Factor : (decimal?)null,
+                g.CantidadHoras,
+                g.NumeroOP
             })
             .ToListAsync();
 

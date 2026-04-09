@@ -125,6 +125,8 @@ function GastosTab() {
     const [filterTipo, setFilterTipo] = useState(''); // Secondary
     const [filterFecha, setFilterFecha] = useState('');
     const [filterPending, setFilterPending] = useState(false);
+    const [filterProveedor, setFilterProveedor] = useState('');
+    const [filterNumeroFactura, setFilterNumeroFactura] = useState('');
 
     const anios = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
 
@@ -148,12 +150,18 @@ function GastosTab() {
                 if (searchDate && !g.fechaCompra.startsWith(searchDate)) return false;
             }
 
+            // Filtro Proveedor
+            if (filterProveedor && g.proveedorId?.toString() !== filterProveedor) return false;
+
+            // Filtro Número de Factura
+            if (filterNumeroFactura && !(g.numeroFactura || '').toLowerCase().includes(filterNumeroFactura.toLowerCase())) return false;
+
             // Filtro Pendientes
             if (filterPending && !g.esPendiente) return false;
 
             return true;
         });
-    }, [gastos, filterRubro, filterTipo, filterFecha, filterPending]);
+    }, [gastos, filterRubro, filterTipo, filterFecha, filterPending, filterProveedor, filterNumeroFactura]);
 
     // FILTER RUBROS DROPDOWN (Smart)
     const rubrosConGastos = useMemo(() => {
@@ -562,33 +570,46 @@ function GastosTab() {
         <View style={styles.contentContainer}>
             {/* Header with Advanced Filters */}
             <View style={styles.header}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    <View style={styles.filters}>
-                        <Picker selectedValue={anio} onValueChange={setAnio} style={[styles.picker, { width: 90 }]}>
-                            {anios.map(a => <Picker.Item key={a} label={a.toString()} value={a} />)}
-                        </Picker>
-                        <Picker selectedValue={mes} onValueChange={setMes} style={[styles.picker, { width: 110 }]}>
-                            {sstApi.MESES.map(m => <Picker.Item key={m.value} label={m.label} value={m.value} />)}
-                        </Picker>
-                    </View>
+                <View style={styles.filters}>
+                    <Picker selectedValue={anio} onValueChange={setAnio} style={[styles.picker, { width: 90 }]}>
+                        {anios.map(a => <Picker.Item key={a} label={a.toString()} value={a} />)}
+                    </Picker>
+                    <Picker selectedValue={mes} onValueChange={setMes} style={[styles.picker, { width: 110 }]}>
+                        {sstApi.MESES.map(m => <Picker.Item key={m.value} label={m.label} value={m.value} />)}
+                    </Picker>
+                </View>
+
+                <View style={styles.advancedFilters}>
+                    <Text style={styles.filterLabel}>Filtrar por:</Text>
 
                     {/* Date Search */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 4, paddingHorizontal: 8, height: 40 }}>
-                        <Text style={{ marginRight: 5, fontSize: 13, color: '#374151', fontWeight: '500' }}>Filtrar por:</Text>
+                    <View style={styles.filterItem}>
                         {Platform.OS === 'web' ? (
-                            <input type="date" value={filterFecha} onChange={e => setFilterFecha(e.target.value)} style={{ border: 'none', background: 'transparent', fontSize: 13, outline: 'none', color: '#1F2937', fontFamily: 'inherit' }} />
+                            <input type="date" value={filterFecha} onChange={e => setFilterFecha(e.target.value)} style={{
+                                height: 35, border: 'none', borderRadius: 0, padding: '0 8px', fontSize: 13, fontFamily: 'inherit', color: '#374151',
+                                outline: 'none', backgroundColor: 'transparent', minWidth: 130
+                            }} />
                         ) : (
-                            <TextInput style={{ width: 100, fontSize: 13, padding: 0, color: '#1F2937' }} placeholder="dd/mm/aaaa" value={filterFecha} onChangeText={setFilterFecha} />
+                            <TextInput style={styles.filterInput} placeholder="dd/mm/aaaa" placeholderTextColor="#9CA3AF" value={filterFecha}
+                                onChangeText={(t) => {
+                                    if (t.length === 2 && filterFecha.length === 1) t += '/';
+                                    if (t.length === 5 && filterFecha.length === 4) t += '/';
+                                    if (t.length <= 10) setFilterFecha(t);
+                                }} keyboardType="numeric" />
                         )}
-                        {filterFecha ? <TouchableOpacity onPress={() => setFilterFecha('')}><Text style={{ marginLeft: 5, color: '#9CA3AF' }}>✕</Text></TouchableOpacity> : null}
+                        {filterFecha ? (
+                            <TouchableOpacity onPress={() => setFilterFecha('')} style={styles.clearFilterBtn}>
+                                <Text style={styles.clearFilterText}>✕</Text>
+                            </TouchableOpacity>
+                        ) : null}
                     </View>
 
                     {/* Rubro Filter */}
-                    <View style={{ height: 40, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 4, justifyContent: 'center' }}>
+                    <View style={styles.filterItem}>
                         <Picker
                             selectedValue={filterRubro}
                             onValueChange={(v) => { setFilterRubro(v); setFilterTipo(''); }}
-                            style={Platform.OS === 'web' ? { height: 38, border: 'none', backgroundColor: 'transparent', outline: 'none', fontSize: 13, minWidth: 160, color: '#1F2937' } : { height: 40, width: 170 }}
+                            style={Platform.OS === 'web' ? { height: 35, width: 160, border: 'none', backgroundColor: 'transparent', outline: 'none', fontSize: 13 } : styles.filterPicker}
                         >
                             <Picker.Item label="Todos los Rubros" value="" />
                             {rubrosConGastos.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
@@ -597,31 +618,59 @@ function GastosTab() {
 
                     {/* Secondary Filter (Tipo Servicio) */}
                     {filterRubro && (
-                        <View style={{ height: 40, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 4, justifyContent: 'center' }}>
+                        <View style={styles.filterItem}>
                             <Picker
                                 selectedValue={filterTipo}
                                 onValueChange={setFilterTipo}
-                                style={Platform.OS === 'web' ? { height: 38, border: 'none', backgroundColor: 'transparent', outline: 'none', fontSize: 13, minWidth: 160, color: '#1F2937' } : { height: 40, width: 170 }}
+                                style={Platform.OS === 'web' ? { height: 35, width: 160, border: 'none', backgroundColor: 'transparent', outline: 'none', fontSize: 13 } : styles.filterPicker}
                             >
                                 <Picker.Item label="Todos los Tipos" value="" />
                                 {(() => {
                                     const rubroIdNum = parseInt(filterRubro);
-                                    // 1. Get types belonging to this Rubro
                                     const typesForRubro = tiposServicio.filter(t => t.rubroId === rubroIdNum);
-
-                                    // 2. Filter only those that appear in current 'gastos' list (Active Types)
                                     const activeTypeIds = new Set(gastos.filter(g => g.rubroId === rubroIdNum).map(g => g.tipoServicioId));
                                     const visibleTypes = typesForRubro.filter(t => activeTypeIds.has(t.id));
-
                                     return visibleTypes.map(t => <Picker.Item key={t.id} label={t.nombre} value={t.id.toString()} />);
                                 })()}
                             </Picker>
                         </View>
                     )}
 
-                    {/* Filtro Checkbox Pendientes */}
+                    {/* Filtro Proveedor */}
+                    <View style={styles.filterItem}>
+                        <Picker
+                            selectedValue={filterProveedor}
+                            onValueChange={setFilterProveedor}
+                            style={Platform.OS === 'web' ? { height: 35, width: 160, border: 'none', backgroundColor: 'transparent', outline: 'none', fontSize: 13 } : styles.filterPicker}
+                        >
+                            <Picker.Item label="Todos los Proveedores" value="" />
+                            {[...new Map(gastos.filter(g => g.proveedorId && g.proveedorNombre).map(g => [g.proveedorId, { id: g.proveedorId, nombre: g.proveedorNombre }])).values()]
+                                .sort((a, b) => a.nombre.localeCompare(b.nombre))
+                                .map(p => <Picker.Item key={p.id} label={p.nombre} value={p.id.toString()} />)}
+                        </Picker>
+                    </View>
+
+                    {/* Filtro Número de Factura */}
+                    <View style={styles.filterItem}>
+                        <TextInput
+                            style={Platform.OS === 'web'
+                                ? { height: 35, border: 'none', borderRadius: 0, padding: '0 8px', fontSize: 13, fontFamily: 'inherit', color: '#374151', outline: 'none', backgroundColor: 'transparent', minWidth: 130 }
+                                : styles.filterInput}
+                            placeholder="Nro. Factura..."
+                            placeholderTextColor="#9CA3AF"
+                            value={filterNumeroFactura}
+                            onChangeText={setFilterNumeroFactura}
+                        />
+                        {filterNumeroFactura ? (
+                            <TouchableOpacity onPress={() => setFilterNumeroFactura('')} style={styles.clearFilterBtn}>
+                                <Text style={styles.clearFilterText}>✕</Text>
+                            </TouchableOpacity>
+                        ) : null}
+                    </View>
+
+                    {/* Filtro Pendientes */}
                     <TouchableOpacity
-                        style={{ height: 40, backgroundColor: filterPending ? '#2563EB' : '#FFF', borderWidth: 1, borderColor: filterPending ? '#2563EB' : '#D1D5DB', borderRadius: 4, justifyContent: 'center', paddingHorizontal: 12 }}
+                        style={{ height: 35, backgroundColor: filterPending ? '#2563EB' : '#FFF', borderWidth: 1, borderColor: filterPending ? '#2563EB' : '#D1D5DB', borderRadius: 5, justifyContent: 'center', paddingHorizontal: 12 }}
                         onPress={() => setFilterPending(!filterPending)}
                     >
                         <Text style={{ color: filterPending ? 'white' : '#374151', fontSize: 13, fontWeight: '500' }}>⏳ Ver solo Pendientes</Text>
@@ -3784,6 +3833,45 @@ const styles = StyleSheet.create({
     budgetInfoValue: {
         fontSize: 12,
         fontWeight: 'bold',
+    },
+    // Unified filter styles (matching Talleres/Producción)
+    advancedFilters: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        flexWrap: 'wrap',
+    },
+    filterLabel: {
+        fontSize: 13,
+        color: '#374151',
+        fontWeight: '500',
+    },
+    filterItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        height: 35,
+        backgroundColor: '#FFF',
+        borderWidth: 1,
+        borderColor: '#D1D5DB',
+        borderRadius: 5,
+        paddingHorizontal: 8,
+    },
+    filterInput: {
+        width: 100,
+        fontSize: 13,
+        padding: 0,
+        color: '#1F2937',
+    },
+    clearFilterBtn: {
+        marginLeft: 5,
+    },
+    clearFilterText: {
+        color: '#9CA3AF',
+        fontSize: 14,
+    },
+    filterPicker: {
+        height: 35,
+        width: 170,
     },
     cardActions: {
         flexDirection: 'row',

@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { api } from '../services/productionApi';
+import * as XLSX from 'xlsx';
 
 interface ConsolidadoRow {
     encuestaId: number;
@@ -125,11 +126,68 @@ export default function ConsolidadoNCView() {
     const pendientes = rows.filter(r => !r.ncCompleto).length;
     const completas = rows.filter(r => r.ncCompleto).length;
 
+    const exportToExcel = () => {
+        if (rows.length === 0) {
+            Platform.OS === 'web' ? alert('No hay datos para exportar.') : Alert.alert('Sin datos', 'No hay datos para exportar.');
+            return;
+        }
+
+        const headers = [
+            'NC #', 'Fecha', 'OP', 'Cliente', 'Referencia',
+            'Tipo Reclamación', 'Cant NC', 'Cant Total',
+            'Item', 'Desc. Novedad', 'Tipo Defecto', 'Responsable',
+            'Área', 'Cargo', 'Valor NC ($)', 'Producto', 'Salida NC', 'Controles', 'Estado'
+        ];
+
+        const data = rows.map(r => ([
+            r.ncId || '',
+            new Date(r.fecha).toLocaleDateString('es-CO'),
+            r.ordenProduccion,
+            r.cliente || '',
+            r.referencia || '',
+            r.tipoReclamacion || '',
+            r.cantidadNC,
+            r.cantidadTotal,
+            r.item || '',
+            r.descripcionNovedad || '',
+            r.tipoDefecto || '',
+            r.responsable || '',
+            r.areaInvolucrada || '',
+            r.cargo || '',
+            r.valorNC || 0,
+            r.producto || '',
+            r.salidaNC || '',
+            r.controles || '',
+            r.ncCompleto ? 'Completo' : 'Pendiente'
+        ]));
+
+        const wsData = [headers, ...data];
+        const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+        // Column widths
+        ws['!cols'] = [
+            { wch: 8 }, { wch: 12 }, { wch: 10 }, { wch: 22 }, { wch: 25 },
+            { wch: 20 }, { wch: 10 }, { wch: 12 },
+            { wch: 15 }, { wch: 35 }, { wch: 20 }, { wch: 22 },
+            { wch: 18 }, { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 25 }, { wch: 35 }, { wch: 12 }
+        ];
+
+        const wb = XLSX.utils.book_new();
+        const mesNombre = meses[mes];
+        XLSX.utils.book_append_sheet(wb, ws, `NC ${mesNombre} ${anio}`);
+
+        if (Platform.OS === 'web') {
+            const fileName = `Consolidado_NC_${mesNombre}_${anio}.xlsx`;
+            XLSX.writeFile(wb, fileName);
+        } else {
+            Alert.alert('Exportación', 'La exportación a Excel está disponible en la versión web.');
+        }
+    };
+
     return (
         <View style={styles.container}>
-            {/* Header */}
-            <View style={styles.header}>
-                <Text style={styles.title}>📋 Consolidado de NC</Text>
+            {/* Header removed as it is now in AdminDashboard */}
+            <View style={{ marginBottom: 15 }}>
                 <View style={styles.statsRow}>
                     <View style={[styles.statBadge, { backgroundColor: '#FED7D7' }]}>
                         <Text style={[styles.statText, { color: '#C53030' }]}>⚠️ Pendientes: {pendientes}</Text>
@@ -167,6 +225,9 @@ export default function ConsolidadoNCView() {
                 </View>
                 <TouchableOpacity style={styles.btnRefresh} onPress={loadData}>
                     <Text style={styles.btnText}>🔄 Actualizar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.btnExcel} onPress={exportToExcel}>
+                    <Text style={styles.btnText}>📊 Exportar Excel</Text>
                 </TouchableOpacity>
             </View>
 
@@ -396,6 +457,7 @@ const styles = StyleSheet.create({
     pickerWrap: { borderWidth: 1, borderColor: '#CBD5E0', borderRadius: 6, backgroundColor: '#fff', height: 36, justifyContent: 'center', minWidth: 120 },
     picker: { height: 36 },
     btnRefresh: { backgroundColor: '#3182CE', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6 },
+    btnExcel: { backgroundColor: '#276749', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6 },
     btnText: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
     // Table
     tableHeader: { flexDirection: 'row', backgroundColor: '#2D3748', padding: 8, borderTopLeftRadius: 6, borderTopRightRadius: 6 },

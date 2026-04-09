@@ -1,0 +1,45 @@
+﻿{
+    "value":  [
+                  {
+                      "id":  1,
+                      "codigo":  "1",
+                      "nombre":  "6am - 2pm",
+                      "inicioSemana":  "06:00:00",
+                      "finSemana":  "14:00:00",
+                      "inicioSabado":  "08:00:00",
+                      "finSabado":  "12:00:00",
+                      "activo":  true
+                  },
+                  {
+                      "id":  2,
+                      "codigo":  "2",
+                      "nombre":  "7am - 4pm",
+                      "inicioSemana":  "07:00:00",
+                      "finSemana":  "16:00:00",
+                      "inicioSabado":  "08:00:00",
+                      "finSabado":  "12:00:00",
+                      "activo":  true
+                  },
+                  {
+                      "id":  3,
+                      "codigo":  "3",
+                      "nombre":  "8am - 12pm",
+                      "inicioSemana":  "08:00:00",
+                      "finSemana":  "12:00:00",
+                      "inicioSabado":  "08:00:00",
+                      "finSabado":  "12:00:00",
+                      "activo":  true
+                  },
+                  {
+                      "id":  4,
+                      "codigo":  "4",
+                      "nombre":  "2pm - 10pm",
+                      "inicioSemana":  "14:00:00",
+                      "finSemana":  "22:00:00",
+                      "inicioSabado":  "08:00:00",
+                      "finSabado":  "12:00:00",
+                      "activo":  true
+                  }
+              ],
+    "Count":  4
+}

@@ -20,11 +20,14 @@ public class TicketsController : ControllerBase
     /// Obtiene estadísticas de tickets
     /// </summary>
     [HttpGet("stats")]
-    public async Task<ActionResult> GetStats()
+    public async Task<ActionResult> GetStats([FromQuery] string? reportadoPor = null)
     {
         try
         {
-            var tickets = await _context.Tickets.ToListAsync();
+            var query = _context.Tickets.AsQueryable();
+            if (!string.IsNullOrEmpty(reportadoPor))
+                query = query.Where(t => t.ReportadoPor == reportadoPor);
+            var tickets = await query.ToListAsync();
             var total = tickets.Count;
             var abiertos = tickets.Count(t => t.Estado == "Abierto");
             var enProgreso = tickets.Count(t => t.Estado == "EnProgreso");
@@ -57,11 +60,15 @@ public class TicketsController : ControllerBase
         [FromQuery] string? estado = null,
         [FromQuery] string? prioridad = null,
         [FromQuery] string? modulo = null,
-        [FromQuery] string? buscar = null)
+        [FromQuery] string? buscar = null,
+        [FromQuery] string? reportadoPor = null)
     {
         try
         {
             var query = _context.Tickets.Include(t => t.Imagenes).AsQueryable();
+
+            if (!string.IsNullOrEmpty(reportadoPor))
+                query = query.Where(t => t.ReportadoPor == reportadoPor);
 
             if (!string.IsNullOrEmpty(estado))
                 query = query.Where(t => t.Estado == estado);
@@ -241,10 +248,12 @@ public class TicketsController : ControllerBase
     {
         try
         {
-            var ticket = await _context.Tickets.FindAsync(id);
+            var ticket = await _context.Tickets.Include(t => t.Imagenes).FirstOrDefaultAsync(t => t.Id == id);
             if (ticket == null)
                 return NotFound(new { message = "Ticket no encontrado" });
 
+            if (ticket.Imagenes.Any())
+                _context.TicketImagenes.RemoveRange(ticket.Imagenes);
             _context.Tickets.Remove(ticket);
             await _context.SaveChangesAsync();
 

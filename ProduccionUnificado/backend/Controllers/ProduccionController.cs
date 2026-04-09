@@ -226,6 +226,7 @@ public class ProduccionController : ControllerBase
             using (var stream = new MemoryStream())
             {
                 await file.CopyToAsync(stream);
+                OfficeOpenXml.ExcelPackage.License.SetNonCommercialOrganization("AlephImpresores");
                 using (var package = new OfficeOpenXml.ExcelPackage(stream))
                 {
                     var worksheet = package.Workbook.Worksheets[0]; // Leer la primera hoja
@@ -296,8 +297,40 @@ public class ProduccionController : ControllerBase
 
                             // Obtener Actividad
                             string actividadExcel = GetStringFromCell(worksheet, row, headers, "actividad") ?? "";
-                            var actividad = actividades.FirstOrDefault(a => actividadExcel.ToLower().Contains(a.Nombre.ToLower()))
-                                           ?? actividades.FirstOrDefault(a => a.Nombre == "Producción");
+                            string actLower = actividadExcel.ToLower();
+                            Actividad actividad = null;
+
+                            // 1. Intentar hacer match por el código numérico si existe al inicio de la cadena (ej. "08 - Tiempo Muerto")
+                            var matchCode = System.Text.RegularExpressions.Regex.Match(actividadExcel, @"^(\d{1,2})\b");
+                            if (matchCode.Success)
+                            {
+                                string potentialCode = matchCode.Groups[1].Value.PadLeft(2, '0');
+                                actividad = actividades.FirstOrDefault(a => a.Codigo == potentialCode);
+                            }
+
+                            // 2. Si no hay match por código, intentar por nombre contenido completo
+                            if (actividad == null)
+                            {
+                                actividad = actividades.FirstOrDefault(a => actLower.Contains(a.Nombre.ToLower()));
+                            }
+
+                            // 3. Match flexible por palabras clave comunes si el nombre exacto falló
+                            if (actividad == null)
+                            {
+                                if (actLower.Contains("tiempo muerto") || actLower.Contains("otros muertos")) actividad = actividades.FirstOrDefault(a => a.Codigo == "08");
+                                else if (actLower.Contains("falta") && actLower.Contains("trabajo")) actividad = actividades.FirstOrDefault(a => a.Codigo == "13");
+                                else if (actLower.Contains("reparacion") || actLower.Contains("reparación")) actividad = actividades.FirstOrDefault(a => a.Codigo == "03");
+                                else if (actLower.Contains("mantenimiento")) actividad = actividades.FirstOrDefault(a => a.Codigo == "10");
+                                else if (actLower.Contains("descanso") || actLower.Contains("alimento")) actividad = actividades.FirstOrDefault(a => a.Codigo == "04");
+                                else if (actLower.Contains("puesta a punto")) actividad = actividades.FirstOrDefault(a => a.Codigo == "01");
+                                else if (actLower.Contains("auxiliar") || actLower.Contains("otros tiempo")) actividad = actividades.FirstOrDefault(a => a.Codigo == "14");
+                            }
+
+                            // 4. Default: Producción
+                            if (actividad == null)
+                            {
+                                actividad = actividades.FirstOrDefault(a => a.Nombre == "Producción" || a.Codigo == "02");
+                            }
 
                             // Crear Detalle
                             var detalle = new ProduccionDiariaDetalleDto
@@ -342,9 +375,14 @@ public class ProduccionController : ControllerBase
                             else if (actName.Contains("mantenimiento")) agrupaciones[key].HorasMantenimiento += dDuration;
                             else if (actName.Contains("descanso") || actName.Contains("alimento")) agrupaciones[key].HorasDescanso += dDuration;
                             else if (actName.Contains("falta de trabajo")) agrupaciones[key].TiempoFaltaTrabajo += dDuration;
-                            else if (actName.Contains("reparacion")) agrupaciones[key].TiempoReparacion += dDuration;
-                            else if (actName.Contains("otros muertos")) agrupaciones[key].TiempoOtroMuerto += dDuration;
-                            else if (actName.Contains("otros auxiliares")) agrupaciones[key].HorasOtrosAux += dDuration;
+                            else if (actName.Contains("reparacion") || actName.Contains("reparación")) agrupaciones[key].TiempoReparacion += dDuration;
+                            else if (actName.Contains("tiempo muerto")) agrupaciones[key].TiempoOtroMuerto += dDuration;
+                            else if (actName.Contains("otros tiempo") || actName.Contains("otros auxiliar")) agrupaciones[key].HorasOtrosAux += dDuration;
+
+                            if (maquina.Id == 11 && (actName.Contains("muert") || actividadExcel.Contains("08")))
+                            {
+                                Console.WriteLine($"[MAQ11 DEBUG] Fecha: {fecha:yyyy-MM-dd} | ActOrig: {actividadExcel} -> ActMatch: {actName} (Code: {actividad?.Codigo}) | Ini: {detalle.HoraInicio} Fin: {detalle.HoraFin} -> Dur: {duration}hs");
+                            }
 
                             agrupaciones[key].TirosDiarios += detalle.Tiros;
                             agrupaciones[key].RendimientoFinal = agrupaciones[key].TirosDiarios;
@@ -442,12 +480,16 @@ public class ProduccionController : ControllerBase
         catch (Exception ex)
         {
             var errorDetail = $"Error importando Excel: {ex.Message}\nStack: {ex.StackTrace}";
-            if (ex.InnerException != null) errorDetail += $"\nInner: {ex.InnerException.Message}";
+            if (ex.InnerException != null) errorDetail += $"\nInner Exception: {ex.InnerException.Message}";
             
-            Console.WriteLine(errorDetail);
-            System.IO.File.WriteAllText("debug_import_error.txt", errorDetail);
+            Console.WriteLine($"[CRITICAL IMPORT ERROR] {errorDetail}");
+            System.IO.File.WriteAllText("import_crash_full.txt", errorDetail);
             
-            return StatusCode(500, new { error = "Error interno procesando el archivo Excel: " + ex.Message, details = ex.Message });
+            return StatusCode(500, new { 
+                error = "Error interno procesando el archivo Excel.", 
+                message = ex.Message,
+                details = errorDetail 
+            });
         }
     }
 
@@ -1259,7 +1301,7 @@ public class ProduccionController : ControllerBase
                 // Use Meta100Porciento like CalificacionController
                 var meta100PorcientoBase = maq?.Meta100Porciento ?? maq?.MetaRendimiento ?? 7500;
                 
-                // NEW: Use TotalHoras to prorate Meta100
+                // REVERTED: Use TotalHoras to prorate Meta100 for general dashboard
                 // Meta100 = TotalHoras * (Meta100PorcientoBase / 8)
                 decimal totalHorasOp = filteredGroup.Sum(p => p.TotalHoras);
                 decimal metaPorHora = (decimal)meta100PorcientoBase / 8;
@@ -1281,36 +1323,37 @@ public class ProduccionController : ControllerBase
                 // O mejor dicho, sumamos el ValorAPagar completo (total bonus earned) para reporte
                 var valorTotalGanado = filteredGroup.Sum(p => p.ValorAPagar);
 
-                return new {
-                    usuarioId = g.Key.UsuarioId,
-                    maquinaId = g.Key.MaquinaId,
-                    operario = first.Usuario?.Nombre ?? "Desconocido",
-                    maquina = first.Maquina?.Nombre ?? "Desconocida",
-                    tirosReportados = (int)Math.Round(filteredGroup.Sum(p => p.RendimientoFinal)),
-                    tirosEquivalentes = filteredGroup.Sum(p => p.Cambios * tirosReferencia),
-                    totalCambios = filteredGroup.Sum(p => p.Cambios),
-                    totalTiros = totalTiros,
-                    tirosBonificables = tirosBonificables,
-                    totalHorasProductivas = filteredGroup.Sum(p => p.TotalHorasProductivas),
-                    promedioHoraProductiva = filteredGroup.Any() ? filteredGroup.Average(p => p.PromedioHoraProductiva) : 0,
-                    totalHoras = filteredGroup.Sum(p => p.TotalHoras),
-                    valorAPagar = valorTotalGanado,
-                    valorAPagarBonificable = valorAPagarBonificableFinal,
-                    valorBonifPotencial = valorBonifSum, // Este es el bono acumulado EN horario laboral
-                    diasLaborados = diasOp,
-                    metaBonificacion = meta75,
-                    meta100Porciento = meta100,
-                    eficiencia = pct100 / 100,
-                    porcentajeRendimiento75 = pct75,
-                    porcentajeRendimiento100 = pct100,
-                    semaforoColor = sem75,
-                    semaforoColor100 = sem100,
-                    ultimaFecha = g.Max(p => p.Fecha).ToString("dd/MM/yyyy"),
+                return new ResumenOperarioDTO {
+                    UsuarioId = g.Key.UsuarioId,
+                    MaquinaId = g.Key.MaquinaId,
+                    Operario = first.Usuario?.Nombre ?? "Desconocido",
+                    Maquina = first.Maquina?.Nombre ?? "Desconocida",
+                    TirosReportados = (int)Math.Round(filteredGroup.Sum(p => p.RendimientoFinal)),
+                    TirosEquivalentes = filteredGroup.Sum(p => p.Cambios * tirosReferencia),
+                    TotalCambios = filteredGroup.Sum(p => p.Cambios),
+                    TotalTiros = totalTiros,
+                    TirosBonificables = tirosBonificables,
+                    TotalHorasProductivas = filteredGroup.Sum(p => p.TotalHorasProductivas),
+                    TotalHorasAuxiliares = filteredGroup.Sum(p => p.HorasMantenimiento + p.HorasOtrosAux),
+                    PromedioHoraProductiva = filteredGroup.Any() ? filteredGroup.Average(p => p.PromedioHoraProductiva) : 0,
+                    TotalHoras = filteredGroup.Sum(p => p.TotalHoras),
+                    ValorAPagar = valorTotalGanado,
+                    ValorAPagarBonificable = valorAPagarBonificableFinal,
+                    ValorBonifPotencial = valorBonifSum, 
+                    DiasLaborados = diasOp,
+                    MetaBonificacion = meta75,
+                    Meta100Porciento = meta100,
+                    Eficiencia = pct100 / 100,
+                    PorcentajeRendimiento75 = pct75,
+                    PorcentajeRendimiento100 = pct100,
+                    SemaforoColor = sem75,
+                    SemaforoColor100 = sem100,
+                    UltimaFecha = g.Max(p => p.Fecha).ToString("dd/MM/yyyy"),
                 };
             })
-            .Where(r => r.diasLaborados > 0)
-            .OrderBy(r => r.operario)
-            .ThenBy(r => r.maquina)
+            .Where(r => r.DiasLaborados > 0)
+            .OrderBy(r => r.Operario)
+            .ThenBy(r => r.Maquina)
             .ToList();
 
         // Group by Maquina based on ALL Active Machines to include 0 performance ones
@@ -1335,10 +1378,10 @@ public class ProduccionController : ControllerBase
                 // Use monthly meta snapshot if available, otherwise fallback to current machine values
                 var snapshot = metaSnapshots.FirstOrDefault(s => s.MaquinaId == maq.Id);
                 var meta100PorcientoBase = snapshot != null 
-                    ? (snapshot.Meta100Porciento > 0 ? snapshot.Meta100Porciento : snapshot.MetaRendimiento)
+                    ? (snapshot.Meta100Porciento > 0 ? snapshot.Meta100Porciento.Value : (snapshot.MetaRendimiento ?? 0))
                     : (maq.Meta100Porciento > 0 ? maq.Meta100Porciento : maq.MetaRendimiento);
                 
-                // NEW: Use TotalHoras to prorate Meta100
+                // REVERTED: Use TotalHoras to prorate Meta100 for general dashboard
                 // Meta100 = TotalHoras * (Meta100PorcientoBase / 8)
                 decimal totalHorasMaq = filteredGroup.Sum(p => p.TotalHoras);
                 decimal metaPorHora = (decimal)meta100PorcientoBase / 8;
@@ -1353,73 +1396,71 @@ public class ProduccionController : ControllerBase
                 var calificacion = pct * importancia / 100;
                 var tarifaVal = snapshot?.Tarifa ?? maq.Tarifa;
 
-                return new {
-                    maquinaId = maq.Id,
-                    maquina = maq.Nombre,
-                    tirosReportados = (int)Math.Round(filteredGroup.Sum(p => p.RendimientoFinal)),
-                    tirosEquivalentes = filteredGroup.Sum(p => p.Cambios * tirosReferencia),
-                    totalCambios = filteredGroup.Sum(p => p.Cambios),
-                    totalTiempoPuestaPunto = filteredGroup.Sum(p => p.TiempoPuestaPunto),
-                    totalHorasDescanso = filteredGroup.Sum(p => p.HorasDescanso),
-
-
-
-
-                    tirosTotales = tirosTotales,
-                    rendimientoEsperado = meta100,
-                    meta75Porciento = meta75,
-                    meta100Porciento = meta100,
-                    porcentajeRendimiento = pct / 100,
-                    porcentajeRendimiento100 = pct,
-                    semaforoColor = sem,
-                    totalTiemposMuertos = g.Sum(p => p.TotalTiemposMuertos),
-                    totalTiempoReparacion = g.Sum(p => p.TiempoReparacion),
-                    totalTiempoFaltaTrabajo = g.Sum(p => p.TiempoFaltaTrabajo),
-                    totalTiempoOtro = g.Sum(p => p.TiempoOtroMuerto),
-                    totalHoras = g.Sum(p => p.TotalHoras),
-                    importancia = importancia,
-                    calificacion = Math.Round(calificacion, 2),
-                    diasLaborados = diasMaq,
-                    ultimaFecha = g.Max(p => p.Fecha).ToString("dd/MM/yyyy"),
-
-                    // NEW: Field for cost calculation
-                    tarifa = tarifaVal
+                return new ResumenMaquinaDTO {
+                    MaquinaId = maq.Id,
+                    Maquina = maq.Nombre,
+                    TirosReportados = (int)Math.Round(filteredGroup.Sum(p => p.RendimientoFinal)),
+                    TirosEquivalentes = filteredGroup.Sum(p => p.Cambios * tirosReferencia),
+                    TotalCambios = filteredGroup.Sum(p => p.Cambios),
+                    TotalTiempoPuestaPunto = filteredGroup.Sum(p => p.TiempoPuestaPunto),
+                    TotalHorasDescanso = filteredGroup.Sum(p => p.HorasDescanso),
+                    TotalHorasProductivas = filteredGroup.Sum(p => p.TotalHorasProductivas),
+                    TotalHorasAuxiliares = filteredGroup.Sum(p => p.HorasMantenimiento + p.HorasOtrosAux),
+                    TirosTotales = tirosTotales,
+                    RendimientoEsperado = meta100,
+                    Meta75Porciento = meta75,
+                    Meta100Porciento = meta100,
+                    PorcentajeRendimiento = pct / 100,
+                    PorcentajeRendimiento100 = pct,
+                    SemaforoColor = sem,
+                    TotalTiemposMuertos = g.Sum(p => p.TotalTiemposMuertos),
+                    TotalTiempoReparacion = g.Sum(p => p.TiempoReparacion),
+                    TotalTiempoFaltaTrabajo = g.Sum(p => p.TiempoFaltaTrabajo),
+                    TotalTiempoOtro = g.Sum(p => p.TiempoOtroMuerto),
+                    TotalHoras = g.Sum(p => p.TotalHoras),
+                    Importancia = importancia,
+                    Calificacion = Math.Round(calificacion, 2),
+                    DiasLaborados = diasMaq,
+                    UltimaFecha = g.Max(p => p.Fecha).ToString("dd/MM/yyyy"),
+                    Tarifa = tarifaVal,
+                    MetaDiariaBase = meta100PorcientoBase
                 };
             }
             else
             {
                 // Zero performance case for active machine with no production
-                return new {
-                    maquinaId = maq.Id,
-                    maquina = maq.Nombre,
-                    tirosReportados = 0,
-                    tirosEquivalentes = 0,
-                    totalCambios = 0,
-                    totalTiempoPuestaPunto = 0m,
-                    totalHorasDescanso = 0m,
-                    tirosTotales = 0,
-                    rendimientoEsperado = 0m,
-                    meta75Porciento = 0m,
-                    meta100Porciento = 0m,
-                    porcentajeRendimiento = 0m,
-                    porcentajeRendimiento100 = 0m,
-                    semaforoColor = "Rojo",
-                    totalTiemposMuertos = 0m,
-                    totalTiempoReparacion = 0m,
-                    totalTiempoFaltaTrabajo = 0m,
-                    totalTiempoOtro = 0m,
-                    totalHoras = 0m,
-                    importancia = maq.Importancia,
-                    calificacion = 0m,
-                    diasLaborados = 0,
-                    ultimaFecha = "-",
-
-                    // NEW: Field for cost calculation
-                    tarifa = maq.Tarifa
+                return new ResumenMaquinaDTO {
+                    MaquinaId = maq.Id,
+                    Maquina = maq.Nombre,
+                    TirosReportados = 0,
+                    TirosEquivalentes = 0,
+                    TotalCambios = 0,
+                    TotalTiempoPuestaPunto = 0m,
+                    TotalHorasDescanso = 0m,
+                    TotalHorasProductivas = 0m,
+                    TotalHorasAuxiliares = 0m,
+                    TirosTotales = 0,
+                    RendimientoEsperado = 0m,
+                    Meta75Porciento = 0m,
+                    Meta100Porciento = 0m,
+                    PorcentajeRendimiento = 0m,
+                    PorcentajeRendimiento100 = 0m,
+                    SemaforoColor = "Rojo",
+                    TotalTiemposMuertos = 0m,
+                    TotalTiempoReparacion = 0m,
+                    TotalTiempoFaltaTrabajo = 0m,
+                    TotalTiempoOtro = 0m,
+                    TotalHoras = 0m,
+                    Importancia = maq.Importancia,
+                    Calificacion = 0m,
+                    DiasLaborados = 0,
+                    UltimaFecha = "",
+                    Tarifa = maq.Tarifa,
+                    MetaDiariaBase = maq.Meta100Porciento > 0 ? maq.Meta100Porciento : maq.MetaRendimiento
                 };
             }
         })
-        .OrderBy(r => r.maquina)
+        .OrderBy(r => r.Maquina)
         .ToList();
 
         // Daily trend
@@ -1434,7 +1475,7 @@ public class ProduccionController : ControllerBase
             .ToList();
 
         // Plant score (sum of machine calificaciones)
-        var calificacionTotalPlanta = resumenMaquinas.Sum(m => m.calificacion);
+        var calificacionTotalPlanta = resumenMaquinas.Sum(m => m.Calificacion);
 
         return Ok(new {
             resumenOperarios,
@@ -2150,6 +2191,97 @@ public class ProduccionController : ControllerBase
         catch (Exception ex)
         {
             return BadRequest($"Error en GetDiaDetalle: {ex.Message} - {ex.InnerException?.Message}");
+        }
+    }
+    /// <summary>
+    /// Recalcula todos los totales de ProduccionDiaria a partir de sus detalles.
+    /// Usa para corregir datos históricos con cálculos incorrectos.
+    /// </summary>
+    [HttpPost("recalcular-totales")]
+    public async Task<IActionResult> RecalcularTotales()
+    {
+        try
+        {
+            var allRecords = await _context.ProduccionDiaria
+                .Include(p => p.Maquina)
+                .ToListAsync();
+
+            int recalculados = 0;
+            int errores = 0;
+
+            foreach (var parent in allRecords)
+            {
+                try
+                {
+                    var savedDetails = await _context.ProduccionDiariaDetalles
+                        .Include(d => d.Actividad)
+                        .Where(d => d.ProduccionDiariaId == parent.Id)
+                        .ToListAsync();
+
+                    if (!savedDetails.Any()) continue;
+
+                    // Reset counters
+                    parent.TiempoPuestaPunto = 0;
+                    parent.HorasOperativas = 0;
+                    parent.TirosDiarios = 0;
+                    parent.TiempoReparacion = 0;
+                    parent.HorasDescanso = 0;
+                    parent.TiempoOtroMuerto = 0;
+                    parent.HorasMantenimiento = 0;
+                    parent.TiempoFaltaTrabajo = 0;
+                    parent.HorasOtrosAux = 0;
+
+                    foreach (var d in savedDetails)
+                    {
+                        decimal horas = 0;
+                        if (d.HoraFin > d.HoraInicio)
+                            horas = (decimal)(d.HoraFin - d.HoraInicio).TotalHours;
+
+                        string codigo = d.Actividad?.Codigo ?? "";
+
+                        switch (codigo)
+                        {
+                            case "01": parent.TiempoPuestaPunto += horas; break;
+                            case "02":
+                                parent.HorasOperativas += horas;
+                                parent.TirosDiarios += d.Tiros;
+                                break;
+                            case "03": parent.TiempoReparacion += horas; break;
+                            case "04": parent.HorasDescanso += horas; break;
+                            case "08": parent.TiempoOtroMuerto += horas; break;
+                            case "10": parent.HorasMantenimiento += horas; break;
+                            case "13": parent.TiempoFaltaTrabajo += horas; break;
+                            case "14": parent.HorasOtrosAux += horas; break;
+                            default: parent.HorasOtrosAux += horas; break;
+                        }
+                    }
+
+                    // Derived calculations
+                    parent.TotalHorasProductivas = parent.HorasOperativas + parent.TiempoPuestaPunto;
+                    parent.TotalHorasAuxiliares = parent.HorasMantenimiento + parent.HorasDescanso + parent.HorasOtrosAux;
+                    parent.TotalTiemposMuertos = parent.TiempoFaltaTrabajo + parent.TiempoReparacion + parent.TiempoOtroMuerto;
+                    parent.TotalHoras = parent.TotalHorasProductivas + parent.TotalHorasAuxiliares + parent.TotalTiemposMuertos;
+
+                    if (parent.HorasOperativas > 0)
+                        parent.PromedioHoraProductiva = parent.TirosDiarios / parent.HorasOperativas;
+
+                    _context.Entry(parent).State = EntityState.Modified;
+                    recalculados++;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[RECALC ERROR] Record {parent.Id}: {ex.Message}");
+                    errores++;
+                }
+            }
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = $"Recalculación completada. {recalculados} registros actualizados, {errores} errores." });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest($"Error en RecalcularTotales: {ex.Message}");
         }
     }
 

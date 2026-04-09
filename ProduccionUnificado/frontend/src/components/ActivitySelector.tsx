@@ -44,6 +44,8 @@ export function ActivitySelector({
                                         isSelected && styles.chipNameSelected,
                                     ]}
                                     numberOfLines={2}
+                                    adjustsFontSizeToFit
+                                    minimumFontScale={0.8}
                                 >
                                     {actividad.nombre}
                                 </Text>
@@ -88,14 +90,14 @@ const styles = StyleSheet.create({
     chip: {
         backgroundColor: '#F5F7FA',
         borderRadius: 8,
-        paddingHorizontal: 12,
+        paddingHorizontal: 8,
         paddingVertical: 10,
         borderWidth: 2,
         borderColor: '#E8ECF0',
-        minWidth: '48%',
+        width: '48%',
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
+        gap: 6,
     },
     chipSelected: {
         backgroundColor: '#96BDF0',
@@ -122,7 +124,7 @@ const styles = StyleSheet.create({
         borderRadius: 4,
     },
     chipName: {
-        fontSize: 13,
+        fontSize: 12,
         color: '#000000',
         flex: 1,
     },

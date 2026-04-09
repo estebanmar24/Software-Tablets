@@ -65,6 +65,17 @@ const getBase64FromUrl = async (url) => {
     });
 };
 
+// Festivos Colombia 2025-2026 (mismos que Talleres)
+const COLOMBIAN_HOLIDAYS = [
+    // 2025
+    '2025-01-01', '2025-01-06', '2025-03-24', '2025-04-17', '2025-04-18', '2025-05-01',
+    '2025-06-02', '2025-06-23', '2025-06-30', '2025-07-20', '2025-08-07', '2025-08-18',
+    '2025-10-13', '2025-11-03', '2025-11-17', '2025-12-08', '2025-12-25',
+    // 2026
+    '2026-01-01', '2026-01-12', '2026-03-23', '2026-04-02', '2026-04-03', '2026-05-01',
+    '2026-05-18', '2026-06-08', '2026-06-15', '2026-06-29', '2026-07-20', '2026-08-07',
+    '2026-08-17', '2026-10-12', '2026-11-02', '2026-11-16', '2026-12-08', '2026-12-25'
+];
 
 export default function ProduccionGastosScreen() {
     const { colors } = useTheme();
@@ -122,6 +133,8 @@ function GastosTab() {
     const [filterRubroId, setFilterRubroId] = useState('');
     const [filterUsuarioId, setFilterUsuarioId] = useState(''); // Dinámico para HE/Recargos
     const [filterMaquinaId, setFilterMaquinaId] = useState(''); // Dinámico para Mantenimiento
+    const [filterProveedorId, setFilterProveedorId] = useState('');
+    const [filterNumeroFactura, setFilterNumeroFactura] = useState('');
 
     // History Modal State
     const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -134,8 +147,10 @@ function GastosTab() {
     const [formData, setFormData] = useState({
         rubroId: '', proveedorId: '', usuarioId: '', maquinaId: '', tipoHoraId: '', tipoRecargoId: '',
         precio: '', fecha: new Date().toISOString().split('T')[0], nota: '', cantidadHoras: '',
-        numeroFactura: '', facturaPdfUrl: '', numeroOP: '', esPendiente: false
+        numeroFactura: '', facturaPdfUrl: '', numeroOP: '', esPendiente: false,
+        horaInicio: '', horaFin: ''
     });
+    const [breakdown, setBreakdown] = useState([]);
     const [filterPending, setFilterPending] = useState(false);
     const [saving, setSaving] = useState(false);
     const [presupuestoInfo, setPresupuestoInfo] = useState(null);
@@ -186,8 +201,8 @@ function GastosTab() {
     useEffect(() => {
         const selectedRubro = rubros.find(r => r.id == formData.rubroId);
         const name = selectedRubro?.nombre?.toLowerCase() || '';
-        const isHE = name === 'horas extras';
-        const isRec = name === 'recargo';
+        const isHE = name.includes('horas extras') || name.includes('hora extra');
+        const isRec = name.includes('recargo');
 
         if ((isHE || isRec) && formData.usuarioId && formData.cantidadHoras) {
             const usuario = usuarios.find(u => u.id == formData.usuarioId);
@@ -249,8 +264,127 @@ function GastosTab() {
         setEditItem(null);
         setIsLegalizing(false);
         isLegalizingRef.current = false;
-        setFormData({ rubroId: '', proveedorId: '', usuarioId: '', maquinaId: '', tipoHoraId: '', tipoRecargoId: '', precio: '', fecha: new Date().toISOString().split('T')[0], nota: '', cantidadHoras: '', numeroFactura: '', facturaPdfUrl: '', numeroOP: '', esPendiente: false });
+        setFormData({ rubroId: '', proveedorId: '', usuarioId: '', maquinaId: '', tipoHoraId: '', tipoRecargoId: '', precio: '', fecha: new Date().toISOString().split('T')[0], nota: '', cantidadHoras: '', numeroFactura: '', facturaPdfUrl: '', numeroOP: '', esPendiente: false, horaInicio: '', horaFin: '' });
+        setBreakdown([]);
     };
+
+    // ========== SMART BREAKDOWN (copiado de Talleres) ==========
+    const calculateSmartBreakdown = useCallback(() => {
+        if (!formData.usuarioId || !formData.horaInicio || !formData.horaFin || !formData.fecha) {
+            setBreakdown([]);
+            return;
+        }
+        const worker = usuarios.find(u => u.id == formData.usuarioId);
+        if (!worker) { setBreakdown([]); return; }
+
+        const parseDate = (d) => {
+            if (!d) return new Date();
+            const cleanDate = d.trim();
+            if (cleanDate.includes('/')) {
+                const [day, month, year] = cleanDate.split('/');
+                return new Date(`${year}-${month}-${day}T12:00:00`);
+            }
+            return new Date(cleanDate + 'T12:00:00');
+        };
+        const date = parseDate(formData.fecha);
+        const formatISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const dateISO = formatISO(date);
+        const isSunday = date.getDay() === 0;
+        const isHoliday = COLOMBIAN_HOLIDAYS.includes(dateISO);
+        const isSpecialDay = isSunday || isHoliday;
+        const isSaturday = date.getDay() === 6;
+
+        const toMin = (t) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0); };
+        const start = toMin(formData.horaInicio);
+        let end = toMin(formData.horaFin);
+        if (end <= start) end += 24 * 60;
+
+        const MonFriShifts = [
+            { start: 6 * 60, end: 14 * 60 }, { start: 7 * 60, end: 16 * 60 }, { start: 14 * 60, end: 22 * 60 }
+        ];
+        const SatShift = { start: 8 * 60, end: 12 * 60 };
+
+        let baseStart, baseEnd;
+        if (isSpecialDay) { baseStart = 0; baseEnd = 0; }
+        else if (isSaturday) { baseStart = SatShift.start; baseEnd = SatShift.end; }
+        else {
+            let bestShift = null, maxOverlap = 0;
+            MonFriShifts.forEach(s => {
+                const overlap = Math.min(s.end, end) - Math.max(s.start, start);
+                if (overlap > maxOverlap) { maxOverlap = overlap; bestShift = s; }
+            });
+            if (bestShift && maxOverlap >= 30) { baseStart = bestShift.start; baseEnd = bestShift.end; }
+            else {
+                const endMatched = MonFriShifts.find(s => Math.abs(s.end - start) <= 15);
+                if (endMatched) { baseStart = endMatched.start; baseEnd = endMatched.end; }
+                else { baseStart = 0; baseEnd = 0; }
+            }
+        }
+
+        const breakdownItems = [];
+        const NIGHT_START = 19 * 60, NIGHT_END = 6 * 60;
+
+        const addBreakdown = (s, e, typeNameMatch, isHe) => {
+            if (e <= s) return;
+            const duration = (e - s) / 60;
+            const list = isHe ? tiposHora : tiposRecargo;
+            const search = typeNameMatch.toLowerCase();
+            const timeOfDay = search.includes('nocturn') ? 'nocturn' : 'diurn';
+            let tipo = list.find(t => {
+                const name = (t.nombre || '').toLowerCase();
+                const matchesTime = name.includes(timeOfDay);
+                const isSpecialType = name.includes('dominical') || name.includes('festivo');
+                return isSpecialDay ? (isSpecialType && matchesTime) : (!isSpecialType && matchesTime);
+            });
+            if (!tipo && isSpecialDay) tipo = list.find(t => { const n = (t.nombre || '').toLowerCase(); return n.includes('dominical') || n.includes('festivo'); });
+            if (!tipo) tipo = list.find(t => (t.nombre || '').toLowerCase().includes(search));
+            if (tipo) {
+                const existing = breakdownItems.find(item => item.typeId === tipo.id && item.isHe === isHe);
+                if (existing) existing.hours += duration;
+                else breakdownItems.push({ type: tipo.nombre, typeId: tipo.id, hours: duration, isHe });
+            }
+        };
+
+        const processSubInterval = (s, e, isOutsideShift) => {
+            if (e <= s) return;
+            if (s < NIGHT_END && e > NIGHT_END) { processSubInterval(s, NIGHT_END, isOutsideShift); processSubInterval(NIGHT_END, e, isOutsideShift); return; }
+            if (s < NIGHT_START && e > NIGHT_START) { processSubInterval(s, NIGHT_START, isOutsideShift); processSubInterval(NIGHT_START, e, isOutsideShift); return; }
+            const mid = (s + e) / 2;
+            const isNight = mid >= NIGHT_START || mid < NIGHT_END;
+            if (isSpecialDay) { addBreakdown(s, e, isNight ? 'Dominical Nocturna' : 'Dominical Diurna', true); }
+            else if (isOutsideShift) { addBreakdown(s, e, isNight ? 'Extra Nocturna' : 'Extra Diurna', true); }
+            else if (!isOutsideShift && isNight) { addBreakdown(s, e, 'Recargo Nocturno', false); }
+        };
+
+        const processInterval = (s, e) => {
+            if (e <= s) return;
+            if (isSpecialDay) { processSubInterval(s, e, true); return; }
+            if (s < baseStart && e > baseStart) { processInterval(s, baseStart); processInterval(baseStart, e); return; }
+            if (s < baseEnd && e > baseEnd) { processInterval(s, baseEnd); processInterval(baseEnd, e); return; }
+            processSubInterval(s, e, e <= baseStart || s >= baseEnd);
+        };
+
+        processInterval(start, end);
+        setBreakdown(breakdownItems);
+
+        // Calcular costo total
+        let totalCost = 0;
+        const salario = parseFloat(worker.salario) || 0;
+        const valorHoraBase = salario / 220;
+        breakdownItems.forEach(item => {
+            const list = item.isHe ? tiposHora : tiposRecargo;
+            const tipo = list.find(t => t.id == item.typeId);
+            if (tipo) totalCost += valorHoraBase * (parseFloat(tipo.factor) || 1.0) * item.hours;
+        });
+        if (totalCost > 0) {
+            const selectedRubro = rubros.find(r => r.id == formData.rubroId);
+            const isHE = selectedRubro?.nombre?.toLowerCase().includes('horas extras');
+            const isRec = selectedRubro?.nombre?.toLowerCase().includes('recargo');
+            if (isHE || isRec) setFormData(prev => ({ ...prev, precio: Math.round(totalCost).toString() }));
+        }
+    }, [formData.usuarioId, formData.horaInicio, formData.horaFin, formData.fecha, formData.rubroId, usuarios, tiposHora, tiposRecargo, rubros]);
+
+    useEffect(() => { calculateSmartBreakdown(); }, [calculateSmartBreakdown]);
 
     const handleSelectQuote = (quote) => {
         setFormData(prev => ({
@@ -261,6 +395,11 @@ function GastosTab() {
             nota: quote.descripcion || prev.nota
         }));
         setShowQuoteSelector(false);
+    };
+
+    const handleAdd = () => {
+        resetForm();
+        setShowModal(true);
     };
 
     const handleLegalizar = (gasto) => {
@@ -300,18 +439,21 @@ function GastosTab() {
     const handleSubmit = async () => {
         if (!formData.rubroId) { Alert.alert('Error', 'Seleccione un rubro'); return; }
         const selectedRubro = rubros.find(r => r.id == formData.rubroId);
-        const isHorasExtras = selectedRubro?.nombre === 'Horas Extras';
-        const isRecargo = selectedRubro?.nombre?.toLowerCase() === 'recargo';
-        const isInsumos = selectedRubro?.nombre?.toLowerCase().includes('insumo');
-        const isMaintenance = selectedRubro?.nombre?.toLowerCase().includes('mantenimiento') || selectedRubro?.nombre?.toLowerCase().includes('repuesto');
+        const rubroName = selectedRubro?.nombre?.toLowerCase() || '';
+        const isHorasExtras = rubroName.includes('horas extras') || rubroName.includes('hora extra');
+        const isRecargo = rubroName.includes('recargo');
+        const isInsumos = rubroName.includes('insumo');
+        const isMaintenance = rubroName.includes('mantenimiento') || rubroName.includes('repuesto');
 
-        // Validation for Horas Extras
-        if (isHorasExtras && (!formData.usuarioId || !formData.tipoHoraId || !formData.cantidadHoras)) {
-            Alert.alert('Error', 'Complete Operario, Tipo de Hora y Cantidad'); return;
+        // Validation for Horas Extras / Recargos
+        if ((isHorasExtras || isRecargo) && !formData.usuarioId) {
+            Alert.alert('Error', 'Seleccione un Operario'); return;
         }
-        // Validation for Recargo
-        if (isRecargo && (!formData.usuarioId || !formData.tipoRecargoId || !formData.cantidadHoras)) {
-            Alert.alert('Error', 'Complete Operario, Tipo de Recargo y Cantidad de Horas'); return;
+        if ((isHorasExtras || isRecargo) && (!formData.horaInicio || !formData.horaFin)) {
+            Alert.alert('Error', 'Ingrese Hora Inicio y Hora Fin'); return;
+        }
+        if ((isHorasExtras || isRecargo) && breakdown.length === 0) {
+            Alert.alert('Error', 'No se detectaron horas extras/recargos en el intervalo ingresado'); return;
         }
         // Validation for OP number (required for Horas Extras, Recargos AND Insumos)
         if ((isHorasExtras || isRecargo || isInsumos) && !formData.numeroOP.trim()) {
@@ -342,54 +484,96 @@ function GastosTab() {
 
         try {
             setSaving(true);
-            const gastoData = {
-                rubroId: parseInt(formData.rubroId),
-                proveedorId: formData.proveedorId ? parseInt(formData.proveedorId) : null,
-                usuarioId: formData.usuarioId ? parseInt(formData.usuarioId) : null,
-                maquinaId: formData.maquinaId ? parseInt(formData.maquinaId) : null,
-                tipoHoraId: formData.tipoHoraId ? parseInt(formData.tipoHoraId) : null,
-                tipoRecargoId: formData.tipoRecargoId ? parseInt(formData.tipoRecargoId) : null,
-                precio: parseFloat(formData.precio || 0), fecha: formData.fecha, nota: formData.nota,
-                cantidadHoras: formData.cantidadHoras ? parseFloat(formData.cantidadHoras) : null,
-                anio: new Date(formData.fecha).getFullYear(), mes: new Date(formData.fecha).getMonth() + 1,
-                numeroFactura: (isHorasExtras || isRecargo) ? null : formData.numeroFactura,
-                facturaPdfUrl: (isHorasExtras || isRecargo) ? null : formData.facturaPdfUrl,
-                numeroOP: (isHorasExtras || isRecargo || isInsumos) ? formData.numeroOP : null,
-                esPendiente: formData.esPendiente || false
-            };
 
-            // Quote Update Prompt Logic (Skip if pending OR legalizing)
-            console.log('DEBUG: handleSubmit - isLegalizing (State):', isLegalizing);
-            console.log('DEBUG: handleSubmit - isLegalizing (Ref):', isLegalizingRef.current);
-            console.log('DEBUG: handleSubmit - gastoData:', gastoData);
+            // Si hay breakdown (Horas Extras/Recargos con Hora Inicio/Fin), crear múltiples registros
+            if ((isHorasExtras || isRecargo) && breakdown.length > 0 && !editItem) {
+                const worker = usuarios.find(u => u.id == formData.usuarioId);
+                const salario = parseFloat(worker?.salario) || 0;
+                const valorHoraBase = salario / 220;
 
-            // Use REF for the check to ensure we have the latest value
-            if (!isHorasExtras && gastoData.proveedorId && !gastoData.esPendiente && !isLegalizingRef.current) {
-                const quote = cotizaciones.find(c => c.rubroId == gastoData.rubroId && c.proveedorId == gastoData.proveedorId);
-                if (quote) {
-                    const quotePrice = parseFloat(quote.precioCotizado);
-                    const currentPrice = gastoData.precio;
-                    if (Math.abs(quotePrice - currentPrice) > 1) {
-                        const msg = `El precio ingresado (${new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(currentPrice)}) es diferente a la cotización (${new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(quotePrice)}).\n\n¿Desea actualizar el precio en la cotización?`;
-                        let shouldUpdate = false;
-                        if (Platform.OS === 'web') {
-                            shouldUpdate = window.confirm(msg);
-                            if (shouldUpdate) {
+                const rubroHE = rubros.find(r => r.nombre.toLowerCase().includes('horas extras') || r.nombre.toLowerCase().includes('hora extra'))?.id;
+                const rubroRecargo = rubros.find(r => r.nombre.toLowerCase().includes('recargo'))?.id;
+
+                const promises = breakdown.map(item => {
+                    const list = item.isHe ? tiposHora : tiposRecargo;
+                    const tipo = list.find(t => t.id == item.typeId);
+                    const factor = parseFloat(tipo?.factor) || 1.0;
+                    const itemPrecio = Math.round(valorHoraBase * factor * item.hours);
+
+                    const record = {
+                        rubroId: item.isHe ? (rubroHE || parseInt(formData.rubroId)) : (rubroRecargo || parseInt(formData.rubroId)),
+                        proveedorId: null,
+                        usuarioId: parseInt(formData.usuarioId),
+                        maquinaId: null,
+                        tipoHoraId: item.isHe ? parseInt(item.typeId) : null,
+                        tipoRecargoId: !item.isHe ? parseInt(item.typeId) : null,
+                        precio: itemPrecio,
+                        fecha: formData.fecha,
+                        nota: `Auto-generado (${item.type}): ${formData.nota || ''}`,
+                        cantidadHoras: parseFloat(item.hours.toFixed(2)),
+                        anio: parseInt(formData.fecha.split('-')[0]),
+                        mes: parseInt(formData.fecha.split('-')[1]),
+                        numeroFactura: null,
+                        facturaPdfUrl: null,
+                        numeroOP: formData.numeroOP || null,
+                        esPendiente: false
+                    };
+                    return produccionApi.createGasto(record);
+                });
+                await Promise.all(promises);
+            } else {
+                // Lógica estándar de un solo registro
+                const gastoData = {
+                    rubroId: parseInt(formData.rubroId),
+                    proveedorId: formData.proveedorId ? parseInt(formData.proveedorId) : null,
+                    usuarioId: formData.usuarioId ? parseInt(formData.usuarioId) : null,
+                    maquinaId: formData.maquinaId ? parseInt(formData.maquinaId) : null,
+                    tipoHoraId: formData.tipoHoraId ? parseInt(formData.tipoHoraId) : null,
+                    tipoRecargoId: formData.tipoRecargoId ? parseInt(formData.tipoRecargoId) : null,
+                    precio: parseFloat(formData.precio || 0), fecha: formData.fecha, nota: formData.nota,
+                    cantidadHoras: formData.cantidadHoras ? parseFloat(formData.cantidadHoras) : null,
+                    anio: parseInt(formData.fecha.split('-')[0]),
+                    mes: parseInt(formData.fecha.split('-')[1]),
+                    numeroFactura: (isHorasExtras || isRecargo) ? null : formData.numeroFactura,
+                    facturaPdfUrl: (isHorasExtras || isRecargo) ? null : formData.facturaPdfUrl,
+                    numeroOP: (isHorasExtras || isRecargo || isInsumos) ? formData.numeroOP : null,
+                    esPendiente: formData.esPendiente || false
+                };
+
+                // Si es Edición de Horas Extras/Recargos y hubo un cambio en el intervalo (breakdown)
+                if (editItem && (isHorasExtras || isRecargo) && breakdown.length > 0) {
+                    // Tomamos el primer item del breakdown para actualizar el registro actual
+                    // (Si el intervalo ahora genera múltiples registros, el usuario debería borrar y re-crear, 
+                    // pero al menos evitamos el error 400 enviando datos calculados)
+                    const first = breakdown[0];
+                    gastoData.tipoHoraId = first.isHe ? parseInt(first.typeId) : null;
+                    gastoData.tipoRecargoId = !first.isHe ? parseInt(first.typeId) : null;
+                    gastoData.cantidadHoras = parseFloat(first.hours.toFixed(2));
+                }
+
+                // Quote Update Prompt Logic
+                if (!isHorasExtras && gastoData.proveedorId && !gastoData.esPendiente && !isLegalizingRef.current) {
+                    const quote = cotizaciones.find(c => c.rubroId == gastoData.rubroId && c.proveedorId == gastoData.proveedorId);
+                    if (quote) {
+                        const quotePrice = parseFloat(quote.precioCotizado);
+                        const currentPrice = gastoData.precio;
+                        if (Math.abs(quotePrice - currentPrice) > 1) {
+                            const msg = `El precio ingresado (${formatCurrency(currentPrice)}) es diferente a la cotización (${formatCurrency(quotePrice)}).\n\n¿Desea actualizar el precio en la cotización?`;
+                            if (Platform.OS === 'web' && window.confirm(msg)) {
                                 try {
                                     await produccionApi.updateCotizacion(quote.id, { ...quote, precioCotizado: currentPrice });
                                     const updated = await produccionApi.getCotizaciones(anio, mes);
                                     setCotizaciones(updated);
-                                } catch (e) {
-                                    console.error('Error auto-updating quote:', e);
-                                }
+                                } catch (e) { console.error('Error auto-updating quote:', e); }
                             }
                         }
                     }
                 }
+
+                if (editItem) { await produccionApi.updateGasto(editItem.id, { ...gastoData, id: editItem.id }); }
+                else { await produccionApi.createGasto(gastoData); }
             }
 
-            if (editItem) { await produccionApi.updateGasto(editItem.id, { ...gastoData, id: editItem.id }); }
-            else { await produccionApi.createGasto(gastoData); }
             Alert.alert('Éxito', editItem ? 'Gasto actualizado' : 'Gasto registrado');
             setShowModal(false); resetForm(); loadGastos();
         } catch (error) { Alert.alert('Error', 'No se pudo guardar'); }
@@ -403,8 +587,8 @@ function GastosTab() {
     };
 
     const selectedRubroName = rubros.find(r => r.id == formData.rubroId)?.nombre?.toLowerCase() || '';
-    const isHorasExtras = selectedRubroName === 'horas extras';
-    const isRecargo = selectedRubroName === 'recargo';
+    const isHorasExtras = selectedRubroName.includes('horas extras') || selectedRubroName.includes('hora extra');
+    const isRecargo = selectedRubroName.includes('recargo');
     const isInsumos = selectedRubroName.includes('insumo');
     const isMaintenance = selectedRubroName.includes('mantenimiento') || selectedRubroName.includes('repuesto');
 
@@ -451,6 +635,12 @@ function GastosTab() {
 
         // Filtro Máquina (Dinámico)
         if (showMachineFilter && filterMaquinaId && g.maquinaId?.toString() !== filterMaquinaId) return false;
+
+        // Filtro Proveedor
+        if (filterProveedorId && g.proveedorId?.toString() !== filterProveedorId) return false;
+
+        // Filtro Número de Factura
+        if (filterNumeroFactura && !(g.numeroFactura || '').toLowerCase().includes(filterNumeroFactura.toLowerCase())) return false;
 
         // Filtro Pendientes
         if (filterPending && !g.esPendiente) return false;
@@ -589,6 +779,36 @@ function GastosTab() {
                         </View>
                     )}
 
+                    {/* Filtro Proveedor */}
+                    <View style={styles.filterItem}>
+                        <Picker
+                            selectedValue={filterProveedorId}
+                            onValueChange={setFilterProveedorId}
+                            style={styles.filterPicker}
+                        >
+                            <Picker.Item label="Todos los Proveedores" value="" />
+                            {[...new Map(gastos.filter(g => g.proveedorId && g.proveedorNombre).map(g => [g.proveedorId, { id: g.proveedorId, nombre: g.proveedorNombre }])).values()]
+                                .sort((a, b) => a.nombre.localeCompare(b.nombre))
+                                .map(p => <Picker.Item key={p.id} label={p.nombre} value={p.id.toString()} />)}
+                        </Picker>
+                    </View>
+
+                    {/* Filtro Número de Factura */}
+                    <View style={styles.filterItem}>
+                        <TextInput
+                            style={styles.filterInput}
+                            placeholder="Nro. Factura..."
+                            placeholderTextColor="#9CA3AF"
+                            value={filterNumeroFactura}
+                            onChangeText={setFilterNumeroFactura}
+                        />
+                        {filterNumeroFactura ? (
+                            <TouchableOpacity onPress={() => setFilterNumeroFactura('')} style={styles.clearFilterBtn}>
+                                <Text style={styles.clearFilterText}>✕</Text>
+                            </TouchableOpacity>
+                        ) : null}
+                    </View>
+
                     {/* Filtro Checkbox Pendientes */}
                     <TouchableOpacity
                         style={[styles.filterItem, styles.checkboxFilter, filterPending && styles.checkboxFilterActive]}
@@ -616,7 +836,7 @@ function GastosTab() {
             </View>
 
             {/* Add Button - EXACT SST STYLE */}
-            <TouchableOpacity style={styles.addButton} onPress={() => setShowModal(true)}>
+            <TouchableOpacity style={styles.addButton} onPress={handleAdd}>
                 <Text style={styles.addButtonText}>+ Agregar Gasto</Text>
             </TouchableOpacity>
 
@@ -671,15 +891,15 @@ function GastosTab() {
                                         {gasto.cantidadHoras && <Text style={styles.gastoDetail}>⏱️ {gasto.cantidadHoras} hrs</Text>}
                                     </View>
                                     {/* Show OP number for Horas Extras/Recargos */}
-                                    {gasto.numeroOP && (
+                                    {!!gasto.numeroOP && (
                                         <Text style={styles.gastoNota}>📋 OP: {gasto.numeroOP}</Text>
                                     )}
                                     {/* Show nota if present (for general notes) */}
-                                    {gasto.nota && (
+                                    {!!gasto.nota && (
                                         <Text style={styles.gastoNota}>💬 {gasto.nota}</Text>
                                     )}
-                                    {gasto.numeroFactura && <Text style={styles.gastoDetail}>📄 Factura: {gasto.numeroFactura}</Text>}
-                                    {gasto.facturaPdfUrl && Platform.OS === 'web' && (
+                                    {!!gasto.numeroFactura && <Text style={styles.gastoDetail}>📄 Factura: {gasto.numeroFactura}</Text>}
+                                    {!!gasto.facturaPdfUrl && Platform.OS === 'web' && (
                                         <a
                                             href={`${process.env.EXPO_PUBLIC_API_URL?.replace('/api', '') || 'http://192.168.100.227:5144'}${gasto.facturaPdfUrl}`}
                                             target="_blank"
@@ -749,81 +969,132 @@ function GastosTab() {
                                     }}
                                     onPress={() => setShowQuoteSelector(true)}
                                 >
-                                    <Text style={{ color: '#white', fontWeight: 'bold' }}>📋 Importar desde Cotización</Text>
+                                    <Text style={{ color: 'white', fontWeight: 'bold' }}>📋 Importar desde Cotización</Text>
                                 </TouchableOpacity>
                             )}
 
 
-                            {!isLegalizing && (<>
-                                <Text style={styles.label}>Rubro *</Text>
-                                <View style={styles.pickerContainer}>
-                                    <Picker selectedValue={formData.rubroId} onValueChange={(v) => setFormData(p => ({ ...p, rubroId: v }))}>
-                                        <Picker.Item label="Seleccione..." value="" />
-                                        {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
-                                    </Picker>
-                                </View>
-                            </>)}
-
-
-                            {((isHorasExtras || isRecargo) && !isLegalizing) && (<>
-                                <Text style={styles.label}>Operario *</Text>
-                                <View style={styles.pickerContainer}>
-                                    <Picker selectedValue={formData.usuarioId} onValueChange={(v) => setFormData(p => ({ ...p, usuarioId: v }))}>
-                                        <Picker.Item label="Seleccione..." value="" />
-                                        {usuarios.map(u => <Picker.Item key={u.id} label={`${u.nombre}${u.esPorHoras ? ' (Por Horas)' : ''}`} value={u.id.toString()} />)}
-                                    </Picker>
-                                </View>
-                                {isHorasExtras && (<>
-                                    <Text style={styles.label}>Tipo de Hora *</Text>
+                            {!isLegalizing && (
+                                <View style={{ marginBottom: 15 }}>
+                                    <Text style={styles.label}>Rubro *</Text>
                                     <View style={styles.pickerContainer}>
-                                        <Picker selectedValue={formData.tipoHoraId} onValueChange={(v) => setFormData(p => ({ ...p, tipoHoraId: v }))}>
+                                        <Picker selectedValue={formData.rubroId} onValueChange={(v) => setFormData(p => ({ ...p, rubroId: v }))}>
                                             <Picker.Item label="Seleccione..." value="" />
-                                            {tiposHora.map(t => <Picker.Item key={t.id} label={`${t.nombre} (x${t.factor})`} value={t.id.toString()} />)}
+                                            {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
                                         </Picker>
                                     </View>
-                                </>)}
-                                {isRecargo && (<>
-                                    <Text style={styles.label}>Tipo de Recargo *</Text>
+                                </View>
+                            )}
+
+
+                            {((isHorasExtras || isRecargo) && !isLegalizing) && (
+                                <View style={{ marginBottom: 15 }}>
+                                    <Text style={styles.label}>Operario *</Text>
                                     <View style={styles.pickerContainer}>
-                                        <Picker selectedValue={formData.tipoRecargoId} onValueChange={(v) => setFormData(p => ({ ...p, tipoRecargoId: v }))}>
+                                        <Picker selectedValue={formData.usuarioId} onValueChange={(v) => setFormData(p => ({ ...p, usuarioId: v }))}>
                                             <Picker.Item label="Seleccione..." value="" />
-                                            {tiposRecargo.map(t => <Picker.Item key={t.id} label={`${t.nombre} (x${t.factor})`} value={t.id.toString()} />)}
+                                            {usuarios.map(u => <Picker.Item key={u.id} label={`${u.nombre}${u.esPorHoras ? ' (Por Horas)' : ''}`} value={u.id.toString()} />)}
                                         </Picker>
                                     </View>
-                                </>)}
-                                <Text style={styles.label}>Cantidad Horas *</Text>
-                                <TextInput style={styles.input} value={formData.cantidadHoras} onChangeText={(t) => setFormData(p => ({ ...p, cantidadHoras: t }))} keyboardType="numeric" placeholder="Ej: 2.5" />
-                            </>)}
 
+                                    <Text style={styles.label}>Fecha *</Text>
+                                    {Platform.OS === 'web' ? (
+                                        <input type="date" value={formData.fecha} onChange={(e) => setFormData(p => ({ ...p, fecha: e.target.value }))} style={{ padding: 12, fontSize: 16, borderRadius: 8, border: '1px solid #D1D5DB', backgroundColor: '#F9FAFB', width: '100%', boxSizing: 'border-box', marginBottom: 10 }} />
+                                    ) : (
+                                        <TextInput style={styles.input} value={formData.fecha} onChangeText={(t) => setFormData(p => ({ ...p, fecha: t }))} placeholder="YYYY-MM-DD" />
+                                    )}
 
+                                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.label}>Hora Inicio *</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                value={formData.horaInicio}
+                                                onChangeText={(t) => setFormData(p => ({ ...p, horaInicio: t }))}
+                                                placeholder="HH:MM"
+                                            />
+                                        </View>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.label}>Hora Fin *</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                value={formData.horaFin}
+                                                onChangeText={(t) => setFormData(p => ({ ...p, horaFin: t }))}
+                                                placeholder="HH:MM"
+                                            />
+                                        </View>
+                                    </View>
 
-                            {(isMaintenance && !isLegalizing) && (<>
-                                <Text style={styles.label}>Máquina *</Text>
-                                <View style={styles.pickerContainer}>
-                                    <Picker selectedValue={formData.maquinaId} onValueChange={(v) => setFormData(p => ({ ...p, maquinaId: v }))}>
-                                        <Picker.Item label="Seleccione..." value="" />
-                                        {maquinas.map(m => <Picker.Item key={m.id} label={m.nombre} value={m.id.toString()} />)}
-                                    </Picker>
-                                </View>
-                            </>)}
-
-                            {(!isHorasExtras && !isRecargo && formData.rubroId) && (<>
-                                <Text style={styles.label}>Proveedor {formData.esPendiente && !isLegalizing ? '(Opcional por ahora)' : ''}</Text>
-                                <View style={styles.pickerContainer}>
-                                    <Picker selectedValue={formData.proveedorId} onValueChange={(v) => {
-                                        setFormData(p => ({ ...p, proveedorId: v }));
-                                    }}>
-                                        <Picker.Item label="Seleccione..." value="" />
-                                        {proveedores
-                                            .filter(p => !formData.rubroId || p.rubroId?.toString() === formData.rubroId)
-                                            .map(p => <Picker.Item key={p.id} label={`${p.nombre}${p.precioCotizado ? ` - ${formatCurrency(p.precioCotizado)}` : ''}`} value={p.id.toString()} />)
+                                    {!!formData.usuarioId && (() => {
+                                        const worker = usuarios.find(u => u.id?.toString() === formData.usuarioId.toString());
+                                        const hasSalary = (parseFloat(worker?.salario) || 0) > 0;
+                                        if (!hasSalary) {
+                                            return (
+                                                <View style={{ backgroundColor: '#FFF7ED', padding: 10, borderRadius: 8, marginBottom: 15, borderLeftWidth: 4, borderLeftColor: '#F97316' }}>
+                                                    <Text style={{ fontWeight: 'bold', color: '#9A3412', marginBottom: 5 }}>⚠️ Falta Salario:</Text>
+                                                    <Text style={{ fontSize: 13, color: '#9A3412' }}>Este operario no tiene un salario registrado. No se podrá calcular el costo de las horas extras.</Text>
+                                                </View>
+                                            );
                                         }
-                                    </Picker>
+                                        return null;
+                                    })()}
+
+                                    {breakdown.length > 0 && (
+                                        <View style={{ backgroundColor: '#F0F9FF', padding: 10, borderRadius: 8, marginBottom: 15, borderLeftWidth: 4, borderLeftColor: '#0EA5E9' }}>
+                                            <Text style={{ fontWeight: 'bold', color: '#0369A1', marginBottom: 5 }}>📊 Desglose Automático:</Text>
+                                            {breakdown.map((item, idx) => (
+                                                <Text key={idx} style={{ fontSize: 13, color: '#0C4A6E' }}>
+                                                    • {item.type}: <Text style={{ fontWeight: 'bold' }}>{item.hours.toFixed(2)}h</Text>
+                                                </Text>
+                                            ))}
+                                            <Text style={{ fontSize: 11, color: '#64748B', marginTop: 5, fontStyle: 'italic' }}>
+                                                * Se crearán registros separados automáticamente.
+                                            </Text>
+                                        </View>
+                                    )}
+
+                                    {!!formData.horaInicio && !!formData.horaFin && breakdown.length === 0 && (
+                                        <View style={{ backgroundColor: '#FEF2F2', padding: 10, borderRadius: 8, marginBottom: 15, borderLeftWidth: 4, borderLeftColor: '#EF4444' }}>
+                                            <Text style={{ fontWeight: 'bold', color: '#991B1B', marginBottom: 5 }}>ℹ️ Sin horas adicionales:</Text>
+                                            <Text style={{ fontSize: 13, color: '#7F1D1D' }}>El intervalo coincide con el turno o no genera extras/recargos.</Text>
+                                        </View>
+                                    )}
                                 </View>
-                            </>)}
+                            )}
+
+
+
+                            {(isMaintenance && !isLegalizing) && (
+                                <View style={{ marginBottom: 15 }}>
+                                    <Text style={styles.label}>Máquina *</Text>
+                                    <View style={styles.pickerContainer}>
+                                        <Picker selectedValue={formData.maquinaId} onValueChange={(v) => setFormData(p => ({ ...p, maquinaId: v }))}>
+                                            <Picker.Item label="Seleccione..." value="" />
+                                            {maquinas.map(m => <Picker.Item key={m.id} label={m.nombre} value={m.id.toString()} />)}
+                                        </Picker>
+                                    </View>
+                                </View>
+                            )}
+
+                            {(!isHorasExtras && !isRecargo && !!formData.rubroId) && (
+                                <View style={{ marginBottom: 15 }}>
+                                    <Text style={styles.label}>Proveedor {formData.esPendiente && !isLegalizing ? '(Opcional por ahora)' : ''}</Text>
+                                    <View style={styles.pickerContainer}>
+                                        <Picker selectedValue={formData.proveedorId} onValueChange={(v) => {
+                                            setFormData(p => ({ ...p, proveedorId: v }));
+                                        }}>
+                                            <Picker.Item label="Seleccione..." value="" />
+                                            {proveedores
+                                                .filter(p => !formData.rubroId || p.rubroId?.toString() === formData.rubroId)
+                                                .map(p => <Picker.Item key={p.id} label={`${p.nombre}${p.precioCotizado ? ` - ${formatCurrency(p.precioCotizado)}` : ''}`} value={p.id.toString()} />)
+                                            }
+                                        </Picker>
+                                    </View>
+                                </View>
+                            )}
 
                             {/* Checkbox de Pendiente - Hide when Legalizing */}
-                            {!isLegalizing && !isHorasExtras && !isRecargo && formData.rubroId && (
+                            {!isLegalizing && !isHorasExtras && !isRecargo && !!formData.rubroId && (
                                 <TouchableOpacity
                                     style={styles.checkboxContainer}
                                     onPress={() => setFormData(p => ({ ...p, esPendiente: !p.esPendiente }))}
@@ -838,78 +1109,88 @@ function GastosTab() {
                                 </TouchableOpacity>
                             )}
 
-                            {formData.rubroId && (<>
-                                {!isLegalizing && (
-                                    <Text style={styles.label}>Fecha</Text>
-                                )}
-                                {!isLegalizing && (Platform.OS === 'web' ? (
-                                    <input type="date" value={formData.fecha} onChange={(e) => setFormData(p => ({ ...p, fecha: e.target.value }))} style={{ padding: 12, fontSize: 16, borderRadius: 8, border: '1px solid #D1D5DB', backgroundColor: '#F9FAFB', width: '100%', boxSizing: 'border-box', marginBottom: 10 }} />
-                                ) : (
-                                    <TextInput style={styles.input} value={formData.fecha} onChangeText={(t) => setFormData(p => ({ ...p, fecha: t }))} placeholder="YYYY-MM-DD" />
-                                ))}
-
-                                {/* OP Number field - ONLY for Horas Extras and Recargos, BEFORE price */}
-                                {(isHorasExtras || isRecargo || isInsumos) && (<>
-                                    <Text style={styles.label}>Número de OP (Orden de Producción) *</Text>
-                                    <TextInput
-                                        style={styles.input}
-                                        value={formData.numeroOP}
-                                        onChangeText={(t) => setFormData(p => ({ ...p, numeroOP: t }))}
-                                        placeholder="Ej: OP-12345 o número de orden"
-                                    />
-                                </>)}
-
-                                {/* Invoice fields - BEFORE price, only for non-Horas Extras and non-Recargo */}
-                                {!isHorasExtras && !isRecargo && (<>
-                                    <Text style={styles.label}>Número de Factura *</Text>
-                                    <TextInput
-                                        style={styles.input}
-                                        value={formData.numeroFactura}
-                                        onChangeText={(t) => setFormData(p => ({ ...p, numeroFactura: t }))}
-                                        placeholder="Ej: FAC-001234"
-                                    />
-
-                                    <Text style={styles.label}>PDF Factura (opcional)</Text>
-                                    {Platform.OS === 'web' ? (
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                                            <input
-                                                type="file"
-                                                accept=".pdf"
-                                                onChange={async (e) => {
-                                                    const file = e.target.files[0];
-                                                    if (file) {
-                                                        try {
-                                                            const result = await produccionApi.uploadFactura(file);
-                                                            setFormData(p => ({ ...p, facturaPdfUrl: result.url }));
-                                                            Alert.alert('Éxito', 'PDF subido correctamente');
-                                                        } catch (err) {
-                                                            Alert.alert('Error', 'No se pudo subir el PDF');
-                                                        }
-                                                    }
-                                                }}
-                                                style={{ padding: 8 }}
-                                            />
-                                            {formData.facturaPdfUrl && (
-                                                <a href={`${process.env.EXPO_PUBLIC_API_URL?.replace('/api', '') || 'http://192.168.100.227:5144'}${formData.facturaPdfUrl}`} target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB' }}>
-                                                    📄 Ver PDF
-                                                </a>
+                            {!!formData.rubroId && (
+                                <View style={{ marginBottom: 15 }}>
+                                    {!isLegalizing && !isHorasExtras && !isRecargo && (
+                                        <View>
+                                            <Text style={styles.label}>Fecha</Text>
+                                            {Platform.OS === 'web' ? (
+                                                <input type="date" value={formData.fecha} onChange={(e) => setFormData(p => ({ ...p, fecha: e.target.value }))} style={{ padding: 12, fontSize: 16, borderRadius: 8, border: '1px solid #D1D5DB', backgroundColor: '#F9FAFB', width: '100%', boxSizing: 'border-box', marginBottom: 10 }} />
+                                            ) : (
+                                                <TextInput style={styles.input} value={formData.fecha} onChangeText={(t) => setFormData(p => ({ ...p, fecha: t }))} placeholder="YYYY-MM-DD" />
                                             )}
                                         </View>
-                                    ) : (
-                                        <Text style={styles.input}>Función de PDF solo disponible en Web</Text>
                                     )}
-                                </>)}
 
-                                <Text style={styles.label}>Precio * {(isHorasExtras || isRecargo) ? (formData.numeroOP.trim() ? '(editable con OP)' : '(ingrese OP primero)') : (!formData.esPendiente && !formData.numeroFactura.trim() ? '(ingrese factura primero)' : '')}</Text>
-                                <TextInput
-                                    style={[styles.input, ((isHorasExtras || isRecargo) ? !formData.numeroOP.trim() : (!formData.esPendiente && !formData.numeroFactura.trim())) && styles.inputDisabled]}
-                                    value={formData.precio}
-                                    onChangeText={(t) => setFormData(p => ({ ...p, precio: t }))}
-                                    keyboardType="numeric"
-                                    placeholder="$ 0"
-                                    editable={(isHorasExtras || isRecargo) ? !!formData.numeroOP.trim() : (formData.esPendiente || !!formData.numeroFactura.trim())}
-                                />
-                            </>)}
+                                    {/* OP Number field - ONLY for Horas Extras and Recargos, BEFORE price */}
+                                    {(isHorasExtras || isRecargo || isInsumos) && (
+                                        <View style={{ marginBottom: 10 }}>
+                                            <Text style={styles.label}>Número de OP (Orden de Producción) *</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                value={formData.numeroOP}
+                                                onChangeText={(t) => setFormData(p => ({ ...p, numeroOP: t }))}
+                                                placeholder="Ej: OP-12345 o número de orden"
+                                            />
+                                        </View>
+                                    )}
+
+                                    {/* Invoice fields - BEFORE price, only for non-Horas Extras and non-Recargo */}
+                                    {!isHorasExtras && !isRecargo && (
+                                        <View style={{ marginBottom: 10 }}>
+                                            <Text style={styles.label}>Número de Factura *</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                value={formData.numeroFactura}
+                                                onChangeText={(t) => setFormData(p => ({ ...p, numeroFactura: t }))}
+                                                placeholder="Ej: FAC-001234"
+                                            />
+
+                                            <Text style={styles.label}>PDF Factura (opcional)</Text>
+                                            {Platform.OS === 'web' ? (
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                                                    <input
+                                                        type="file"
+                                                        accept=".pdf"
+                                                        onChange={async (e) => {
+                                                            const file = e.target.files[0];
+                                                            if (file) {
+                                                                try {
+                                                                    const result = await produccionApi.uploadFactura(file);
+                                                                    setFormData(p => ({ ...p, facturaPdfUrl: result.url }));
+                                                                    Alert.alert('Éxito', 'PDF subido correctamente');
+                                                                } catch (err) {
+                                                                    Alert.alert('Error', 'No se pudo subir el PDF');
+                                                                }
+                                                            }
+                                                        }}
+                                                        style={{ padding: 8 }}
+                                                    />
+                                                    {!!formData.facturaPdfUrl && (
+                                                        <a href={`${process.env.EXPO_PUBLIC_API_URL?.replace('/api', '') || 'http://192.168.100.227:5144'}${formData.facturaPdfUrl}`} target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB' }}>
+                                                            📄 Ver PDF
+                                                        </a>
+                                                    )}
+                                                </View>
+                                            ) : (
+                                                <Text style={styles.input}>Función de PDF solo disponible en Web</Text>
+                                            )}
+                                        </View>
+                                    )}
+
+                                    <View>
+                                        <Text style={styles.label}>Precio * {(isHorasExtras || isRecargo) ? (formData.numeroOP.trim() ? '(editable con OP)' : '(ingrese OP primero)') : (!formData.esPendiente && !formData.numeroFactura.trim() ? '(ingrese factura primero)' : '')}</Text>
+                                        <TextInput
+                                            style={[styles.input, ((isHorasExtras || isRecargo) ? !formData.numeroOP.trim() : (!formData.esPendiente && !formData.numeroFactura.trim())) && styles.inputDisabled]}
+                                            value={formData.precio}
+                                            onChangeText={(t) => setFormData(p => ({ ...p, precio: t }))}
+                                            keyboardType="numeric"
+                                            placeholder="$ 0"
+                                            editable={(isHorasExtras || isRecargo) ? !!formData.numeroOP.trim() : (formData.esPendiente || !!formData.numeroFactura.trim())}
+                                        />
+                                    </View>
+                                </View>
+                            )}
 
                             {/* Cuadro de presupuesto estilo SST - DEBAJO DEL PRECIO */}
                             {presupuestoInfo && (
@@ -2602,11 +2883,13 @@ function SalariosTab() {
     const [showModal, setShowModal] = useState(false);
     const [editItem, setEditItem] = useState(null);
     const [salario, setSalario] = useState('');
+    const [documento, setDocumento] = useState('');
     const [saving, setSaving] = useState(false);
 
     // New operario creation states
     const [newNombre, setNewNombre] = useState('');
     const [newSalario, setNewSalario] = useState('');
+    const [newDocumento, setNewDocumento] = useState('');
     const [showAddModal, setShowAddModal] = useState(false);
 
     const loadData = useCallback(async () => {
@@ -2623,6 +2906,7 @@ function SalariosTab() {
     const handleEdit = (item) => {
         setEditItem(item);
         setSalario(item.salario != null ? item.salario.toString() : '');
+        setDocumento(item.documento || '');
         setShowModal(true);
     };
 
@@ -2630,8 +2914,20 @@ function SalariosTab() {
         if (!salario) { Alert.alert('Error', 'Valor requerido'); return; }
         try {
             setSaving(true);
-            await produccionApi.updateSalario(editItem.id, parseFloat(salario));
-            Alert.alert('Éxito', 'Salario actualizado');
+            // Update salario AND documento via PUT /api/usuarios/:id
+            const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api'}/usuarios/${editItem.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    nombre: editItem.nombre,
+                    salario: parseFloat(salario),
+                    documento: documento.trim(),
+                    activo: true,
+                    esPorHoras: editItem.esPorHoras || false
+                })
+            });
+            if (!response.ok) throw new Error('Error updating');
+            Alert.alert('Éxito', 'Operario actualizado');
             setShowModal(false);
             loadData();
         } catch (error) {
@@ -2661,6 +2957,7 @@ function SalariosTab() {
                 body: JSON.stringify({
                     nombre: newNombre.trim(),
                     salario: parseFloat(newSalario),
+                    documento: newDocumento.trim(),
                     estado: true,
                     activo: true
                 })
@@ -2673,6 +2970,7 @@ function SalariosTab() {
             setShowAddModal(false);
             setNewNombre('');
             setNewSalario('');
+            setNewDocumento('');
             loadData();
         } catch (error) {
             console.error('Error adding operario:', error);
@@ -2704,6 +3002,7 @@ function SalariosTab() {
                     <View key={item.id} style={styles.itemCard}>
                         <View style={styles.itemInfo}>
                             <Text style={styles.itemName}>{item.nombre}</Text>
+                            {item.documento ? <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 1 }}>📋 C.C. {item.documento}</Text> : null}
                             <Text style={styles.itemDetail}>💰 Salario: {formatCurrency(item.salario)}</Text>
                         </View>
                         <View style={styles.itemActions}>
@@ -2719,17 +3018,25 @@ function SalariosTab() {
             {/* Edit Salary Modal */}
             <Modal visible={showModal} transparent animationType="slide" onRequestClose={() => setShowModal(false)}>
                 <View style={styles.modalOverlay}><View style={styles.modalContentSmall}>
-                    <Text style={styles.modalTitle}>Ajustar Salario</Text>
+                    <Text style={styles.modalTitle}>Ajustar Operario</Text>
                     <Text style={[styles.label, { color: '#374151', marginBottom: 16, textAlign: 'center' }]}>{editItem?.nombre}</Text>
 
-                    <Text style={styles.label}>Nuevo Salario Mensual</Text>
+                    <Text style={styles.label}>Documento (C.C.)</Text>
+                    <TextInput
+                        style={styles.input}
+                        value={documento}
+                        onChangeText={setDocumento}
+                        keyboardType="numeric"
+                        placeholder="Ej: 1234567890"
+                    />
+
+                    <Text style={styles.label}>Salario Mensual</Text>
                     <TextInput
                         style={styles.input}
                         value={salario}
                         onChangeText={setSalario}
                         keyboardType="numeric"
                         placeholder="Ej: 1500000"
-                        autoFocus={true}
                     />
 
                     <View style={styles.modalActions}>
@@ -2755,6 +3062,15 @@ function SalariosTab() {
                         autoFocus={true}
                     />
 
+                    <Text style={styles.label}>Documento (C.C.)</Text>
+                    <TextInput
+                        style={styles.input}
+                        value={newDocumento}
+                        onChangeText={setNewDocumento}
+                        keyboardType="numeric"
+                        placeholder="Ej: 1234567890"
+                    />
+
                     <Text style={styles.label}>Salario Mensual *</Text>
                     <TextInput
                         style={styles.input}
@@ -2765,7 +3081,7 @@ function SalariosTab() {
                     />
 
                     <View style={styles.modalActions}>
-                        <TouchableOpacity style={styles.cancelButton} onPress={() => { setShowAddModal(false); setNewNombre(''); setNewSalario(''); }}><Text style={styles.cancelButtonText}>Cancelar</Text></TouchableOpacity>
+                        <TouchableOpacity style={styles.cancelButton} onPress={() => { setShowAddModal(false); setNewNombre(''); setNewSalario(''); setNewDocumento(''); }}><Text style={styles.cancelButtonText}>Cancelar</Text></TouchableOpacity>
                         <TouchableOpacity style={[styles.submitButton, { backgroundColor: '#10B981' }, saving && styles.submitButtonDisabled]} onPress={handleAddOperario} disabled={saving}>
                             {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>Agregar</Text>}
                         </TouchableOpacity>

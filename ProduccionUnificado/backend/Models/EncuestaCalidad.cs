@@ -15,6 +15,7 @@ public class EncuestaCalidad
     public bool CorrectoRegistroFormatos { get; set; }
     public bool AprobacionArranque { get; set; }
     public string? Observacion { get; set; }
+    public bool ContieneMuestraFisica { get; set; } = true;
     public DateTime FechaCreacion { get; set; } = DateTime.Now;
     public string? CreadoPor { get; set; }
     

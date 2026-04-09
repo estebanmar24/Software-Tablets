@@ -23,4 +23,8 @@ public class Talleres_Personal
     public bool Estado { get; set; } = true;
     
     public DateTime FechaCreacion { get; set; } = DateTime.Now;
+    
+    public int? HorarioId { get; set; }
+    [ForeignKey("HorarioId")]
+    public virtual Horario? Horario { get; set; }
 }

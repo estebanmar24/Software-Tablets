@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Talleres y Despachos Gastos Screen
  * EXACT visual copy of ProduccionGastosScreen with Talleres-specific logic.
  */
@@ -62,6 +62,18 @@ const formatDate = (dateString) => {
 };
 
 // ===================== MAIN COMPONENT =====================
+// 2026-03-16 Fix: Automated Sunday/Holiday detection factors
+const COLOMBIAN_HOLIDAYS = [
+    // 2025
+    '2025-01-01', '2025-01-06', '2025-03-24', '2025-04-17', '2025-04-18', '2025-05-01',
+    '2025-06-02', '2025-06-23', '2025-06-30', '2025-07-20', '2025-08-07', '2025-08-18',
+    '2025-10-13', '2025-11-03', '2025-11-17', '2025-12-08', '2025-12-25',
+    // 2026
+    '2026-01-01', '2026-01-12', '2026-03-23', '2026-04-02', '2026-04-03', '2026-05-01',
+    '2026-05-18', '2026-06-08', '2026-06-15', '2026-06-29', '2026-07-20', '2026-08-07',
+    '2026-08-17', '2026-10-12', '2026-11-02', '2026-11-16', '2026-12-08', '2026-12-25'
+];
+
 export default function TalleresGastosScreen({ navigation }) {
     const { colors } = useTheme();
     const [activeTab, setActiveTab] = useState('gastos');
@@ -103,17 +115,21 @@ function GastosTab() {
     const [rubros, setRubros] = useState([]);
     const [proveedores, setProveedores] = useState([]);
     const [personal, setPersonal] = useState([]);
+    const [horarios, setHorarios] = useState([]);
     const [tiposHora, setTiposHora] = useState([]);
     const [tiposRecargo, setTiposRecargo] = useState([]);
+    const [breakdown, setBreakdown] = useState([]); // Smart OT breakdown
     const [gastos, setGastos] = useState([]);
     const [resumen, setResumen] = useState(null);
     const [resumenAnual, setResumenAnual] = useState(null);
     const [presupuestoInfo, setPresupuestoInfo] = useState(null);
 
-    // Filters for Main List
     const [filterRubro, setFilterRubro] = useState('');
     const [filterSecondary, setFilterSecondary] = useState(''); // personalId or providerId
     const [filterFecha, setFilterFecha] = useState('');
+    const [filterPending, setFilterPending] = useState(false);
+    const [filterProveedor, setFilterProveedor] = useState('');
+    const [filterNumeroFactura, setFilterNumeroFactura] = useState('');
 
 
     const filteredGastos = useMemo(() => {
@@ -152,9 +168,19 @@ function GastosTab() {
 
                 if (searchDate && !g.fecha.startsWith(searchDate)) return false;
             }
+
+            // Filtro Proveedor
+            if (filterProveedor && g.proveedorId?.toString() !== filterProveedor) return false;
+
+            // Filtro Número de Factura
+            if (filterNumeroFactura && !(g.numeroFactura || '').toLowerCase().includes(filterNumeroFactura.toLowerCase())) return false;
+
+            // Filtro Pendientes
+            if (filterPending && !(g.esPendiente || g.EsPendiente)) return false;
+
             return true;
         });
-    }, [gastos, filterRubro, filterFecha, filterSecondary]);
+    }, [gastos, filterRubro, filterFecha, filterSecondary, filterPending, filterProveedor, filterNumeroFactura]);
 
     // FILTER RUBROS DROPDOWN (Talleres - Only show rubros with expenses in current month)
     const rubrosConGastos = useMemo(() => {
@@ -176,7 +202,8 @@ function GastosTab() {
     const [formData, setFormData] = useState({
         rubroId: '', proveedorId: '', numeroFactura: '', precio: '',
         fecha: new Date().toISOString().split('T')[0], observaciones: '', facturaPdfUrl: '',
-        personalId: '', tipoHoraId: '', tipoRecargoId: '', cantidadHoras: '', numeroOP: '', esPendiente: false
+        personalId: '', tipoHoraId: '', tipoRecargoId: '', cantidadHoras: '', numeroOP: '', esPendiente: false,
+        horaInicio: '', horaFin: ''
     });
     const [saving, setSaving] = useState(false);
     // Auto-fill price logic
@@ -187,22 +214,25 @@ function GastosTab() {
     const loadData = useCallback(async () => {
         setLoading(true);
         try {
-            const [rubrosData, proveedoresData, gastosData, graficasData, cotData, personalData, maestrosData] = await Promise.all([
+            const [rubrosData, proveedoresData, gastosData, graficasData, cotData, personalData, maestrosData, horariosData] = await Promise.all([
                 talleresApi.getRubros(),
                 talleresApi.getProveedores(),
                 talleresApi.getGastos(anio, mes),
                 talleresApi.getGraficas(anio, mes),
                 talleresApi.getCotizaciones(anio, mes),
                 talleresApi.getPersonal(),
-                talleresApi.getMaestros()
+                talleresApi.getMaestros(),
+                talleresApi.getHorarios()
             ]);
             console.log('DEBUG: Rubros loaded:', rubrosData);
             console.log('DEBUG: Proveedores loaded:', proveedoresData);
             console.log('DEBUG: Personal loaded:', personalData);
+            console.log('DEBUG: Horarios loaded:', horariosData);
             setRubros(rubrosData);
             setProveedores(proveedoresData);
             setCotizaciones(cotData);
             setPersonal(personalData || []);
+            setHorarios(horariosData || []);
             setTiposHora(maestrosData.tiposHora || []);
             setTiposRecargo(maestrosData.tiposRecargo || []);
 
@@ -239,38 +269,269 @@ function GastosTab() {
     useEffect(() => { loadData(); }, [loadData]);
 
     const calculatePrice = useCallback(() => {
-        const selectedRubro = rubros.find(r => r.id == formData.rubroId);
+        const selectedRubro = rubros.find(r => (r.id || r.Id) == formData.rubroId);
         const isHorasExtras = selectedRubro?.nombre?.toLowerCase().includes('horas extras');
         const isRecargo = selectedRubro?.nombre?.toLowerCase().includes('recargo');
 
-        console.log('DEBUG Calc:', { isHorasExtras, isRecargo, personalId: formData.personalId, cantidadHoras: formData.cantidadHoras });
-
         if ((isHorasExtras || isRecargo) && formData.personalId && formData.cantidadHoras) {
             const worker = personal.find(p => (p.id || p.Id)?.toString() === formData.personalId.toString());
-            if (!worker) { console.log('DEBUG Calc: Worker not found'); return; }
+            if (!worker) return;
 
-            const salario = parseFloat(worker.salario || worker.Salario) || 0;
+            // Defensive salary parsing (remove dots if it's a string)
+            let sRaw = worker.salario || worker.Salario || 0;
+            if (typeof sRaw === 'string') sRaw = sRaw.replace(/\./g, '').replace(/,/g, '.');
+            const salario = parseFloat(sRaw) || 0;
             const valorHoraBase = salario / 220;
             const horas = parseFloat(formData.cantidadHoras) || 0;
-            let factor = 0; // Initialize to 0 to catch missing types
+            let factor = 0;
 
             if (isHorasExtras && formData.tipoHoraId) {
                 const tipo = tiposHora.find(t => (t.id || t.Id)?.toString() === formData.tipoHoraId.toString());
                 if (tipo) factor = parseFloat(tipo.factor || tipo.Factor);
-                else console.log('DEBUG Calc: Tipo Hora not found');
             } else if (isRecargo && formData.tipoRecargoId) {
                 const tipo = tiposRecargo.find(t => (t.id || t.Id)?.toString() === formData.tipoRecargoId.toString());
                 if (tipo) factor = parseFloat(tipo.factor || tipo.Factor);
-                else console.log('DEBUG Calc: Tipo Recargo not found');
             } else {
-                return; // Missing type
+                return;
             }
 
-            console.log('DEBUG Calc:', { salario, valorHoraBase, factor, horas, total: Math.round(valorHoraBase * factor * horas) });
             const total = Math.round(valorHoraBase * factor * horas);
             setFormData(prev => ({ ...prev, precio: total.toString() }));
         }
     }, [formData.rubroId, formData.personalId, formData.cantidadHoras, formData.tipoHoraId, formData.tipoRecargoId, rubros, personal, tiposHora, tiposRecargo]);
+
+    // SMART OT Logic
+    const calculateSmartBreakdown = useCallback(() => {
+        if (!formData.personalId || !formData.horaInicio || !formData.horaFin || !formData.fecha) {
+            setBreakdown([]);
+            return;
+        }
+
+        const worker = personal.find(p => (p.id || p.Id) == formData.personalId);
+        if (!worker) {
+            setBreakdown([]);
+            return;
+        }
+
+        // No longer relying on schedule from DB
+
+        const parseDate = (d) => {
+            if (!d) return new Date();
+            const cleanDate = d.trim();
+            if (cleanDate.includes('/')) {
+                const [day, month, year] = cleanDate.split('/');
+                return new Date(`${year}-${month}-${day}T12:00:00`);
+            }
+            return new Date(cleanDate + 'T12:00:00');
+        };
+
+        const date = parseDate(formData.fecha);
+        const formatISO = (d) => {
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
+
+        const dateISO = formatISO(date);
+        const isSunday = date.getDay() === 0;
+        const isHoliday = COLOMBIAN_HOLIDAYS.includes(dateISO);
+        const isSpecialDay = isSunday || isHoliday;
+        const isSaturday = date.getDay() === 6;
+
+        const toMin = (t) => {
+            if (!t) return 0;
+            const [h, m] = t.split(':').map(Number);
+            return h * 60 + (m || 0);
+        };
+
+        const start = toMin(formData.horaInicio);
+        let end = toMin(formData.horaFin);
+        if (end <= start) end += 24 * 60; // Crosses midnight
+
+        // HARDCODED STANDARD SHIFTS
+        const MonFriShifts = [
+            { start: 6 * 60, end: 14 * 60, name: '6-2' },   // 06:00 - 14:00 (8h)
+            { start: 7 * 60, end: 16 * 60, name: '7-4' },   // 07:00 - 16:00 (9h total, incl 1h lunch)
+            { start: 14 * 60, end: 22 * 60, name: '2-10' }  // 14:00 - 22:00 (8h)
+        ];
+        const SatShift = { start: 8 * 60, end: 12 * 60, name: '8-12' }; // 08:00 - 12:00 (4h)
+
+        let baseStart, baseEnd;
+        if (isSpecialDay) {
+            baseStart = 0; baseEnd = 0; // No base shift on special days
+        } else if (isSaturday) {
+            baseStart = SatShift.start;
+            baseEnd = SatShift.end;
+        } else {
+            // REFINED GUESS SHIFT based on Maximum Overlap
+            let bestShift = null;
+            let maxOverlap = 0;
+
+            MonFriShifts.forEach(s => {
+                const overlapStart = Math.max(s.start, start);
+                const overlapEnd = Math.min(s.end, end);
+                const overlapDuration = overlapEnd - overlapStart;
+
+                if (overlapDuration > maxOverlap) {
+                    maxOverlap = overlapDuration;
+                    bestShift = s;
+                }
+            });
+
+            // Threshold: At least 30 mins overlap to consider it "within shift"
+            if (bestShift && maxOverlap >= 30) {
+                baseStart = bestShift.start;
+                baseEnd = bestShift.end;
+            } else {
+                // If no significant overlap, maybe they are starting OT exactly at the end of a shift
+                const endMatchedShift = MonFriShifts.find(s => Math.abs(s.end - start) <= 15);
+                if (endMatchedShift) {
+                    baseStart = endMatchedShift.start;
+                    baseEnd = endMatchedShift.end;
+                } else {
+                    baseStart = 0; baseEnd = 0;
+                }
+            }
+        }
+
+        const breakdownItems = [];
+
+        // Boundaries (Night time is 7 PM to 6 AM)
+        const NIGHT_START = 19 * 60; // 7 PM
+        const NIGHT_END = 6 * 60;    // 6 AM
+
+        const addBreakdown = (s, e, typeNameMatch, isHe) => {
+            if (e <= s) return;
+            const duration = (e - s) / 60;
+            const list = isHe ? tiposHora : tiposRecargo;
+
+            const search = typeNameMatch.toLowerCase();
+            const timeOfDay = search.includes('nocturn') ? 'nocturn' : 'diurn';
+
+            // Precise finding: Prioritize special types on special days, and normal types on normal days
+            let tipo = list.find(t => {
+                const name = (t.nombre || t.Nombre || "").toLowerCase();
+                const matchesTime = name.includes(timeOfDay);
+                const isSpecialType = name.includes('dominical') || name.includes('festivo');
+
+                if (isSpecialDay) {
+                    return isSpecialType && matchesTime;
+                } else {
+                    return !isSpecialType && matchesTime;
+                }
+            });
+
+            // Fallback 1: If special type with specific time of day not found, just match any special type
+            if (!tipo && isSpecialDay) {
+                tipo = list.find(t => {
+                    const name = (t.nombre || t.Nombre || "").toLowerCase();
+                    return name.includes('dominical') || name.includes('festivo');
+                });
+            }
+
+            // Fallback 2: General match if all else fails
+            if (!tipo) {
+                tipo = list.find(t => (t.nombre || t.Nombre || "").toLowerCase().includes(search));
+            }
+
+            if (tipo) {
+                const typeId = tipo.id || tipo.Id;
+                const typeName = tipo.nombre || tipo.Nombre;
+                const existing = breakdownItems.find(item => item.typeId === typeId && item.isHe === isHe);
+                if (existing) existing.hours += duration;
+                else breakdownItems.push({ type: typeName, typeId, hours: duration, isHe });
+            }
+        };
+
+        const processSubInterval = (s, e, isOutsideShift) => {
+            if (e <= s) return;
+            // Split by night boundaries
+            if (s < NIGHT_END && e > NIGHT_END) {
+                processSubInterval(s, NIGHT_END, isOutsideShift);
+                processSubInterval(NIGHT_END, e, isOutsideShift);
+                return;
+            }
+            if (s < NIGHT_START && e > NIGHT_START) {
+                processSubInterval(s, NIGHT_START, isOutsideShift);
+                processSubInterval(NIGHT_START, e, isOutsideShift);
+                return;
+            }
+
+            const mid = (s + e) / 2;
+            const isNight = mid >= NIGHT_START || mid < NIGHT_END;
+
+            if (isSpecialDay) {
+                if (isNight) addBreakdown(s, e, 'Dominical Nocturna', true);
+                else addBreakdown(s, e, 'Dominical Diurna', true);
+            } else {
+                if (isOutsideShift) {
+                    if (isNight) addBreakdown(s, e, 'Extra Nocturna', true);
+                    else addBreakdown(s, e, 'Extra Diurna', true);
+                } else if (!isOutsideShift && isNight) {
+                    addBreakdown(s, e, 'Recargo Nocturno', false);
+                }
+            }
+        };
+
+        const processInterval = (s, e) => {
+            if (e <= s) return;
+
+            // If special day, everything is outside base shift effectively for OT
+            if (isSpecialDay) {
+                processSubInterval(s, e, true);
+                return;
+            }
+
+            // Split by base shift boundaries
+            if (s < baseStart && e > baseStart) {
+                processInterval(s, baseStart);
+                processInterval(baseStart, e);
+                return;
+            }
+            if (s < baseEnd && e > baseEnd) {
+                processInterval(s, baseEnd);
+                processInterval(baseEnd, e);
+                return;
+            }
+
+            const isOutside = (e <= baseStart || s >= baseEnd);
+            processSubInterval(s, e, isOutside);
+        };
+
+        processInterval(start, end);
+        setBreakdown(breakdownItems);
+
+        // Update total price based on breakdown
+        let totalCost = 0;
+        let sRaw = worker.salario || worker.Salario || 0;
+        if (typeof sRaw === 'string') sRaw = sRaw.replace(/\./g, '').replace(/,/g, '.');
+        const salario = parseFloat(sRaw) || 0;
+        const valorHoraBase = salario / 220;
+
+        breakdownItems.forEach(item => {
+            const list = item.isHe ? tiposHora : tiposRecargo;
+            // Use loose equality for comparison
+            const tipo = list.find(t => (t.id || t.Id) == item.typeId);
+            if (tipo) {
+                const factor = parseFloat(tipo.factor || tipo.Factor) || 1.0;
+                totalCost += valorHoraBase * factor * item.hours;
+            }
+        });
+
+        if (totalCost > 0) {
+            const selectedRubro = rubros.find(r => (r.id || r.Id) == formData.rubroId);
+            const isHorasExtras = selectedRubro?.nombre?.toLowerCase().includes('horas extras');
+            const isRecargo = selectedRubro?.nombre?.toLowerCase().includes('recargo');
+            if (isHorasExtras || isRecargo) {
+                setFormData(prev => ({ ...prev, precio: Math.round(totalCost).toString() }));
+            }
+        }
+    }, [formData.personalId, formData.horaInicio, formData.horaFin, formData.fecha, formData.rubroId, personal, horarios, tiposHora, tiposRecargo, rubros]);
+
+    useEffect(() => {
+        calculateSmartBreakdown();
+    }, [calculateSmartBreakdown]);
 
     // Effect to auto-calculate Overtime/Recargo Price
     useEffect(() => {
@@ -327,7 +588,8 @@ function GastosTab() {
         setFormData({
             rubroId: '', proveedorId: '', numeroFactura: '', precio: '',
             fecha: new Date().toISOString().split('T')[0], observaciones: '', facturaPdfUrl: '',
-            personalId: '', tipoHoraId: '', tipoRecargoId: '', cantidadHoras: '', numeroOP: '', esPendiente: false
+            personalId: '', tipoHoraId: '', tipoRecargoId: '', cantidadHoras: '', numeroOP: '', esPendiente: false,
+            horaInicio: '', horaFin: ''
         });
     };
 
@@ -388,78 +650,96 @@ function GastosTab() {
         const selectedRubro = rubros.find(r => r.id == formData.rubroId);
         const isHorasExtras = selectedRubro?.nombre?.toLowerCase().includes('horas extras');
         const isRecargo = selectedRubro?.nombre?.toLowerCase().includes('recargo');
+        const rubroHEId = rubros.find(r => r.nombre?.toLowerCase().includes('horas extras'))?.id;
+        const rubroRecargoId = rubros.find(r => r.nombre?.toLowerCase().includes('recargo'))?.id;
 
         if (isHorasExtras || isRecargo) {
             if (!formData.personalId) { showAlert('Error', 'Seleccione el personal'); return; }
-            if (isHorasExtras && !formData.tipoHoraId) { showAlert('Error', 'Seleccione el tipo de hora'); return; }
-            if (isRecargo && !formData.tipoRecargoId) { showAlert('Error', 'Seleccione el tipo de recargo'); return; }
-            if (!formData.cantidadHoras) { showAlert('Error', 'Ingrese la cantidad de horas'); return; }
-            // OP Number only mandatory for Overtime
+            if (!formData.horaInicio || !formData.horaFin) { showAlert('Error', 'Ingrese la Hora de Inicio y Fin'); return; }
+            if (breakdown.length === 0 && !editItem) { showAlert('Error', 'El intervalo ingresado no genera horas extras ni recargos según el turno base o falta información del operario.'); return; }
             if (isHorasExtras && (!formData.numeroOP || !formData.numeroOP.trim())) { showAlert('Error', 'Ingrese el Número de OP'); return; }
         } else {
-            // Standard Validation
             if (!formData.proveedorId) { showAlert('Error', 'Seleccione un Proveedor'); return; }
-
-            // Skip Invoice check if Pending
             if (!formData.esPendiente && (!formData.numeroFactura || !formData.numeroFactura.trim())) {
                 showAlert('Error', 'El Número de factura es obligatorio'); return;
             }
         }
 
-        if (!formData.esPendiente && (!formData.precio || isNaN(parseFloat(formData.precio)))) {
+        if (!formData.esPendiente && (!formData.precio || isNaN(parseFloat(formData.precio))) && breakdown.length === 0) {
             showAlert('Error', 'El Precio debe ser un número válido');
             return;
         }
 
         try {
             setSaving(true);
-            const gastoData = {
-                rubroId: parseInt(formData.rubroId),
-                proveedorId: formData.proveedorId ? parseInt(formData.proveedorId) : null,
-                numeroFactura: formData.numeroFactura || (isHorasExtras || isRecargo ? 'NOMINA' : ''), // Default for payroll
-                precio: parseFloat(formData.precio) || 0,
-                fecha: formData.fecha,
-                observaciones: formData.observaciones,
-                facturaPdfUrl: formData.facturaPdfUrl || null,
-                anio: new Date(formData.fecha).getFullYear(),
-                mes: new Date(formData.fecha).getMonth() + 1,
-                personalId: formData.personalId ? parseInt(formData.personalId) : null,
-                tipoHoraId: formData.tipoHoraId ? parseInt(formData.tipoHoraId) : null,
-                tipoRecargoId: formData.tipoRecargoId ? parseInt(formData.tipoRecargoId) : null,
-                cantidadHoras: formData.cantidadHoras ? parseFloat(formData.cantidadHoras) : null,
-                numeroOP: formData.numeroOP || null,
-                esPendiente: formData.esPendiente // Add pending status
-            };
 
-            // For standard expenses check quotes - Skip if Pending or Legalizing
-            if (!isHorasExtras && !isRecargo && !formData.esPendiente && !isLegalizingRef.current) {
-                const quote = cotizaciones.find(c => c.rubroId == gastoData.rubroId && c.proveedorId == gastoData.proveedorId);
-                if (quote) {
-                    const quotePrice = parseFloat(quote.precioCotizado);
-                    const currentPrice = gastoData.precio;
-                    if (Math.abs(quotePrice - currentPrice) > 1 && Platform.OS === 'web') {
-                        if (window.confirm(`Precio diferente a cotización (${formatCurrency(quotePrice)}). ¿Actualizar cotización?`)) {
-                            await talleresApi.updateCotizacion(quote.id, { ...quote, precioCotizado: currentPrice });
-                        }
-                    }
+            // If we have a breakdown, we might be creating multiple records
+            if (breakdown.length > 0 && !editItem) {
+                const worker = personal.find(p => (p.id || p.Id)?.toString() === formData.personalId.toString());
+                let sRaw = worker?.salario || worker?.Salario || 0;
+                if (typeof sRaw === 'string') sRaw = sRaw.replace(/\./g, '').replace(/,/g, '.');
+                const salario = parseFloat(sRaw) || 0;
+                const valorHoraBase = salario / 220;
+
+                const promises = breakdown.map(item => {
+                    const list = item.isHe ? tiposHora : tiposRecargo;
+                    const tipo = list.find(t => (t.id || t.Id) == item.typeId);
+                    const factor = parseFloat(tipo?.factor || tipo?.Factor) || 1.0;
+                    const itemPrecio = Math.round(valorHoraBase * factor * item.hours);
+
+                    const record = {
+                        rubroId: item.isHe ? parseInt(rubroHEId) : parseInt(rubroRecargoId),
+                        proveedorId: null,
+                        numeroFactura: 'NOMINA',
+                        precio: itemPrecio,
+                        fecha: formData.fecha,
+                        observaciones: `Auto-generado (${item.type}): ${formData.observaciones}`,
+                        facturaPdfUrl: null,
+                        anio: new Date(formData.fecha).getFullYear(),
+                        mes: new Date(formData.fecha).getMonth() + 1,
+                        personalId: parseInt(formData.personalId),
+                        tipoHoraId: item.isHe ? parseInt(item.typeId) : null,
+                        tipoRecargoId: !item.isHe ? parseInt(item.typeId) : null,
+                        cantidadHoras: parseFloat(item.hours.toFixed(2)),
+                        numeroOP: formData.numeroOP || 'N/A',
+                        esPendiente: false
+                    };
+                    return talleresApi.createGasto(record);
+                });
+                await Promise.all(promises);
+            } else {
+                // Standard single record logic
+                const gastoData = {
+                    rubroId: parseInt(formData.rubroId),
+                    proveedorId: formData.proveedorId ? parseInt(formData.proveedorId) : null,
+                    numeroFactura: formData.numeroFactura || (isHorasExtras || isRecargo ? 'NOMINA' : ''),
+                    precio: parseFloat(formData.precio) || 0,
+                    fecha: formData.fecha,
+                    observaciones: formData.observaciones,
+                    facturaPdfUrl: formData.facturaPdfUrl || null,
+                    anio: new Date(formData.fecha).getFullYear(),
+                    mes: new Date(formData.fecha).getMonth() + 1,
+                    personalId: formData.personalId ? parseInt(formData.personalId) : null,
+                    tipoHoraId: formData.tipoHoraId ? parseInt(formData.tipoHoraId) : null,
+                    tipoRecargoId: formData.tipoRecargoId ? parseInt(formData.tipoRecargoId) : null,
+                    cantidadHoras: formData.cantidadHoras ? parseFloat(formData.cantidadHoras) : null,
+                    numeroOP: formData.numeroOP || null,
+                    esPendiente: formData.esPendiente
+                };
+
+                if (editItem) {
+                    await talleresApi.updateGasto(editItem.id, { ...gastoData, id: editItem.id });
+                } else {
+                    await talleresApi.createGasto(gastoData);
                 }
             }
 
-            console.log('DEBUG Gasto Payload:', gastoData);
-            // debug removed for cleaner flow
-
-            if (editItem) {
-                await talleresApi.updateGasto(editItem.id, { ...gastoData, id: editItem.id });
-            } else {
-                await talleresApi.createGasto(gastoData);
-            }
-
-            showAlert('Éxito', editItem ? 'Actualizado' : 'Ingresado', () => {
+            showAlert('Éxito', 'Información guardada correctamente.', () => {
                 setShowModal(false); resetForm(); loadData();
             });
         } catch (error) {
             console.error('Error saving gasto:', error);
-            showAlert('Error', 'No se pudo guardar el gasto');
+            showAlert('Error', 'No se pudo guardar la información');
         } finally {
             setSaving(false);
         }
@@ -567,6 +847,35 @@ function GastosTab() {
                             </Picker>
                         </View>
 
+                        {/* Filtro Proveedor */}
+                        <View style={styles.filterItem}>
+                            <Picker selectedValue={filterProveedor} onValueChange={setFilterProveedor}
+                                style={Platform.OS === 'web' ? { height: 35, width: 160, border: 'none', backgroundColor: 'transparent', outline: 'none', fontSize: 13 } : styles.filterPicker}>
+                                <Picker.Item label="Todos los Proveedores" value="" />
+                                {[...new Map(gastos.filter(g => g.proveedorId && g.proveedorNombre).map(g => [g.proveedorId, { id: g.proveedorId, nombre: g.proveedorNombre }])).values()]
+                                    .sort((a, b) => a.nombre.localeCompare(b.nombre))
+                                    .map(p => <Picker.Item key={p.id} label={p.nombre} value={p.id.toString()} />)}
+                            </Picker>
+                        </View>
+
+                        {/* Filtro Número de Factura */}
+                        <View style={styles.filterItem}>
+                            <TextInput
+                                style={Platform.OS === 'web'
+                                    ? { height: 35, border: 'none', borderRadius: 0, padding: '0 8px', fontSize: 13, fontFamily: 'inherit', color: '#374151', outline: 'none', backgroundColor: 'transparent', minWidth: 130 }
+                                    : styles.filterInput}
+                                placeholder="Nro. Factura..."
+                                placeholderTextColor="#9CA3AF"
+                                value={filterNumeroFactura}
+                                onChangeText={setFilterNumeroFactura}
+                            />
+                            {filterNumeroFactura ? (
+                                <TouchableOpacity onPress={() => setFilterNumeroFactura('')} style={styles.clearFilterBtn}>
+                                    <Text style={styles.clearFilterText}>✕</Text>
+                                </TouchableOpacity>
+                            ) : null}
+                        </View>
+
                         {/* Secondary Filter (Dynamic) */}
                         {(() => {
                             const selRubro = rubros.find(r => r.id.toString() === filterRubro);
@@ -590,6 +899,14 @@ function GastosTab() {
                             }
                             return null;
                         })()}
+
+                        {/* Filtro Pendientes */}
+                        <TouchableOpacity
+                            style={{ height: 35, backgroundColor: filterPending ? '#2563EB' : '#FFF', borderWidth: 1, borderColor: filterPending ? '#2563EB' : '#D1D5DB', borderRadius: 5, justifyContent: 'center', paddingHorizontal: 12 }}
+                            onPress={() => setFilterPending(!filterPending)}
+                        >
+                            <Text style={{ color: filterPending ? 'white' : '#374151', fontSize: 13, fontWeight: '500' }}>⏳ Ver solo Pendientes</Text>
+                        </TouchableOpacity>
                     </View>
                 </View>
 
@@ -635,13 +952,13 @@ function GastosTab() {
                                                         {gasto.rubroNombre || gasto.Rubro?.nombre || gasto.Rubro?.Nombre || 'Sin Rubro'}
                                                         {(gasto.creadoPorNombre || gasto.CreadoPorNombre) ? ` - ${gasto.creadoPorNombre || gasto.CreadoPorNombre}` : ''}
                                                     </Text>
-                                                    {isPending && (
+                                                    {!!isPending && (
                                                         <View style={[styles.pendingBadge, isOverdue && styles.pendingBadgeOverdue]}>
                                                             <Text style={styles.pendingText}>⏳ Pendiente</Text>
                                                         </View>
                                                     )}
                                                 </View>
-                                                {isPending && (
+                                                {!!isPending && (
                                                     <Text style={[styles.deadlineText, isOverdue && styles.deadlineTextOverdue]}>
                                                         Legalizar antes de: {formatDate(deadline.toISOString())}
                                                     </Text>
@@ -657,12 +974,15 @@ function GastosTab() {
                                                 {(gasto.tipoHoraNombre || gasto.TipoHoraNombre || gasto.tipoRecargoNombre || gasto.TipoRecargoNombre) ? (
                                                     <Text style={{ fontSize: 12, color: '#2563EB', fontWeight: 'bold', marginBottom: 2 }}>
                                                         🏷️ {gasto.tipoHoraNombre || gasto.TipoHoraNombre || gasto.tipoRecargoNombre || gasto.TipoRecargoNombre}
-                                                        {(gasto.tipoHoraPorcentaje || gasto.TipoHoraPorcentaje) ? ` (${gasto.tipoHoraPorcentaje || gasto.TipoHoraPorcentaje}%)` : ''}
-                                                        {(gasto.tipoRecargoPorcentaje || gasto.TipoRecargoPorcentaje) ? ` (${gasto.tipoRecargoPorcentaje || gasto.TipoRecargoPorcentaje}%)` : ''}
+                                                        {(gasto.tipoHoraFactor || gasto.TipoHoraFactor) ? ` (x${gasto.tipoHoraFactor || gasto.TipoHoraFactor})` : (
+                                                            (gasto.tipoHoraPorcentaje || gasto.TipoHoraPorcentaje) ? ` (${gasto.tipoHoraPorcentaje || gasto.TipoHoraPorcentaje}%)` : ''
+                                                        )}
+                                                        {(gasto.tipoRecargoFactor || gasto.TipoRecargoFactor) ? ` (x${gasto.tipoRecargoFactor || gasto.TipoRecargoFactor})` : (
+                                                            (gasto.tipoRecargoPorcentaje || gasto.TipoRecargoPorcentaje) ? ` (${gasto.tipoRecargoPorcentaje || gasto.TipoRecargoPorcentaje}%)` : ''
+                                                        )}
                                                     </Text>
                                                 ) : (
-                                                    /* If names are missing but IDs are present, show generic label to debug */
-                                                    (gasto.tipoHoraId || gasto.tipoRecargoId) && (
+                                                    !!(gasto.tipoHoraId || gasto.tipoRecargoId) && (
                                                         <Text style={{ fontSize: 10, color: '#9CA3AF' }}>[Detalles en proceso...]</Text>
                                                     )
                                                 )}
@@ -682,10 +1002,15 @@ function GastosTab() {
                                         )}
                                         <View style={styles.gastoDetails}>
                                             <Text style={styles.gastoDetail}>📅 {formatDate(gasto.fecha)}</Text>
+                                            {(gasto.creadoPorNombre || gasto.CreadoPorNombre) && (
+                                                <Text style={[styles.gastoDetail, { color: '#6B7280', fontStyle: 'italic' }]}>
+                                                    ✍️ {gasto.creadoPorNombre || gasto.CreadoPorNombre}
+                                                </Text>
+                                            )}
                                         </View>
-                                        {gasto.observaciones && <Text style={styles.gastoNota}>💬 {gasto.observaciones}</Text>}
+                                        {!!gasto.observaciones && <Text style={styles.gastoNota}>💬 {gasto.observaciones}</Text>}
                                         <View style={styles.cardActions}>
-                                            {isPending && (
+                                            {!!isPending && (
                                                 <TouchableOpacity style={[styles.editCardButton, { backgroundColor: '#10B981', marginRight: 10 }]} onPress={() => handleLegalizar(gasto)}>
                                                     <Text style={styles.editCardButtonText}>✅ Legalizar</Text>
                                                 </TouchableOpacity>
@@ -770,39 +1095,72 @@ function GastosTab() {
                                             </Picker>
                                         </View>
 
-                                        {isHorasExtras && (
-                                            <>
-                                                <Text style={styles.label}>Tipo de Hora Extra *</Text>
-                                                <View style={styles.pickerContainer}>
-                                                    <Picker selectedValue={formData.tipoHoraId} onValueChange={(v) => setFormData(p => ({ ...p, tipoHoraId: v }))}>
-                                                        <Picker.Item label="Seleccione..." value="" />
-                                                        {tiposHora.map(th => <Picker.Item key={th.id || th.Id} label={`${th.nombre || th.Nombre} (x${th.factor || th.Factor})`} value={(th.id || th.Id).toString()} />)}
-                                                    </Picker>
-                                                </View>
-                                            </>
+                                        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={styles.label}>Hora Inicio *</Text>
+                                                <TextInput
+                                                    style={styles.input}
+                                                    value={formData.horaInicio}
+                                                    onChangeText={(t) => setFormData(p => ({ ...p, horaInicio: t }))}
+                                                    placeholder="HH:MM"
+                                                />
+                                            </View>
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={styles.label}>Hora Fin *</Text>
+                                                <TextInput
+                                                    style={styles.input}
+                                                    value={formData.horaFin}
+                                                    onChangeText={(t) => setFormData(p => ({ ...p, horaFin: t }))}
+                                                    placeholder="HH:MM"
+                                                />
+                                            </View>
+                                        </View>
+
+                                        {formData.personalId && (() => {
+                                            const worker = personal.find(p => (p.id || p.Id)?.toString() === formData.personalId.toString());
+                                            let sRaw = worker?.salario || worker?.Salario || 0;
+                                            if (typeof sRaw === 'string') sRaw = sRaw.replace(/\./g, '').replace(/,/g, '.');
+                                            const hasSalary = (parseFloat(sRaw) || 0) > 0;
+
+                                            if (!hasSalary) {
+                                                return (
+                                                    <View style={{ backgroundColor: '#FFF7ED', padding: 10, borderRadius: 8, marginBottom: 15, borderLeftWidth: 4, borderLeftColor: '#F97316' }}>
+                                                        <Text style={{ fontWeight: 'bold', color: '#9A3412', marginBottom: 5 }}>⚠️ Falta Salario:</Text>
+                                                        <Text style={{ fontSize: 13, color: '#9A3412' }}>Este operario no tiene un salario registrado. No se podrá calcular el costo de las horas extras.</Text>
+                                                    </View>
+                                                );
+                                            }
+                                            return null;
+                                        })()}
+
+                                        {breakdown.length > 0 && (
+                                            <View style={{ backgroundColor: '#F0F9FF', padding: 10, borderRadius: 8, marginBottom: 15, borderLeftWidth: 4, borderLeftColor: '#0EA5E9' }}>
+                                                <Text style={{ fontWeight: 'bold', color: '#0369A1', marginBottom: 5 }}>📊 Desglose Automático:</Text>
+                                                {breakdown.map((item, idx) => (
+                                                    <Text key={idx} style={{ fontSize: 13, color: '#0C4A6E' }}>
+                                                        • {item.type}: <Text style={{ fontWeight: 'bold' }}>{item.hours.toFixed(2)}h</Text>
+                                                    </Text>
+                                                ))}
+                                                <Text style={{ fontSize: 11, color: '#64748B', marginTop: 5, fontStyle: 'italic' }}>
+                                                    * Se crearán registros separados automáticamente.
+                                                </Text>
+                                            </View>
                                         )}
 
-                                        {isRecargo && (
-                                            <>
-                                                <Text style={styles.label}>Tipo de Recargo *</Text>
-                                                <View style={styles.pickerContainer}>
-                                                    <Picker selectedValue={formData.tipoRecargoId} onValueChange={(v) => setFormData(p => ({ ...p, tipoRecargoId: v }))}>
-                                                        <Picker.Item label="Seleccione..." value="" />
-                                                        {tiposRecargo.map(tr => <Picker.Item key={tr.id || tr.Id} label={`${tr.nombre || tr.Nombre} (x${tr.factor || tr.Factor})`} value={(tr.id || tr.Id).toString()} />)}
-                                                    </Picker>
-                                                </View>
-                                            </>
+                                        {formData.horaInicio && formData.horaFin && breakdown.length === 0 && (
+                                            <View style={{ backgroundColor: '#FEF2F2', padding: 10, borderRadius: 8, marginBottom: 15, borderLeftWidth: 4, borderLeftColor: '#EF4444' }}>
+                                                <Text style={{ fontWeight: 'bold', color: '#991B1B', marginBottom: 5 }}>ℹ️ Sin horas adicionales:</Text>
+                                                <Text style={{ fontSize: 13, color: '#7F1D1D' }}>El intervalo coincide con el turno o no genera extras/recargos.</Text>
+                                                {/* Debug info hidden for user but useful if they report again */}
+                                                <Text style={{ fontSize: 9, color: '#991B1B', marginTop: 4 }}>
+                                                    Debug: {personal.find(p => (p.id || p.Id) == formData.personalId)?.nombre || '?'} |
+                                                    Tipos: H:{tiposHora.length} R:{tiposRecargo.length}
+                                                </Text>
+                                            </View>
                                         )}
 
-                                        <Text style={styles.label}>Cantidad de Horas *</Text>
-                                        <TextInput style={styles.input} value={formData.cantidadHoras} onChangeText={(t) => setFormData(p => ({ ...p, cantidadHoras: t }))} keyboardType="numeric" placeholder="Ej: 8" />
-
-                                        {isHorasExtras && (
-                                            <>
-                                                <Text style={styles.label}>Número de OP *</Text>
-                                                <TextInput style={styles.input} value={formData.numeroOP} onChangeText={(t) => setFormData(p => ({ ...p, numeroOP: t }))} placeholder="Ej: OP-123" />
-                                            </>
-                                        )}
+                                        <Text style={styles.label}>Número de OP *</Text>
+                                        <TextInput style={styles.input} value={formData.numeroOP} onChangeText={(t) => setFormData(p => ({ ...p, numeroOP: t }))} placeholder="Ej: OP-123" />
                                     </>
                                 ) : formData.rubroId ? (
                                     <>
@@ -905,16 +1263,16 @@ function GastosTab() {
 
                                         <Text style={styles.label}>Precio * {formData.esPendiente ? '(Opcional)' : ''}</Text>
                                         <TextInput
-                                            style={[styles.input, ((isHorasExtras || isRecargo) || (formData.esPendiente && !isLegalizing)) && styles.inputDisabled]}
+                                            style={[styles.input, (isHorasExtras || isRecargo) && styles.inputDisabled]}
                                             value={formData.precio}
                                             onChangeText={(t) => setFormData(p => ({ ...p, precio: t }))}
                                             keyboardType="numeric"
                                             placeholder="$ 0"
-                                            editable={!isHorasExtras && !isRecargo && (!formData.esPendiente || isLegalizing)}
+                                            editable={!isHorasExtras && !isRecargo}
                                         />
 
                                         {/* Budget Status Alert */}
-                                        {presupuestoInfo && (
+                                        {!!presupuestoInfo && (
                                             <View style={styles.budgetContainer}>
                                                 <View style={styles.budgetHeader}>
                                                     <Text style={styles.budgetTitle}>
@@ -1520,16 +1878,16 @@ function GraficasTab() {
                                                 {g.tipoHoraNombre || g.tipoRecargoNombre || g.rubroNombre || g.Rubro?.nombre || 'Gasto General'}
                                             </Text>
 
-                                            {g.personalId && (
+                                            {!!g.personalId && (
                                                 <Text style={{ fontSize: 12, color: '#4B5563', marginTop: 2 }}>👤 {g.personalNombre || g.Personal?.nombre}</Text>
                                             )}
-                                            {g.proveedorId && (
+                                            {!!g.proveedorId && (
                                                 <Text style={{ fontSize: 12, color: '#4B5563', marginTop: 2 }}>🏢 {g.proveedorNombre || g.Proveedor?.nombre}</Text>
                                             )}
 
                                             {g.observaciones && <Text style={{ fontSize: 12, fontStyle: 'italic', marginTop: 4 }}>"{g.observaciones}"</Text>}
                                             {g.facturaPdfUrl && <Text style={{ fontSize: 12, color: '#2563EB', marginTop: 2 }}>📄 Tiene Factura PDF</Text>}
-                                            {g.numeroOP && <Text style={{ fontSize: 12, color: '#4B5563', marginTop: 2 }}>📋 OP: {g.numeroOP}</Text>}
+                                            {!!g.numeroOP && <Text style={{ fontSize: 12, color: '#4B5563', marginTop: 2 }}>📋 OP: {g.numeroOP}</Text>}
                                         </View>
                                     ))}
                                 </ScrollView>
@@ -2219,6 +2577,8 @@ function PersonalTab() {
     const [documento, setDocumento] = useState(''); // Added Documento
     const [cargo, setCargo] = useState('');
     const [salario, setSalario] = useState('');
+    const [horarioId, setHorarioId] = useState('');
+    const [horarios, setHorarios] = useState([]);
     const [saving, setSaving] = useState(false);
     const [horaExtras, setHoraExtras] = useState([]);
     const [recargos, setRecargos] = useState([]);
@@ -2232,11 +2592,13 @@ function PersonalTab() {
     const loadData = async () => {
         try {
             setLoading(true);
-            const [personalData, maestrosData] = await Promise.all([
+            const [personalData, maestrosData, horariosData] = await Promise.all([
                 talleresApi.getPersonal(),
-                talleresApi.getMaestros()
+                talleresApi.getMaestros(),
+                talleresApi.getHorarios()
             ]);
             setItems(personalData || []);
+            setHorarios(horariosData || []);
 
             // Deduplicate by name to avoid duplicates in the UI
             const uniqueHE = (maestrosData.tiposHora || []).reduce((acc, curr) => {
@@ -2256,13 +2618,14 @@ function PersonalTab() {
     };
     useEffect(() => { loadData(); }, []);
 
-    const handleAdd = () => { setEditItem(null); setNombre(''); setDocumento(''); setCargo(''); setSalario(''); setShowModal(true); };
+    const handleAdd = () => { setEditItem(null); setNombre(''); setDocumento(''); setCargo(''); setSalario(''); setHorarioId(''); setShowModal(true); };
     const handleEdit = (item) => {
         setEditItem(item);
         setNombre(item.nombre);
         setDocumento(item.documento || ''); // Set Documento
         setCargo(item.cargo || '');
         setSalario(item.salario?.toString() || '');
+        setHorarioId(item.horarioId?.toString() || '');
         setShowModal(true);
     };
 
@@ -2275,6 +2638,7 @@ function PersonalTab() {
                 documento, // Include Documento
                 cargo,
                 salario: parseFloat(salario) || 0,
+                horarioId: horarioId ? parseInt(horarioId) : null,
                 activo: true,
                 estado: true
             };
@@ -2465,6 +2829,16 @@ function PersonalTab() {
 
                     <Text style={styles.label}>Salario Mensual</Text>
                     <TextInput style={styles.input} value={salario} onChangeText={setSalario} keyboardType="numeric" placeholder="$ 0" />
+
+                    <Text style={styles.label}>Horario (Turno Base) *</Text>
+                    <View style={styles.pickerContainer}>
+                        <Picker selectedValue={horarioId} onValueChange={(v) => setHorarioId(v)}>
+                            <Picker.Item label="Seleccione..." value="" />
+                            {horarios.map(h => (
+                                <Picker.Item key={h.id} label={`${h.nombre} (${h.inicioSemana}-${h.finSemana})`} value={h.id.toString()} />
+                            ))}
+                        </Picker>
+                    </View>
 
                     <View style={styles.modalActions}>
                         <TouchableOpacity style={styles.cancelButton} onPress={() => setShowModal(false)}><Text style={styles.cancelButtonText}>Cancelar</Text></TouchableOpacity>

@@ -114,6 +114,8 @@ function GastosTab() {
         esPendiente: false
     });
     const [filterPending, setFilterPending] = useState(false);
+    const [filterProveedor, setFilterProveedor] = useState('');
+    const [filterNumeroFactura, setFilterNumeroFactura] = useState('');
     const [isLegalizing, setIsLegalizing] = useState(false);
     const RUBROS_CON_TIPO = ['planchas', 'positivos', 'troqueles', 'clises', 'marcos', 'pruebas de color', 'impresiones digitales'];
     const rubroSeleccionado = rubros.find(r => r.id.toString() === formData.rubroId);
@@ -137,10 +139,14 @@ function GastosTab() {
                 }
                 if (searchDate && !g.fecha.startsWith(searchDate)) return false;
             }
+            // Filtro Proveedor
+            if (filterProveedor && g.proveedorId?.toString() !== filterProveedor) return false;
+            // Filtro Número de Factura
+            if (filterNumeroFactura && !(g.numeroFactura || '').toLowerCase().includes(filterNumeroFactura.toLowerCase())) return false;
             if (filterPending && !g.esPendiente) return false;
             return true;
         });
-    }, [gastos, filterRubro, filterFecha, filterPending]);
+    }, [gastos, filterRubro, filterFecha, filterPending, filterProveedor, filterNumeroFactura]);
 
     const rubrosConGastos = useMemo(() => {
         const idsConGastos = new Set(gastos.map(g => g.rubroId));
@@ -283,8 +289,8 @@ function GastosTab() {
                 tipoTrabajo: requiereTipoTrabajo ? formData.tipoTrabajo : null,
                 ordenProduccion: requiereTipoTrabajo ? formData.ordenProduccion : null,
                 esPendiente: formData.esPendiente,
-                anio: new Date(formData.fecha).getFullYear(),
-                mes: new Date(formData.fecha).getMonth() + 1
+                anio: parseInt(formData.fecha.split('-')[0]),
+                mes: parseInt(formData.fecha.split('-')[1])
             };
 
             // Intentar obtener el ID del usuario creador
@@ -379,6 +385,36 @@ function GastosTab() {
                             {rubrosConGastos.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
                         </Picker>
                     </View>
+
+                    {/* Filtro Proveedor */}
+                    <View style={styles.filterItem}>
+                        <Picker selectedValue={filterProveedor} onValueChange={setFilterProveedor}
+                            style={Platform.OS === 'web' ? { height: 35, width: 160, border: 'none', backgroundColor: 'transparent', outline: 'none', fontSize: 13 } : styles.filterPicker}>
+                            <Picker.Item label="Todos los Proveedores" value="" />
+                            {[...new Map(gastos.filter(g => g.proveedorId && g.proveedorNombre).map(g => [g.proveedorId, { id: g.proveedorId, nombre: g.proveedorNombre }])).values()]
+                                .sort((a, b) => a.nombre.localeCompare(b.nombre))
+                                .map(p => <Picker.Item key={p.id} label={p.nombre} value={p.id.toString()} />)}
+                        </Picker>
+                    </View>
+
+                    {/* Filtro Número de Factura */}
+                    <View style={styles.filterItem}>
+                        <TextInput
+                            style={Platform.OS === 'web'
+                                ? { height: 35, border: 'none', borderRadius: 0, padding: '0 8px', fontSize: 13, fontFamily: 'inherit', color: '#374151', outline: 'none', backgroundColor: 'transparent', minWidth: 130 }
+                                : styles.filterInput}
+                            placeholder="Nro. Factura..."
+                            placeholderTextColor="#9CA3AF"
+                            value={filterNumeroFactura}
+                            onChangeText={setFilterNumeroFactura}
+                        />
+                        {filterNumeroFactura ? (
+                            <TouchableOpacity onPress={() => setFilterNumeroFactura('')} style={styles.clearFilterBtn}>
+                                <Text style={styles.clearFilterText}>✕</Text>
+                            </TouchableOpacity>
+                        ) : null}
+                    </View>
+
                     <TouchableOpacity
                         style={[styles.filterItem, { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, backgroundColor: filterPending ? '#F59E0B' : 'transparent', borderRadius: 20, borderWidth: 1, borderColor: filterPending ? '#F59E0B' : '#D1D5DB' }]}
                         onPress={() => setFilterPending(!filterPending)}

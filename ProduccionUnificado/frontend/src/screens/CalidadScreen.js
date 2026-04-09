@@ -182,6 +182,7 @@ export default function CalidadScreen({ navigation }) {
     const [tieneFichaTecnica, setTieneFichaTecnica] = useState(true);
     const [correctoRegistroFormatos, setCorrectoRegistroFormatos] = useState(true);
     const [aprobacionArranque, setAprobacionArranque] = useState(true);
+    const [contieneMuestraFisica, setContieneMuestraFisica] = useState(true);
     const [observacion, setObservacion] = useState('');
     const [novedades, setNovedades] = useState([{ tipoNovedad: '', fotoBase64: null, fotoUri: null, descripcion: '', cantidadDefectuosa: '' }]);
     const [saving, setSaving] = useState(false);
@@ -320,6 +321,7 @@ export default function CalidadScreen({ navigation }) {
         setTieneFichaTecnica(true);
         setCorrectoRegistroFormatos(true);
         setAprobacionArranque(true);
+        setContieneMuestraFisica(true);
         setObservacion('');
         setObservacion('');
         setNovedades([{ tipoNovedad: '', fotoBase64: null, fotoUri: null, descripcion: '', cantidadDefectuosa: '' }]);
@@ -349,6 +351,7 @@ export default function CalidadScreen({ navigation }) {
             setTieneFichaTecnica(enc.tieneFichaTecnica);
             setCorrectoRegistroFormatos(enc.correctoRegistroFormatos);
             setAprobacionArranque(enc.aprobacionArranque);
+            setContieneMuestraFisica(enc.contieneMuestraFisica !== undefined ? enc.contieneMuestraFisica : true);
             setObservacion(enc.observacion || '');
 
             // Helper to get Server URL (without /api)
@@ -600,6 +603,7 @@ export default function CalidadScreen({ navigation }) {
                 cantidadProducir: parseFloat(cantidadProducir), maquinaId, proceso,
                 cantidadEvaluada: parseFloat(cantidadEvaluada), estadoProceso,
                 tieneFichaTecnica, correctoRegistroFormatos, aprobacionArranque,
+                contieneMuestraFisica,
                 observacion: observacion || null, novedades: novedadesValidas
             };
 
@@ -677,7 +681,7 @@ export default function CalidadScreen({ navigation }) {
                     <TouchableOpacity style={styles.headerBackBtn} onPress={() => navigation.goBack()}>
                         <Text style={styles.headerBackText}>←</Text>
                     </TouchableOpacity>
-                    <Text style={styles.headerTitle}>Control de Calidad</Text>
+                    <Text style={styles.headerTitle}>Control en proceso de Novedades de OP y Calidad</Text>
                     <TouchableOpacity
                         style={styles.logoutBtn}
                         onPress={async () => {
@@ -698,10 +702,10 @@ export default function CalidadScreen({ navigation }) {
 
                 <TouchableOpacity style={styles.newBtn} onPress={abrirFormulario}>
                     <Text style={styles.newBtnIcon}>+</Text>
-                    <Text style={styles.newBtnText}>Nueva Toma de Calidad</Text>
+                    <Text style={styles.newBtnText}>Nueva Toma de Novedades / Calidad</Text>
                 </TouchableOpacity>
 
-                <Text style={styles.listTitle}>📋 Historial de Encuestas</Text>
+                <Text style={styles.listTitle}>📋 Historial de Controles en proceso</Text>
 
                 {encuestas.length === 0 && !loading ? (
                     <View style={styles.emptyState}>
@@ -730,7 +734,7 @@ export default function CalidadScreen({ navigation }) {
                     <Text style={styles.headerBackText}>← Volver</Text>
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>
-                    {editingId ? '✏️ Editar Encuesta' : '📝 Nueva Toma de Calidad'}
+                    {editingId ? '✏️ Editar Control' : '📝 Nueva Toma de Novedades / Calidad'}
                 </Text>
             </View>
 
@@ -856,6 +860,7 @@ export default function CalidadScreen({ navigation }) {
 
                     {/* Verificación de Cumplimiento */}
                     <SectionCard title="Verificación de Cumplimiento" icon="✅">
+                        <CumpleNoCumple label="¿Contiene muestra física?" value={contieneMuestraFisica} onChange={setContieneMuestraFisica} />
                         <CumpleNoCumple label="¿Tiene Ficha Técnica soporte del proceso?" value={tieneFichaTecnica} onChange={setTieneFichaTecnica} />
                         <CumpleNoCumple label="¿El personal realiza el correcto registro en los formatos?" value={correctoRegistroFormatos} onChange={setCorrectoRegistroFormatos} />
                         <CumpleNoCumple label="¿Tiene Aprobación del Arranque?" value={aprobacionArranque} onChange={setAprobacionArranque} />
@@ -898,6 +903,19 @@ export default function CalidadScreen({ navigation }) {
                                                 placeholder="0"
                                                 placeholderTextColor="#9CA3AF"
                                                 returnKeyType="done"
+                                            />
+                                        </View>
+
+                                        {/* Campo observaciones (Descripción) por Novedad */}
+                                        <View style={styles.cantidadDefectuosaContainer}>
+                                            <Text style={styles.cantidadDefectuosaLabel}>📝 Observaciones del defecto:</Text>
+                                            <StableTextInput
+                                                style={[styles.cantidadDefectuosaInput, { flex: 2, height: 60, textAlignVertical: 'top' }]}
+                                                value={novedad.descripcion || ""}
+                                                onChangeText={(v) => actualizarNovedad(index, 'descripcion', v)}
+                                                placeholder="Detalles sobre este defecto..."
+                                                placeholderTextColor="#9CA3AF"
+                                                multiline
                                             />
                                         </View>
 

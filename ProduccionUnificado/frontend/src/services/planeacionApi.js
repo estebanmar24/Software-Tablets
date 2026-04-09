@@ -4,8 +4,16 @@
  */
 
 import axios from 'axios';
+import { getToken } from './authStorage';
 
 const api = axios.create();
+api.interceptors.request.use(async (config) => {
+    const token = await getToken();
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+}, error => Promise.reject(error));
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
 
@@ -215,3 +223,43 @@ export function formatCurrency(value) {
         maximumFractionDigits: 0
     }).format(value);
 }
+
+// ==================== PLANEADOR DE MÁQUINAS ====================
+
+export async function getPlaneadorRango(start, end) {
+    const response = await api.get(`${API_BASE_URL}/PlaneadorMaquinas/rango?start=${start}&end=${end}`);
+    return response.data;
+}
+
+export async function getPlaneadorActual(maquinaId) {
+    const response = await api.get(`${API_BASE_URL}/PlaneadorMaquinas/actual?maquinaId=${maquinaId}`);
+    return response.data;
+}
+
+export async function crearPlaneacion(plan) {
+    const response = await api.post(`${API_BASE_URL}/PlaneadorMaquinas`, plan);
+    return response.data;
+}
+
+export async function eliminarPlaneacion(id) {
+    await api.delete(`${API_BASE_URL}/PlaneadorMaquinas/${id}`);
+    return true;
+}
+
+export async function actualizarPlaneacion(id, plan) {
+    const response = await api.put(`${API_BASE_URL}/PlaneadorMaquinas/${id}`, plan);
+    return response.data;
+}
+
+export async function getEstadoActualMaquinas() {
+    const response = await api.get(`${API_BASE_URL}/PlaneadorMaquinas/telemetria/estado`);
+    return response.data;
+}
+
+export async function getDebugData() {
+    const response = await api.get(`${API_BASE_URL}/PlaneadorMaquinas/telemetria/debug`);
+    return response.data;
+}
+
+
+

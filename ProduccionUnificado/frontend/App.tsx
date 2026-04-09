@@ -14,6 +14,9 @@ import { WasteModal } from './src/components/WasteModal';
 import { DailyTotals } from './src/components/DailyTotals';
 import { ActivityHistory } from './src/components/ActivityHistory';
 import { useTimer } from './src/hooks/useTimer';
+import * as coreApi from './src/services/api';
+import * as planeacionApi from './src/services/planeacionApi';
+
 import {
   Actividad,
   Usuario,
@@ -25,13 +28,13 @@ import {
   RegistrarTiempoRequest,
   Horario,
 } from './src/types';
-import * as api from './src/services/api';
 
 import { AdminLogin } from './src/components/AdminLogin';
 import { AdminDashboard } from './src/components/AdminDashboard';
 import CalidadScreen from './src/screens/CalidadScreen';
 import OrdenAseoScreen from './src/screens/OrdenAseoScreen';
 import UserManagementScreen from './src/screens/UserManagementScreen';
+
 
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
 
@@ -85,7 +88,7 @@ function AppContent() {
 
   // Responsive check
   const { width } = useWindowDimensions();
-  const isMobile = width < 900;
+  const isMobile = width < 768; // Changed from 900 to prevent large tablets with scaling from triggering mobile view
   const isPhone = width < 600; // Unicamente teléfonos
 
   // ... (rest of the state and effects from former App component)
@@ -203,6 +206,10 @@ function AppContent() {
   // Totales del día (suma de todo el historial)
   const [tirosTotalesDia, setTirosTotalesDia] = useState(0);
 
+  // Planeación Actual (Planeador de Máquinas)
+  const [planeacionActual, setPlaneacionActual] = useState<any>(null);
+
+
   // 1. Cargar datos persistidos al iniciar
   useEffect(() => {
     const restoreSession = async () => {
@@ -315,16 +322,45 @@ function AppContent() {
     loadProductionData();
   }, [selectedUsuario, selectedMaquina]);
 
+  // Cargar Planeación Actual al cambiar de máquina
+  useEffect(() => {
+    const fetchPlaneacion = async () => {
+      if (selectedMaquina) {
+        try {
+          const plan = await planeacionApi.getPlaneadorActual(selectedMaquina);
+          console.log('Planeación actual recibida:', plan);
+          setPlaneacionActual(plan);
+
+          // Si hay una planeación y no hay OP seleccionada, o la OP es diferente, sugerir/autollenar
+          if (plan && plan.ordenProduccion) {
+            // Solo autollenamos si el campo está vacío o si el usuario aún no ha empezado a escribir algo distinto
+            if (!opSearchText || opSearchText === '') {
+              setOpSearchText(plan.ordenProduccion.numero);
+              setSelectedOrden(plan.ordenProduccion.id);
+            }
+          }
+        } catch (error) {
+          console.log('Error al buscar planeación:', error);
+          setPlaneacionActual(null);
+        }
+      } else {
+        setPlaneacionActual(null);
+      }
+    };
+    fetchPlaneacion();
+  }, [selectedMaquina]);
+
+
   const loadCatalogs = async () => {
     try {
       const [actividadesData, usuariosData, maquinasData, ordenesData, codigosData, horariosData] =
         await Promise.all([
-          api.getActividades(),
-          api.getUsuarios(),
-          api.getMaquinas(),
-          api.getOrdenes(),
-          api.getCodigosDesperdicio(),
-          api.getHorarios(),
+          coreApi.getActividades(),
+          coreApi.getUsuarios(),
+          coreApi.getMaquinas(),
+          coreApi.getOrdenes(),
+          coreApi.getCodigosDesperdicio(),
+          coreApi.getHorarios(),
         ]);
 
       setActividades(actividadesData);
@@ -417,7 +453,7 @@ function AppContent() {
       }
 
       // Filtrar por AMBOS: usuario Y máquina seleccionados
-      const produccionData = await api.getProduccionDia(
+      const produccionData = await coreApi.getProduccionDia(
         undefined, // fecha (hoy)
         selectedMaquina, // siempre filtrar por máquina seleccionada
         selectedUsuario  // siempre filtrar por usuario seleccionado
@@ -488,7 +524,7 @@ function AppContent() {
         horarioId: selectedHorario || undefined
       };
 
-      const savedRecord = await api.registrarTiempo(payload);
+      const savedRecord = await coreApi.registrarTiempo(payload);
       setActiveProcessId(savedRecord.id);
 
       // Add to history with "Running" indicators
@@ -548,13 +584,13 @@ function AppContent() {
 
       if (activeProcessId) {
         console.log('Finalizando proceso existente:', activeProcessId);
-        savedRecord = await api.finalizarTiempo(activeProcessId, payload);
+        savedRecord = await coreApi.finalizarTiempo(activeProcessId, payload);
         // Actualizar en historial (reemplazar el item con "En Progreso")
         setHistorial((prev) => prev.map(item => item.id === activeProcessId ? savedRecord : item));
         setActiveProcessId(null);
       } else {
         console.log('No hay proceso activo, creando nuevo registro');
-        savedRecord = await api.registrarTiempo(payload);
+        savedRecord = await coreApi.registrarTiempo(payload);
         // Agregar al historial
         setHistorial((prev) => [savedRecord, ...prev]);
       }
@@ -575,7 +611,7 @@ function AppContent() {
         try {
           console.log('Guardando detalles de desperdicio:', wasteRecords.length);
           await Promise.all(wasteRecords.map(record =>
-            api.registrarDesperdicio({
+            coreApi.registrarDesperdicio({
               ...record,
               tiempoId: savedRecord.id
             })
@@ -630,7 +666,7 @@ function AppContent() {
         setObservaciones('');
 
         try {
-          await api.limpiarDatos();
+          await coreApi.limpiarDatos();
         } catch (error) {
           console.log('No se pudo limpiar en el servidor');
         }
@@ -845,9 +881,11 @@ function AppContent() {
               // handleClearData removed as the button was removed from the component
               tirosTotales={tirosTotalesDia + tirosAcumulados}
               desperdicioTotal={desperdicioTotalDia + desperdicioAcumulado}
-              metaDia={maquinas.find(m => m.id === selectedMaquina)?.metaRendimiento || 0}
+              metaDia={planeacionActual?.metaTiros || maquinas.find(m => m.id === selectedMaquina)?.metaRendimiento || 0}
               valorPorTiro={maquinas.find(m => m.id === selectedMaquina)?.valorPorTiro || 0}
+              planeacionActual={planeacionActual}
             />
+
           </ScrollView>
         ) : (
           <Content
@@ -894,7 +932,13 @@ function AppContent() {
 }
 
 // Extracted Content Component to avoid duplication logic
-const Content = ({ timer, selectedActividad, canStart, handleStart, handleStop, isMobile, actividades, handleSelectActividad, handleAddTiros, onOpenWasteModal, historial, handleClearData, tirosTotales, desperdicioTotal, metaDia, valorPorTiro }: any) => (
+const Content = ({
+  timer, selectedActividad, canStart, handleStart, handleStop,
+  isMobile, actividades, handleSelectActividad, handleAddTiros,
+  onOpenWasteModal, historial, handleClearData, tirosTotales,
+  desperdicioTotal, metaDia, valorPorTiro, planeacionActual
+}: any) => (
+
   <View style={!isMobile ? { minHeight: '100%', padding: 20 } : {}}>
     {/* Header con cronómetro */}
     <TimerHeader
@@ -940,7 +984,9 @@ const Content = ({ timer, selectedActividad, canStart, handleStart, handleStop, 
             desperdicioTotal={desperdicioTotal}
             meta={metaDia}
             valorPorTiro={valorPorTiro}
+            planeacionActual={planeacionActual}
           />
+
         </View>
       </View>
     </View>
@@ -962,17 +1008,15 @@ const styles = StyleSheet.create({
   contentColumns: {
     flexDirection: 'row',
     gap: 20,
-    alignItems: 'flex-start', // Asegurar que las columnas no intenten estirarse infinitamente
-    flexWrap: 'wrap', // Para pantallas muy pequeñas
+    alignItems: 'flex-start',
   },
   leftColumn: {
     flex: 1,
-    minWidth: 350,
-    maxWidth: 600,
+    minWidth: 250,
   },
   rightColumn: {
     flex: 1,
-    minWidth: 350,
+    minWidth: 250,
   },
 });
 

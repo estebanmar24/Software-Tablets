@@ -68,7 +68,7 @@ function CustomDropdown({
 
             {isOpen && (
                 <View style={[styles.dropdownList, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                    <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
+                    <ScrollView style={{ maxHeight: 400 }} nestedScrollEnabled>
                         <TouchableOpacity
                             style={[styles.dropdownItem, { borderBottomColor: colors.border }]}
                             onPress={() => { onValueChange(null); setIsOpen(false); }}
@@ -169,7 +169,7 @@ export function Sidebar({
                     />
                     <ThemeToggle />
                 </View>
-                <Text style={{ fontSize: 10, color: colors.subText, marginTop: 4 }}>v1.7.8 - Parqueo de Vehículos 🚗</Text>
+                <Text style={{ fontSize: 10, color: colors.subText, marginTop: 4 }}>v2.1.4 - Planeador Hotfix 4</Text>
             </View>
 
             {/* Toggle Button for Phones */}
@@ -372,7 +372,7 @@ const styles = StyleSheet.create({
         borderColor: '#E2E8F0',
         borderBottomLeftRadius: 6,
         borderBottomRightRadius: 6,
-        maxHeight: 200,
+        maxHeight: 400,
         elevation: 5,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },

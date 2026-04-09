@@ -919,14 +919,14 @@ export default function DashboardScreen({ navigation }) {
                         head: [hmColumns],
                         body: hmData,
                         startY: chartY + 5,
-                        styles: { fontSize: 9, cellPadding: 3, halign: 'center' }, // Slightly smaller font to fit cols
-                        headStyles: { fillColor: [178, 34, 34], textColor: 255, fontStyle: 'bold' }, // Firebrick red for alerts/costs
+                        pageBreak: 'avoid',
+                        styles: { fontSize: 9, cellPadding: 3, halign: 'center' },
+                        headStyles: { fillColor: [178, 34, 34], textColor: 255, fontStyle: 'bold' },
                         columnStyles: {
                             0: { halign: 'left' },
                             7: { fontStyle: 'bold' }
                         },
                         didParseCell: (data) => {
-                            // Style Total Row
                             if (data.section === 'body' && data.row.index === hmData.length - 1) {
                                 data.cell.styles.fontStyle = 'bold';
                                 data.cell.styles.fillColor = [220, 220, 220];
@@ -1002,8 +1002,9 @@ export default function DashboardScreen({ navigation }) {
                             head: [papColumns],
                             body: papData,
                             startY: chartY + 5,
+                            pageBreak: 'avoid',
                             styles: { fontSize: 9, cellPadding: 3, halign: 'center' },
-                            headStyles: { fillColor: [255, 140, 0], textColor: 255, fontStyle: 'bold' }, // Dark Orange
+                            headStyles: { fillColor: [255, 140, 0], textColor: 255, fontStyle: 'bold' },
                             columnStyles: {
                                 0: { halign: 'left' },
                                 4: { fontStyle: 'bold' }
@@ -1020,7 +1021,244 @@ export default function DashboardScreen({ navigation }) {
                     }
                 }
 
+                // --- Festivos Colombia (usado por ambas tablas de Disponibilidad) ---
+                const calcularPascua = (year) => {
+                    const a = year % 19;
+                    const b = Math.floor(year / 100);
+                    const c = year % 100;
+                    const d = Math.floor(b / 4);
+                    const e = b % 4;
+                    const f = Math.floor((b + 8) / 25);
+                    const g = Math.floor((b - f + 1) / 3);
+                    const h = (19 * a + b - d - g + 15) % 30;
+                    const i = Math.floor(c / 4);
+                    const k = c % 4;
+                    const l = (32 + 2 * e + 2 * i - h - k) % 7;
+                    const m2 = Math.floor((a + 11 * h + 22 * l) / 451);
+                    const mesP = Math.floor((h + l - 7 * m2 + 114) / 31);
+                    const diaP = ((h + l - 7 * m2 + 114) % 31) + 1;
+                    return new Date(year, mesP - 1, diaP);
+                };
+                const trasladarALunes = (fecha) => {
+                    const ds = fecha.getDay();
+                    if (ds === 1) return fecha;
+                    const diasHastaLunes = (1 - ds + 7) % 7 || 7;
+                    return new Date(fecha.getTime() + diasHastaLunes * 24 * 60 * 60 * 1000);
+                };
+                const obtenerFestivosColombia = (year) => {
+                    const f = [];
+                    f.push(new Date(year, 0, 1));   // Año Nuevo
+                    f.push(new Date(year, 4, 1));   // Día del Trabajo
+                    f.push(new Date(year, 6, 20));  // Independencia
+                    f.push(new Date(year, 7, 7));   // Boyacá
+                    f.push(new Date(year, 11, 8));  // Inmaculada
+                    f.push(new Date(year, 11, 25)); // Navidad
+                    const pascua = calcularPascua(year);
+                    f.push(new Date(pascua.getTime() - 3 * 24 * 60 * 60 * 1000)); // Jueves Santo
+                    f.push(new Date(pascua.getTime() - 2 * 24 * 60 * 60 * 1000)); // Viernes Santo
+                    f.push(trasladarALunes(new Date(pascua.getTime() + 39 * 24 * 60 * 60 * 1000))); // Ascensión
+                    f.push(trasladarALunes(new Date(pascua.getTime() + 60 * 24 * 60 * 60 * 1000))); // Corpus Christi
+                    f.push(trasladarALunes(new Date(pascua.getTime() + 68 * 24 * 60 * 60 * 1000))); // Sagrado Corazón
+                    f.push(trasladarALunes(new Date(year, 0, 6)));   // Reyes Magos
+                    f.push(trasladarALunes(new Date(year, 2, 19)));  // San José
+                    f.push(trasladarALunes(new Date(year, 5, 29)));  // San Pedro y San Pablo
+                    f.push(trasladarALunes(new Date(year, 7, 15)));  // Asunción
+                    f.push(trasladarALunes(new Date(year, 9, 12)));  // Día de la Raza
+                    f.push(trasladarALunes(new Date(year, 10, 1)));  // Todos los Santos
+                    f.push(trasladarALunes(new Date(year, 10, 11))); // Independencia Cartagena
+                    return f;
+                };
+                const esFestivo = (fecha, festivos) => festivos.some(f =>
+                    f.getDate() === fecha.getDate() && f.getMonth() === fecha.getMonth() && f.getFullYear() === fecha.getFullYear()
+                );
 
+                // Calcular Horas Turno del mes (Lun-Vie: 8h, Sáb: 4h, Dom/Festivo: 0h)
+                const calcularHorasTurno = (mesVal, anioVal) => {
+                    const diasEnMes = new Date(anioVal, mesVal, 0).getDate();
+                    const festivosArr = obtenerFestivosColombia(anioVal);
+                    let horasTurno = 0;
+                    for (let dia = 1; dia <= diasEnMes; dia++) {
+                        const fecha = new Date(anioVal, mesVal - 1, dia);
+                        const diaSemana = fecha.getDay();
+                        if (diaSemana === 0) continue;
+                        if (esFestivo(fecha, festivosArr)) continue;
+                        if (diaSemana >= 1 && diaSemana <= 5) horasTurno += 8;
+                        else if (diaSemana === 6) horasTurno += 4;
+                    }
+                    return horasTurno;
+                };
+                const horasTurnoMes = calcularHorasTurno(mes, anio);
+
+                // *** ANÁLISIS DE DISPONIBILIDAD POR TIEMPO ***
+                if ((resumen?.resumenMaquinas || []).length > 0) {
+
+                    const dispColumns = ['Máquina', 'Hrs Productivas', 'Hrs Auxiliar', 'Hrs Muertas', 'Total Reportadas', 'Hrs Turno', 'Disponibilidad (%)'];
+
+                    let totalProd = 0, totalAux = 0, totalMuertas = 0, totalRep = 0;
+
+                    const dispData = resumen.resumenMaquinas
+                        .filter(m => (m.totalHorasProductivas || 0) > 0 || (m.totalHoras || 0) > 0)
+                        .sort(naturalSort)
+                        .map(m => {
+                            const hrsProductivas = m.totalHorasProductivas || 0;
+                            const hrsAux = m.totalTiempoPuestaPunto || 0;
+                            const hrsMuertas = m.totalTiemposMuertos || 0;
+                            const totalReportadas = (m.totalHoras || 0) - (m.totalHorasDescanso || 0);
+                            const disponibilidad = horasTurnoMes > 0
+                                ? (hrsProductivas / horasTurnoMes) * 100
+                                : 0;
+
+                            totalProd += hrsProductivas;
+                            totalAux += hrsAux;
+                            totalMuertas += hrsMuertas;
+                            totalRep += totalReportadas;
+
+                            return [
+                                m.maquina,
+                                hrsProductivas.toFixed(2),
+                                hrsAux.toFixed(2),
+                                hrsMuertas.toFixed(2),
+                                totalReportadas.toFixed(2),
+                                horasTurnoMes.toFixed(2),
+                                `${disponibilidad.toFixed(1)}%`
+                            ];
+                        });
+
+                    if (dispData.length > 0) {
+                        // Total row
+                        dispData.push([
+                            'TOTALES',
+                            totalProd.toFixed(2),
+                            totalAux.toFixed(2),
+                            totalMuertas.toFixed(2),
+                            totalRep.toFixed(2),
+                            '-',
+                            '-'
+                        ]);
+
+                        if (chartY + 60 > doc.internal.pageSize.getHeight() - 20) {
+                            doc.addPage();
+                            chartY = 30;
+                        }
+
+                        doc.setFontSize(14);
+                        doc.setFont('helvetica', 'bold');
+                        doc.setTextColor(0, 51, 102);
+                        doc.text('ANÁLISIS DE DISPONIBILIDAD POR TIEMPO', pageWidth / 2, chartY, { align: 'center' });
+                        doc.setTextColor(0, 0, 0);
+
+                        autoTable(doc, {
+                            head: [dispColumns],
+                            body: dispData,
+                            startY: chartY + 5,
+                            pageBreak: 'avoid',
+                            styles: { fontSize: 8, cellPadding: 2, halign: 'center' },
+                            headStyles: { fillColor: [0, 102, 153], textColor: 255, fontStyle: 'bold' },
+                            columnStyles: {
+                                0: { halign: 'left' },
+                                2: { textColor: [180, 100, 0] },
+                                3: { textColor: [178, 34, 34] }
+                            },
+                            didParseCell: function (data) {
+                                // Total row style
+                                if (data.section === 'body' && data.row.index === dispData.length - 1) {
+                                    data.cell.styles.fontStyle = 'bold';
+                                    data.cell.styles.fillColor = [220, 220, 220];
+                                    data.cell.styles.textColor = [0, 0, 0];
+                                }
+                                // Color conditional for Disponibilidad column (index 6)
+                                if (data.section === 'body' && data.column.index === 6 && data.row.index < dispData.length - 1) {
+                                    const val = parseFloat(data.cell.raw);
+                                    if (val >= 90) data.cell.styles.textColor = [0, 128, 0];
+                                    else if (val >= 75) data.cell.styles.textColor = [200, 150, 0];
+                                    else data.cell.styles.textColor = [200, 0, 0];
+                                    data.cell.styles.fontStyle = 'bold';
+                                }
+                            }
+                        });
+
+                        chartY = doc.lastAutoTable.finalY + 20;
+                    }
+                }
+
+                // *** ANÁLISIS DE DISPONIBILIDAD POR TIROS ***
+                if ((resumen?.resumenMaquinas || []).length > 0) {
+                    // Reusar horasTurnoMes calculado arriba (si no existe, recalcular con festivos)
+                    const calcHorasTurno = (mesVal, anioVal) => {
+                        const diasEnMes = new Date(anioVal, mesVal, 0).getDate();
+                        const festivosLocal = obtenerFestivosColombia(anioVal);
+                        let ht = 0;
+                        for (let dia = 1; dia <= diasEnMes; dia++) {
+                            const fecha = new Date(anioVal, mesVal - 1, dia);
+                            const dow = fecha.getDay();
+                            if (dow === 0) continue; // Domingo
+                            if (esFestivo(fecha, festivosLocal)) continue; // Festivo
+                            if (dow >= 1 && dow <= 5) ht += 8;
+                            else if (dow === 6) ht += 4;
+                        }
+                        return ht;
+                    };
+                    const htMes = typeof horasTurnoMes !== 'undefined' ? horasTurnoMes : calcHorasTurno(mes, anio);
+
+                    const tirosColumns = ['Máquina', 'Meta Diaria', 'Meta Mes', 'Tiros Reales', 'Disponibilidad (%)'];
+
+                    const tirosData = resumen.resumenMaquinas
+                        .filter(m => (m.metaDiariaBase || 0) > 0)
+                        .sort(naturalSort)
+                        .map(m => {
+                            const metaDiaria = m.metaDiariaBase || 0;
+                            const metaPorHora = metaDiaria / 8;
+                            const metaMes = metaPorHora * htMes;
+                            const tirosReales = m.tirosTotales || 0;
+                            const disponibilidad = metaMes > 0
+                                ? (tirosReales / metaMes) * 100
+                                : 0;
+
+                            return [
+                                m.maquina,
+                                Math.round(metaDiaria).toLocaleString(),
+                                Math.round(metaMes).toLocaleString(),
+                                tirosReales.toLocaleString(),
+                                `${disponibilidad.toFixed(1)}%`
+                            ];
+                        });
+
+                    if (tirosData.length > 0) {
+                        if (chartY + 60 > doc.internal.pageSize.getHeight() - 20) {
+                            doc.addPage();
+                            chartY = 30;
+                        }
+
+                        doc.setFontSize(14);
+                        doc.setFont('helvetica', 'bold');
+                        doc.setTextColor(0, 51, 102);
+                        doc.text('ANÁLISIS DE DISPONIBILIDAD POR TIROS', pageWidth / 2, chartY, { align: 'center' });
+                        doc.setTextColor(0, 0, 0);
+
+                        autoTable(doc, {
+                            head: [tirosColumns],
+                            body: tirosData,
+                            startY: chartY + 5,
+                            pageBreak: 'avoid',
+                            styles: { fontSize: 9, cellPadding: 3, halign: 'center' },
+                            headStyles: { fillColor: [102, 51, 0], textColor: 255, fontStyle: 'bold' },
+                            columnStyles: {
+                                0: { halign: 'left' }
+                            },
+                            didParseCell: function (data) {
+                                if (data.section === 'body' && data.column.index === 4) {
+                                    const val = parseFloat(data.cell.raw);
+                                    if (val >= 90) data.cell.styles.textColor = [0, 128, 0];
+                                    else if (val >= 75) data.cell.styles.textColor = [200, 150, 0];
+                                    else data.cell.styles.textColor = [200, 0, 0];
+                                    data.cell.styles.fontStyle = 'bold';
+                                }
+                            }
+                        });
+
+                        chartY = doc.lastAutoTable.finalY + 20;
+                    }
+                }
                 // Chart: Daily Trend (line chart for general report) - KEEPING THIS ONE? User said "solo quita esas 3".
                 if ((resumen?.tendenciaDiaria || []).length > 0) {
                     const dailyData = [...resumen.tendenciaDiaria].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
@@ -1168,10 +1406,10 @@ export default function DashboardScreen({ navigation }) {
                     head: [calColumns],
                     body: calData,
                     startY: chartY,
+                    pageBreak: 'avoid',
                     styles: { fontSize: 10, cellPadding: 3 },
                     headStyles: { fillColor: [0, 51, 102], textColor: 255, fontStyle: 'bold' },
                     alternateRowStyles: { fillColor: [245, 245, 245] },
-                    // Estilo especial para fila de total
                     didParseCell: (data) => {
                         if (data.section === 'body' && data.row.index === calData.length - 1) {
                             data.cell.styles.fontStyle = 'bold';
@@ -1784,21 +2022,48 @@ export default function DashboardScreen({ navigation }) {
                         {displayedMaquinas.length === 0 ? (
                             <Text style={[styles.noData, { color: colors.subText }]}>No hay datos para el periodo seleccionado</Text>
                         ) : (
-                            displayedMaquinas.map((item, index) => (
-                                <View key={index} style={[styles.card, { backgroundColor: getColor(item.semaforoColor), borderColor: 'black', borderWidth: 2 }]}>
-                                    <Text style={[styles.cardTitle, { color: '#000' }]}>{item.maquina}</Text>
-                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
-                                        <Text style={{ color: '#000', fontSize: 11, fontWeight: 'bold' }}>📅 {item.ultimaFecha}</Text>
-                                        <Text style={{ color: '#000', fontSize: 11, fontWeight: 'bold' }}>#️⃣ {item.diasLaborados} días</Text>
+                            displayedMaquinas.map((item, index) => {
+                                const totalHorasReportadas = item.totalHoras || 0;
+                                const totalDescanso = item.totalHorasDescanso || 0;
+                                const totalBase = Math.max(totalHorasReportadas - totalDescanso, 1);
+
+                                const hrsProductivas = item.totalHorasProductivas || 0;
+                                const hrsAuxiliares = item.totalTiempoPuestaPunto || item.totalHorasAuxiliares || 0; // Use totalTiempoPuestaPunto as it is used in the PDF report, fallback to totalHorasAuxiliares
+                                const hrsMuertas = item.totalTiemposMuertos || 0;
+
+                                const ocupacionBruta = ((hrsProductivas + hrsAuxiliares) / totalBase) * 100;
+                                const efiSetup = hrsProductivas > 0 || hrsAuxiliares > 0
+                                    ? (hrsProductivas / (hrsProductivas + hrsAuxiliares)) * 100
+                                    : 0;
+
+                                return (
+                                    <View key={index} style={[styles.card, { backgroundColor: getColor(item.semaforoColor), borderColor: 'black', borderWidth: 2 }]}>
+                                        <Text style={[styles.cardTitle, { color: '#000' }]}>{item.maquina}</Text>
+                                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
+                                            <Text style={{ color: '#000', fontSize: 11, fontWeight: 'bold' }}>📅 {item.ultimaFecha}</Text>
+                                            <Text style={{ color: '#000', fontSize: 11, fontWeight: 'bold' }}>#️⃣ {item.diasLaborados} días</Text>
+                                        </View>
+                                        <Text style={{ color: '#000' }}>Tiros Reportados: {item.tirosReportados?.toLocaleString() || '0'}</Text>
+                                        <Text style={{ color: '#000' }}>Tiros Equivalentes: {item.tirosEquivalentes?.toLocaleString() || '0'}</Text>
+                                        <Text style={{ color: '#000' }}>Cambios Totales: {item.totalCambios || '0'}</Text>
+                                        <Text style={{ color: '#000', fontWeight: 'bold' }}>Tiros Totales: {item.tirosTotales?.toLocaleString() || '0'}</Text>
+                                        <Text style={{ color: '#000' }}>Rendimiento Esp: {item.meta100Porciento?.toFixed(0)}</Text>
+                                        <Text style={{ color: '#000', fontWeight: 'bold' }}>Eficiencia: {(item.porcentajeRendimiento100)?.toFixed(1)}%</Text>
+
+                                        {/* NUEVO: Suma de todos los tiempos */}
+                                        <View style={{ marginTop: 5, paddingVertical: 5, borderTopWidth: 1, borderTopColor: '#ccc' }}>
+                                            <Text style={{ color: '#000', fontWeight: 'bold' }}>Análisis de Tiempos:</Text>
+                                            <Text style={{ color: '#000' }}>• Hrs Productivas: {hrsProductivas.toFixed(2)}</Text>
+                                            <Text style={{ color: '#000' }}>• Hrs Auxiliar: {hrsAuxiliares.toFixed(2)}</Text>
+                                            <Text style={{ color: '#000' }}>• Hrs Muertas: {hrsMuertas.toFixed(2)}</Text>
+                                            <Text style={{ color: '#000', fontWeight: 'bold' }}>• Total Reportadas: {(totalHorasReportadas - totalDescanso).toFixed(2)}</Text>
+                                        </View>
+
+                                        <Text style={{ color: '#000', marginTop: 5 }}>Disponibilidad (Ocupación): <Text style={{ fontWeight: 'bold' }}>{ocupacionBruta.toFixed(1)}%</Text></Text>
+                                        <Text style={{ color: '#000' }}>Eficiencia Setup (Tasa Uso): <Text style={{ fontWeight: 'bold' }}>{efiSetup.toFixed(1)}%</Text></Text>
                                     </View>
-                                    <Text style={{ color: '#000' }}>Tiros Reportados: {item.tirosReportados?.toLocaleString() || '0'}</Text>
-                                    <Text style={{ color: '#000' }}>Tiros Equivalentes: {item.tirosEquivalentes?.toLocaleString() || '0'}</Text>
-                                    <Text style={{ color: '#000' }}>Cambios Totales: {item.totalCambios || '0'}</Text>
-                                    <Text style={{ color: '#000', fontWeight: 'bold' }}>Tiros Totales: {item.tirosTotales?.toLocaleString() || '0'}</Text>
-                                    <Text style={{ color: '#000' }}>Rendimiento Esp: {item.meta100Porciento?.toFixed(0)}</Text>
-                                    <Text style={{ color: '#000' }}>Eficiencia: {(item.porcentajeRendimiento100)?.toFixed(1)}%</Text>
-                                </View>
-                            ))
+                                );
+                            })
                         )}
                     </View>
                 )

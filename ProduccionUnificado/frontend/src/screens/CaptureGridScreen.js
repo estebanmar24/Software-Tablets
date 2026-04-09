@@ -64,6 +64,11 @@ export default function CaptureGridScreen({ navigation }) {
     const [opList, setOpList] = useState([]);
     const [opResults, setOpResults] = useState([]);
     const [selectedOP, setSelectedOP] = useState('');
+    // OP Results filter state
+    const [opFiltroMaquina, setOpFiltroMaquina] = useState('');
+    const [opFiltroActividad, setOpFiltroActividad] = useState('');
+    const [opFiltroFechaDesde, setOpFiltroFechaDesde] = useState('');
+    const [opFiltroFechaHasta, setOpFiltroFechaHasta] = useState('');
 
     // Day Detail State
     const [dayDetailModalVisible, setDayDetailModalVisible] = useState(false);
@@ -801,6 +806,11 @@ export default function CaptureGridScreen({ navigation }) {
     const handleSelectOP = async (op) => {
         setOpSearchModalVisible(false);
         setSelectedOP(op);
+        // Reset filters each time a new OP is selected
+        setOpFiltroMaquina('');
+        setOpFiltroActividad('');
+        setOpFiltroFechaDesde('');
+        setOpFiltroFechaHasta('');
         setLoadingOPs(true);
         try {
             const res = await api.get(`produccion/buscar-op/${encodeURIComponent(op)}`);
@@ -1068,8 +1078,6 @@ export default function CaptureGridScreen({ navigation }) {
         const TotalMuertos = FaltaTrabajo + Reparacion + OtroMuerto;
         const TotalHoras = TotalHorasProd + TotalAux + TotalMuertos;
 
-        // NUEVA LÓGICA: Meta = (MetaBase / 8) * TotalHorasTrabajadas
-        // Esto maneja automáticamente días parciales, sábados, etc.
         let MetaPorHora = MetaBase > 0 ? (MetaBase / 8) : 0;
         let MetaRendimiento = MetaPorHora * TotalHoras;
 
@@ -1300,7 +1308,7 @@ export default function CaptureGridScreen({ navigation }) {
         }
     };
 
-    const confirmDelete = async (id, type) => {
+    const confirmDelete = async (id, type, maquinaIdParam) => {
         const confirmMsg = "Confirmar eliminación?";
         if (Platform.OS === 'web') {
             if (!window.confirm(confirmMsg)) return;
@@ -1311,12 +1319,14 @@ export default function CaptureGridScreen({ navigation }) {
         setIsDeleting(true);
         try {
             const params = { mes, anio };
-            if (type === 'maquina') params.maquinaId = id;
-            else params.usuarioId = id;
+            if (type === 'maquina') {
+                params.maquinaId = id;
+            } else {
+                params.usuarioId = id;
+                if (maquinaIdParam) params.maquinaId = maquinaIdParam;
+            }
 
-            const response = await api.delete(`produccion/borrar`, {
-                params: { mes, anio, ... (type === 'maquina' ? { maquinaId: id } : { usuarioId: id }) }
-            });
+            const response = await api.delete(`produccion/borrar`, { params });
 
             if (response.status === 200 || response.status === 204) {
                 Alert.alert("Éxito", "Datos eliminados");
@@ -1703,7 +1713,7 @@ export default function CaptureGridScreen({ navigation }) {
                             data={deleteOption === 'operario' ? operariosConDatos : maquinasConDatos}
                             keyExtractor={(item, i) => i.toString()}
                             renderItem={({ item }) => (
-                                <TouchableOpacity style={[styles.modalItem, { backgroundColor: '#ffe6e6' }]} onPress={() => confirmDelete(deleteOption === 'operario' ? item.usuarioId : item.maquinaId, deleteOption)}>
+                                <TouchableOpacity style={[styles.modalItem, { backgroundColor: '#ffe6e6' }]} onPress={() => confirmDelete(deleteOption === 'operario' ? item.usuarioId : item.maquinaId, deleteOption, deleteOption === 'operario' ? item.maquinaId : undefined)}>
                                     <Text style={{ color: 'red' }}>
                                         {deleteOption === 'operario'
                                             ? `${item.usuarioNombre} - ${item.maquinaNombre}`
@@ -1769,42 +1779,173 @@ export default function CaptureGridScreen({ navigation }) {
                 </View>
             </Modal>
 
-            {/* OP Results Modal */}
+            {/* OP Results Modal - Enhanced */}
             <Modal visible={opResultsModalVisible} transparent animationType="fade">
                 <View style={styles.modalOverlay}>
-                    <View style={[styles.modalContent, { maxWidth: 600, maxHeight: '80%' }]}>
-                        <Text style={styles.modalTitle}>Resultados para OP: {selectedOP}</Text>
-                        {loadingOPs ? (
-                            <ActivityIndicator size="large" color="#8e44ad" />
-                        ) : opResults.length === 0 ? (
-                            <Text style={{ textAlign: 'center', padding: 20 }}>No se encontraron registros para esta OP</Text>
-                        ) : (
-                            <ScrollView style={{ maxHeight: 400 }}>
-                                { /* Header */}
-                                <View style={{ flexDirection: 'row', backgroundColor: '#8e44ad', padding: 8, borderRadius: 4 }}>
-                                    <Text style={{ flex: 1.3, color: 'white', fontWeight: 'bold' }}>Máquina</Text>
-                                    <Text style={{ flex: 0.9, color: 'white', fontWeight: 'bold', textAlign: 'center' }}>Fecha</Text>
-                                    <Text style={{ flex: 1.0, color: 'white', fontWeight: 'bold' }}>Proceso</Text>
-                                    <Text style={{ flex: 0.7, color: 'white', fontWeight: 'bold', textAlign: 'center' }}>Tiros</Text>
-                                    {/* <Text style={{ flex: 0.7, color: 'white', fontWeight: 'bold', textAlign: 'center' }}>Desp.</Text> */}
-                                    <Text style={{ flex: 1.4, color: 'white', fontWeight: 'bold' }}>OP Completa</Text>
-                                </View>
-                                { /* Rows */}
-                                {opResults.map((r, idx) => (
-                                    <View key={idx} style={{ flexDirection: 'row', padding: 8, backgroundColor: idx % 2 === 0 ? '#faf5ff' : 'white', borderBottomWidth: 1, borderBottomColor: '#eee', alignItems: 'center' }}>
-                                        <Text style={{ flex: 1.3, fontSize: 11 }}>{r.maquinaNombre || r.MaquinaNombre}</Text>
-                                        <Text style={{ flex: 0.9, textAlign: 'center', fontSize: 11 }}>{formatDateOP(r.fecha || r.Fecha)}</Text>
-                                        <Text style={{ flex: 1.0, fontSize: 11 }}>{r.actividadNombre || r.ActividadNombre}</Text>
-                                        <Text style={{ flex: 0.7, textAlign: 'center', fontSize: 11, fontWeight: 'bold' }}>{formatForDisplay(r.tiros ?? r.Tiros)}</Text>
-                                        {/* <Text style={{ flex: 0.7, textAlign: 'center', fontSize: 11, color: '#e74c3c' }}>{formatForDisplay(r.desperdicio ?? r.Desperdicio ?? 0)}</Text> */}
-                                        <Text style={{ flex: 1.4, fontSize: 11 }}>{r.referenciaOP || r.ReferenciaOP}</Text>
+                    <View style={[styles.modalContent, { width: '95%', maxWidth: 900, maxHeight: '90%', padding: 0 }]}>
+
+                        {/* Header */}
+                        <View style={{ backgroundColor: '#8e44ad', padding: 14, borderTopLeftRadius: 10, borderTopRightRadius: 10 }}>
+                            <Text style={{ fontSize: 16, fontWeight: 'bold', color: 'white', textAlign: 'center' }}>
+                                🔍 Resultados para OP: {selectedOP}
+                            </Text>
+                        </View>
+
+                        {/* Filter Bar */}
+                        <View style={{ backgroundColor: '#f3e5f5', padding: 10, gap: 8 }}>
+                            {(() => {
+                                // Helper: apply all filters EXCEPT the target field
+                                const applyExcept = (except) => opResults.filter(r => {
+                                    const maq = r.maquinaNombre || r.MaquinaNombre || '';
+                                    const act = r.actividadNombre || r.ActividadNombre || '';
+                                    const fechaStr = (r.fecha || r.Fecha || '').split('T')[0];
+                                    if (except !== 'maquina' && opFiltroMaquina && maq !== opFiltroMaquina) return false;
+                                    if (except !== 'actividad' && opFiltroActividad && act !== opFiltroActividad) return false;
+                                    if (except !== 'fecha' && opFiltroFechaDesde && fechaStr < opFiltroFechaDesde) return false;
+                                    if (except !== 'fecha' && opFiltroFechaHasta && fechaStr > opFiltroFechaHasta) return false;
+                                    return true;
+                                });
+
+                                const maquinaOpts = [...new Set(applyExcept('maquina').map(r => r.maquinaNombre || r.MaquinaNombre).filter(Boolean))].sort();
+                                const actividadOpts = [...new Set(applyExcept('actividad').map(r => r.actividadNombre || r.ActividadNombre).filter(Boolean))].sort();
+
+                                return (
+                                    <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                                        {/* Filtro Máquina */}
+                                        <View style={{ flex: 1, minWidth: 160 }}>
+                                            <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#6a1b9a', marginBottom: 2 }}>Máquina</Text>
+                                            <View style={{ backgroundColor: 'white', borderRadius: 6, borderWidth: 1, borderColor: '#ce93d8' }}>
+                                                <Picker
+                                                    selectedValue={opFiltroMaquina}
+                                                    onValueChange={v => setOpFiltroMaquina(v)}
+                                                    style={{ height: 34 }}
+                                                >
+                                                    <Picker.Item label={`Todas (${maquinaOpts.length})`} value="" />
+                                                    {maquinaOpts.map(m => (
+                                                        <Picker.Item key={m} label={m} value={m} />
+                                                    ))}
+                                                </Picker>
+                                            </View>
+                                        </View>
+
+                                        {/* Filtro Actividad */}
+                                        <View style={{ flex: 1, minWidth: 160 }}>
+                                            <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#6a1b9a', marginBottom: 2 }}>Código Actividad</Text>
+                                            <View style={{ backgroundColor: 'white', borderRadius: 6, borderWidth: 1, borderColor: '#ce93d8' }}>
+                                                <Picker
+                                                    selectedValue={opFiltroActividad}
+                                                    onValueChange={v => setOpFiltroActividad(v)}
+                                                    style={{ height: 34 }}
+                                                >
+                                                    <Picker.Item label={`Todas (${actividadOpts.length})`} value="" />
+                                                    {actividadOpts.map(a => (
+                                                        <Picker.Item key={a} label={a} value={a} />
+                                                    ))}
+                                                </Picker>
+                                            </View>
+                                        </View>
+
+                                        {/* Filtro Fecha Desde */}
+                                        {Platform.OS === 'web' && (
+                                            <View style={{ minWidth: 140 }}>
+                                                <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#6a1b9a', marginBottom: 2 }}>Fecha Desde</Text>
+                                                <input
+                                                    type="date"
+                                                    value={opFiltroFechaDesde}
+                                                    onChange={e => setOpFiltroFechaDesde(e.target.value)}
+                                                    style={{ padding: 6, borderRadius: 6, border: '1px solid #ce93d8', fontSize: 13, backgroundColor: 'white', height: 34 }}
+                                                />
+                                            </View>
+                                        )}
+
+                                        {/* Filtro Fecha Hasta */}
+                                        {Platform.OS === 'web' && (
+                                            <View style={{ minWidth: 140 }}>
+                                                <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#6a1b9a', marginBottom: 2 }}>Fecha Hasta</Text>
+                                                <input
+                                                    type="date"
+                                                    value={opFiltroFechaHasta}
+                                                    onChange={e => setOpFiltroFechaHasta(e.target.value)}
+                                                    style={{ padding: 6, borderRadius: 6, border: '1px solid #ce93d8', fontSize: 13, backgroundColor: 'white', height: 34 }}
+                                                />
+                                            </View>
+                                        )}
+
+                                        {/* Botón limpiar filtros */}
+                                        <TouchableOpacity
+                                            onPress={() => { setOpFiltroMaquina(''); setOpFiltroActividad(''); setOpFiltroFechaDesde(''); setOpFiltroFechaHasta(''); }}
+                                            style={{ backgroundColor: '#7b1fa2', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, justifyContent: 'center', alignSelf: 'flex-end' }}
+                                        >
+                                            <Text style={{ color: 'white', fontSize: 11, fontWeight: 'bold' }}>✕ Limpiar</Text>
+                                        </TouchableOpacity>
                                     </View>
-                                ))}
-                            </ScrollView>
-                        )}
-                        <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setOpResultsModalVisible(false)}>
-                            <Text style={{ color: 'white' }}>Cerrar</Text>
-                        </TouchableOpacity>
+                                );
+                            })()}
+                        </View>
+
+                        {/* Results Table */}
+                        {loadingOPs ? (
+                            <ActivityIndicator size="large" color="#8e44ad" style={{ margin: 30 }} />
+                        ) : (() => {
+                            const filtered = opResults.filter(r => {
+                                const maq = r.maquinaNombre || r.MaquinaNombre || '';
+                                const act = r.actividadNombre || r.ActividadNombre || '';
+                                const fechaStr = (r.fecha || r.Fecha || '').split('T')[0];
+                                if (opFiltroMaquina && maq !== opFiltroMaquina) return false;
+                                if (opFiltroActividad && act !== opFiltroActividad) return false;
+                                if (opFiltroFechaDesde && fechaStr < opFiltroFechaDesde) return false;
+                                if (opFiltroFechaHasta && fechaStr > opFiltroFechaHasta) return false;
+                                return true;
+                            });
+                            const totalTiros = filtered.reduce((acc, r) => acc + (parseFloat(String(r.tiros ?? r.Tiros ?? 0).replace(/\./g, '').replace(',', '.')) || 0), 0);
+
+                            return (
+                                <>
+                                    {/* Table header */}
+                                    <View style={{ flexDirection: 'row', backgroundColor: '#6a1b9a', paddingHorizontal: 12, paddingVertical: 8 }}>
+                                        <Text style={{ flex: 1.8, color: 'white', fontWeight: 'bold', fontSize: 12 }}>Máquina</Text>
+                                        <Text style={{ flex: 0.9, color: 'white', fontWeight: 'bold', textAlign: 'center', fontSize: 12 }}>Fecha</Text>
+                                        <Text style={{ flex: 1.2, color: 'white', fontWeight: 'bold', fontSize: 12 }}>Actividad</Text>
+                                        <Text style={{ flex: 0.8, color: 'white', fontWeight: 'bold', textAlign: 'center', fontSize: 12 }}>Tiros</Text>
+                                        <Text style={{ flex: 1.8, color: 'white', fontWeight: 'bold', fontSize: 12 }}>OP Completa</Text>
+                                    </View>
+
+                                    <ScrollView style={{ flex: 1 }}>
+                                        {filtered.length === 0 ? (
+                                            <Text style={{ textAlign: 'center', padding: 20, color: '#888' }}>No hay resultados con los filtros aplicados</Text>
+                                        ) : (
+                                            filtered.map((r, idx) => (
+                                                <View key={idx} style={{ flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 8, backgroundColor: idx % 2 === 0 ? '#faf5ff' : 'white', borderBottomWidth: 1, borderBottomColor: '#eee', alignItems: 'center' }}>
+                                                    <Text style={{ flex: 1.8, fontSize: 12 }}>{r.maquinaNombre || r.MaquinaNombre}</Text>
+                                                    <Text style={{ flex: 0.9, textAlign: 'center', fontSize: 12 }}>{formatDateOP(r.fecha || r.Fecha)}</Text>
+                                                    <Text style={{ flex: 1.2, fontSize: 12 }}>{r.actividadNombre || r.ActividadNombre}</Text>
+                                                    <Text style={{ flex: 0.8, textAlign: 'center', fontSize: 12, fontWeight: 'bold', color: '#6a1b9a' }}>{formatForDisplay(r.tiros ?? r.Tiros)}</Text>
+                                                    <Text style={{ flex: 1.8, fontSize: 12 }}>{r.referenciaOP || r.ReferenciaOP}</Text>
+                                                </View>
+                                            ))
+                                        )}
+                                    </ScrollView>
+
+                                    {/* Totals bar */}
+                                    <View style={{ flexDirection: 'row', backgroundColor: '#4a148c', paddingHorizontal: 12, paddingVertical: 8, alignItems: 'center' }}>
+                                        <Text style={{ flex: 1, color: 'white', fontWeight: 'bold', fontSize: 12 }}>
+                                            📊 {filtered.length} registro(s)
+                                        </Text>
+                                        <Text style={{ color: '#e1bee7', fontWeight: 'bold', fontSize: 12 }}>
+                                            Total Tiros: <Text style={{ color: 'white', fontSize: 13 }}>{formatNumber(totalTiros.toFixed(0))}</Text>
+                                        </Text>
+                                    </View>
+                                </>
+                            );
+                        })()}
+
+                        {/* Footer */}
+                        <View style={{ padding: 10, borderTopWidth: 1, borderTopColor: '#eee', backgroundColor: 'white', borderBottomLeftRadius: 10, borderBottomRightRadius: 10 }}>
+                            <TouchableOpacity style={[styles.modalCloseBtn, { marginTop: 0 }]} onPress={() => setOpResultsModalVisible(false)}>
+                                <Text style={{ color: 'white', fontWeight: 'bold' }}>Cerrar</Text>
+                            </TouchableOpacity>
+                        </View>
+
                     </View>
                 </View>
             </Modal>

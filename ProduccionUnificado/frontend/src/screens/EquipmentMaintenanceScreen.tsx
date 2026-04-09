@@ -144,12 +144,23 @@ interface Licencia {
 }
 
 export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => void }) {
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'equipos'>(() => {
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'equipos' | 'tickets'>(() => {
         if (Platform.OS === 'web') {
-            return (localStorage.getItem('equipmentTab') as 'dashboard' | 'equipos') || 'dashboard';
+            return (localStorage.getItem('equipmentTab') as 'dashboard' | 'equipos' | 'tickets') || 'dashboard';
         }
         return 'dashboard';
     });
+
+    // Tickets Admin State
+    const [adminTickets, setAdminTickets] = useState<any[]>([]);
+    const [adminTicketStats, setAdminTicketStats] = useState<any>(null);
+    const [adminTicketsLoading, setAdminTicketsLoading] = useState(false);
+    const [adminTicketDetail, setAdminTicketDetail] = useState<any>(null);
+    const [adminTicketDetailModal, setAdminTicketDetailModal] = useState(false);
+    const [adminTicketFiltroEstado, setAdminTicketFiltroEstado] = useState('');
+    const [adminTicketFiltroPrioridad, setAdminTicketFiltroPrioridad] = useState('');
+    const [adminTicketBuscar, setAdminTicketBuscar] = useState('');
+    const [adminResolucion, setAdminResolucion] = useState('');
     const [equipos, setEquipos] = useState<Equipo[]>([]);
     const [stats, setStats] = useState<Stats | null>(null);
     const [proximos, setProximos] = useState<ProximoMantenimiento[]>([]);
@@ -228,8 +239,51 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
     useEffect(() => {
         if (activeTab === 'equipos') {
             loadEquipos();
+        } else if (activeTab === 'tickets') {
+            loadAdminTickets();
         }
-    }, [activeTab, filtroEstado, filtroArea]);
+    }, [activeTab, filtroEstado, filtroArea, adminTicketFiltroEstado, adminTicketFiltroPrioridad]);
+
+    // ============ TICKETS ADMIN ============
+    const loadAdminTickets = async () => {
+        setAdminTicketsLoading(true);
+        try {
+            let url = `${API_BASE}/tickets?`;
+            if (adminTicketFiltroEstado) url += `estado=${adminTicketFiltroEstado}&`;
+            if (adminTicketFiltroPrioridad) url += `prioridad=${adminTicketFiltroPrioridad}&`;
+            if (adminTicketBuscar) url += `buscar=${encodeURIComponent(adminTicketBuscar)}&`;
+            const [ticketsRes, statsRes] = await Promise.all([
+                fetch(url),
+                fetch(`${API_BASE}/tickets/stats`)
+            ]);
+            if (ticketsRes.ok) setAdminTickets(await ticketsRes.json());
+            if (statsRes.ok) setAdminTicketStats(await statsRes.json());
+        } catch (error) {
+            console.error('Error loading admin tickets:', error);
+        } finally {
+            setAdminTicketsLoading(false);
+        }
+    };
+
+    const handleAdminCambiarEstado = async (ticketId: number, nuevoEstado: string) => {
+        try {
+            const res = await fetch(`${API_BASE}/tickets/${ticketId}/estado`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ estado: nuevoEstado, comentarios: adminResolucion || null })
+            });
+            if (res.ok) {
+                Alert.alert('Éxito', `Estado cambiado a ${nuevoEstado}`);
+                loadAdminTickets();
+                if (adminTicketDetail?.id === ticketId) {
+                    setAdminTicketDetail({ ...adminTicketDetail, estado: nuevoEstado, comentarios: adminResolucion || adminTicketDetail.comentarios });
+                }
+                setAdminResolucion('');
+            }
+        } catch (error) {
+            Alert.alert('Error', 'No se pudo cambiar el estado');
+        }
+    };
 
     const loadData = async () => {
         setLoading(true);
@@ -713,6 +767,243 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
 
     // ==================== RENDER ====================
 
+    const TICKET_ESTADOS = ['Abierto', 'EnProgreso', 'Resuelto', 'Cerrado'];
+    const TICKET_ESTADO_LABELS: Record<string, string> = { 'Abierto': 'Abierto', 'EnProgreso': 'En Progreso', 'Resuelto': 'Resuelto', 'Cerrado': 'Cerrado' };
+    const TICKET_ESTADO_COLORS: Record<string, { bg: string; text: string }> = {
+        'Abierto': { bg: '#E3F2FD', text: '#1565C0' },
+        'EnProgreso': { bg: '#FFF3E0', text: '#E65100' },
+        'Resuelto': { bg: '#E8F5E9', text: '#2E7D32' },
+        'Cerrado': { bg: '#F5F5F5', text: '#616161' },
+    };
+    const TICKET_PRIORIDAD_COLORS: Record<string, { bg: string; text: string }> = {
+        'Baja': { bg: '#E8F5E9', text: '#2E7D32' },
+        'Media': { bg: '#FFF8E1', text: '#F57F17' },
+        'Alta': { bg: '#FFEBEE', text: '#C62828' },
+    };
+
+    const renderTicketsAdmin = () => {
+        const s = adminTicketStats;
+        return (
+            <ScrollView style={{ flex: 1, padding: 16 }}>
+                {/* Stats */}
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+                    {[
+                        { label: 'Total', value: s?.total || 0, color: '#3182CE', icon: '🎫' },
+                        { label: 'Abiertos', value: s?.abiertos || 0, color: '#1565C0', icon: '📬' },
+                        { label: 'En Progreso', value: s?.enProgreso || 0, color: '#E65100', icon: '🔧' },
+                        { label: 'Resueltos', value: s?.resueltos || 0, color: '#2E7D32', icon: '✅' },
+                        { label: 'Alta Prioridad', value: s?.altaPrioridad || 0, color: '#C62828', icon: '🔴' },
+                    ].map((card, i) => (
+                        <View key={i} style={{ flex: 1, minWidth: 120, alignItems: 'center', paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#FFFFFF' }}>
+                            <Text style={{ fontSize: 22 }}>{card.icon}</Text>
+                            <Text style={{ fontSize: 24, fontWeight: 'bold', color: card.color, marginTop: 4 }}>{card.value}</Text>
+                            <Text style={{ fontSize: 11, color: '#666', marginTop: 2 }}>{card.label}</Text>
+                        </View>
+                    ))}
+                </View>
+
+                {/* Filters */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap', backgroundColor: '#F7FAFC', padding: 10, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#666' }}>Estado:</Text>
+                    {['', ...TICKET_ESTADOS].map(e => (
+                        <TouchableOpacity key={e} onPress={() => setAdminTicketFiltroEstado(e)}
+                            style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, backgroundColor: adminTicketFiltroEstado === e ? '#3182CE' : '#EDF2F7' }}>
+                            <Text style={{ fontSize: 12, color: adminTicketFiltroEstado === e ? '#FFF' : '#333', fontWeight: adminTicketFiltroEstado === e ? 'bold' : 'normal' }}>
+                                {e === '' ? 'Todos' : TICKET_ESTADO_LABELS[e] || e}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#666', marginLeft: 8 }}>Prioridad:</Text>
+                    {['', 'Baja', 'Media', 'Alta'].map(p => (
+                        <TouchableOpacity key={p} onPress={() => setAdminTicketFiltroPrioridad(p)}
+                            style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, backgroundColor: adminTicketFiltroPrioridad === p ? '#3182CE' : '#EDF2F7' }}>
+                            <Text style={{ fontSize: 12, color: adminTicketFiltroPrioridad === p ? '#FFF' : '#333', fontWeight: adminTicketFiltroPrioridad === p ? 'bold' : 'normal' }}>
+                                {p === '' ? 'Todas' : p}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                    <TextInput
+                        style={{ flex: 1, minWidth: 150, height: 32, borderWidth: 1, borderColor: '#CBD5E0', borderRadius: 6, paddingHorizontal: 10, fontSize: 13, backgroundColor: '#FFF' }}
+                        placeholder="Buscar tickets..."
+                        value={adminTicketBuscar}
+                        onChangeText={setAdminTicketBuscar}
+                        onSubmitEditing={loadAdminTickets}
+                    />
+                </View>
+
+                {/* Tickets List */}
+                {adminTicketsLoading ? (
+                    <ActivityIndicator size="large" color="#3182CE" style={{ marginTop: 40 }} />
+                ) : adminTickets.length === 0 ? (
+                    <View style={{ alignItems: 'center', paddingVertical: 60 }}>
+                        <Text style={{ fontSize: 48, marginBottom: 12 }}>🎫</Text>
+                        <Text style={{ fontSize: 16, color: '#666' }}>No hay tickets</Text>
+                    </View>
+                ) : (
+                    adminTickets.map(ticket => (
+                        <TouchableOpacity key={ticket.id}
+                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, marginBottom: 8, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#FFF' }}
+                            onPress={() => { setAdminTicketDetail(ticket); setAdminResolucion(''); setAdminTicketDetailModal(true); }}>
+                            <View style={{ flex: 1 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                    <Text style={{ fontSize: 13, color: '#999' }}>#{ticket.id}</Text>
+                                    <Text style={{ fontSize: 15, fontWeight: 'bold', color: '#1A202C' }} numberOfLines={1}>{ticket.titulo}</Text>
+                                </View>
+                                <Text style={{ fontSize: 12, color: '#718096', marginTop: 3 }}>
+                                    {ticket.moduloAfectado || 'Sin módulo'} · {ticket.reportadoPor} · {ticket.fechaCreacion ? new Date(ticket.fechaCreacion).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                                </Text>
+                            </View>
+                            <View style={{ flexDirection: 'row', gap: 6 }}>
+                                <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: (TICKET_PRIORIDAD_COLORS[ticket.prioridad] || { bg: '#E0E0E0' }).bg }}>
+                                    <Text style={{ fontSize: 11, fontWeight: 'bold', color: (TICKET_PRIORIDAD_COLORS[ticket.prioridad] || { text: '#333' }).text }}>{ticket.prioridad}</Text>
+                                </View>
+                                <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: (TICKET_ESTADO_COLORS[ticket.estado] || { bg: '#E0E0E0' }).bg }}>
+                                    <Text style={{ fontSize: 11, fontWeight: 'bold', color: (TICKET_ESTADO_COLORS[ticket.estado] || { text: '#333' }).text }}>{TICKET_ESTADO_LABELS[ticket.estado] || ticket.estado}</Text>
+                                </View>
+                            </View>
+                        </TouchableOpacity>
+                    ))
+                )}
+                <View style={{ height: 30 }} />
+            </ScrollView>
+        );
+    };
+
+    const renderTicketDetailModal = () => {
+        if (!adminTicketDetail) return null;
+        const t = adminTicketDetail;
+        return (
+            <Modal visible={adminTicketDetailModal} animationType="slide" transparent>
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { maxWidth: 700, width: '90%', maxHeight: '90%' }]}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Ticket #{t.id}</Text>
+                            <TouchableOpacity onPress={() => setAdminTicketDetailModal(false)} style={{ padding: 8 }}>
+                                <MaterialIcons name="close" size={24} color="#666" />
+                            </TouchableOpacity>
+                        </View>
+                        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+                            {/* Title & Badges */}
+                            <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#1A202C', marginBottom: 8 }}>{t.titulo}</Text>
+                            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+                                <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: (TICKET_PRIORIDAD_COLORS[t.prioridad] || { bg: '#E0E0E0' }).bg }}>
+                                    <Text style={{ fontSize: 12, fontWeight: 'bold', color: (TICKET_PRIORIDAD_COLORS[t.prioridad] || { text: '#333' }).text }}>{t.prioridad}</Text>
+                                </View>
+                                <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: (TICKET_ESTADO_COLORS[t.estado] || { bg: '#E0E0E0' }).bg }}>
+                                    <Text style={{ fontSize: 12, fontWeight: 'bold', color: (TICKET_ESTADO_COLORS[t.estado] || { text: '#333' }).text }}>{TICKET_ESTADO_LABELS[t.estado] || t.estado}</Text>
+                                </View>
+                                {t.moduloAfectado && (
+                                    <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: '#EDF2F7' }}>
+                                        <Text style={{ fontSize: 12, color: '#4A5568' }}>{t.moduloAfectado}</Text>
+                                    </View>
+                                )}
+                            </View>
+
+                            {/* Description */}
+                            <View style={{ marginBottom: 16, padding: 12, backgroundColor: '#F7FAFC', borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                                <Text style={{ fontSize: 13, fontWeight: '600', color: '#2D3748', marginBottom: 4 }}>Descripción</Text>
+                                <Text style={{ fontSize: 13, color: '#4A5568', lineHeight: 20 }}>{t.descripcion}</Text>
+                            </View>
+
+                            {/* Steps */}
+                            {t.pasosReproducir && (
+                                <View style={{ marginBottom: 16, padding: 12, backgroundColor: '#F7FAFC', borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#2D3748', marginBottom: 4 }}>Pasos para Reproducir</Text>
+                                    <Text style={{ fontSize: 13, color: '#4A5568', lineHeight: 20 }}>{t.pasosReproducir}</Text>
+                                </View>
+                            )}
+
+                            {/* Metadata */}
+                            <View style={{ marginBottom: 16, padding: 12, backgroundColor: '#F7FAFC', borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                                    <Text style={{ fontSize: 12, color: '#718096' }}>Reportado por:</Text>
+                                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#2D3748' }}>{t.reportadoPor}</Text>
+                                </View>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                                    <Text style={{ fontSize: 12, color: '#718096' }}>Fecha creación:</Text>
+                                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#2D3748' }}>{t.fechaCreacion ? new Date(t.fechaCreacion).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</Text>
+                                </View>
+                                {t.fechaResolucion && (
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                                        <Text style={{ fontSize: 12, color: '#718096' }}>Fecha resolución:</Text>
+                                        <Text style={{ fontSize: 12, fontWeight: '600', color: '#2E7D32' }}>{new Date(t.fechaResolucion).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</Text>
+                                    </View>
+                                )}
+                            </View>
+
+                            {/* Images */}
+                            {t.imagenes && t.imagenes.length > 0 && (
+                                <View style={{ marginBottom: 16 }}>
+                                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#2D3748', marginBottom: 8 }}>Capturas de Pantalla</Text>
+                                    <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                                        {t.imagenes.map((img: any, i: number) => (
+                                            <Image key={i} source={{ uri: `${API_BASE.replace('/api', '')}${img.imagenUrl}` }}
+                                                style={{ width: 120, height: 90, borderRadius: 8 }} resizeMode="cover" />
+                                        ))}
+                                    </View>
+                                </View>
+                            )}
+
+                            {/* User's Original Comments (read-only) */}
+                            {t.comentarios && (
+                                <View style={{ marginBottom: 16, padding: 12, backgroundColor: '#F7FAFC', borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#2D3748', marginBottom: 4 }}>Comentarios del Usuario</Text>
+                                    <Text style={{ fontSize: 13, color: '#4A5568', lineHeight: 20 }}>{t.comentarios}</Text>
+                                </View>
+                            )}
+
+                            {/* Admin Resolution Section */}
+                            {t.estado !== 'Cerrado' ? (
+                                <>
+                                    <View style={{ marginBottom: 16, padding: 14, backgroundColor: '#EBF8FF', borderRadius: 8, borderWidth: 1, borderColor: '#BEE3F8' }}>
+                                        <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#2B6CB0', marginBottom: 8 }}>🔧 Resolución / Notas del Administrador</Text>
+                                        <TextInput
+                                            style={{ borderWidth: 1, borderColor: '#BEE3F8', borderRadius: 8, padding: 10, fontSize: 13, backgroundColor: '#FFF', minHeight: 80, textAlignVertical: 'top' }}
+                                            placeholder="Describe lo que se hizo para resolver el problema..."
+                                            value={adminResolucion}
+                                            onChangeText={setAdminResolucion}
+                                            multiline
+                                            numberOfLines={4}
+                                        />
+                                        <TouchableOpacity
+                                            style={{ marginTop: 10, backgroundColor: '#3182CE', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8, alignSelf: 'flex-end' }}
+                                            onPress={() => handleAdminCambiarEstado(t.id, t.estado)}>
+                                            <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 13 }}>💾 Guardar Resolución</Text>
+                                        </TouchableOpacity>
+                                    </View>
+
+                                    {/* Status Change Buttons */}
+                                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#2D3748', marginBottom: 8 }}>Cambiar Estado:</Text>
+                                    <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                                        {TICKET_ESTADOS.map(estado => (
+                                            <TouchableOpacity key={estado}
+                                                style={{
+                                                    paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8,
+                                                    backgroundColor: t.estado === estado ? (TICKET_ESTADO_COLORS[estado]?.text || '#333') : '#EDF2F7',
+                                                    opacity: t.estado === estado ? 0.5 : 1
+                                                }}
+                                                disabled={t.estado === estado}
+                                                onPress={() => handleAdminCambiarEstado(t.id, estado)}>
+                                                <Text style={{ fontSize: 13, fontWeight: 'bold', color: t.estado === estado ? '#FFF' : '#333' }}>
+                                                    {estado === 'Abierto' ? '📬' : estado === 'EnProgreso' ? '🔧' : estado === 'Resuelto' ? '✅' : '🔒'} {TICKET_ESTADO_LABELS[estado]}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+                                </>
+                            ) : (
+                                <View style={{ marginBottom: 16, padding: 14, backgroundColor: '#F5F5F5', borderRadius: 8, borderWidth: 1, borderColor: '#E0E0E0' }}>
+                                    <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#616161', marginBottom: 4 }}>🔒 Ticket Cerrado</Text>
+                                    <Text style={{ fontSize: 13, color: '#757575' }}>Este ticket ha sido cerrado y no se puede modificar.</Text>
+                                </View>
+                            )}
+                        </ScrollView>
+                    </View>
+                </View>
+            </Modal>
+        );
+    };
+
     const renderDashboard = () => (
         <ScrollView style={styles.dashboardContainer}>
             {/* Stats Cards */}
@@ -983,10 +1274,24 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                         🖥️ Equipos ({stats?.totalEquipos || 0})
                     </Text>
                 </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.tab, activeTab === 'tickets' && styles.tabActive]}
+                    onPress={() => {
+                        setActiveTab('tickets');
+                        if (Platform.OS === 'web') localStorage.setItem('equipmentTab', 'tickets');
+                        loadAdminTickets();
+                    }}
+                >
+                    <Text style={[styles.tabText, activeTab === 'tickets' && styles.tabTextActive]}>
+                        🎫 Tickets ({adminTicketStats?.total || 0})
+                    </Text>
+                </TouchableOpacity>
             </View>
 
             {/* Content */}
-            {activeTab === 'dashboard' ? renderDashboard() : renderEquipos()}
+            {activeTab === 'dashboard' ? renderDashboard() : activeTab === 'equipos' ? renderEquipos() : renderTicketsAdmin()}
+
+            {renderTicketDetailModal()}
 
             {/* Modal: Agregar/Editar Equipo */}
             <Modal visible={modalEquipo} animationType="slide" transparent>

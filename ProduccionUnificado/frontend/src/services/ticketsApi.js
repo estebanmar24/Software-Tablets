@@ -7,8 +7,10 @@ const api = axios.create({
 });
 
 // ============ TICKETS ============
-export const fetchTicketStats = async () => {
-    const response = await api.get(`${API_BASE_URL}/tickets/stats`);
+export const fetchTicketStats = async (reportadoPor) => {
+    let url = `${API_BASE_URL}/tickets/stats`;
+    if (reportadoPor) url += `?reportadoPor=${encodeURIComponent(reportadoPor)}`;
+    const response = await api.get(url);
     return response.data;
 };
 
@@ -18,6 +20,7 @@ export const fetchTickets = async (filtros = {}) => {
     if (filtros.prioridad) url += `prioridad=${filtros.prioridad}&`;
     if (filtros.modulo) url += `modulo=${filtros.modulo}&`;
     if (filtros.buscar) url += `buscar=${encodeURIComponent(filtros.buscar)}&`;
+    if (filtros.reportadoPor) url += `reportadoPor=${encodeURIComponent(filtros.reportadoPor)}&`;
     const response = await api.get(url);
     return response.data;
 };

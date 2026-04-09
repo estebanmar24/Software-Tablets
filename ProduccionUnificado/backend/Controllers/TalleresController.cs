@@ -204,9 +204,10 @@ public class TalleresController : ControllerBase
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[ERROR] CreateGasto Exception: {ex.Message}");
-            if (ex.InnerException != null) Console.WriteLine($"[ERROR] Inner: {ex.InnerException.Message}");
-            return StatusCode(500, new { error = ex.Message, detail = ex.InnerException?.Message });
+            var errorMessage = ex.Message;
+            if (ex.InnerException != null) errorMessage += " | Inner: " + ex.InnerException.Message;
+            Console.WriteLine($"[ERROR] CreateGasto Exception: {errorMessage}");
+            return StatusCode(500, new { error = "Database Error", message = errorMessage });
         }
     }
 
@@ -302,9 +303,11 @@ public class TalleresController : ControllerBase
                 // Add Names for Types
                 TipoHoraNombre = g.TipoHora != null ? g.TipoHora.Nombre : "",
                 TipoHoraPorcentaje = g.TipoHora != null ? g.TipoHora.Porcentaje : 0,
+                TipoHoraFactor = g.TipoHora != null ? g.TipoHora.Factor : 0,
                 g.TipoRecargoId,
                 TipoRecargoNombre = g.TipoRecargo != null ? g.TipoRecargo.Nombre : "",
                 TipoRecargoPorcentaje = g.TipoRecargo != null ? g.TipoRecargo.Porcentaje : 0,
+                TipoRecargoFactor = g.TipoRecargo != null ? g.TipoRecargo.Factor : 0,
                 g.FechaCreacion,
                 g.FechaModificacion,
                 g.CreadoPorId,
@@ -671,6 +674,15 @@ public class TalleresController : ControllerBase
             TotalPresupuesto = porRubro.Sum(x => x.PresupuestoAnual),
             TotalGastado = porRubro.Sum(x => x.GastadoAnual)
         });
+    }
+    #endregion
+
+    #region Maestros
+
+    [HttpGet("horarios")]
+    public async Task<ActionResult<IEnumerable<Horario>>> GetHorarios()
+    {
+        return await _context.Horarios.Where(h => h.Activo).OrderBy(h => h.Codigo).ToListAsync();
     }
 
     #endregion

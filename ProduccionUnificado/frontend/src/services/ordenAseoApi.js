@@ -21,9 +21,13 @@ export async function getPlantas() {
     return response.data;
 }
 
-// Get all surveys
-export async function getEncuestas() {
-    const response = await api.get(`${API_BASE_URL}/ordenaseo/encuestas`);
+// Get surveys (optionally filtered by date)
+export async function getEncuestas(fecha = null) {
+    let url = `${API_BASE_URL}/ordenaseo/encuestas`;
+    if (fecha) {
+        url += `?fecha=${fecha}`;
+    }
+    const response = await api.get(url);
     return response.data;
 }
 

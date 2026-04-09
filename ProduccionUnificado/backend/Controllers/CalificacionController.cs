@@ -79,7 +79,7 @@ public class CalificacionController : ControllerBase
                         ? (snapshot.Meta100Porciento > 0 ? snapshot.Meta100Porciento : snapshot.MetaRendimiento)
                         : (maq.Meta100Porciento > 0 ? maq.Meta100Porciento : maq.MetaRendimiento);
                     
-                    // NEW: Use TotalHoras to prorate Meta100 (Matches ProduccionController.GetResumen)
+                    // REVERTED: Use TotalHoras to prorate Meta100 (Global Logic)
                     decimal totalHorasMaq = grupoMaquina.Sum(p => p.TotalHoras);
                     decimal metaPorHora = (decimal)meta100PorcientoBase / 8;
                     decimal meta100 = totalHorasMaq * metaPorHora;
@@ -229,7 +229,7 @@ public class CalificacionController : ControllerBase
                         ? (snapshot.Meta100Porciento > 0 ? snapshot.Meta100Porciento : snapshot.MetaRendimiento)
                         : (maquina.Meta100Porciento > 0 ? maquina.Meta100Porciento : maquina.MetaRendimiento);
                     
-                     // NEW: Use TotalHoras to prorate Meta100 (Matches ProduccionController.GetResumen)
+                     // REVERTED: Use TotalHoras to prorate Meta100 (Global Logic)
                     decimal totalHorasMaq = grupoMaquina.Sum(p => p.TotalHoras);
                     decimal metaPorHora = (decimal)meta100PorcientoBase / 8;
                     decimal meta100 = totalHorasMaq * metaPorHora;
@@ -356,7 +356,7 @@ public class CalificacionController : ControllerBase
                             ? (snapshot.Meta100Porciento > 0 ? snapshot.Meta100Porciento : snapshot.MetaRendimiento)
                             : (maquina.Meta100Porciento > 0 ? maquina.Meta100Porciento : maquina.MetaRendimiento);
                         
-                        // NEW: Use TotalHoras to prorate Meta100 (Matches ProduccionController.GetResumen)
+                        // REVERTED: Use TotalHoras to prorate Meta100 (Global Logic)
                         decimal totalHorasMaq = grupoMaquina.Sum(p => p.TotalHoras);
                         decimal metaPorHora = (decimal)meta100PorcientoBase / 8;
                         decimal meta100 = totalHorasMaq * metaPorHora;

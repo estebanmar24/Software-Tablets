@@ -90,7 +90,6 @@ export default function CartasScreen({ navigation }) {
             }
 
             const zip = new JSZip();
-            const folder = zip.folder(`Cartas_${getMesNombre(mes)}_${anio}`);
 
             // 3. Agrupar datos por operario (usuarioId)
             const operarioMap = new Map();
@@ -109,6 +108,7 @@ export default function CartasScreen({ navigation }) {
                     meta100Porciento: op.meta100Porciento,
                     totalTiros: op.totalTiros,
                     totalHorasProductivas: op.totalHorasProductivas,
+                    totalHorasAuxiliares: op.totalHorasAuxiliares, // Add auxiliary hours for new logic
                     totalHoras: op.totalHoras, // Add mapping for Total Hours (includes Aux/Dead)
                     promedioHoraProductiva: op.promedioHoraProductiva,
                     valorAPagarBonificable: op.valorAPagarBonificable,
@@ -139,6 +139,12 @@ export default function CartasScreen({ navigation }) {
                 setLoading(false);
                 return;
             }
+
+            // Initialize Master Doc AFTER classes are loaded
+            const masterDoc = new jsPDFClass();
+            let isFirstMasterPage = true;
+
+            const folder = zip.folder(`Cartas_${getMesNombre(mes)}_${anio}`);
 
             for (const opData of operariosUnicos) {
                 setStatusText(`Generando carta ${count + 1}/${operariosUnicos.length}...`);
@@ -226,6 +232,7 @@ export default function CartasScreen({ navigation }) {
 
                 const tableData = sortedMaquinas.map(m => {
                     const pct100 = m.porcentajeRendimiento100 || 0;
+
                     let colorSem = 'Rojo';
                     if (pct100 >= 100) colorSem = 'Verde';
                     else if (pct100 >= 75) colorSem = 'Amarillo';
@@ -235,7 +242,7 @@ export default function CartasScreen({ navigation }) {
                         m.diasLaborados?.toString() || '0',
                         m.meta100Porciento?.toFixed(0) || '0',
                         m.totalTiros?.toString() || '0',
-                        m.totalHorasProductivas?.toFixed(2) || '0',
+                        ((m.totalHorasProductivas || 0) + (m.totalHorasAuxiliares || 0)).toFixed(2), // Sum of Prod+Aux
                         `${colorSem}|${pct100.toFixed(0)}%`
                     ];
                 });
@@ -265,7 +272,7 @@ export default function CartasScreen({ navigation }) {
 
                 autoTable(doc, {
                     startY: 95,
-                    head: [['Máquina', 'Días', 'Tiros 100%', 'Tiros', 'H.Prod', 'Sem 100%']],
+                    head: [['Máquina', 'Días', 'Tiros 100%', 'Tiros', 'H.Rend', 'Sem 100%']],
                     body: tableData,
                     styles: { fontSize: 8, cellPadding: 2, halign: 'center' },
                     headStyles: { fillColor: [0, 51, 102], textColor: 255, fontSize: 8, halign: 'center' },
@@ -294,7 +301,7 @@ export default function CartasScreen({ navigation }) {
 
                     const debugData = sortedMaquinas.map(m => {
                         const eff = m.porcentajeRendimiento100 || 0;
-                        const hrs = m.totalHoras || 0; // Use Total Hours (119.09) instead of Productive (101.93)
+                        const hrs = (m.totalHorasProductivas || 0) + (m.totalHorasAuxiliares || 0);
                         const weighted = eff * hrs;
                         return [
                             m.maquina,
@@ -304,9 +311,9 @@ export default function CartasScreen({ navigation }) {
                         ];
                     });
 
-                    // Totals
-                    const sumHrs = sortedMaquinas.reduce((s, m) => s + (m.totalHoras || 0), 0);
-                    const sumWeighted = sortedMaquinas.reduce((s, m) => s + ((m.porcentajeRendimiento100 || 0) * (m.totalHoras || 0)), 0);
+                    // Totals - FIXED: Use Prod+Aux for weighted sum to match individual rows
+                    const sumHrs = sortedMaquinas.reduce((s, m) => s + ((m.totalHorasProductivas || 0) + (m.totalHorasAuxiliares || 0)), 0);
+                    const sumWeighted = sortedMaquinas.reduce((s, m) => s + ((m.porcentajeRendimiento100 || 0) * ((m.totalHorasProductivas || 0) + (m.totalHorasAuxiliares || 0))), 0);
                     const finalAvg = sumHrs > 0 ? sumWeighted / sumHrs : 0;
 
                     debugData.push([
@@ -337,10 +344,10 @@ export default function CartasScreen({ navigation }) {
                 }
                 // ---------------------------------------------------------------------------------
 
-                // Calcular rendimiento promedio general del mes (Ponderado por Horas Totales)
-                // Formula: Sum(Rendimiento * TotalHoras) / Sum(TotalHoras)
-                const totalHorasPonderado = sortedMaquinas.reduce((sum, m) => sum + (m.totalHoras || 0), 0);
-                const rendimientoPonderado = sortedMaquinas.reduce((sum, m) => sum + ((m.porcentajeRendimiento100 || 0) * (m.totalHoras || 0)), 0);
+                // Calcular rendimiento promedio general del mes (Ponderado por Horas Totales sin muertos)
+                // Formula: Sum(RendimientoReporte * HorasRendimiento) / Sum(HorasRendimiento)
+                const totalHorasPonderado = sortedMaquinas.reduce((sum, m) => sum + ((m.totalHorasProductivas || 0) + (m.totalHorasAuxiliares || 0)), 0);
+                const rendimientoPonderado = sortedMaquinas.reduce((sum, m) => sum + ((m.porcentajeRendimiento100 || 0) * ((m.totalHorasProductivas || 0) + (m.totalHorasAuxiliares || 0))), 0);
 
                 const rendimientoPromedio = totalHorasPonderado > 0
                     ? rendimientoPonderado / totalHorasPonderado
@@ -629,8 +636,106 @@ export default function CartasScreen({ navigation }) {
                 const filename = `Carta_${cleanName}.pdf`;
                 folder.file(filename, pdfBase64, { base64: true });
 
+                // --- MASTER DOC LOGIC (COMPACT PAGE) ---
+                if (!isFirstMasterPage) {
+                    masterDoc.addPage();
+                }
+                isFirstMasterPage = false;
+
+                // Simple render for Master Doc (Reuse some logic but omit sections)
+                // We'll re-render to masterDoc here
+                if (base64Logo) masterDoc.addImage(base64Logo, 'JPEG', 10, 10, 20, 20); // Smaller logo
+                masterDoc.setFontSize(8);
+                masterDoc.text(`${new Date().toLocaleDateString()}`, masterDoc.internal.pageSize.getWidth() - 15, 15, { align: 'right' });
+                masterDoc.setFontSize(14);
+                masterDoc.setFont('helvetica', 'bold');
+                masterDoc.text('CARTA DE DESEMPENO MENSUAL', masterDoc.internal.pageSize.getWidth() / 2, 25, { align: 'center' });
+                masterDoc.setFontSize(10);
+                masterDoc.text(`Periodo: ${getMesNombre(mes)} ${anio} | Operario: ${opData.operario}`, masterDoc.internal.pageSize.getWidth() / 2, 33, { align: 'center' });
+
+                masterDoc.setFontSize(9);
+                masterDoc.setFont('helvetica', 'normal');
+                masterDoc.text(mensaje, 15, 45); // Reuse message
+
+                // Table in Master Doc
+                autoTable(masterDoc, {
+                    startY: 50,
+                    head: [['Máquina', 'Días', 'Tiros 100%', 'Tiros', 'H.Rend', 'Sem 100%']],
+                    body: tableData,
+                    styles: { fontSize: 7, cellPadding: 1, halign: 'center' },
+                    headStyles: { fillColor: [0, 51, 102], textColor: 255 },
+                    columnStyles: { 0: { cellWidth: 45, halign: 'left' } },
+                    didParseCell: (data) => {
+                        if (data.section === 'body' && data.column.index === 5) setSemaforoColor(data);
+                    }
+                });
+
+                let masterY = masterDoc.lastAutoTable.finalY + 8;
+                masterDoc.setFontSize(9);
+                masterDoc.setFont('helvetica', 'bold');
+                masterDoc.text(`Total Tiros: ${totalTirosGlobal.toLocaleString()}`, 15, masterY);
+                masterY += 5;
+                masterDoc.setTextColor(...colorRendimiento);
+                masterDoc.text(`Rendimiento Promedio del Mes: ${rendimientoPromedio.toFixed(2)}%`, 15, masterY);
+                masterDoc.setTextColor(0, 0, 0);
+
+                // Small Chart in Master Doc
+                masterY += 10;
+                const mChartH = 30;
+                const mStartX = 15;
+                masterDoc.setFontSize(10);
+                masterDoc.text('Rendimiento por Máquina', masterDoc.internal.pageSize.getWidth() / 2, masterY, { align: 'center' });
+                masterY += 4;
+                masterDoc.line(mStartX, masterY + mChartH, masterDoc.internal.pageSize.getWidth() - 15, masterY + mChartH);
+
+                const mBarW = Math.min(20, (masterDoc.internal.pageSize.getWidth() - 40) / sortedMaquinas.length);
+                sortedMaquinas.forEach((maq, idx) => {
+                    const pct = Math.min(maq.porcentajeRendimiento100 || 0, 120);
+                    const bh = (pct / 120) * mChartH;
+                    const x = mStartX + 5 + (idx * (mBarW + 3));
+                    const y = masterY + mChartH - bh;
+                    if (pct >= 100) masterDoc.setFillColor(40, 167, 69);
+                    else if (pct >= 75) masterDoc.setFillColor(255, 193, 7);
+                    else masterDoc.setFillColor(220, 53, 69);
+                    masterDoc.rect(x, y, mBarW - 2, bh, 'F');
+                    masterDoc.setFontSize(5);
+                    masterDoc.text(`${pct.toFixed(0)}%`, x + (mBarW - 2) / 2, y - 1, { align: 'center' });
+                    masterDoc.text((maq.maquina || '').substring(0, 8), x + (mBarW - 2) / 2, masterY + mChartH + 3, { align: 'center' });
+                });
+
+                // Trend in Master Doc
+                try {
+                    const histRes = await api.get(`/rendimientooperario/historial/${opData.usuarioId}?limit=6`);
+                    const hist = histRes?.data || [];
+                    if (hist.length > 0) {
+                        const histOrd = [...hist].sort((a, b) => (a.anio !== b.anio) ? a.anio - b.anio : a.mes - b.mes);
+                        masterY += mChartH + 15;
+                        masterDoc.setFontSize(10);
+                        masterDoc.text('Tendencia Histórica', masterDoc.internal.pageSize.getWidth() / 2, masterY, { align: 'center' });
+                        masterY += 4;
+                        const tStartX = 30;
+                        const tWidth = masterDoc.internal.pageSize.getWidth() - 60;
+                        const tBarW = Math.min(20, (tWidth - 10) / histOrd.length);
+                        masterDoc.line(tStartX, masterY + 25, tStartX + tWidth, masterY + 25);
+                        histOrd.forEach((reg, idx) => {
+                            const pct = Math.min(reg.rendimientoPromedio || 0, 120);
+                            const bh = (pct / 120) * 25;
+                            const x = tStartX + idx * (tBarW + 5);
+                            const y = masterY + 25 - bh;
+                            masterDoc.setFillColor(0, 51, 102);
+                            masterDoc.rect(x, y, tBarW, bh, 'F');
+                            masterDoc.setFontSize(6);
+                            masterDoc.text(`${pct.toFixed(1)}%`, x + tBarW / 2, y - 1, { align: 'center' });
+                        });
+                    }
+                } catch (e) { }
+
                 count++;
             }
+
+            // Save Master PDF
+            const masterBase64 = masterDoc.output('datauristring').split(',')[1];
+            folder.file('cartas_rendimiento_general.pdf', masterBase64, { base64: true });
 
             setStatusText('Comprimiendo archivos...');
             const zipBase64 = await zip.generateAsync({ type: 'base64' });

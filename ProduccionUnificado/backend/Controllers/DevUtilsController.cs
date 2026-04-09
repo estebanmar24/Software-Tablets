@@ -1,6 +1,10 @@
+using System;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Collections.Generic;
 
 namespace TiempoProcesos.API.Controllers;
 
@@ -40,19 +44,14 @@ public class DevUtilsController : ControllerBase
             hash = newHash
         });
     }
+
     [HttpGet("debug-data")]
     public async Task<IActionResult> GetDebugData()
     {
         try
         {
             var sql = @"
-                DO $$ 
-                BEGIN 
-                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Usuarios' AND column_name = 'EsPorHoras') THEN 
-                        ALTER TABLE ""Usuarios"" ADD COLUMN ""EsPorHoras"" BOOLEAN DEFAULT FALSE; 
-                    END IF; 
-                END $$;
-                SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'Usuarios';
+                SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'ProduccionDiaria';
             ";
 
             var result = new List<Dictionary<string, object>>();

@@ -5,6 +5,8 @@ import {
 } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import * as planeacionApi from '../services/planeacionApi';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 
 export default function PlaneacionPersonalScreen() {
     const { colors } = useTheme();
@@ -18,6 +20,12 @@ export default function PlaneacionPersonalScreen() {
         cedula: '',
         salario: ''
     });
+
+    // Excel Report State
+    const [showReportModal, setShowReportModal] = useState(false);
+    const [reportFechaInicio, setReportFechaInicio] = useState(new Date().toISOString().split('T')[0]);
+    const [reportFechaFin, setReportFechaFin] = useState(new Date().toISOString().split('T')[0]);
+    const [generatingReport, setGeneratingReport] = useState(false);
 
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -104,6 +112,136 @@ export default function PlaneacionPersonalScreen() {
         }
     };
 
+    // Excel Report Generation for Horas Extras
+    const handleGenerateReport = async () => {
+        if (!reportFechaInicio || !reportFechaFin) {
+            Alert.alert('Error', 'Por favor seleccione ambas fechas');
+            return;
+        }
+
+        try {
+            setGeneratingReport(true);
+
+            // Parse date range to determine which months to fetch
+            const startDate = new Date(reportFechaInicio);
+            const endDate = new Date(reportFechaFin);
+
+            // Fetch gastos for each month in the range
+            let allGastos = [];
+            let currentDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+            while (currentDate <= endDate) {
+                try {
+                    const monthGastos = await planeacionApi.getGastos(currentDate.getFullYear(), currentDate.getMonth() + 1);
+                    allGastos = allGastos.concat(monthGastos || []);
+                } catch (e) {
+                    console.error(`Error loading gastos for ${currentDate.getMonth() + 1}/${currentDate.getFullYear()}:`, e);
+                }
+                currentDate.setMonth(currentDate.getMonth() + 1);
+            }
+
+            // Filter to only overtime and recargo entries within the date range
+            const horasExtras = allGastos.filter(g => {
+                if (!g.personalId) return false; // Only payroll entries (horas extras/recargos)
+                const fecha = new Date(g.fecha);
+                return fecha >= startDate && fecha <= endDate;
+            });
+
+            if (horasExtras.length === 0) {
+                Alert.alert('Sin datos', 'No hay registros de horas extras/recargos en el rango seleccionado');
+                return;
+            }
+
+            // Generate Excel using xlsx
+            const XLSX = await import('xlsx');
+
+            // Calculate Valor Hora: Salario / 240
+            const excelData = horasExtras.map(item => {
+                const salario = item.personalSalario || 0;
+                const valorHora = salario > 0 ? salario / 240 : 0;
+                const factor = item.tipoHoraFactor || item.tipoRecargoFactor || 1;
+                return {
+                    'Fecha': new Date(item.fecha).toLocaleDateString('es-CO'),
+                    'Nombre Operario': item.personalNombre || 'N/A',
+                    'Identificacion': item.personalCedula || 'N/A',
+                    'OP': item.numeroOP || '',
+                    'Salario': salario ? `$ ${new Intl.NumberFormat('es-CO').format(salario)}` : '$ 0',
+                    'Valor Hora': valorHora ? `$ ${new Intl.NumberFormat('es-CO').format(Math.round(valorHora))}` : '$ 0',
+                    'Tipo': item.tipoHoraNombre || item.tipoRecargoNombre || 'N/A',
+                    'Numero Horas': item.cantidadHoras || 0,
+                    'Factor': factor,
+                    'Valor a Pagar': item.precio || 0,
+                    'Comentarios': item.observaciones || ''
+                };
+            });
+
+            // Calculate Total
+            const totalValor = excelData.reduce((sum, item) => sum + (item['Valor a Pagar'] || 0), 0);
+
+            // Format 'Valor a Pagar' for display rows
+            const formattedData = excelData.map(item => ({
+                ...item,
+                'Valor a Pagar': `$ ${Math.round(item['Valor a Pagar']).toLocaleString('es-CO')}`
+            }));
+
+            // Add Total Row
+            formattedData.push({
+                'Fecha': '',
+                'Nombre Operario': '',
+                'Identificacion': '',
+                'OP': '',
+                'Salario': '',
+                'Valor Hora': '',
+                'Tipo': '',
+                'Numero Horas': '',
+                'Factor': 'TOTAL:',
+                'Valor a Pagar': `$ ${Math.round(totalValor).toLocaleString('es-CO')}`,
+                'Comentarios': ''
+            });
+
+            // Create workbook
+            const ws = XLSX.utils.json_to_sheet(formattedData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Horas Extras');
+
+            // Set column widths
+            ws['!cols'] = [
+                { wch: 12 },  // Fecha
+                { wch: 25 },  // Nombre Operario
+                { wch: 15 },  // Identificacion
+                { wch: 10 },  // OP
+                { wch: 15 },  // Salario
+                { wch: 15 },  // Valor Hora
+                { wch: 20 },  // Tipo
+                { wch: 15 },  // Numero Horas
+                { wch: 10 },  // Factor
+                { wch: 20 },  // Valor a Pagar
+                { wch: 30 },  // Comentarios
+            ];
+
+            const fileName = `HorasExtras_Planeacion_${reportFechaInicio}_${reportFechaFin}.xlsx`;
+
+            if (Platform.OS === 'web') {
+                XLSX.writeFile(wb, fileName);
+                Alert.alert('Éxito', `Se descargó el archivo ${fileName}`);
+            } else {
+                const wbout = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+                const uri = FileSystem.documentDirectory + fileName;
+                await FileSystem.writeAsStringAsync(uri, wbout, { encoding: FileSystem.EncodingType.Base64 });
+                await Sharing.shareAsync(uri, {
+                    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    dialogTitle: 'Compartir Reporte de Horas Extras'
+                });
+            }
+
+            setShowReportModal(false);
+        } catch (error) {
+            console.error('Error generating report:', error);
+            Alert.alert('Error', 'No se pudo generar el reporte');
+        } finally {
+            setGeneratingReport(false);
+        }
+    };
+
     if (loading && personal.length === 0) {
         return <ActivityIndicator size="large" color="#2563EB" style={{ marginTop: 50 }} />;
     }
@@ -112,12 +250,20 @@ export default function PlaneacionPersonalScreen() {
         <View style={styles.container}>
             <View style={styles.header}>
                 <Text style={styles.title}>👥 Listado de Personal de Almacén (Horas Extras)</Text>
-                <TouchableOpacity
-                    style={styles.addButton}
-                    onPress={() => { resetForm(); setShowModal(true); }}
-                >
-                    <Text style={styles.addButtonText}>+ Nuevo Personal de Almacén</Text>
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <TouchableOpacity
+                        style={[styles.addButton, { backgroundColor: '#059669' }]}
+                        onPress={() => setShowReportModal(true)}
+                    >
+                        <Text style={styles.addButtonText}>📊 Excel H. Extras</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={styles.addButton}
+                        onPress={() => { resetForm(); setShowModal(true); }}
+                    >
+                        <Text style={styles.addButtonText}>+ Nuevo Personal de Almacén</Text>
+                    </TouchableOpacity>
+                </View>
             </View>
 
             <ScrollView style={styles.list}>
@@ -143,6 +289,7 @@ export default function PlaneacionPersonalScreen() {
                 )}
             </ScrollView>
 
+            {/* Add/Edit Modal */}
             <Modal visible={showModal} transparent animationType="slide">
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
@@ -184,6 +331,81 @@ export default function PlaneacionPersonalScreen() {
                                 disabled={saving}
                             >
                                 {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitBtnText}>Guardar</Text>}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Excel Report Modal */}
+            <Modal visible={showReportModal} transparent animationType="fade" onRequestClose={() => setShowReportModal(false)}>
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { maxWidth: 450, padding: 24 }]}>
+                        <Text style={[styles.modalTitle, { textAlign: 'center', marginBottom: 20 }]}>📊 Reporte de Horas Extras - Planeación</Text>
+
+                        <View style={{ backgroundColor: '#ECFDF5', padding: 12, borderRadius: 8, marginBottom: 16, borderLeftWidth: 4, borderLeftColor: '#059669' }}>
+                            <Text style={{ fontSize: 13, color: '#065F46' }}>
+                                💡 Selecciona el rango de fechas para exportar los registros de horas extras y recargos a Excel.
+                            </Text>
+                        </View>
+
+                        <View style={{ flexDirection: 'row', gap: 16 }}>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.label, { marginBottom: 6 }]}>📅 Fecha Inicio</Text>
+                                {Platform.OS === 'web' ? (
+                                    <input
+                                        type="date"
+                                        value={reportFechaInicio}
+                                        onChange={(e) => setReportFechaInicio(e.target.value)}
+                                        style={{
+                                            padding: 12, fontSize: 15, borderRadius: 8,
+                                            border: '2px solid #E2E8F0', backgroundColor: '#FFF',
+                                            width: '100%', cursor: 'pointer', boxSizing: 'border-box'
+                                        }}
+                                    />
+                                ) : (
+                                    <TextInput
+                                        style={styles.input}
+                                        value={reportFechaInicio}
+                                        onChangeText={setReportFechaInicio}
+                                        placeholder="YYYY-MM-DD"
+                                    />
+                                )}
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.label, { marginBottom: 6 }]}>📅 Fecha Fin</Text>
+                                {Platform.OS === 'web' ? (
+                                    <input
+                                        type="date"
+                                        value={reportFechaFin}
+                                        onChange={(e) => setReportFechaFin(e.target.value)}
+                                        style={{
+                                            padding: 12, fontSize: 15, borderRadius: 8,
+                                            border: '2px solid #E2E8F0', backgroundColor: '#FFF',
+                                            width: '100%', cursor: 'pointer', boxSizing: 'border-box'
+                                        }}
+                                    />
+                                ) : (
+                                    <TextInput
+                                        style={styles.input}
+                                        value={reportFechaFin}
+                                        onChangeText={setReportFechaFin}
+                                        placeholder="YYYY-MM-DD"
+                                    />
+                                )}
+                            </View>
+                        </View>
+
+                        <View style={[styles.modalButtons, { marginTop: 24 }]}>
+                            <TouchableOpacity style={[styles.cancelBtn, { paddingHorizontal: 20 }]} onPress={() => setShowReportModal(false)}>
+                                <Text style={styles.cancelBtnText}>Cancelar</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.submitBtn, { backgroundColor: '#059669', paddingHorizontal: 20 }, generatingReport && { opacity: 0.7 }]}
+                                onPress={handleGenerateReport}
+                                disabled={generatingReport}
+                            >
+                                {generatingReport ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitBtnText}>📥 Generar Excel</Text>}
                             </TouchableOpacity>
                         </View>
                     </View>

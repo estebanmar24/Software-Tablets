@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import QualityView from './QualityView';
 import EncuestaCalidadProduccionView from './EncuestaCalidadProduccionView';
+import PlanAccionView from './PlanAccionView';
 import ConsolidadoNCView from './ConsolidadoNCView';
 
-type CalidadTab = 'encuestas' | 'produccion' | 'consolidadoNC';
+type CalidadTab = 'encuestas' | 'produccion' | 'consolidadoNC' | 'planesAccion';
 
 interface TabDef {
     key: CalidadTab;
@@ -13,20 +14,35 @@ interface TabDef {
 }
 
 const tabs: TabDef[] = [
-    { key: 'encuestas', label: 'Encuestas Calidad', icon: '✅' },
-    { key: 'produccion', label: 'Encuesta Producción', icon: '📦' },
+    { key: 'encuestas', label: 'Control en Proceso de Calidad y Novedades', icon: '✅' },
+    { key: 'produccion', label: 'Reporte de NC a Calidad', icon: '📦' },
     { key: 'consolidadoNC', label: 'Consolidado de NC', icon: '📋' },
+    { key: 'planesAccion', label: 'Planes de Acción', icon: '🚀' },
 ];
 
-export default function CalidadDashboard() {
+interface CalidadDashboardProps {
+    onTabChange?: (title: string) => void;
+    navigation: any;
+}
+
+export default function CalidadDashboard({ onTabChange, navigation }: CalidadDashboardProps) {
     const [activeTab, setActiveTab] = useState<CalidadTab>('encuestas');
+
+    const handleTabChange = (tab: TabDef) => {
+        setActiveTab(tab.key);
+        if (onTabChange) {
+            onTabChange(tab.label);
+        }
+    };
 
     const renderContent = () => {
         switch (activeTab) {
             case 'encuestas':
-                return <QualityView />;
+                return <QualityView navigation={navigation} />;
             case 'produccion':
                 return <EncuestaCalidadProduccionView />;
+            case 'planesAccion':
+                return <PlanAccionView />;
             case 'consolidadoNC':
                 return <ConsolidadoNCView />;
             default:
@@ -42,7 +58,7 @@ export default function CalidadDashboard() {
                     <TouchableOpacity
                         key={tab.key}
                         style={[styles.tab, activeTab === tab.key && styles.tabActive]}
-                        onPress={() => setActiveTab(tab.key)}
+                        onPress={() => handleTabChange(tab)}
                     >
                         <Text style={styles.tabIcon}>{tab.icon}</Text>
                         <Text style={[styles.tabLabel, activeTab === tab.key && styles.tabLabelActive]}>

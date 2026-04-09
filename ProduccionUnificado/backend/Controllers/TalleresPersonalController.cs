@@ -20,6 +20,7 @@ namespace TiempoProcesos.API.Controllers
         public async Task<ActionResult<IEnumerable<Talleres_Personal>>> GetPersonal()
         {
             return await _context.Talleres_Personal
+                .Include(p => p.Horario)
                 .Where(p => p.Activo)
                 .OrderBy(p => p.Nombre)
                 .ToListAsync();
@@ -45,6 +46,7 @@ namespace TiempoProcesos.API.Controllers
             existing.Documento = personal.Documento; // ADDED
             existing.Cargo = personal.Cargo;
             existing.Salario = personal.Salario;
+            existing.HorarioId = personal.HorarioId;
             
             await _context.SaveChangesAsync();
             return NoContent();

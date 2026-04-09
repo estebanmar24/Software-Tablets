@@ -426,9 +426,37 @@ public static class DbInitializer
                 );
                 CREATE INDEX IF NOT EXISTS ""IX_EncuestasCalidad_FechaCreacion"" ON ""EncuestasCalidad"" (""FechaCreacion"" DESC);
             ");
-            Console.WriteLine("[DB INIT] EncuestasCalidad checked/created.");
+            Console.WriteLine("[DB INIT] EncuestasCalidad.ContieneMuestraFisica column ensured.");
+
+            // Planes de Acción Table
+            context.Database.ExecuteSqlRaw(@"
+                CREATE TABLE IF NOT EXISTS ""PlanesAccion"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""Proceso"" VARCHAR(100) NOT NULL,
+                    ""Hallazgo"" TEXT NOT NULL,
+                    ""CausaRaiz"" TEXT NOT NULL,
+                    ""AccionCorrectiva"" TEXT NOT NULL,
+                    ""Responsable"" VARCHAR(100) NOT NULL,
+                    ""FechaInicio"" TIMESTAMP WITH TIME ZONE NOT NULL,
+                    ""FechaCompromiso"" TIMESTAMP WITH TIME ZONE NOT NULL,
+                    ""Estado"" VARCHAR(50) NOT NULL DEFAULT 'pendiente',
+                    ""PorcentajeAvance"" INTEGER NOT NULL DEFAULT 0,
+                    ""Observaciones"" TEXT,
+                    ""FechaCreacion"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS ""PlanAccionEvidencias"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""PlanAccionId"" INTEGER NOT NULL REFERENCES ""PlanesAccion""(""Id"") ON DELETE CASCADE,
+                    ""FilePath"" TEXT NOT NULL,
+                    ""FileName"" TEXT NOT NULL,
+                    ""FileType"" VARCHAR(20) NOT NULL DEFAULT 'Photo',
+                    ""FechaCreacion"" TIMESTAMP NOT NULL DEFAULT NOW()
+                );
+            ");
+            Console.WriteLine("[DB INIT] PlanesAccion and Evidencias tables checked/created.");
         }
-        catch (Exception ex) { Console.WriteLine($"[DB ERROR] EncuestasCalidad: {ex.Message}"); }
+        catch (Exception ex) { Console.WriteLine($"[DB ERROR] EncuestasCalidad/PlanesAccion: {ex.Message}"); }
 
         // ENCUESTA NOVEDADES
         try
@@ -1049,11 +1077,13 @@ public static class DbInitializer
                     new() { Nombre = "Transporte adicional" },
                     new() { Nombre = "Acompañamiento" },
                     new() { Nombre = "Transporte por temas de calidad" },
-                    new() { Nombre = "Estibas plásticas para despacho" }
+                    new() { Nombre = "Estibas plásticas para despacho" },
+                    new() { Nombre = "Horas Extras" },
+                    new() { Nombre = "Recargo" }
                 };
                 context.Talleres_Rubros.AddRange(rubros);
                 context.SaveChanges();
-                Console.WriteLine("[DB INIT] Talleres_Rubros seeded with 6 default rubros.");
+                Console.WriteLine("[DB INIT] Talleres_Rubros seeded with default rubros.");
             }
         }
         catch (Exception ex) { Console.WriteLine($"[DB ERROR] Talleres Tables: {ex.Message}"); }

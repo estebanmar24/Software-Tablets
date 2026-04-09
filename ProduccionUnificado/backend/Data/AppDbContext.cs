@@ -38,6 +38,8 @@ public class AppDbContext : DbContext
     public DbSet<SST_Proveedor> SST_Proveedores { get; set; }
     public DbSet<SST_PresupuestoMensual> SST_PresupuestosMensuales { get; set; }
     public DbSet<SST_GastoMensual> SST_GastosMensuales { get; set; }
+    public DbSet<PlanAccion> PlanesAccion { get; set; }
+    public DbSet<PlanAccionEvidencia> PlanAccionEvidencias { get; set; }
 
     // GH (Gestión Humana) Management
     public DbSet<GH_Rubro> GH_Rubros { get; set; }
@@ -101,6 +103,9 @@ public class AppDbContext : DbContext
     public DbSet<Ticket> Tickets { get; set; }
     public DbSet<TicketImagen> TicketImagenes { get; set; }
 
+    // Planeador de Máquinas
+    public DbSet<PlaneacionMaquina> PlaneacionesMaquinas { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -117,6 +122,14 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<EncuestaCalidad>().ToTable("EncuestasCalidad");
         modelBuilder.Entity<EncuestaNovedad>().ToTable("EncuestaNovedades");
         modelBuilder.Entity<AdminUsuario>().ToTable("AdminUsuarios");
+        modelBuilder.Entity<PlanAccion>().ToTable("PlanesAccion");
+        modelBuilder.Entity<PlanAccionEvidencia>().ToTable("PlanAccionEvidencias");
+
+        modelBuilder.Entity<PlanAccionEvidencia>()
+            .HasOne(e => e.PlanAccion)
+            .WithMany(p => p.Evidencias)
+            .HasForeignKey(e => e.PlanAccionId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         // Configurar relaciones para TiempoProceso
         modelBuilder.Entity<TiempoProceso>()
@@ -523,6 +536,15 @@ public class AppDbContext : DbContext
             .HasForeignKey(r => r.UsuarioId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        modelBuilder.Entity<Horario>().ToTable("Horarios");
+        modelBuilder.Entity<Talleres_Personal>().ToTable("Talleres_Personal");
+
+        modelBuilder.Entity<Talleres_Personal>()
+            .HasOne(p => p.Horario)
+            .WithMany()
+            .HasForeignKey(p => p.HorarioId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         // Tickets Configuration
         modelBuilder.Entity<Ticket>().ToTable("Tickets");
         modelBuilder.Entity<TicketImagen>().ToTable("TicketImagenes");
@@ -532,5 +554,20 @@ public class AppDbContext : DbContext
             .WithMany(t => t.Imagenes)
             .HasForeignKey(ti => ti.TicketId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // PlaneacionMaquina Configuration
+        modelBuilder.Entity<PlaneacionMaquina>().ToTable("PlaneacionesMaquinas");
+
+        modelBuilder.Entity<PlaneacionMaquina>()
+            .HasOne(p => p.Maquina)
+            .WithMany()
+            .HasForeignKey(p => p.MaquinaId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<PlaneacionMaquina>()
+            .HasOne(p => p.OrdenProduccion)
+            .WithMany()
+            .HasForeignKey(p => p.OrdenProduccionId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }
