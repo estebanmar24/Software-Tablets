@@ -16,7 +16,8 @@ public class CalidadProduccionController : ControllerBase
     private static readonly string[] Procesos = {
         "Conversión", "Corrugadora", "Guillotina", "Impresión", "Laminado",
         "Estampado", "Troquelado", "Screen", "Colaminadora", "Despique",
-        "Pegadora", "Terminados", "Taller Externo", "Tejedora"
+        "Pegadora", "Terminados", "Taller Externo", "Tejedora",
+        "Diseño", "Facturación", "Despachos", "Comercial"
     };
 
     public CalidadProduccionController(AppDbContext context)

@@ -130,6 +130,7 @@ function GastosTab() {
     const [filterPending, setFilterPending] = useState(false);
     const [filterProveedor, setFilterProveedor] = useState('');
     const [filterNumeroFactura, setFilterNumeroFactura] = useState('');
+    const [filterCredit, setFilterCredit] = useState(false);
 
 
     const filteredGastos = useMemo(() => {
@@ -178,6 +179,9 @@ function GastosTab() {
             // Filtro Pendientes
             if (filterPending && !(g.esPendiente || g.EsPendiente)) return false;
 
+            // Filtro Crédito
+            if (filterCredit && !g.esSolicitudCredito) return false;
+
             return true;
         });
     }, [gastos, filterRubro, filterFecha, filterSecondary, filterPending, filterProveedor, filterNumeroFactura]);
@@ -187,6 +191,41 @@ function GastosTab() {
         const idsConGastos = new Set(gastos.map(g => g.rubroId));
         return rubros.filter(r => idsConGastos.has(r.id)).sort((a, b) => a.nombre.localeCompare(b.nombre));
     }, [gastos, rubros]);
+
+    // Cascading filters logic
+    const availablePersonal = useMemo(() => {
+        if (!filterRubro) return [];
+        const selRubro = rubros.find(r => r.id.toString() === filterRubro);
+        if (!selRubro) return [];
+        const isNomina = selRubro.nombre.toLowerCase().includes('hora') || selRubro.nombre.toLowerCase().includes('recargo');
+        if (!isNomina) return [];
+
+        const idsWithExpenses = new Set(gastos
+            .filter(g => g.rubroId.toString() === filterRubro)
+            .map(g => g.personalId || g.PersonalId)
+            .filter(id => id != null)
+        );
+        return personal.filter(p => idsWithExpenses.has(p.id || p.Id)).sort((a, b) => a.nombre.localeCompare(b.nombre));
+    }, [gastos, personal, filterRubro, rubros]);
+
+    const availableProviders = useMemo(() => {
+        return [...new Map(gastos
+            .filter(g => {
+                const matchRubro = !filterRubro || g.rubroId?.toString() === filterRubro;
+                const hasProv = (g.proveedorId || g.ProveedorId) && (g.proveedorNombre || g.ProveedorNombre);
+                return matchRubro && hasProv;
+            })
+            .map(g => {
+                const id = g.proveedorId || g.ProveedorId;
+                const nombre = g.proveedorNombre || g.ProveedorNombre;
+                return [id.toString(), { id, nombre }];
+            })).values()].sort((a, b) => a.nombre.localeCompare(b.nombre));
+    }, [gastos, filterRubro]);
+
+    useEffect(() => {
+        setFilterSecondary('');
+        setFilterProveedor('');
+    }, [filterRubro]);
 
     // History Modal State
     const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -202,7 +241,7 @@ function GastosTab() {
     const [formData, setFormData] = useState({
         rubroId: '', proveedorId: '', numeroFactura: '', precio: '',
         fecha: new Date().toISOString().split('T')[0], observaciones: '', facturaPdfUrl: '',
-        personalId: '', tipoHoraId: '', tipoRecargoId: '', cantidadHoras: '', numeroOP: '', esPendiente: false,
+        personalId: '', tipoHoraId: '', tipoRecargoId: '', cantidadHoras: '', numeroOP: '', esPendiente: false, esSolicitudCredito: false,
         horaInicio: '', horaFin: ''
     });
     const [saving, setSaving] = useState(false);
@@ -610,7 +649,8 @@ function GastosTab() {
             tipoRecargoId: gasto.tipoRecargoId?.toString() || '',
             cantidadHoras: gasto.cantidadHoras?.toString() || '',
             numeroOP: gasto.numeroOP || '',
-            esPendiente: !!(gasto.esPendiente || gasto.EsPendiente)
+            esPendiente: !!(gasto.esPendiente || gasto.EsPendiente),
+            esSolicitudCredito: !!gasto.esSolicitudCredito
         });
         setShowModal(true);
     };
@@ -628,7 +668,8 @@ function GastosTab() {
             observaciones: gasto.observaciones || '',
             facturaPdfUrl: '',
             personalId: '', tipoHoraId: '', tipoRecargoId: '', cantidadHoras: '', numeroOP: '',
-            esPendiente: false
+            esPendiente: false,
+            esSolicitudCredito: !!gasto.esSolicitudCredito
         });
         setShowModal(true);
     };
@@ -702,7 +743,8 @@ function GastosTab() {
                         tipoRecargoId: !item.isHe ? parseInt(item.typeId) : null,
                         cantidadHoras: parseFloat(item.hours.toFixed(2)),
                         numeroOP: formData.numeroOP || 'N/A',
-                        esPendiente: false
+                        esPendiente: false,
+                        esSolicitudCredito: !!formData.esSolicitudCredito
                     };
                     return talleresApi.createGasto(record);
                 });
@@ -724,7 +766,8 @@ function GastosTab() {
                     tipoRecargoId: formData.tipoRecargoId ? parseInt(formData.tipoRecargoId) : null,
                     cantidadHoras: formData.cantidadHoras ? parseFloat(formData.cantidadHoras) : null,
                     numeroOP: formData.numeroOP || null,
-                    esPendiente: formData.esPendiente
+                    esPendiente: formData.esPendiente,
+                    esSolicitudCredito: !!formData.esSolicitudCredito
                 };
 
                 if (editItem) {
@@ -847,14 +890,13 @@ function GastosTab() {
                             </Picker>
                         </View>
 
-                        {/* Filtro Proveedor */}
                         <View style={styles.filterItem}>
                             <Picker selectedValue={filterProveedor} onValueChange={setFilterProveedor}
                                 style={Platform.OS === 'web' ? { height: 35, width: 160, border: 'none', backgroundColor: 'transparent', outline: 'none', fontSize: 13 } : styles.filterPicker}>
                                 <Picker.Item label="Todos los Proveedores" value="" />
-                                {[...new Map(gastos.filter(g => g.proveedorId && g.proveedorNombre).map(g => [g.proveedorId, { id: g.proveedorId, nombre: g.proveedorNombre }])).values()]
-                                    .sort((a, b) => a.nombre.localeCompare(b.nombre))
-                                    .map(p => <Picker.Item key={p.id} label={p.nombre} value={p.id.toString()} />)}
+                                {availableProviders.map(p => (
+                                    <Picker.Item key={p.id} label={p.nombre} value={p.id.toString()} />
+                                ))}
                             </Picker>
                         </View>
 
@@ -892,7 +934,9 @@ function GastosTab() {
                                             style={Platform.OS === 'web' ? { height: 35, width: 160, border: 'none', backgroundColor: 'transparent', outline: 'none', fontSize: 13 } : styles.filterPicker}
                                         >
                                             <Picker.Item label="Todos los Operarios" value="" />
-                                            {personal.sort((a, b) => a.nombre.localeCompare(b.nombre)).map(p => <Picker.Item key={p.id} label={p.nombre} value={p.id.toString()} />)}
+                                            {availablePersonal.map(p => (
+                                                <Picker.Item key={p.id || p.Id} label={p.nombre} value={(p.id || p.Id).toString()} />
+                                            ))}
                                         </Picker>
                                     </View>
                                 );
@@ -906,6 +950,13 @@ function GastosTab() {
                             onPress={() => setFilterPending(!filterPending)}
                         >
                             <Text style={{ color: filterPending ? 'white' : '#374151', fontSize: 13, fontWeight: '500' }}>⏳ Ver solo Pendientes</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={{ height: 35, backgroundColor: filterCredit ? '#7C3AED' : '#FFF', borderWidth: 1, borderColor: filterCredit ? '#7C3AED' : '#D1D5DB', borderRadius: 5, justifyContent: 'center', paddingHorizontal: 12, marginLeft: 8 }}
+                            onPress={() => setFilterCredit(!filterCredit)}
+                        >
+                            <Text style={{ color: filterCredit ? 'white' : '#374151', fontSize: 13, fontWeight: '500' }}>💳 Ver solo Crédito</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -955,6 +1006,11 @@ function GastosTab() {
                                                     {!!isPending && (
                                                         <View style={[styles.pendingBadge, isOverdue && styles.pendingBadgeOverdue]}>
                                                             <Text style={styles.pendingText}>⏳ Pendiente</Text>
+                                                        </View>
+                                                    )}
+                                                    {!!gasto.esSolicitudCredito && (
+                                                        <View style={{ backgroundColor: '#F5F3FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#DDD6FE', marginLeft: 4 }}>
+                                                            <Text style={{ fontSize: 10, color: '#7C3AED', fontWeight: 'bold' }}>💳 Crédito</Text>
                                                         </View>
                                                     )}
                                                 </View>
@@ -1008,6 +1064,16 @@ function GastosTab() {
                                                 </Text>
                                             )}
                                         </View>
+                                        {!!gasto.facturaPdfUrl && Platform.OS === 'web' && (
+                                            <a
+                                                href={`${process.env.EXPO_PUBLIC_API_URL?.replace('/api', '') || 'http://192.168.100.227:5144'}${gasto.facturaPdfUrl}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                style={{ color: '#2563EB', textDecoration: 'none', marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 'bold' }}
+                                            >
+                                                📥 Descargar PDF Factura
+                                            </a>
+                                        )}
                                         {!!gasto.observaciones && <Text style={styles.gastoNota}>💬 {gasto.observaciones}</Text>}
                                         <View style={styles.cardActions}>
                                             {!!isPending && (
@@ -1074,181 +1140,225 @@ function GastosTab() {
                                     </View>
                                 ) : (
                                     /* Normal Rubro Picker */
-                                    <View style={styles.pickerContainer}>
-                                        <Picker selectedValue={formData.rubroId} onValueChange={(v) => {
-                                            setFormData(p => ({ ...p, rubroId: v, proveedorId: '', personalId: '', tipoHoraId: '', tipoRecargoId: '' }));
-                                        }}>
-                                            <Picker.Item label="Seleccione..." value="" />
-                                            {rubros.sort((a, b) => a.nombre.localeCompare(b.nombre)).map(r => <Picker.Item key={r.id || r.Id} label={r.nombre || r.Nombre} value={(r.id || r.Id).toString()} />)}
-                                        </Picker>
-                                    </View>
-                                )}
-
-                                {/* Rubro specific fields */}
-                                {(isHorasExtras || isRecargo) ? (
                                     <>
-                                        <Text style={styles.label}>Personal *</Text>
                                         <View style={styles.pickerContainer}>
-                                            <Picker selectedValue={formData.personalId} onValueChange={(v) => setFormData(p => ({ ...p, personalId: v }))}>
+                                            <Picker selectedValue={formData.rubroId} onValueChange={(v) => {
+                                                setFormData(p => ({ ...p, rubroId: v, proveedorId: '', personalId: '', tipoHoraId: '', tipoRecargoId: '' }));
+                                            }}>
                                                 <Picker.Item label="Seleccione..." value="" />
-                                                {personal.map(per => <Picker.Item key={per.id || per.Id} label={per.nombre || per.Nombre} value={(per.id || per.Id).toString()} />)}
+                                                {rubros.sort((a, b) => a.nombre.localeCompare(b.nombre)).map(r => <Picker.Item key={r.id || r.Id} label={r.nombre || r.Nombre} value={(r.id || r.Id).toString()} />)}
                                             </Picker>
                                         </View>
-
-                                        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
-                                            <View style={{ flex: 1 }}>
-                                                <Text style={styles.label}>Hora Inicio *</Text>
-                                                <TextInput
-                                                    style={styles.input}
-                                                    value={formData.horaInicio}
-                                                    onChangeText={(t) => setFormData(p => ({ ...p, horaInicio: t }))}
-                                                    placeholder="HH:MM"
-                                                />
-                                            </View>
-                                            <View style={{ flex: 1 }}>
-                                                <Text style={styles.label}>Hora Fin *</Text>
-                                                <TextInput
-                                                    style={styles.input}
-                                                    value={formData.horaFin}
-                                                    onChangeText={(t) => setFormData(p => ({ ...p, horaFin: t }))}
-                                                    placeholder="HH:MM"
-                                                />
-                                            </View>
-                                        </View>
-
-                                        {formData.personalId && (() => {
-                                            const worker = personal.find(p => (p.id || p.Id)?.toString() === formData.personalId.toString());
-                                            let sRaw = worker?.salario || worker?.Salario || 0;
-                                            if (typeof sRaw === 'string') sRaw = sRaw.replace(/\./g, '').replace(/,/g, '.');
-                                            const hasSalary = (parseFloat(sRaw) || 0) > 0;
-
-                                            if (!hasSalary) {
-                                                return (
-                                                    <View style={{ backgroundColor: '#FFF7ED', padding: 10, borderRadius: 8, marginBottom: 15, borderLeftWidth: 4, borderLeftColor: '#F97316' }}>
-                                                        <Text style={{ fontWeight: 'bold', color: '#9A3412', marginBottom: 5 }}>⚠️ Falta Salario:</Text>
-                                                        <Text style={{ fontSize: 13, color: '#9A3412' }}>Este operario no tiene un salario registrado. No se podrá calcular el costo de las horas extras.</Text>
-                                                    </View>
-                                                );
-                                            }
-                                            return null;
-                                        })()}
-
-                                        {breakdown.length > 0 && (
-                                            <View style={{ backgroundColor: '#F0F9FF', padding: 10, borderRadius: 8, marginBottom: 15, borderLeftWidth: 4, borderLeftColor: '#0EA5E9' }}>
-                                                <Text style={{ fontWeight: 'bold', color: '#0369A1', marginBottom: 5 }}>📊 Desglose Automático:</Text>
-                                                {breakdown.map((item, idx) => (
-                                                    <Text key={idx} style={{ fontSize: 13, color: '#0C4A6E' }}>
-                                                        • {item.type}: <Text style={{ fontWeight: 'bold' }}>{item.hours.toFixed(2)}h</Text>
-                                                    </Text>
-                                                ))}
-                                                <Text style={{ fontSize: 11, color: '#64748B', marginTop: 5, fontStyle: 'italic' }}>
-                                                    * Se crearán registros separados automáticamente.
-                                                </Text>
-                                            </View>
-                                        )}
-
-                                        {formData.horaInicio && formData.horaFin && breakdown.length === 0 && (
-                                            <View style={{ backgroundColor: '#FEF2F2', padding: 10, borderRadius: 8, marginBottom: 15, borderLeftWidth: 4, borderLeftColor: '#EF4444' }}>
-                                                <Text style={{ fontWeight: 'bold', color: '#991B1B', marginBottom: 5 }}>ℹ️ Sin horas adicionales:</Text>
-                                                <Text style={{ fontSize: 13, color: '#7F1D1D' }}>El intervalo coincide con el turno o no genera extras/recargos.</Text>
-                                                {/* Debug info hidden for user but useful if they report again */}
-                                                <Text style={{ fontSize: 9, color: '#991B1B', marginTop: 4 }}>
-                                                    Debug: {personal.find(p => (p.id || p.Id) == formData.personalId)?.nombre || '?'} |
-                                                    Tipos: H:{tiposHora.length} R:{tiposRecargo.length}
-                                                </Text>
-                                            </View>
-                                        )}
-
-                                        <Text style={styles.label}>Número de OP *</Text>
-                                        <TextInput style={styles.input} value={formData.numeroOP} onChangeText={(t) => setFormData(p => ({ ...p, numeroOP: t }))} placeholder="Ej: OP-123" />
                                     </>
-                                ) : formData.rubroId ? (
-                                    <>
-                                        <Text style={styles.label}>Proveedor *</Text>
-                                        {!isLegalizing ? (
-                                            <View style={styles.pickerContainer}>
-                                                <Picker selectedValue={formData.proveedorId} onValueChange={(v) => setFormData(p => ({ ...p, proveedorId: v }))}>
-                                                    <Picker.Item label="Seleccione..." value="" />
-                                                    {proveedores
-                                                        .filter(p => !p.rubroId || p.rubroId.toString() === formData.rubroId)
-                                                        .sort((a, b) => (a.nombre || a.Nombre || "").localeCompare(b.nombre || b.Nombre || ""))
-                                                        .map(p => {
-                                                            const pNombre = p.nombre || p.Nombre || "Proveedor";
-                                                            const pPrecio = p.precioCotizado || p.PrecioCotizado;
-                                                            return (
-                                                                <Picker.Item
-                                                                    key={p.id || p.Id}
-                                                                    label={`${pNombre}${pPrecio ? ` - ${formatCurrency(pPrecio)}` : ''}`}
-                                                                    value={(p.id || p.Id).toString()}
-                                                                />
-                                                            );
-                                                        })
-                                                    }
-                                                </Picker>
-                                            </View>
-                                        ) : (
-                                            /* Read-only Provider display for Legalization */
-                                            <Text style={{ padding: 10, backgroundColor: '#f3f4f6', borderRadius: 8, color: '#6b7280', marginBottom: 10 }}>
-                                                {(() => {
-                                                    const p = proveedores.find(prev => (prev.id || prev.Id)?.toString() === formData.proveedorId);
-                                                    return p ? (p.nombre || p.Nombre) : 'Proveedor Seleccionado';
-                                                })()}
-                                            </Text>
-                                        )}
+                                )}
 
-                                        {/* Pending Checkbox - Hide when Legalizing */}
-                                        {!isLegalizing && !isHorasExtras && !isRecargo && formData.rubroId && (
+                                {formData.rubroId ? (
+                                    <>
+                                        {/* Solicitud de Crédito Checkbox */}
+                                        {!isLegalizing && !isHorasExtras && !isRecargo && (
                                             <TouchableOpacity
-                                                style={[styles.checkboxContainer, { flexDirection: 'row', alignItems: 'center', marginBottom: 15, padding: 10, backgroundColor: '#FFFBEB', borderRadius: 8 }]}
-                                                onPress={() => setFormData(p => ({ ...p, esPendiente: !p.esPendiente }))}
+                                                style={{
+                                                    flexDirection: 'row',
+                                                    alignItems: 'center',
+                                                    marginBottom: 15,
+                                                    padding: 10,
+                                                    backgroundColor: '#F5F3FF',
+                                                    borderRadius: 8,
+                                                    borderWidth: 1,
+                                                    borderColor: '#DDD6FE'
+                                                }}
+                                                onPress={() => setFormData(p => ({ ...p, esSolicitudCredito: !p.esSolicitudCredito }))}
                                             >
                                                 <View style={{
-                                                    width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: '#F59E0B',
-                                                    alignItems: 'center', justifyContent: 'center', marginRight: 10,
-                                                    backgroundColor: formData.esPendiente ? '#F59E0B' : 'white'
+                                                    width: 20,
+                                                    height: 20,
+                                                    borderWidth: 2,
+                                                    borderColor: '#7C3AED',
+                                                    borderRadius: 4,
+                                                    justifyContent: 'center',
+                                                    alignItems: 'center',
+                                                    marginRight: 10,
+                                                    backgroundColor: formData.esSolicitudCredito ? '#7C3AED' : 'white'
                                                 }}>
-                                                    {formData.esPendiente && <Text style={{ color: 'white', fontWeight: 'bold' }}>✓</Text>}
+                                                    {formData.esSolicitudCredito && <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>✓</Text>}
                                                 </View>
                                                 <View>
-                                                    <Text style={{ fontWeight: 'bold', color: '#B45309' }}>Marcar como Gasto Pendiente</Text>
-                                                    <Text style={{ fontSize: 10, color: '#B45309' }}>Permite guardar sin factura ni precio (2 días plazo)</Text>
+                                                    <Text style={{ color: '#5B21B6', fontWeight: '600' }}>Solicitud de Crédito</Text>
+                                                    <Text style={{ fontSize: 10, color: '#6D28D9' }}>Marcar para trámite de crédito</Text>
                                                 </View>
                                             </TouchableOpacity>
                                         )}
 
-                                        {(!formData.esPendiente || isLegalizing) && (
+                                        {/* Rubro specific fields */}
+                                        {(isHorasExtras || isRecargo) ? (
                                             <>
-                                                <Text style={styles.label}>Número de Factura *</Text>
-                                                <TextInput
-                                                    style={styles.input}
-                                                    value={formData.numeroFactura}
-                                                    onChangeText={(t) => setFormData(p => ({ ...p, numeroFactura: t }))}
-                                                    placeholder="Ej: FAC-001"
-                                                />
+                                                <Text style={styles.label}>Personal *</Text>
+                                                <View style={styles.pickerContainer}>
+                                                    <Picker selectedValue={formData.personalId} onValueChange={(v) => setFormData(p => ({ ...p, personalId: v }))}>
+                                                        <Picker.Item label="Seleccione..." value="" />
+                                                        {personal.map(per => <Picker.Item key={per.id || per.Id} label={per.nombre || per.Nombre} value={(per.id || per.Id).toString()} />)}
+                                                    </Picker>
+                                                </View>
+
+                                                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+                                                    <View style={{ flex: 1 }}>
+                                                        <Text style={styles.label}>Hora Inicio *</Text>
+                                                        <TextInput
+                                                            style={styles.input}
+                                                            value={formData.horaInicio}
+                                                            onChangeText={(t) => setFormData(p => ({ ...p, horaInicio: t }))}
+                                                            placeholder="HH:MM"
+                                                        />
+                                                    </View>
+                                                    <View style={{ flex: 1 }}>
+                                                        <Text style={styles.label}>Hora Fin *</Text>
+                                                        <TextInput
+                                                            style={styles.input}
+                                                            value={formData.horaFin}
+                                                            onChangeText={(t) => setFormData(p => ({ ...p, horaFin: t }))}
+                                                            placeholder="HH:MM"
+                                                        />
+                                                    </View>
+                                                </View>
+
+                                                {formData.personalId && (() => {
+                                                    const worker = personal.find(p => (p.id || p.Id)?.toString() === formData.personalId.toString());
+                                                    let sRaw = worker?.salario || worker?.Salario || 0;
+                                                    if (typeof sRaw === 'string') sRaw = sRaw.replace(/\./g, '').replace(/,/g, '.');
+                                                    const hasSalary = (parseFloat(sRaw) || 0) > 0;
+
+                                                    if (!hasSalary) {
+                                                        return (
+                                                            <View style={{ backgroundColor: '#FFF7ED', padding: 10, borderRadius: 8, marginBottom: 15, borderLeftWidth: 4, borderLeftColor: '#F97316' }}>
+                                                                <Text style={{ fontWeight: 'bold', color: '#9A3412', marginBottom: 5 }}>⚠️ Falta Salario:</Text>
+                                                                <Text style={{ fontSize: 13, color: '#9A3412' }}>Este operario no tiene un salario registrado. No se podrá calcular el costo de las horas extras.</Text>
+                                                            </View>
+                                                        );
+                                                    }
+                                                    return null;
+                                                })()}
+
+                                                {breakdown.length > 0 && (
+                                                    <View style={{ backgroundColor: '#F0F9FF', padding: 10, borderRadius: 8, marginBottom: 15, borderLeftWidth: 4, borderLeftColor: '#0EA5E9' }}>
+                                                        <Text style={{ fontWeight: 'bold', color: '#0369A1', marginBottom: 5 }}>📊 Desglose Automático:</Text>
+                                                        {breakdown.map((item, idx) => (
+                                                            <Text key={idx} style={{ fontSize: 13, color: '#0C4A6E' }}>
+                                                                • {item.type}: <Text style={{ fontWeight: 'bold' }}>{item.hours.toFixed(2)}h</Text>
+                                                            </Text>
+                                                        ))}
+                                                        <Text style={{ fontSize: 11, color: '#64748B', marginTop: 5, fontStyle: 'italic' }}>
+                                                            * Se crearán registros separados automáticamente.
+                                                        </Text>
+                                                    </View>
+                                                )}
+
+                                                {formData.horaInicio && formData.horaFin && breakdown.length === 0 && (
+                                                    <View style={{ backgroundColor: '#FEF2F2', padding: 10, borderRadius: 8, marginBottom: 15, borderLeftWidth: 4, borderLeftColor: '#EF4444' }}>
+                                                        <Text style={{ fontWeight: 'bold', color: '#991B1B', marginBottom: 5 }}>ℹ️ Sin horas adicionales:</Text>
+                                                        <Text style={{ fontSize: 13, color: '#7F1D1D' }}>El intervalo coincide con el turno o no genera extras/recargos.</Text>
+                                                        {/* Debug info hidden for user but useful if they report again */}
+                                                        <Text style={{ fontSize: 9, color: '#991B1B', marginTop: 4 }}>
+                                                            Debug: {personal.find(p => (p.id || p.Id) == formData.personalId)?.nombre || '?'} |
+                                                            Tipos: H:{tiposHora.length} R:{tiposRecargo.length}
+                                                        </Text>
+                                                    </View>
+                                                )}
+
+                                                <Text style={styles.label}>Número de OP *</Text>
+                                                <TextInput style={styles.input} value={formData.numeroOP} onChangeText={(t) => setFormData(p => ({ ...p, numeroOP: t }))} placeholder="Ej: OP-123" />
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Text style={styles.label}>Proveedor *</Text>
+                                                {!isLegalizing ? (
+                                                    <View style={styles.pickerContainer}>
+                                                        <Picker selectedValue={formData.proveedorId} onValueChange={(v) => setFormData(p => ({ ...p, proveedorId: v }))}>
+                                                            <Picker.Item label="Seleccione..." value="" />
+                                                            {proveedores
+                                                                .filter(p => !p.rubroId || p.rubroId.toString() === formData.rubroId)
+                                                                .sort((a, b) => (a.nombre || a.Nombre || "").localeCompare(b.nombre || b.Nombre || ""))
+                                                                .map(p => {
+                                                                    const pNombre = p.nombre || p.Nombre || "Proveedor";
+                                                                    const pPrecio = p.precioCotizado || p.PrecioCotizado;
+                                                                    return (
+                                                                        <Picker.Item
+                                                                            key={p.id || p.Id}
+                                                                            label={`${pNombre}${pPrecio ? ` - ${formatCurrency(pPrecio)}` : ''}`}
+                                                                            value={(p.id || p.Id).toString()}
+                                                                        />
+                                                                    );
+                                                                })
+                                                            }
+                                                        </Picker>
+                                                    </View>
+                                                ) : (
+                                                    /* Read-only Provider display for Legalization */
+                                                    <Text style={{ padding: 10, backgroundColor: '#f3f4f6', borderRadius: 8, color: '#6b7280', marginBottom: 10 }}>
+                                                        {(() => {
+                                                            const p = proveedores.find(prev => (prev.id || prev.Id)?.toString() === formData.proveedorId);
+                                                            return p ? (p.nombre || p.Nombre) : 'Proveedor Seleccionado';
+                                                        })()}
+                                                    </Text>
+                                                )}
+
+                                                {/* Pending Checkbox - Hide when Legalizing */}
+                                                {!isLegalizing && !isHorasExtras && !isRecargo && (
+                                                    <TouchableOpacity
+                                                        style={[styles.checkboxContainer, { flexDirection: 'row', alignItems: 'center', marginBottom: 15, padding: 10, backgroundColor: '#FFFBEB', borderRadius: 8 }]}
+                                                        onPress={() => setFormData(p => ({ ...p, esPendiente: !p.esPendiente }))}
+                                                    >
+                                                        <View style={{
+                                                            width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: '#F59E0B',
+                                                            alignItems: 'center', justifyContent: 'center', marginRight: 10,
+                                                            backgroundColor: formData.esPendiente ? '#F59E0B' : 'white'
+                                                        }}>
+                                                            {formData.esPendiente && <Text style={{ color: 'white', fontWeight: 'bold' }}>✓</Text>}
+                                                        </View>
+                                                        <View>
+                                                            <Text style={{ fontWeight: 'bold', color: '#B45309' }}>Marcar como Gasto Pendiente</Text>
+                                                            <Text style={{ fontSize: 10, color: '#B45309' }}>Permite guardar sin factura ni precio (2 días plazo)</Text>
+                                                        </View>
+                                                    </TouchableOpacity>
+                                                )}
+
+                                                {(!formData.esPendiente || isLegalizing) && (
+                                                    <>
+                                                        <Text style={styles.label}>Número de Factura *</Text>
+                                                        <TextInput
+                                                            style={styles.input}
+                                                            value={formData.numeroFactura}
+                                                            onChangeText={(t) => setFormData(p => ({ ...p, numeroFactura: t }))}
+                                                            placeholder="Ej: FAC-001"
+                                                        />
+                                                    </>
+                                                )}
+
+                                                <Text style={styles.label}>PDF Factura</Text>
+                                                {Platform.OS === 'web' && (
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                                                        <input type="file" accept=".pdf" onChange={async (e) => {
+                                                            const file = e.target.files[0];
+                                                            if (file) {
+                                                                try {
+                                                                    const result = await talleresApi.uploadFactura(file);
+                                                                    setFormData(p => ({ ...p, facturaPdfUrl: result.url }));
+                                                                    Alert.alert('Éxito', 'PDF subido correctamente');
+                                                                } catch (err) {
+                                                                    Alert.alert('Error', 'No se pudo subir el PDF');
+                                                                }
+                                                            }
+                                                        }} style={{ padding: 8 }} />
+                                                        {!!formData.facturaPdfUrl && (
+                                                            <a href={`${process.env.EXPO_PUBLIC_API_URL?.replace('/api', '') || 'http://192.168.100.227:5144'}${formData.facturaPdfUrl}`} target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB', textDecoration: 'none', fontWeight: 'bold' }}>
+                                                                📄 Ver PDF
+                                                            </a>
+                                                        )}
+                                                    </View>
+                                                )}
                                             </>
                                         )}
 
-                                        <Text style={styles.label}>PDF Factura</Text>
-                                        {Platform.OS === 'web' && (
-                                            <input type="file" accept=".pdf" onChange={async (e) => {
-                                                const file = e.target.files[0];
-                                                if (file) {
-                                                    try {
-                                                        const result = await talleresApi.uploadFactura(file);
-                                                        setFormData(p => ({ ...p, facturaPdfUrl: result.url }));
-                                                        Alert.alert('Éxito', 'PDF subido correctamente');
-                                                    } catch (err) {
-                                                        Alert.alert('Error', 'No se pudo subir el PDF');
-                                                    }
-                                                }
-                                            }} style={{ marginBottom: 10 }} />
-                                        )}
-                                    </>
-                                ) : null}
-
-                                {/* Always visible fields once Rubro is selected */}
-                                {formData.rubroId ? (
-                                    <>
+                                        {/* Always visible fields once Rubro is selected */}
                                         <Text style={styles.label}>Fecha</Text>
                                         {Platform.OS === 'web' ? (
                                             !isLegalizing ? (
@@ -1336,21 +1446,28 @@ function GastosTab() {
                                                 )}
                                             </View>
                                         )}
-                                    </>
-                                ) : null}
 
-                                <Text style={styles.label}>Observaciones</Text>
-                                <TextInput style={[styles.input, styles.textArea]} value={formData.observaciones} onChangeText={(t) => setFormData(p => ({ ...p, observaciones: t }))} multiline placeholder="Opcional..." />
+                                        <Text style={styles.label}>Observaciones</Text>
+                                        <TextInput style={[styles.input, styles.textArea]} value={formData.observaciones} onChangeText={(t) => setFormData(p => ({ ...p, observaciones: t }))} multiline placeholder="Opcional..." />
+                                    </>
+                                ) : (
+                                    <View style={{ padding: 20, alignItems: 'center' }}>
+                                        <Text style={{ color: '#6B7280', fontStyle: 'italic' }}>Seleccione un rubro para continuar...</Text>
+                                    </View>
+                                )}
 
                                 <View style={styles.modalActions}>
                                     <TouchableOpacity style={styles.cancelButton} onPress={() => { resetForm(); setShowModal(false); }}>
                                         <Text style={styles.cancelButtonText}>Cancelar</Text>
                                     </TouchableOpacity>
-                                    <TouchableOpacity style={[styles.submitButton, saving && styles.submitButtonDisabled]} onPress={handleSubmit} disabled={saving}>
-                                        {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>Guardar</Text>}
-                                    </TouchableOpacity>
+                                    {formData.rubroId && (
+                                        <TouchableOpacity style={[styles.submitButton, saving && styles.submitButtonDisabled]} onPress={handleSubmit} disabled={saving}>
+                                            {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>Guardar</Text>}
+                                        </TouchableOpacity>
+                                    )}
                                 </View>
                             </ScrollView>
+
                         </View>
                     </View>
                 </Modal>

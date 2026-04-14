@@ -6,6 +6,9 @@ import {
 import { Picker } from '@react-native-picker/picker';
 import { api } from '../services/productionApi';
 import * as XLSX from 'xlsx';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { LOGO_BASE64 } from '../assets/logo_base64';
 
 interface ConsolidadoRow {
     encuestaId: number;
@@ -35,6 +38,33 @@ interface ConsolidadoRow {
     ncCompleto: boolean;
 }
 
+interface AccionASeguir {
+    accion: string;
+    responsables: string;
+    cuando: string;
+}
+
+const emptyAccion = (): AccionASeguir => ({ accion: '', responsables: '', cuando: '' });
+
+// Parse controles field - handles both JSON array and legacy plain text
+const parseAcciones = (controles?: string): AccionASeguir[] => {
+    if (!controles) return [emptyAccion()];
+    try {
+        const parsed = JSON.parse(controles);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    } catch {
+        // Legacy plain text - wrap in a single action
+        return [{ accion: controles, responsables: '', cuando: '' }];
+    }
+    return [emptyAccion()];
+};
+
+const serializeAcciones = (acciones: AccionASeguir[]): string => {
+    const filled = acciones.filter(a => a.accion.trim());
+    if (filled.length === 0) return '';
+    return JSON.stringify(filled);
+};
+
 const emptyNCForm = {
     tipoReclamacion: '',
     cantidadNC: '0',
@@ -46,7 +76,6 @@ const emptyNCForm = {
     valorNC: '0',
     producto: '',
     salidaNC: '',
-    controles: '',
 };
 
 export default function ConsolidadoNCView() {
@@ -57,6 +86,7 @@ export default function ConsolidadoNCView() {
     const [modalVisible, setModalVisible] = useState(false);
     const [selectedRow, setSelectedRow] = useState<ConsolidadoRow | null>(null);
     const [formData, setFormData] = useState({ ...emptyNCForm });
+    const [acciones, setAcciones] = useState<AccionASeguir[]>([emptyAccion()]);
 
     const meses = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
         'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -88,13 +118,14 @@ export default function ConsolidadoNCView() {
             valorNC: (row.valorNC || 0).toString(),
             producto: row.producto || '',
             salidaNC: row.salidaNC || '',
-            controles: row.controles || '',
         });
+        setAcciones(parseAcciones(row.controles));
         setModalVisible(true);
     };
 
     const handleSave = async () => {
         if (!selectedRow) return;
+        const controlesStr = serializeAcciones(acciones);
         try {
             await api.post('consolidadonc/guardar', {
                 ncId: selectedRow.ncId || null,
@@ -109,7 +140,7 @@ export default function ConsolidadoNCView() {
                 valorNC: parseFloat(formData.valorNC) || 0,
                 producto: formData.producto,
                 salidaNC: formData.salidaNC,
-                controles: formData.controles,
+                controles: controlesStr,
             });
             setModalVisible(false);
             loadData();
@@ -123,8 +154,45 @@ export default function ConsolidadoNCView() {
     const formatCurrency = (v: number) => `$${(v || 0).toLocaleString('es-CO')}`;
     const setField = (field: string, value: string) => setFormData(prev => ({ ...prev, [field]: value }));
 
+    const updateAccion = (idx: number, field: keyof AccionASeguir, value: string) => {
+        setAcciones(prev => {
+            const updated = [...prev];
+            updated[idx] = { ...updated[idx], [field]: value };
+            return updated;
+        });
+    };
+
+    const addAccion = () => {
+        setAcciones(prev => [...prev, emptyAccion()]);
+    };
+
+    const removeAccion = (idx: number) => {
+        setAcciones(prev => prev.length > 1 ? prev.filter((_, i) => i !== idx) : [emptyAccion()]);
+    };
+
     const pendientes = rows.filter(r => !r.ncCompleto).length;
     const completas = rows.filter(r => r.ncCompleto).length;
+
+    // Build a display string for the table cell
+    const getControlesDisplay = (controles?: string) => {
+        if (!controles) return null;
+        try {
+            const parsed: AccionASeguir[] = JSON.parse(controles);
+            if (Array.isArray(parsed)) {
+                return parsed
+                    .filter(a => a.accion.trim())
+                    .map(a => {
+                        let str = a.accion;
+                        if (a.responsables || a.cuando) {
+                            str += ` (${[a.responsables, a.cuando].filter(Boolean).join(' - ')})`;
+                        }
+                        return str;
+                    })
+                    .join(' | ');
+            }
+        } catch { return controles; }
+        return controles;
+    };
 
     const exportToExcel = () => {
         if (rows.length === 0) {
@@ -136,7 +204,7 @@ export default function ConsolidadoNCView() {
             'NC #', 'Fecha', 'OP', 'Cliente', 'Referencia',
             'Tipo Reclamación', 'Cant NC', 'Cant Total',
             'Item', 'Desc. Novedad', 'Tipo Defecto', 'Responsable',
-            'Área', 'Cargo', 'Valor NC ($)', 'Producto', 'Salida NC', 'Controles', 'Estado'
+            'Área', 'Cargo', 'Valor NC ($)', 'Producto', 'Salida NC', 'Acciones a Seguir', 'Estado'
         ];
 
         const data = rows.map(r => ([
@@ -157,14 +225,13 @@ export default function ConsolidadoNCView() {
             r.valorNC || 0,
             r.producto || '',
             r.salidaNC || '',
-            r.controles || '',
+            getControlesDisplay(r.controles) || '',
             r.ncCompleto ? 'Completo' : 'Pendiente'
         ]));
 
         const wsData = [headers, ...data];
         const ws = XLSX.utils.aoa_to_sheet(wsData);
 
-        // Column widths
         ws['!cols'] = [
             { wch: 8 }, { wch: 12 }, { wch: 10 }, { wch: 22 }, { wch: 25 },
             { wch: 20 }, { wch: 10 }, { wch: 12 },
@@ -184,9 +251,149 @@ export default function ConsolidadoNCView() {
         }
     };
 
+    // Whether the last action has enough data to show the "add" button
+    const canAddAccion = acciones.length > 0 &&
+        acciones[acciones.length - 1].accion.trim() !== '';
+
+    const exportSingleNCPDF = (row: ConsolidadoRow) => {
+        const doc = new jsPDF({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: 'a4'
+        });
+
+        const margin = 10;
+        const pageWidth = doc.internal.pageSize.width;
+        const width = pageWidth - (margin * 2);
+
+        // HEADER BOX
+        doc.setDrawColor(0);
+        doc.setLineWidth(0.3);
+        doc.rect(margin, margin, width, 25); // Main Header box
+        doc.line(margin + 45, margin, margin + 45, margin + 25); // Logo separator
+        doc.line(margin + width - 50, margin, margin + width - 50, margin + 25); // Info separator
+
+        // Actual Logo Image
+        try {
+            // Ensure any whitespace/line breaks are removed from base64
+            const cleanedLogo = LOGO_BASE64.trim();
+            doc.addImage(cleanedLogo, 'JPEG', margin + 5, margin + 5, 35, 15);
+        } catch (e) {
+            console.error('Error adding logo to PDF', e);
+            doc.setFontSize(22);
+            doc.setFont('helvetica', 'bold');
+            doc.text('ALEPH', margin + 5, margin + 17);
+        }
+
+        // Title
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text('TRATAMIENTO DE NO CONFORME', margin + 45 + (width - 45 - 50) / 2, margin + 15, { align: 'center' });
+
+        // Metadata
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.text('CODIGO: FO GC 01', margin + width - 48, margin + 5);
+        doc.text('VERSION: 01', margin + width - 48, margin + 10);
+        doc.text('Fecha de emisión: 2025-07-19', margin + width - 48, margin + 15);
+        doc.text('Fecha de actualización:', margin + width - 48, margin + 20);
+
+        let y = margin + 35;
+
+        // SECTION 1: Status checkboxes
+        doc.setFontSize(9);
+        doc.text('Materia prima: ______', margin, y);
+        doc.text('Producto en proceso: ______', margin + 55, y);
+        doc.text('Producto terminado: __X__', margin + 130, y);
+
+        y += 10;
+        // SECTION 2: General info
+        doc.text(`Fecha de elaboración: ${new Date(row.fecha).toLocaleDateString('es-CO')}`, margin, y);
+        doc.text(`Proceso: __${row.areaInvolucrada || ''}__`, margin + 55, y);
+
+        y += 7;
+        doc.text(`O.P/Factura/Remisión: ________________________`, margin + 55, y);
+        doc.text(row.ordenProduccion, margin + 95, y - 1);
+
+        doc.text(`Cliente/Proveedor: ${row.cliente || ''}`, margin + 130, y);
+        doc.text(`Consecutivo: ${row.ncId || ''}`, margin + 130, y + 5);
+
+        y += 10;
+        // SECTION 3: Name and Ref
+        doc.text(`Nombre del producto y referencia:  ${row.producto || row.referencia || ''}`, margin, y);
+        doc.line(margin + 58, y + 1, margin + 110, y + 1);
+        doc.text(`Detectado por: ${row.tipoReclamacion || ''}`, margin + 115, y);
+
+        y += 12;
+        // SECTION 4: Description box
+        doc.text('Descripción de la no conformidad:', margin, y);
+        y += 5;
+        doc.rect(margin, y, width, 50);
+        const splitDesc = doc.splitTextToSize(row.descripcionNovedad || '', width - 10);
+        doc.text(splitDesc, margin + 5, y + 8);
+
+        y += 55;
+        // SECTION 5: Quantitative
+        doc.text(`Tamaño del lote: ${row.cantidadTotal}`, margin, y);
+        doc.line(margin + 30, y + 1, margin + 50, y + 1);
+
+        doc.text(`Cantidad no conforme:`, margin + 55, y);
+        doc.text(`${row.cantidadNC}`, margin + 95, y);
+        doc.line(margin + 93, y + 1, margin + 110, y + 1);
+
+        doc.text(`Faltante OP:`, margin + 130, y);
+        doc.text(`${row.cantidadNC}`, margin + 155, y);
+        doc.line(margin + 153, y + 1, margin + 195, y + 1);
+
+        y += 7;
+        doc.text(`Costo:   $ ${(row.valorNC || 0).toLocaleString('es-CO')}`, margin + 130, y);
+        doc.line(margin + 145, y + 1, margin + 195, y + 1);
+
+        y += 10;
+        // TABLE: Actions
+        const rowActions = parseAcciones(row.controles);
+        const tableData = rowActions
+            .filter(a => a.accion.trim())
+            .map(acc => [acc.accion, acc.responsables, acc.cuando, '']);
+
+        autoTable(doc, {
+            startY: y,
+            head: [['Acción a seguir', 'Responsable', 'Cuando', 'FIRMA']],
+            body: tableData.length > 0 ? tableData : [['', '', '', ''], ['', '', '', '']],
+            theme: 'grid',
+            headStyles: {
+                fillColor: [255, 255, 255],
+                textColor: [0, 0, 0],
+                fontStyle: 'bold',
+                lineWidth: 0.2,
+                lineColor: [0, 0, 0],
+                halign: 'center'
+            },
+            styles: {
+                fontSize: 8,
+                cellPadding: 3,
+                lineColor: [0, 0, 0],
+                lineWidth: 0.2,
+                minCellHeight: 15
+            },
+            columnStyles: {
+                0: { cellWidth: 90 },
+                1: { cellWidth: 40 },
+                2: { cellWidth: 30 },
+                3: { cellWidth: 30 }
+            }
+        });
+
+        // FOOTER
+        const finalY = (doc as any).lastAutoTable.finalY + 10;
+        doc.text('Notificado a: ____________________________________________________', margin, finalY);
+        doc.text('Reportar a Gerencia: _____________________________________________', margin, finalY + 8);
+
+        doc.save(`NC_${row.ncId || 'S_N'}_${row.ordenProduccion}.pdf`);
+    };
+
     return (
         <View style={styles.container}>
-            {/* Header removed as it is now in AdminDashboard */}
             <View style={{ marginBottom: 15 }}>
                 <View style={styles.statsRow}>
                     <View style={[styles.statBadge, { backgroundColor: '#FED7D7' }]}>
@@ -255,8 +462,9 @@ export default function ConsolidadoNCView() {
                             <Text style={[styles.th, { width: 100 }]}>Valor NC</Text>
                             <Text style={[styles.th, { width: 110 }]}>Producto</Text>
                             <Text style={[styles.th, { width: 110 }]}>Salida NC</Text>
-                            <Text style={[styles.th, { width: 110 }]}>Controles</Text>
+                            <Text style={[styles.th, { width: 140 }]}>Acciones a Seguir</Text>
                             <Text style={[styles.th, { width: 70 }]}>Acción</Text>
+                            <Text style={[styles.th, { width: 70 }]}>Exportar</Text>
                         </View>
 
                         {/* Table Body */}
@@ -269,9 +477,10 @@ export default function ConsolidadoNCView() {
                                 rows.map((row, idx) => {
                                     const isPending = !row.ncCompleto;
                                     const bgColor = isPending
-                                        ? '#FFFAF0' // warm yellow for pending
+                                        ? '#FFFAF0'
                                         : (idx % 2 === 0 ? '#fff' : '#F7FAFC');
                                     const borderLeft = isPending ? '#ED8936' : 'transparent';
+                                    const controlesDisplay = getControlesDisplay(row.controles);
 
                                     return (
                                         <TouchableOpacity
@@ -321,8 +530,8 @@ export default function ConsolidadoNCView() {
                                             <Text style={[styles.cell, { width: 110, color: row.salidaNC ? '#2D3748' : '#E57373' }]}>
                                                 {row.salidaNC || 'Sin llenar'}
                                             </Text>
-                                            <Text style={[styles.cell, { width: 110, color: row.controles ? '#2D3748' : '#E57373' }]}>
-                                                {row.controles || 'Sin llenar'}
+                                            <Text style={[styles.cell, { width: 140, color: controlesDisplay ? '#2D3748' : '#E57373' }]} numberOfLines={2}>
+                                                {controlesDisplay || 'Sin llenar'}
                                             </Text>
                                             <View style={[styles.cell, { width: 70, alignItems: 'center' }]}>
                                                 <View style={[styles.editBadge, { backgroundColor: isPending ? '#ED8936' : '#3182CE' }]}>
@@ -331,6 +540,14 @@ export default function ConsolidadoNCView() {
                                                     </Text>
                                                 </View>
                                             </View>
+                                            <TouchableOpacity
+                                                style={[styles.cell, { width: 70, alignItems: 'center' }]}
+                                                onPress={(e) => { e.stopPropagation(); exportSingleNCPDF(row); }}
+                                            >
+                                                <View style={[styles.editBadge, { backgroundColor: '#E53E3E' }]}>
+                                                    <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>PDF</Text>
+                                                </View>
+                                            </TouchableOpacity>
                                         </TouchableOpacity>
                                     );
                                 })
@@ -422,9 +639,58 @@ export default function ConsolidadoNCView() {
                                 </View>
                             </View>
 
-                            <View style={{ marginBottom: 12 }}>
-                                <Text style={styles.formLabel}>Controles</Text>
-                                <TextInput style={[styles.input, { height: 70 }]} value={formData.controles} onChangeText={(v) => setField('controles', v)} multiline placeholder="Controles aplicados..." />
+                            {/* Acciones a Seguir */}
+                            <View style={styles.accionesSection}>
+                                <Text style={styles.accionesSectionTitle}>📋 Acciones a Seguir</Text>
+
+                                {acciones.map((accion, idx) => (
+                                    <View key={idx} style={styles.accionCard}>
+                                        <View style={styles.accionCardHeader}>
+                                            <Text style={styles.accionCardNum}>Acción #{idx + 1}</Text>
+                                            {acciones.length > 1 && (
+                                                <TouchableOpacity onPress={() => removeAccion(idx)} style={styles.removeAccionBtn}>
+                                                    <Text style={styles.removeAccionText}>✕ Quitar</Text>
+                                                </TouchableOpacity>
+                                            )}
+                                        </View>
+
+                                        <Text style={styles.formLabel}>Acción a Seguir</Text>
+                                        <TextInput
+                                            style={[styles.input, { height: 60, marginBottom: 8 }]}
+                                            value={accion.accion}
+                                            onChangeText={(v) => updateAccion(idx, 'accion', v)}
+                                            multiline
+                                            placeholder="Describir la acción a seguir..."
+                                        />
+
+                                        <View style={styles.formGrid}>
+                                            <View style={styles.formCol}>
+                                                <Text style={styles.formLabel}>Responsables</Text>
+                                                <TextInput
+                                                    style={styles.input}
+                                                    value={accion.responsables}
+                                                    onChangeText={(v) => updateAccion(idx, 'responsables', v)}
+                                                    placeholder="Nombre(s)..."
+                                                />
+                                            </View>
+                                            <View style={styles.formCol}>
+                                                <Text style={styles.formLabel}>Cuándo</Text>
+                                                <TextInput
+                                                    style={styles.input}
+                                                    value={accion.cuando}
+                                                    onChangeText={(v) => updateAccion(idx, 'cuando', v)}
+                                                    placeholder="Fecha o plazo..."
+                                                />
+                                            </View>
+                                        </View>
+                                    </View>
+                                ))}
+
+                                {canAddAccion && (
+                                    <TouchableOpacity style={styles.addAccionBtn} onPress={addAccion}>
+                                        <Text style={styles.addAccionText}>+ Agregar otra Acción a Seguir</Text>
+                                    </TouchableOpacity>
+                                )}
                             </View>
 
                             {/* Buttons */}
@@ -486,4 +752,14 @@ const styles = StyleSheet.create({
     cancelBtnText: { color: '#4A5568', fontWeight: '600' },
     saveBtn: { backgroundColor: '#38A169', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 6 },
     saveBtnText: { color: '#fff', fontWeight: 'bold' },
+    // Acciones a Seguir
+    accionesSection: { marginTop: 4, marginBottom: 12 },
+    accionesSectionTitle: { fontSize: 14, fontWeight: 'bold', color: '#2D3748', marginBottom: 10, borderBottomWidth: 1, borderBottomColor: '#E2E8F0', paddingBottom: 4 },
+    accionCard: { backgroundColor: '#F7FAFC', borderRadius: 8, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: '#E2E8F0' },
+    accionCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+    accionCardNum: { fontSize: 12, fontWeight: 'bold', color: '#3182CE' },
+    removeAccionBtn: { paddingHorizontal: 8, paddingVertical: 3, backgroundColor: '#FED7D7', borderRadius: 4 },
+    removeAccionText: { fontSize: 11, color: '#C53030', fontWeight: '600' },
+    addAccionBtn: { backgroundColor: '#EBF8FF', borderWidth: 1, borderColor: '#90CDF4', borderRadius: 8, paddingVertical: 10, alignItems: 'center', marginTop: 4 },
+    addAccionText: { color: '#2B6CB0', fontWeight: 'bold', fontSize: 13 },
 });

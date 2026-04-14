@@ -77,6 +77,8 @@ builder.Services.AddAuthentication(x =>
     };
 });
 
+builder.Services.AddAuthorization();
+
 // Configure CORS
 builder.Services.AddCors(options =>
 {
@@ -90,6 +92,27 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+// Global exception handler - FIRST middleware to catch EVERYTHING
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[UNHANDLED EXCEPTION] {ex.GetType().Name}: {ex.Message}");
+        Console.WriteLine(ex.StackTrace);
+        if (!context.Response.HasStarted)
+        {
+            context.Response.StatusCode = 500;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync($"{{\"error\": \"Internal server error\", \"detail\": \"{ex.Message.Replace("\"", "'")}\"}}");
+        }
+    }
+});
+
 OfficeOpenXml.ExcelPackage.License.SetNonCommercialOrganization("AlephImpresores");
 
 // Initialize Database
@@ -116,7 +139,7 @@ if (app.Environment.IsDevelopment() || true) // Enable Swagger in prod for now i
 }
 
 app.UseCors("AllowAll");
-app.UseStaticFiles(); // Serve files from wwwroot (e.g. fotos-calidad/)
+app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

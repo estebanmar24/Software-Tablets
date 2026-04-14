@@ -8,6 +8,8 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { api } from '../services/productionApi';
 
+const AREAS = ["Gerencia", "SST", "Planeacion", "Gestion Humana", "Talleres y Despachos", "Calidad", "Produccion", "Almacen", "Diseño", "Contabilidad"];
+
 interface PlanAccion {
     id: number;
     proceso: string;
@@ -50,11 +52,22 @@ const emptyForm = {
     estado: 'pendiente',
     porcentajeAvance: 0,
     nuevasEvidencias: [] as PlanAccionEvidenciaUpload[],
+    evidenciasAnteriores: [] as PlanAccionEvidencia[],
     observaciones: '',
 };
 
-export default function PlanAccionView() {
+interface PlanAccionViewProps {
+    onClose?: () => void;
+    userArea?: string;
+    userRole?: string;
+    canCreate?: boolean;
+}
+
+export default function PlanAccionView({ onClose, userArea, userRole, canCreate = true }: PlanAccionViewProps) {
+    const isAdmin = ['admin', 'master'].includes(userRole?.toLowerCase() || '');
+    const canDelete = ['admin', 'master', 'calidad'].includes(userRole?.toLowerCase() || '');
     const [planes, setPlanes] = useState<PlanAccion[]>([]);
+    const [showAll, setShowAll] = useState(isAdmin);
     const [loading, setLoading] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
     const [editingId, setEditingId] = useState<number | null>(null);
@@ -62,17 +75,22 @@ export default function PlanAccionView() {
     const [detailVisible, setDetailVisible] = useState(false);
     const [selectedPlan, setSelectedPlan] = useState<PlanAccion | null>(null);
 
+    // canCreate=false means we came from the dashboard shortcut (Consultative/Execution mode)
+    const canEditCore = canCreate || !editingId;
+
     const loadData = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await api.get('planaccion');
+            const areaToFilter = showAll ? null : userArea;
+            const url = areaToFilter ? `planaccion/area/${encodeURIComponent(areaToFilter)}` : 'planaccion';
+            const res = await api.get(url);
             setPlanes(res.data);
         } catch (err) {
             console.error('Error loading plans', err);
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [userArea, showAll]);
 
     useEffect(() => { loadData(); }, [loadData]);
 
@@ -150,8 +168,17 @@ export default function PlanAccionView() {
     };
 
     const handleSave = async () => {
-        if (!formData.proceso || !formData.hallazgo || !formData.responsable) {
-            Alert.alert('Validación', 'Por favor complete los campos obligatorios (Proceso, Hallazgo, Responsable)');
+        const errors = [];
+        if (!formData.proceso) errors.push('Debe seleccionar al menos un Proceso / Área.');
+        if (!formData.hallazgo || formData.hallazgo.trim().length < 5) errors.push('El Hallazgo / Problema es obligatorio (mín. 5 caracteres).');
+        if (!formData.accionCorrectiva || formData.accionCorrectiva.trim().length < 5) errors.push('La Acción Correctiva es obligatoria (mín. 5 caracteres).');
+        if (!formData.responsable) errors.push('El Responsable es obligatorio.');
+
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!dateRegex.test(formData.fechaCompromiso)) errors.push('Formato de Fecha Compromiso inválido (YYYY-MM-DD).');
+
+        if (errors.length > 0) {
+            Alert.alert('Validación', 'Por favor corrija los siguientes errores:\n\n- ' + errors.join('\n- '));
             return;
         }
 
@@ -180,7 +207,7 @@ export default function PlanAccionView() {
         setFormData({
             proceso: plan.proceso,
             hallazgo: plan.hallazgo,
-            causaRaiz: plan.causaRaiz,
+            causaRaiz: plan.causaRaiz || '',
             accionCorrectiva: plan.accionCorrectiva,
             responsable: plan.responsable,
             fechaInicio: plan.fechaInicio.split('T')[0],
@@ -188,9 +215,24 @@ export default function PlanAccionView() {
             estado: plan.estado,
             porcentajeAvance: plan.porcentajeAvance,
             nuevasEvidencias: [],
+            evidenciasAnteriores: plan.evidencias || [],
             observaciones: plan.observaciones || '',
         });
         setModalVisible(true);
+    };
+
+    const handleDeleteExistingEvidence = async (evId: number) => {
+        try {
+            await api.delete(`planaccion/evidencia/${evId}`);
+            setFormData(prev => ({
+                ...prev,
+                evidenciasAnteriores: prev.evidenciasAnteriores.filter(e => e.id !== evId)
+            }));
+            // Refresh main list
+            loadData();
+        } catch (err) {
+            Alert.alert('Error', 'No se pudo eliminar el archivo.');
+        }
     };
 
     const handleDelete = (id: number) => {
@@ -213,7 +255,21 @@ export default function PlanAccionView() {
         setDetailVisible(true);
     };
 
-    const setField = (field: string, value: any) => setFormData(prev => ({ ...prev, [field]: value }));
+    const setField = (name: string, value: any) => {
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const toggleArea = (area: string) => {
+        const current = formData.proceso ? formData.proceso.split(',').filter(x => x) : [];
+        const index = current.indexOf(area);
+        let updated;
+        if (index > -1) {
+            updated = current.filter(x => x !== area);
+        } else {
+            updated = [...current, area];
+        }
+        setField('proceso', updated.join(','));
+    };
 
     const getSemaforoColor = (semaforo: string) => {
         switch (semaforo) {
@@ -227,10 +283,22 @@ export default function PlanAccionView() {
     return (
         <View style={styles.container}>
             {/* Header removed as it is now in AdminDashboard */}
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 15 }}>
-                <TouchableOpacity style={styles.btnNew} onPress={openCreate}>
-                    <Text style={styles.btnNewText}>+ Nuevo Plan</Text>
-                </TouchableOpacity>
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 15, gap: 10 }}>
+                {isAdmin && (
+                    <TouchableOpacity
+                        style={[styles.btnFilter, { backgroundColor: showAll ? '#718096' : '#3182CE' }]}
+                        onPress={() => setShowAll(!showAll)}
+                    >
+                        <Text style={styles.btnNewText}>
+                            {showAll ? 'Filtrar: Mis Planes' : 'Ver Todos los Planes'}
+                        </Text>
+                    </TouchableOpacity>
+                )}
+                {canCreate && (
+                    <TouchableOpacity style={styles.btnNew} onPress={openCreate}>
+                        <Text style={styles.btnNewText}>+ Nuevo Plan</Text>
+                    </TouchableOpacity>
+                )}
             </View>
 
             {loading ? (
@@ -279,9 +347,11 @@ export default function PlanAccionView() {
                                             <TouchableOpacity onPress={() => openEdit(plan)}>
                                                 <Text style={{ fontSize: 18 }}>✏️</Text>
                                             </TouchableOpacity>
-                                            <TouchableOpacity onPress={() => handleDelete(plan.id)}>
-                                                <Text style={{ fontSize: 18 }}>🗑️</Text>
-                                            </TouchableOpacity>
+                                            {canDelete && (
+                                                <TouchableOpacity onPress={() => handleDelete(plan.id)}>
+                                                    <Text style={{ fontSize: 18 }}>🗑️</Text>
+                                                </TouchableOpacity>
+                                            )}
                                         </View>
                                     </View>
                                 ))
@@ -297,22 +367,63 @@ export default function PlanAccionView() {
                         <ScrollView showsVerticalScrollIndicator={false}>
                             <Text style={styles.modalTitle}>{editingId ? 'Editar Plan de Acción' : 'Nuevo Plan de Acción'}</Text>
 
-                            <Text style={styles.label}>Proceso *</Text>
-                            <TextInput style={styles.input} value={formData.proceso} onChangeText={v => setField('proceso', v)} placeholder="Ej: Impresión, Laminación..." />
+                            <Text style={styles.label}>Proceso / Área *</Text>
+                            <View style={styles.chipContainer}>
+                                {AREAS.map(area => {
+                                    const active = formData.proceso.split(',').includes(area);
+                                    return (
+                                        <TouchableOpacity
+                                            key={area}
+                                            style={[
+                                                styles.chip,
+                                                active && styles.chipActive,
+                                                !canEditCore && { opacity: 0.5 }
+                                            ]}
+                                            onPress={() => canEditCore && toggleArea(area)}
+                                            disabled={!canEditCore}
+                                        >
+                                            <Text style={[styles.chipText, active && { color: '#fff' }]}>{area}</Text>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </View>
 
                             <Text style={styles.label}>Hallazgo / Problema *</Text>
-                            <TextInput style={[styles.input, { height: 60 }]} multiline value={formData.hallazgo} onChangeText={v => setField('hallazgo', v)} />
+                            <TextInput
+                                style={[styles.input, { height: 60 }, !canEditCore && styles.disabledInput]}
+                                multiline
+                                value={formData.hallazgo}
+                                onChangeText={v => setField('hallazgo', v)}
+                                editable={canEditCore}
+                            />
 
                             <Text style={styles.label}>Causa Raíz</Text>
-                            <TextInput style={[styles.input, { height: 60 }]} multiline value={formData.causaRaiz} onChangeText={v => setField('causaRaiz', v)} />
+                            <TextInput
+                                style={[styles.input, { height: 60 }, !canEditCore && styles.disabledInput]}
+                                multiline
+                                value={formData.causaRaiz}
+                                onChangeText={v => setField('causaRaiz', v)}
+                                editable={canEditCore}
+                            />
 
-                            <Text style={styles.label}>Acción Correctiva</Text>
-                            <TextInput style={[styles.input, { height: 60 }]} multiline value={formData.accionCorrectiva} onChangeText={v => setField('accionCorrectiva', v)} />
+                            <Text style={styles.label}>Acción Correctiva *</Text>
+                            <TextInput
+                                style={[styles.input, { height: 60 }, !canEditCore && styles.disabledInput]}
+                                multiline
+                                value={formData.accionCorrectiva}
+                                onChangeText={v => setField('accionCorrectiva', v)}
+                                editable={canEditCore}
+                            />
 
                             <View style={styles.formRow}>
                                 <View style={{ flex: 1 }}>
                                     <Text style={styles.label}>Responsable *</Text>
-                                    <TextInput style={styles.input} value={formData.responsable} onChangeText={v => setField('responsable', v)} />
+                                    <TextInput
+                                        style={[styles.input, !canEditCore && styles.disabledInput]}
+                                        value={formData.responsable}
+                                        onChangeText={v => setField('responsable', v)}
+                                        editable={canEditCore}
+                                    />
                                 </View>
                                 <View style={{ flex: 1, marginLeft: 10 }}>
                                     <Text style={styles.label}>Estado</Text>
@@ -330,31 +441,56 @@ export default function PlanAccionView() {
                             <View style={styles.formRow}>
                                 <View style={{ flex: 1 }}>
                                     <Text style={styles.label}>Fecha Inicio</Text>
-                                    <TextInput style={styles.input} value={formData.fechaInicio} onChangeText={v => setField('fechaInicio', v)} placeholder="YYYY-MM-DD" />
+                                    <TextInput
+                                        style={[styles.input, !canEditCore && styles.disabledInput]}
+                                        value={formData.fechaInicio}
+                                        onChangeText={v => setField('fechaInicio', v)}
+                                        placeholder="YYYY-MM-DD"
+                                        editable={canEditCore}
+                                    />
                                 </View>
                                 <View style={{ flex: 1, marginLeft: 10 }}>
                                     <Text style={styles.label}>Fecha Compromiso</Text>
-                                    <TextInput style={styles.input} value={formData.fechaCompromiso} onChangeText={v => setField('fechaCompromiso', v)} placeholder="YYYY-MM-DD" />
+                                    <TextInput
+                                        style={[styles.input, !canEditCore && styles.disabledInput]}
+                                        value={formData.fechaCompromiso}
+                                        onChangeText={v => setField('fechaCompromiso', v)}
+                                        placeholder="YYYY-MM-DD"
+                                        editable={canEditCore}
+                                    />
                                 </View>
                             </View>
 
                             <Text style={styles.label}>% de Avance ({formData.porcentajeAvance}%)</Text>
                             <TextInput style={styles.input} keyboardType="numeric" value={formData.porcentajeAvance.toString()} onChangeText={v => setField('porcentajeAvance', parseInt(v) || 0)} />
 
-                            <Text style={styles.label}>Evidencias Seleccionadas</Text>
+                            <Text style={styles.label}>Archivos / Fotos Adjuntos</Text>
                             <View style={{ marginBottom: 15 }}>
-                                {formData.nuevasEvidencias.length === 0 && (
-                                    <Text style={{ color: '#718096', fontStyle: 'italic', marginBottom: 5 }}>Ningún archivo seleccionado</Text>
-                                )}
-                                {formData.nuevasEvidencias.map((ev, idx) => (
-                                    <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F7FAFC', padding: 8, borderRadius: 6, marginBottom: 5 }}>
-                                        <Text style={{ fontSize: 18, marginRight: 8 }}>{ev.fileType === 'Photo' ? '📷' : '📄'}</Text>
+                                {/* Existing Evidences */}
+                                {formData.evidenciasAnteriores.map((ev) => (
+                                    <View key={`ex-${ev.id}`} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#E2E8F0', padding: 8, borderRadius: 6, marginBottom: 5 }}>
+                                        <Text style={{ fontSize: 18, marginRight: 8 }}>{ev.fileType.toLowerCase().includes('pdf') ? '📄' : '📷'}</Text>
                                         <Text style={{ flex: 1, color: '#2D3748' }} numberOfLines={1}>{ev.fileName}</Text>
-                                        <TouchableOpacity onPress={() => removeNewEvidence(idx)}>
-                                            <Text style={{ color: '#E53E3E', fontWeight: 'bold', padding: 5 }}>X</Text>
+                                        <TouchableOpacity onPress={() => handleDeleteExistingEvidence(ev.id)}>
+                                            <Text style={{ color: '#E53E3E', fontSize: 18, padding: 5 }}>🗑️</Text>
                                         </TouchableOpacity>
                                     </View>
                                 ))}
+
+                                {/* New (Pending) Evidences */}
+                                {formData.nuevasEvidencias.map((ev, idx) => (
+                                    <View key={`new-${idx}`} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0FFF4', padding: 8, borderRadius: 6, marginBottom: 5 }}>
+                                        <Text style={{ fontSize: 18, marginRight: 8 }}>{ev.fileType === 'Photo' ? '📷' : '📄'}</Text>
+                                        <Text style={{ flex: 1, color: '#2D3748' }} numberOfLines={1}>{ev.fileName} (Nuevo)</Text>
+                                        <TouchableOpacity onPress={() => removeNewEvidence(idx)}>
+                                            <Text style={{ color: '#E53E3E', fontWeight: 'bold', padding: 5, fontSize: 16 }}>X</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                ))}
+
+                                {formData.evidenciasAnteriores.length === 0 && formData.nuevasEvidencias.length === 0 && (
+                                    <Text style={{ color: '#718096', fontStyle: 'italic', marginBottom: 5 }}>Ningún archivo adjunto</Text>
+                                )}
                             </View>
 
                             <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
@@ -452,8 +588,8 @@ export default function PlanAccionView() {
                         )}
                     </View>
                 </View>
-            </Modal>
-        </View>
+            </Modal >
+        </View >
     );
 }
 
@@ -483,6 +619,7 @@ const styles = StyleSheet.create({
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
     title: { fontSize: 24, fontWeight: 'bold', color: '#2D3748' },
     btnNew: { backgroundColor: '#3182CE', paddingHorizontal: 15, paddingVertical: 10, borderRadius: 6 },
+    btnFilter: { paddingHorizontal: 15, paddingVertical: 10, borderRadius: 6 },
     btnNewText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
     tableHeader: { flexDirection: 'row', backgroundColor: '#2D3748', padding: 10, borderTopLeftRadius: 6, borderTopRightRadius: 6 },
     th: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
@@ -511,4 +648,10 @@ const styles = StyleSheet.create({
     detailImage: { width: '100%', height: 300, borderRadius: 8, marginTop: 10 },
     statusBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, alignSelf: 'flex-start', marginTop: 5 },
     btnPdfLink: { backgroundColor: '#E53E3E', padding: 15, borderRadius: 8, alignItems: 'center', marginTop: 10 },
+    // Multi-Area chips
+    chipContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 5 },
+    chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: '#CBD5E0', backgroundColor: '#EDF2F7' },
+    chipActive: { backgroundColor: '#3182CE', borderColor: '#3182CE' },
+    chipText: { fontSize: 12, color: '#4A5568', fontWeight: '500' },
+    disabledInput: { backgroundColor: '#F7FAFC', color: '#718096', borderColor: '#E2E8F0' },
 });

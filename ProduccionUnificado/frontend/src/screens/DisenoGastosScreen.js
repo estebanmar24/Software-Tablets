@@ -111,8 +111,10 @@ function GastosTab() {
         facturaPdfUrl: '',
         tipoTrabajo: '',
         ordenProduccion: '',
-        esPendiente: false
+        esPendiente: false,
+        esSolicitudCredito: false
     });
+    const [filterCredit, setFilterCredit] = useState(false);
     const [filterPending, setFilterPending] = useState(false);
     const [filterProveedor, setFilterProveedor] = useState('');
     const [filterNumeroFactura, setFilterNumeroFactura] = useState('');
@@ -144,6 +146,7 @@ function GastosTab() {
             // Filtro Número de Factura
             if (filterNumeroFactura && !(g.numeroFactura || '').toLowerCase().includes(filterNumeroFactura.toLowerCase())) return false;
             if (filterPending && !g.esPendiente) return false;
+            if (filterCredit && !g.esSolicitudCredito) return false;
             return true;
         });
     }, [gastos, filterRubro, filterFecha, filterPending, filterProveedor, filterNumeroFactura]);
@@ -218,7 +221,8 @@ function GastosTab() {
             rubroId: '', proveedorId: '', numeroFactura: '', precio: '',
             fecha: new Date().toISOString().split('T')[0], observaciones: '', facturaPdfUrl: '',
             tipoTrabajo: '', ordenProduccion: '',
-            esPendiente: false
+            esPendiente: false,
+            esSolicitudCredito: false
         });
         setIsLegalizing(false);
     };
@@ -235,7 +239,8 @@ function GastosTab() {
             facturaPdfUrl: gasto.facturaPdfUrl || '',
             tipoTrabajo: gasto.tipoTrabajo || '',
             ordenProduccion: gasto.ordenProduccion || '',
-            esPendiente: gasto.esPendiente || false
+            esPendiente: gasto.esPendiente || false,
+            esSolicitudCredito: !!gasto.esSolicitudCredito
         });
         setIsLegalizing(false);
         setShowModal(true);
@@ -254,7 +259,8 @@ function GastosTab() {
             facturaPdfUrl: gasto.facturaPdfUrl || '',
             tipoTrabajo: gasto.tipoTrabajo || '',
             ordenProduccion: gasto.ordenProduccion || '',
-            esPendiente: false // Al legalizar, deja de ser pendiente
+            esPendiente: false, // Al legalizar, deja de ser pendiente
+            esSolicitudCredito: !!gasto.esSolicitudCredito
         });
         setShowModal(true);
     };
@@ -289,6 +295,7 @@ function GastosTab() {
                 tipoTrabajo: requiereTipoTrabajo ? formData.tipoTrabajo : null,
                 ordenProduccion: requiereTipoTrabajo ? formData.ordenProduccion : null,
                 esPendiente: formData.esPendiente,
+                esSolicitudCredito: formData.esSolicitudCredito || false,
                 anio: parseInt(formData.fecha.split('-')[0]),
                 mes: parseInt(formData.fecha.split('-')[1])
             };
@@ -421,6 +428,13 @@ function GastosTab() {
                     >
                         <Text style={{ fontSize: 13, color: filterPending ? 'white' : '#374151' }}>⏳ Pendientes</Text>
                     </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={[styles.filterItem, { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, backgroundColor: filterCredit ? '#7C3AED' : 'transparent', borderRadius: 20, borderWidth: 1, borderColor: filterCredit ? '#7C3AED' : '#D1D5DB', marginLeft: 8 }]}
+                        onPress={() => setFilterCredit(!filterCredit)}
+                    >
+                        <Text style={{ fontSize: 13, color: filterCredit ? 'white' : '#374151' }}>💳 Crédito</Text>
+                    </TouchableOpacity>
                 </View>
             </View>
 
@@ -445,6 +459,11 @@ function GastosTab() {
                                         {gasto.esPendiente && (
                                             <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#FCD34D' }}>
                                                 <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#92400E' }}>⏳ Pendiente</Text>
+                                            </View>
+                                        )}
+                                        {gasto.esSolicitudCredito && (
+                                            <View style={{ backgroundColor: '#F5F3FF', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#DDD6FE' }}>
+                                                <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#7C3AED' }}>💳 Crédito</Text>
                                             </View>
                                         )}
                                         <Text style={styles.gastoPrecio}>{formatCurrency(gasto.precio)}</Text>
@@ -515,27 +534,31 @@ function GastosTab() {
 
                         {formData.rubroId ? (
                             <>
-                                {requiereTipoTrabajo && (
-                                    <>
-                                        <Text style={styles.label}>Tipo de Trabajo *</Text>
-                                        <View style={styles.pickerContainer}>
-                                            <Picker selectedValue={formData.tipoTrabajo} onValueChange={(v) => setFormData(p => ({ ...p, tipoTrabajo: v }))}>
-                                                <Picker.Item label="Seleccione..." value="" />
-                                                <Picker.Item label="Nuevo" value="Nuevo" />
-                                                <Picker.Item label="Repetido" value="Repetido" />
-                                            </Picker>
+                                {/* Solicitud de Crédito Checkbox */}
+                                {!isLegalizing && (
+                                    <TouchableOpacity
+                                        style={{ flexDirection: 'row', alignItems: 'center', padding: 10, backgroundColor: '#F5F3FF', borderRadius: 8, marginBottom: 15, borderWidth: 1, borderColor: '#DDD6FE' }}
+                                        onPress={() => setFormData(p => ({ ...p, esSolicitudCredito: !p.esSolicitudCredito }))}
+                                    >
+                                        <View style={{ width: 22, height: 22, borderRadius: 4, borderWidth: 2, borderColor: formData.esSolicitudCredito ? '#7C3AED' : '#D1D5DB', backgroundColor: formData.esSolicitudCredito ? '#7C3AED' : '#FFF', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
+                                            {formData.esSolicitudCredito && <Text style={{ color: '#FFF', fontSize: 14, fontWeight: 'bold' }}>✓</Text>}
                                         </View>
+                                        <View>
+                                            <Text style={{ fontWeight: 'bold', color: '#5B21B6' }}>Solicitud de Crédito</Text>
+                                            <Text style={{ fontSize: 11, color: '#6D28D9' }}>Marcar para trámite de crédito</Text>
+                                        </View>
+                                    </TouchableOpacity>
+                                )}
 
-                                        <Text style={styles.label}>OP (Orden de Producción) *</Text>
-                                        <TextInput style={styles.input} value={formData.ordenProduccion} onChangeText={(t) => setFormData(p => ({ ...p, ordenProduccion: t }))} placeholder="Ej: OP-12345" />
-                                    </>
+                                {!isLegalizing && (
+                                    <TextInput style={styles.input} value={formData.ordenProduccion} onChangeText={(t) => setFormData(p => ({ ...p, ordenProduccion: t }))} placeholder="Ej: OP-12345" />
                                 )}
 
                                 <Text style={styles.label}>Proveedor {formData.esPendiente && !isLegalizing ? '(Opcional por ahora)' : '*'}</Text>
                                 <View style={styles.pickerContainer}>
                                     <Picker selectedValue={formData.proveedorId} onValueChange={(v) => setFormData(p => ({ ...p, proveedorId: v }))}>
                                         <Picker.Item label="Seleccione..." value="" />
-                                        {proveedores.filter(p => p.rubroId == formData.rubroId).map(p => (
+                                        {proveedores.filter(p => !formData.rubroId || p.rubroId == formData.rubroId).map(p => (
                                             <Picker.Item key={p.id} label={`${p.nombre} (${p.nitCedula})`} value={p.id.toString()} />
                                         ))}
                                     </Picker>
@@ -555,46 +578,51 @@ function GastosTab() {
                                         </View>
                                     </TouchableOpacity>
                                 )}
+
+                                <Text style={styles.label}>Número de Factura {formData.esPendiente && !isLegalizing ? '(Opcional por ahora)' : '*'}</Text>
+                                <TextInput style={styles.input} value={formData.numeroFactura} onChangeText={(t) => setFormData(p => ({ ...p, numeroFactura: t }))} placeholder="Ej: FAC-001" />
+
+                                <Text style={styles.label}>PDF Factura</Text>
+                                {Platform.OS === 'web' && (
+                                    <input type="file" accept=".pdf" onChange={async (e) => {
+                                        const file = e.target.files[0];
+                                        if (file) {
+                                            try { const result = await disenoApi.uploadFactura(file); setFormData(p => ({ ...p, facturaPdfUrl: result.url })); showAlert('Éxito', 'PDF subido correctamente'); }
+                                            catch (err) { showAlert('Error', 'No se pudo subir el PDF'); }
+                                        }
+                                    }} style={{ marginBottom: 10 }} />
+                                )}
+
+                                <Text style={styles.label}>Fecha</Text>
+                                {Platform.OS === 'web' ? (
+                                    <input type="date" value={formData.fecha} onChange={(e) => setFormData(p => ({ ...p, fecha: e.target.value }))} style={{ padding: 12, fontSize: 16, borderRadius: 8, border: '1px solid #D1D5DB', marginBottom: 10, width: '100%', boxSizing: 'border-box' }} />
+                                ) : (
+                                    <TextInput style={styles.input} value={formData.fecha} onChangeText={(t) => setFormData(p => ({ ...p, fecha: t }))} placeholder="YYYY-MM-DD" />
+                                )}
+
+                                <Text style={styles.label}>Precio {formData.esPendiente && !isLegalizing ? '(Opcional por ahora)' : '*'}</Text>
+                                <TextInput style={styles.input} value={formData.precio} onChangeText={(t) => setFormData(p => ({ ...p, precio: t }))} keyboardType="numeric" placeholder="$ 0" />
+
+                                <Text style={styles.label}>Observaciones</Text>
+                                <TextInput style={[styles.input, styles.textArea]} value={formData.observaciones} onChangeText={(t) => setFormData(p => ({ ...p, observaciones: t }))} multiline placeholder="Opcional..." />
+
+                                <View style={styles.modalActions}>
+                                    <TouchableOpacity style={styles.cancelButton} onPress={() => setShowModal(false)}><Text style={styles.cancelButtonText}>Cancelar</Text></TouchableOpacity>
+                                    <TouchableOpacity style={[styles.submitButton, saving && styles.submitButtonDisabled]} onPress={handleSubmit} disabled={saving}>
+                                        {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>Guardar</Text>}
+                                    </TouchableOpacity>
+                                </View>
                             </>
-                        ) : null}
-
-                        <Text style={styles.label}>Número de Factura {formData.esPendiente && !isLegalizing ? '(Opcional por ahora)' : '*'}</Text>
-                        <TextInput style={styles.input} value={formData.numeroFactura} onChangeText={(t) => setFormData(p => ({ ...p, numeroFactura: t }))} placeholder="Ej: FAC-001" />
-
-                        <Text style={styles.label}>PDF Factura</Text>
-                        {Platform.OS === 'web' && (
-                            <input type="file" accept=".pdf" onChange={async (e) => {
-                                const file = e.target.files[0];
-                                if (file) {
-                                    try { const result = await disenoApi.uploadFactura(file); setFormData(p => ({ ...p, facturaPdfUrl: result.url })); showAlert('Éxito', 'PDF subido correctamente'); }
-                                    catch (err) { showAlert('Error', 'No se pudo subir el PDF'); }
-                                }
-                            }} style={{ marginBottom: 10 }} />
-                        )}
-
-                        <Text style={styles.label}>Fecha</Text>
-                        {Platform.OS === 'web' ? (
-                            <input type="date" value={formData.fecha} onChange={(e) => setFormData(p => ({ ...p, fecha: e.target.value }))} style={{ padding: 12, fontSize: 16, borderRadius: 8, border: '1px solid #D1D5DB', marginBottom: 10, width: '100%', boxSizing: 'border-box' }} />
                         ) : (
-                            <TextInput style={styles.input} value={formData.fecha} onChangeText={(t) => setFormData(p => ({ ...p, fecha: t }))} placeholder="YYYY-MM-DD" />
+                            <View style={styles.modalActions}>
+                                <TouchableOpacity style={styles.cancelButton} onPress={() => setShowModal(false)}><Text style={styles.cancelButtonText}>Cancelar</Text></TouchableOpacity>
+                            </View>
                         )}
-
-                        <Text style={styles.label}>Precio {formData.esPendiente && !isLegalizing ? '(Opcional por ahora)' : '*'}</Text>
-                        <TextInput style={styles.input} value={formData.precio} onChangeText={(t) => setFormData(p => ({ ...p, precio: t }))} keyboardType="numeric" placeholder="$ 0" />
-
-
-                        <Text style={styles.label}>Observaciones</Text>
-                        <TextInput style={[styles.input, styles.textArea]} value={formData.observaciones} onChangeText={(t) => setFormData(p => ({ ...p, observaciones: t }))} multiline placeholder="Opcional..." />
-
-                        <View style={styles.modalActions}>
-                            <TouchableOpacity style={styles.cancelButton} onPress={() => setShowModal(false)}><Text style={styles.cancelButtonText}>Cancelar</Text></TouchableOpacity>
-                            <TouchableOpacity style={[styles.submitButton, saving && styles.submitButtonDisabled]} onPress={handleSubmit} disabled={saving}>
-                                {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>Guardar</Text>}
-                            </TouchableOpacity>
-                        </View>
                     </ScrollView>
-                </View></View>
-            </Modal >
+                </View>
+                </View>
+            </Modal>
+
         </View >
     );
 }

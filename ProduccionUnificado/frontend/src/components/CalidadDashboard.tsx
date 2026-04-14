@@ -23,9 +23,11 @@ const tabs: TabDef[] = [
 interface CalidadDashboardProps {
     onTabChange?: (title: string) => void;
     navigation: any;
+    userArea?: string;
+    userRole?: string;
 }
 
-export default function CalidadDashboard({ onTabChange, navigation }: CalidadDashboardProps) {
+export default function CalidadDashboard({ onTabChange, navigation, userArea, userRole }: CalidadDashboardProps) {
     const [activeTab, setActiveTab] = useState<CalidadTab>('encuestas');
 
     const handleTabChange = (tab: TabDef) => {
@@ -42,7 +44,7 @@ export default function CalidadDashboard({ onTabChange, navigation }: CalidadDas
             case 'produccion':
                 return <EncuestaCalidadProduccionView />;
             case 'planesAccion':
-                return <PlanAccionView />;
+                return <PlanAccionView userArea={userArea} userRole={userRole} />;
             case 'consolidadoNC':
                 return <ConsolidadoNCView />;
             default:

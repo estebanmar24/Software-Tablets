@@ -28,7 +28,8 @@ public class CalidadController : ControllerBase
     private static readonly string[] Procesos = {
         "Conversión", "Corrugadora", "Guillotina", "Impresión", "Laminado",
         "Estampado", "Troquelado", "Screen", "Colaminadora", "Despique",
-        "Pegadora", "Terminados", "Taller Externo", "Tejedora"
+        "Pegadora", "Terminados", "Taller Externo", "Tejedora",
+        "Diseño", "Facturación", "Despachos", "Comercial"
     };
 
     // Lista de novedades disponibles

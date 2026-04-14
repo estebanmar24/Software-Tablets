@@ -230,7 +230,13 @@ export default function CalidadScreen({ navigation }) {
                 { id: -1, nombre: 'Manual/Terminados' }
             ];
             setMaquinas(maquinasConManual);
-            setProcesos(procesosRes.data);
+
+            // Lista de procesos base (asegurando los nuevos)
+            const requiredProcesos = [
+                "Diseño", "Facturación", "Despachos", "Comercial", "Almacén"
+            ];
+            const combinedProcesos = [...new Set([...procesosRes.data, ...requiredProcesos])];
+            setProcesos(combinedProcesos);
             // Agregar opciones adicionales de novedad
             const novedadesExtendidas = [
                 ...novedadesRes.data,
@@ -836,10 +842,13 @@ export default function CalidadScreen({ navigation }) {
                                 >
                                     {!maquinaId ? (
                                         <Picker.Item label="-- Seleccione primero una máquina --" value="" color="#999" />
-                                    ) : proceso ? (
-                                        <Picker.Item label={proceso} value={proceso} color="#000000" />
                                     ) : (
-                                        <Picker.Item label="-- Sin proceso asignado --" value="" color="#999" />
+                                        <>
+                                            <Picker.Item label="-- Seleccionar Proceso --" value="" color="#999" />
+                                            {procesos.map(p => (
+                                                <Picker.Item key={p} label={p} value={p} color="#000000" />
+                                            ))}
+                                        </>
                                     )}
                                 </Picker>
                             </View>

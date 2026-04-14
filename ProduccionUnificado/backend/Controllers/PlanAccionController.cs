@@ -20,13 +20,62 @@ namespace TiempoProcesos.API.Controllers
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<PlanAccionDto>>> GetPlanes()
+        public async Task<ActionResult<IEnumerable<PlanAccionDto>>> GetPlanes([FromQuery] string? area = null)
         {
-            var planes = await _context.PlanesAccion
-                .Include(p => p.Evidencias)
+            return await GetPlanesInternal(area);
+        }
+
+        [HttpGet("area/{area}")]
+        public async Task<ActionResult<IEnumerable<PlanAccionDto>>> GetPlanesByArea(string area)
+        {
+            return await GetPlanesInternal(area);
+        }
+
+        private async Task<ActionResult<IEnumerable<PlanAccionDto>>> GetPlanesInternal(string? area)
+        {
+            var decodedArea = !string.IsNullOrEmpty(area) ? Uri.UnescapeDataString(area) : null;
+            var query = _context.PlanesAccion.Include(p => p.Evidencias).AsQueryable();
+ 
+            if (!string.IsNullOrEmpty(decodedArea))
+            {
+                var areaList = decodedArea.Split(',').Select(a => a.Trim().ToLower()).ToList();
+                
+                // Building the query with possible OR conditions for each area
+                // This is more likely to translate correctly than a complex Any() with Contains()
+                var tempQuery = _context.PlanesAccion.Include(p => p.Evidencias).AsQueryable();
+                bool filterApplied = false;
+
+                foreach (var areaItem in areaList)
+                {
+                    if (!filterApplied)
+                    {
+                        query = query.Where(p => p.Proceso.ToLower().Contains(areaItem));
+                        filterApplied = true;
+                    }
+                    else
+                    {
+                        // Note: Using multiple where clauses results in AND.
+                        // For OR we'd need a different approach, but since usually it's just one area for "Mis Planes",
+                        // and if multiple areas are provided, we usually want plans that match ANY of them.
+                        // I'll use a safer approach for Postgres with LIKE if possible.
+                    }
+                }
+                
+                // Optimized approach for many areas: building a single string comparison if possible
+                // but for now, let's use the most reliable one for multiple areas:
+                if (areaList.Count > 1) {
+                    // Fallback to the Any logic but making sure it's understood by EF
+                    query = query.Where(p => areaList.Any(a => p.Proceso.ToLower().Contains(a)));
+                } else if (areaList.Count == 1) {
+                    var singleArea = areaList[0];
+                    query = query.Where(p => p.Proceso.ToLower().Contains(singleArea));
+                }
+            }
+ 
+            var planes = await query
                 .OrderByDescending(p => p.FechaCreacion)
                 .ToListAsync();
-
+ 
             return Ok(planes.Select(MapToDto));
         }
 
@@ -39,6 +88,28 @@ namespace TiempoProcesos.API.Controllers
                 
             if (plan == null) return NotFound();
             return Ok(MapToDto(plan));
+        }
+
+        [HttpGet("pendientes/area/{area}/count")]
+        public async Task<ActionResult<int>> GetPendingCount(string area)
+        {
+            var decodedArea = Uri.UnescapeDataString(area);
+            var areaList = decodedArea.Split(',').Select(a => a.Trim().ToLower()).ToList();
+            
+            var queryCount = _context.PlanesAccion.Where(p => p.Estado != "cerrada" && p.Estado != "cerrado");
+            
+            if (areaList.Count == 1)
+            {
+                var single = areaList[0];
+                queryCount = queryCount.Where(p => p.Proceso.ToLower().Contains(single));
+            }
+            else
+            {
+                queryCount = queryCount.Where(p => areaList.Any(a => p.Proceso.ToLower().Contains(a)));
+            }
+
+            int count = await queryCount.CountAsync();
+            return Ok(count);
         }
 
         [HttpPost]
@@ -147,6 +218,32 @@ namespace TiempoProcesos.API.Controllers
             _context.PlanesAccion.Remove(plan);
             await _context.SaveChangesAsync();
             return NoContent();
+        }
+
+        [HttpDelete("evidencia/{id}")]
+        public async Task<IActionResult> DeleteEvidence(int id)
+        {
+            try
+            {
+                var evidence = await _context.PlanAccionEvidencias.FindAsync(id);
+                if (evidence == null) return NotFound();
+
+                // Delete the physical file on the server
+                var filePath = Path.Combine(_env.ContentRootPath, "wwwroot", evidence.FilePath);
+                if (System.IO.File.Exists(filePath))
+                {
+                    System.IO.File.Delete(filePath);
+                }
+
+                _context.PlanAccionEvidencias.Remove(evidence);
+                await _context.SaveChangesAsync();
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                await LogError("DeleteEvidence", ex);
+                return StatusCode(500, new { message = "Error al eliminar la evidencia", detail = ex.Message });
+            }
         }
 
         private async Task<string> SaveFile(string base64Data)

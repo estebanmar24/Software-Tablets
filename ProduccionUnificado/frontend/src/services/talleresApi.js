@@ -93,7 +93,9 @@ export async function deleteGasto(id) {
     return true;
 }
 
-export async function uploadFactura(formData) {
+export async function uploadFactura(file) {
+    const formData = new FormData();
+    formData.append('file', file);
     const response = await api.post(`${API_BASE_URL}/talleres/upload-factura`, formData, {
         headers: {
             'Content-Type': 'multipart/form-data',

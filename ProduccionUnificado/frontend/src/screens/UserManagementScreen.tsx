@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Modal, TextInput, Alert, ScrollView, Platform } from 'react-native';
 import { getUsers, createUser, updateUser, deleteUser } from '../services/api';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Picker } from '@react-native-picker/picker';
 import { ThemeToggle } from '../../App';
 
 interface User {
@@ -9,6 +10,7 @@ interface User {
     username: string;
     role: string;
     nombreMostrar: string;
+    area: string;
 }
 
 export default function UserManagementScreen({ onBack }: { onBack: () => void }) {
@@ -24,7 +26,12 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
     // const [role, setRole] = useState('admin'); // Removed single role
     const [selectedRoles, setSelectedRoles] = useState<string[]>(['produccion']); // Multi-role state
     const [nombreMostrar, setNombreMostrar] = useState('');
+    const [selectedAreas, setSelectedAreas] = useState<string[]>([]); // Multi-area state
     const [showPassword, setShowPassword] = useState(false);
+
+    const areasDisponibles = [
+        "Gerencia", "SST", "Planeacion", "Gestion Humana", "Talleres y Despachos", "Calidad", "Produccion", "Almacen", "Diseño", "Contabilidad"
+    ];
 
     const rolesDisponibles = [
         { label: 'Administrador Master', value: 'admin' },
@@ -66,6 +73,14 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
         }
     };
 
+    const toggleArea = (value: string) => {
+        if (selectedAreas.includes(value)) {
+            setSelectedAreas(selectedAreas.filter(a => a !== value));
+        } else {
+            setSelectedAreas([...selectedAreas, value]);
+        }
+    };
+
     const handleSave = async () => {
         if (selectedRoles.length === 0 || !nombreMostrar) {
             Alert.alert('Error', 'Debe seleccionar al menos un rol y escribir un nombre');
@@ -78,13 +93,14 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
         }
 
         const roleString = selectedRoles.join(',');
+        const areaString = selectedAreas.join(',');
 
         try {
             if (isEditing && editingId) {
-                await updateUser(editingId, { role: roleString, nombreMostrar, password: password ? password.trim() : undefined });
+                await updateUser(editingId, { role: roleString, nombreMostrar, area: areaString, password: password ? password.trim() : undefined });
                 Alert.alert('Éxito', 'Usuario actualizado');
             } else {
-                await createUser({ username: username.trim(), password: password.trim(), role: roleString, nombreMostrar });
+                await createUser({ username: username.trim(), password: password.trim(), role: roleString, nombreMostrar, area: areaString });
                 Alert.alert('Éxito', 'Usuario creado');
             }
             setModalVisible(false);
@@ -127,6 +143,7 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
         // Split role string into array, defaulting to empty if null
         setSelectedRoles(user.role ? user.role.split(',').map(r => r.trim()) : []);
         setNombreMostrar(user.nombreMostrar);
+        setSelectedAreas(user.area ? user.area.split(',').map(a => a.trim()) : []);
         setPassword(''); // Password blank on edit
         setIsEditing(true);
         setModalVisible(true);
@@ -144,6 +161,7 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
         setPassword('');
         setSelectedRoles(['produccion']);
         setNombreMostrar('');
+        setSelectedAreas([]);
         setShowPassword(false);
     };
 
@@ -161,6 +179,11 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
                                 <Text style={styles.badgeText}>{r.trim()}</Text>
                             </View>
                         ))}
+                        {item.area ? item.area.split(',').map((a, i) => (
+                            <View key={`area-${i}`} style={[styles.badge, { backgroundColor: '#4CAF50', marginRight: 4, marginBottom: 4 }]}>
+                                <Text style={styles.badgeText}>Área: {a.trim()}</Text>
+                            </View>
+                        )) : null}
                     </View>
                 </View>
                 <View style={styles.cardActions}>
@@ -233,6 +256,24 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
                                         >
                                             <Text style={[styles.roleOptionText, isSelected && styles.roleOptionTextSelected]}>
                                                 {isSelected ? '☑' : '☐'} {r.label}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </View>
+
+                            <Text style={styles.label}>Área(s) Asociada(s):</Text>
+                            <View style={styles.rolesList}>
+                                {areasDisponibles.map(a => {
+                                    const isSelected = selectedAreas.includes(a);
+                                    return (
+                                        <TouchableOpacity
+                                            key={a}
+                                            style={[styles.roleOption, isSelected && styles.roleOptionSelected]}
+                                            onPress={() => toggleArea(a)}
+                                        >
+                                            <Text style={[styles.roleOptionText, isSelected && styles.roleOptionTextSelected]}>
+                                                {isSelected ? '☑' : '☐'} {a}
                                             </Text>
                                         </TouchableOpacity>
                                     );

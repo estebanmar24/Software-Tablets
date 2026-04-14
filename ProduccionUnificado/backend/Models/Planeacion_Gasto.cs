@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 
 namespace TiempoProcesos.API.Models;
 
@@ -82,7 +83,11 @@ public class Planeacion_Gasto
     /// <summary>
     /// Indicates if the expense was registered without an invoice and price (pending legalization)
     /// </summary>
+    [JsonPropertyName("esPendiente")]
     public bool EsPendiente { get; set; } = false;
+
+    [JsonPropertyName("esSolicitudCredito")]
+    public bool EsSolicitudCredito { get; set; } = false;
 
     // Navigation properties
     [ForeignKey("ProveedorId")]

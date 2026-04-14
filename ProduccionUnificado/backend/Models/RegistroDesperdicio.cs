@@ -9,13 +9,15 @@ public class RegistroDesperdicio
 {
     public int Id { get; set; }
     
-    public int MaquinaId { get; set; }
+    public int? MaquinaId { get; set; }
     [ForeignKey("MaquinaId")]
     public Maquina? Maquina { get; set; }
     
-    public int UsuarioId { get; set; }
+    public int? UsuarioId { get; set; }
     [ForeignKey("UsuarioId")]
     public Usuario? Usuario { get; set; }
+    
+    public bool EsTallerExterno { get; set; } = false;
     
     public DateTime Fecha { get; set; }
     public string? OrdenProduccion { get; set; }

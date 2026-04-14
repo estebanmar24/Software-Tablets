@@ -54,6 +54,7 @@ public class Produccion_Gasto
     
     // Status
     public bool EsPendiente { get; set; }
+    public bool EsSolicitudCredito { get; set; } = false;
     
     // History tracking
     public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;

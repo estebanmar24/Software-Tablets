@@ -118,6 +118,7 @@ function AppContent() {
   const [currentView, setCurrentView] = useState<'timer' | 'login' | 'admin' | 'calidad' | 'develop' | 'esst'>('timer');
   const [adminRole, setAdminRole] = useState<string>('admin');
   const [adminName, setAdminName] = useState<string>('');
+  const [adminArea, setAdminArea] = useState<string>('');
 
   // Persistence for currentView - solo persiste 'admin', siempre inicia en 'timer'
   useEffect(() => {
@@ -131,8 +132,10 @@ function AppContent() {
         // Restore Admin name/role for context but don't auto-navigate
         const savedRole = await AsyncStorage.getItem('adminRole');
         const savedName = await AsyncStorage.getItem('adminName');
+        const savedArea = await AsyncStorage.getItem('adminArea');
         if (savedRole) setAdminRole(savedRole);
         if (savedName) setAdminName(savedName);
+        if (savedArea) setAdminArea(savedArea);
 
       } catch (e) {
         console.log('Failed to load view state');
@@ -147,18 +150,20 @@ function AppContent() {
       AsyncStorage.setItem('lastView', currentView);
       AsyncStorage.setItem('adminRole', adminRole);
       AsyncStorage.setItem('adminName', adminName);
+      AsyncStorage.setItem('adminArea', adminArea);
     } else {
       AsyncStorage.setItem('lastView', 'timer');
     }
-  }, [currentView, adminRole, adminName]);
+  }, [currentView, adminRole, adminName, adminArea]);
 
-  const handleLoginSuccess = (role: string, nombreMostrar: string, username: string = '') => {
+  const handleLoginSuccess = (role: string, nombreMostrar: string, username: string = '', area: string = '') => {
     const normalizedRole = (role || '').toLowerCase().trim();
     const normalizedName = (nombreMostrar || '').toLowerCase().trim();
     const normalizedUsername = (username || '').toLowerCase().trim();
 
     setAdminRole(normalizedRole);
     setAdminName(nombreMostrar || '');
+    setAdminArea(area || '');
 
     // Priority Routing: Develop > Calidad > ESST (Exclusive) > Admin (General)
     if (normalizedRole.includes('develop')) {
@@ -718,8 +723,8 @@ function AppContent() {
   if (currentView === 'login') {
     return (
       <AdminLogin
-        onLoginSuccess={(role, nombreMostrar, username) => {
-          handleLoginSuccess(role, nombreMostrar, username);
+        onLoginSuccess={(role, nombreMostrar, username, area) => {
+          handleLoginSuccess(role, nombreMostrar, username, area);
         }}
         onBack={() => setCurrentView('timer')}
       />
@@ -758,6 +763,7 @@ function AppContent() {
         role={adminRole}
         onBack={() => setCurrentView('timer')}
         displayName={adminName}
+        area={adminArea}
       />
     );
   }

@@ -50,6 +50,8 @@ public class SST_GastoMensual
     /// </summary>
     public bool EsPendiente { get; set; } = false;
 
+    public bool EsSolicitudCredito { get; set; } = false;
+
     /// <summary>
     /// Base64 encoded PDF file or URL to stored file
     /// </summary>

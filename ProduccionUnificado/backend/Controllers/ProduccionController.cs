@@ -53,7 +53,7 @@ public class ProduccionController : ControllerBase
         var usuarios = await _context.Usuarios
             .Where(u => u.Activo)
             .OrderBy(u => u.Nombre)
-            .Select(u => new { u.Id, u.Nombre, u.Salario }) // Include Salario for frontend calc
+            .Select(u => new { u.Id, u.Nombre, u.Salario, u.Documento }) // Include Salario and Documento
             .ToListAsync();
 
         return Ok(new

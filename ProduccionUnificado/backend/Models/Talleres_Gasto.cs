@@ -85,6 +85,9 @@ public class Talleres_Gasto
     [JsonPropertyName("esPendiente")]
     public bool EsPendiente { get; set; } = false;
 
+    [JsonPropertyName("esSolicitudCredito")]
+    public bool EsSolicitudCredito { get; set; } = false;
+
     [ForeignKey("PersonalId")]
     [JsonIgnore]
     public virtual Talleres_Personal? Personal { get; set; }

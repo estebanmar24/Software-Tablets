@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, FlatList, TextInput, Alert, ScrollView, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, FlatList, TextInput, Alert, ScrollView, Platform, ActivityIndicator, Switch } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -40,6 +40,7 @@ export default function DesperdicioScreen({ navigation }) {
         id: null,
         maquinaId: '',
         usuarioId: '',
+        esTallerExterno: false,
         fecha: new Date(),
     });
     // Lista de entradas de código (múltiples por guardado)
@@ -114,8 +115,8 @@ export default function DesperdicioScreen({ navigation }) {
     };
 
     const handleSaveRegistro = async () => {
-        if (!newRegistro.maquinaId || !newRegistro.usuarioId) {
-            Alert.alert('Error', 'Máquina y Operario son obligatorios');
+        if (!newRegistro.esTallerExterno && (!newRegistro.maquinaId || !newRegistro.usuarioId)) {
+            Alert.alert('Error', 'Máquina y Operario son obligatorios para uso general');
             return;
         }
         if (isNaN(newRegistro.fecha.getTime())) {
@@ -135,8 +136,9 @@ export default function DesperdicioScreen({ navigation }) {
                 const item = validItems[0];
                 const body = {
                     id: newRegistro.id,
-                    maquinaId: parseInt(newRegistro.maquinaId),
-                    usuarioId: parseInt(newRegistro.usuarioId),
+                    maquinaId: newRegistro.esTallerExterno ? null : parseInt(newRegistro.maquinaId),
+                    usuarioId: newRegistro.esTallerExterno ? null : parseInt(newRegistro.usuarioId),
+                    esTallerExterno: newRegistro.esTallerExterno,
                     ordenProduccion: item.ordenProduccion,
                     codigoDesperdicioId: item.codigoDesperdicioId ? parseInt(item.codigoDesperdicioId) : null,
                     cantidad: parseFloat(item.cantidad),
@@ -157,8 +159,9 @@ export default function DesperdicioScreen({ navigation }) {
                 // CREATE MODE: post each valid item as a separate record
                 for (const item of validItems) {
                     const body = {
-                        maquinaId: parseInt(newRegistro.maquinaId),
-                        usuarioId: parseInt(newRegistro.usuarioId),
+                        maquinaId: newRegistro.esTallerExterno ? null : parseInt(newRegistro.maquinaId),
+                        usuarioId: newRegistro.esTallerExterno ? null : parseInt(newRegistro.usuarioId),
+                        esTallerExterno: newRegistro.esTallerExterno,
                         ordenProduccion: item.ordenProduccion,
                         codigoDesperdicioId: item.codigoDesperdicioId ? parseInt(item.codigoDesperdicioId) : null,
                         cantidad: parseFloat(item.cantidad),
@@ -184,7 +187,7 @@ export default function DesperdicioScreen({ navigation }) {
             loadRegistros();
 
             // Reset form
-            setNewRegistro({ id: null, maquinaId: '', usuarioId: '', fecha: new Date() });
+            setNewRegistro({ id: null, maquinaId: '', usuarioId: '', esTallerExterno: false, fecha: new Date() });
             setCodigoItems([{ ...emptyCodigoItem }]);
         } catch (error) {
             console.error(error);
@@ -196,8 +199,9 @@ export default function DesperdicioScreen({ navigation }) {
         const date = new Date(item.fecha);
         setNewRegistro({
             id: item.id,
-            maquinaId: item.maquinaId,
-            usuarioId: item.usuarioId,
+            maquinaId: item.maquinaId || '',
+            usuarioId: item.usuarioId || '',
+            esTallerExterno: item.esTallerExterno || false,
             fecha: date,
         });
         setCodigoItems([{
@@ -395,7 +399,7 @@ export default function DesperdicioScreen({ navigation }) {
                 formatDate(new Date(r.fecha)),
                 r.maquinaNombre,
                 r.usuarioNombre,
-                r.codigo,
+                r.descripcion ? `${r.codigo} - ${r.descripcion}` : r.codigo,
                 r.ordenProduccion || '-',
                 r.cantidad.toString(),
                 r.nota || '-'
@@ -429,7 +433,8 @@ export default function DesperdicioScreen({ navigation }) {
                     .sort((a, b) => parseFloat(b[1]) - parseFloat(a[1])); // Mayor a menor
             };
 
-            const summaryCode = getGroupData(r => r.codigo);
+            const summaryCode = getGroupData(r => r.descripcion ? `${r.codigo} - ${r.descripcion}` : r.codigo);
+            const summaryOpNum = getGroupData(r => r.ordenProduccion || 'Sin OP');
             const summaryOp = getGroupData(r => r.usuarioNombre);
 
             // Resumen Máquina Mensual
@@ -543,7 +548,26 @@ export default function DesperdicioScreen({ navigation }) {
                 startY: finalY + 5,
                 theme: 'grid',
                 styles: { fontSize: 8 },
-                tableWidth: 100,
+                tableWidth: 80,
+                margin: { left: 14 }
+            });
+
+            finalY = doc.lastAutoTable.finalY + 10;
+
+            // Check page break
+            if (finalY > doc.internal.pageSize.getHeight() - 60) {
+                doc.addPage();
+                finalY = 20;
+            }
+
+            doc.text('Resumen por Orden de Producción:', 14, finalY);
+            autoTable(doc, {
+                head: [['OP', 'Total']],
+                body: summaryOpNum,
+                startY: finalY + 5,
+                theme: 'grid',
+                styles: { fontSize: 8 },
+                tableWidth: 80,
                 margin: { left: 14 }
             });
 
@@ -733,6 +757,7 @@ export default function DesperdicioScreen({ navigation }) {
                                 id: null,
                                 maquinaId: '',
                                 usuarioId: '',
+                                esTallerExterno: false,
                                 fecha: selectedFecha || new Date(),
                             });
                             setCodigoItems([{ ...emptyCodigoItem }]);
@@ -839,39 +864,52 @@ export default function DesperdicioScreen({ navigation }) {
                                 {newRegistro.id ? '✏️ Editar Desperdicio' : '🗑️ Registrar Desperdicio'}
                             </Text>
 
-                            {/* Máquina + Operario en fila */}
-                            <View style={{ flexDirection: 'row', gap: 10 }}>
-                                <View style={{ flex: 1 }}>
-                                    <Text style={[styles.label, { color: '#aed6f1', marginBottom: 2 }]}>Máquina</Text>
-                                    <View style={{ backgroundColor: '#fff', borderRadius: 6 }}>
-                                        <Picker
-                                            selectedValue={newRegistro.maquinaId}
-                                            onValueChange={(v) => setNewRegistro({ ...newRegistro, maquinaId: v })}
-                                            style={{ height: 36 }}
-                                        >
-                                            <Picker.Item label="Seleccionar..." value="" />
-                                            {maquinas.map(m => (
-                                                <Picker.Item key={m.id} label={m.nombre} value={m.id} />
-                                            ))}
-                                        </Picker>
-                                    </View>
-                                </View>
-                                <View style={{ flex: 1 }}>
-                                    <Text style={[styles.label, { color: '#aed6f1', marginBottom: 2 }]}>Operario</Text>
-                                    <View style={{ backgroundColor: '#fff', borderRadius: 6 }}>
-                                        <Picker
-                                            selectedValue={newRegistro.usuarioId}
-                                            onValueChange={(v) => setNewRegistro({ ...newRegistro, usuarioId: v })}
-                                            style={{ height: 36 }}
-                                        >
-                                            <Picker.Item label="Seleccionar..." value="" />
-                                            {usuarios.map(u => (
-                                                <Picker.Item key={u.id} label={u.nombre} value={u.id} />
-                                            ))}
-                                        </Picker>
-                                    </View>
-                                </View>
+                            {/* Switch de Taller Externo */}
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, backgroundColor: '#34495e', padding: 8, borderRadius: 6 }}>
+                                <Switch
+                                    value={newRegistro.esTallerExterno}
+                                    onValueChange={(v) => setNewRegistro({ ...newRegistro, esTallerExterno: v, maquinaId: '', usuarioId: '' })}
+                                    trackColor={{ false: "#767577", true: "#81b0ff" }}
+                                    thumbColor={newRegistro.esTallerExterno ? "#f5dd4b" : "#f4f3f4"}
+                                />
+                                <Text style={{ marginLeft: 10, color: '#f1c40f', fontWeight: 'bold' }}>¿Es Taller Externo? (No requiere Máquina ni Operario)</Text>
                             </View>
+
+                            {/* Máquina + Operario en fila */}
+                            {!newRegistro.esTallerExterno && (
+                                <View style={{ flexDirection: 'row', gap: 10 }}>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={[styles.label, { color: '#aed6f1', marginBottom: 2 }]}>Máquina</Text>
+                                        <View style={{ backgroundColor: '#fff', borderRadius: 6 }}>
+                                            <Picker
+                                                selectedValue={newRegistro.maquinaId}
+                                                onValueChange={(v) => setNewRegistro({ ...newRegistro, maquinaId: v })}
+                                                style={{ height: 36 }}
+                                            >
+                                                <Picker.Item label="Seleccionar..." value="" />
+                                                {maquinas.map(m => (
+                                                    <Picker.Item key={m.id} label={m.nombre} value={m.id} />
+                                                ))}
+                                            </Picker>
+                                        </View>
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={[styles.label, { color: '#aed6f1', marginBottom: 2 }]}>Operario</Text>
+                                        <View style={{ backgroundColor: '#fff', borderRadius: 6 }}>
+                                            <Picker
+                                                selectedValue={newRegistro.usuarioId}
+                                                onValueChange={(v) => setNewRegistro({ ...newRegistro, usuarioId: v })}
+                                                style={{ height: 36 }}
+                                            >
+                                                <Picker.Item label="Seleccionar..." value="" />
+                                                {usuarios.map(u => (
+                                                    <Picker.Item key={u.id} label={u.nombre} value={u.id} />
+                                                ))}
+                                            </Picker>
+                                        </View>
+                                    </View>
+                                </View>
+                            )}
 
                             {/* Fecha */}
                             {Platform.OS === 'web' && (

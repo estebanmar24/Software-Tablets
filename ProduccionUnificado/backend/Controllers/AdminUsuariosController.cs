@@ -25,7 +25,8 @@ public class AdminUsuariosController : ControllerBase
                 u.Id,
                 u.Username,
                 u.Role,
-                u.NombreMostrar
+                u.NombreMostrar,
+                u.Area
                 // Do not return PasswordHash
             })
             .ToListAsync();
@@ -44,6 +45,7 @@ public class AdminUsuariosController : ControllerBase
             Username = dto.Username,
             Role = dto.Role,
             NombreMostrar = dto.NombreMostrar,
+            Area = dto.Area ?? string.Empty,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password)
         };
 
@@ -61,6 +63,7 @@ public class AdminUsuariosController : ControllerBase
 
         user.Role = dto.Role;
         user.NombreMostrar = dto.NombreMostrar;
+        user.Area = dto.Area ?? string.Empty;
 
         if (!string.IsNullOrEmpty(dto.Password))
         {
@@ -96,11 +99,13 @@ public class CreateUserDto
     public string Password { get; set; }
     public string Role { get; set; }
     public string NombreMostrar { get; set; }
+    public string? Area { get; set; }
 }
 
 public class UpdateUserDto
 {
     public string Role { get; set; }
     public string NombreMostrar { get; set; }
+    public string? Area { get; set; }
     public string? Password { get; set; } // Opcional
 }

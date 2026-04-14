@@ -99,9 +99,25 @@ export default function EncuestaCalidadProduccionView() {
     const loadProcesos = async () => {
         try {
             const res = await api.get('calidadproduccion/procesos');
-            setProcesosDisponibles(res.data);
+            const apiProcesos = res.data || [];
+
+            // Procesos que deben estar sí o sí
+            const requiredProcesos = [
+                "Diseño", "Facturación", "Despachos", "Comercial", "Almacén"
+            ];
+
+            // Combinar y eliminar duplicados, manteniendo el orden original de la API al principio
+            const combined = [...new Set([...apiProcesos, ...requiredProcesos])];
+            setProcesosDisponibles(combined);
         } catch (e) {
             console.error('Error cargando procesos:', e);
+            // Fallback en caso de error de API
+            setProcesosDisponibles([
+                "Conversión", "Corrugadora", "Guillotina", "Impresión", "Laminado",
+                "Estampado", "Troquelado", "Screen", "Colaminadora", "Despique",
+                "Pegadora", "Terminados", "Taller Externo", "Tejedora",
+                "Diseño", "Facturación", "Despachos", "Comercial", "Almacén"
+            ]);
         }
     };
 

@@ -11,6 +11,8 @@ public class Diseno_Gasto
     public int? ProveedorId { get; set; }
     public bool EsPendiente { get; set; } = false;
 
+    public bool EsSolicitudCredito { get; set; } = false;
+
     [Required]
     public int RubroId { get; set; }
 

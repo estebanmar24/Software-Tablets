@@ -135,6 +135,8 @@ function GastosTab() {
     const [filterMaquinaId, setFilterMaquinaId] = useState(''); // Dinámico para Mantenimiento
     const [filterProveedorId, setFilterProveedorId] = useState('');
     const [filterNumeroFactura, setFilterNumeroFactura] = useState('');
+    const [filterPending, setFilterPending] = useState(false);
+    const [filterCredit, setFilterCredit] = useState(false);
 
     // History Modal State
     const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -147,12 +149,12 @@ function GastosTab() {
     const [formData, setFormData] = useState({
         rubroId: '', proveedorId: '', usuarioId: '', maquinaId: '', tipoHoraId: '', tipoRecargoId: '',
         precio: '', fecha: new Date().toISOString().split('T')[0], nota: '', cantidadHoras: '',
-        numeroFactura: '', facturaPdfUrl: '', numeroOP: '', esPendiente: false,
+        numeroFactura: '', facturaPdfUrl: '', numeroOP: '', esPendiente: false, esSolicitudCredito: false,
         horaInicio: '', horaFin: ''
     });
     const [breakdown, setBreakdown] = useState([]);
-    const [filterPending, setFilterPending] = useState(false);
     const [saving, setSaving] = useState(false);
+
     const [presupuestoInfo, setPresupuestoInfo] = useState(null);
     const [cotizaciones, setCotizaciones] = useState([]); // Added for quote automation
     // Quote Selector State
@@ -264,7 +266,7 @@ function GastosTab() {
         setEditItem(null);
         setIsLegalizing(false);
         isLegalizingRef.current = false;
-        setFormData({ rubroId: '', proveedorId: '', usuarioId: '', maquinaId: '', tipoHoraId: '', tipoRecargoId: '', precio: '', fecha: new Date().toISOString().split('T')[0], nota: '', cantidadHoras: '', numeroFactura: '', facturaPdfUrl: '', numeroOP: '', esPendiente: false, horaInicio: '', horaFin: '' });
+        setFormData({ rubroId: '', proveedorId: '', usuarioId: '', maquinaId: '', tipoHoraId: '', tipoRecargoId: '', precio: '', fecha: new Date().toISOString().split('T')[0], nota: '', cantidadHoras: '', numeroFactura: '', facturaPdfUrl: '', numeroOP: '', esPendiente: false, esSolicitudCredito: false, horaInicio: '', horaFin: '' });
         setBreakdown([]);
     };
 
@@ -286,85 +288,148 @@ function GastosTab() {
             }
             return new Date(cleanDate + 'T12:00:00');
         };
-        const date = parseDate(formData.fecha);
+
         const formatISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        const dateISO = formatISO(date);
-        const isSunday = date.getDay() === 0;
-        const isHoliday = COLOMBIAN_HOLIDAYS.includes(dateISO);
-        const isSpecialDay = isSunday || isHoliday;
-        const isSaturday = date.getDay() === 6;
-
         const toMin = (t) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0); };
-        const start = toMin(formData.horaInicio);
-        let end = toMin(formData.horaFin);
-        if (end <= start) end += 24 * 60;
 
-        const MonFriShifts = [
-            { start: 6 * 60, end: 14 * 60 }, { start: 7 * 60, end: 16 * 60 }, { start: 14 * 60, end: 22 * 60 }
-        ];
-        const SatShift = { start: 8 * 60, end: 12 * 60 };
+        const startFull = toMin(formData.horaInicio);
+        let endFull = toMin(formData.horaFin);
+        if (endFull <= startFull) endFull += 24 * 60;
 
-        let baseStart, baseEnd;
-        if (isSpecialDay) { baseStart = 0; baseEnd = 0; }
-        else if (isSaturday) { baseStart = SatShift.start; baseEnd = SatShift.end; }
-        else {
-            let bestShift = null, maxOverlap = 0;
-            MonFriShifts.forEach(s => {
-                const overlap = Math.min(s.end, end) - Math.max(s.start, start);
-                if (overlap > maxOverlap) { maxOverlap = overlap; bestShift = s; }
-            });
-            if (bestShift && maxOverlap >= 30) { baseStart = bestShift.start; baseEnd = bestShift.end; }
-            else {
-                const endMatched = MonFriShifts.find(s => Math.abs(s.end - start) <= 15);
-                if (endMatched) { baseStart = endMatched.start; baseEnd = endMatched.end; }
-                else { baseStart = 0; baseEnd = 0; }
-            }
+        const startDate = parseDate(formData.fecha);
+        const segments = [];
+        if (endFull > 1440) {
+            segments.push({ start: startFull, end: 1440, date: startDate });
+            const nextDate = new Date(startDate);
+            nextDate.setDate(nextDate.getDate() + 1);
+            segments.push({ start: 0, end: endFull - 1440, date: nextDate });
+        } else {
+            segments.push({ start: startFull, end: endFull, date: startDate });
         }
 
         const breakdownItems = [];
         const NIGHT_START = 19 * 60, NIGHT_END = 6 * 60;
+        const Patterns = [
+            { start: 6 * 60, end: 14 * 60 },
+            { start: 7 * 60, end: 15 * 60 },
+            { start: 7 * 60, end: 16 * 60 },
+            { start: 8 * 60, end: 16 * 60 },
+            { start: 14 * 60, end: 22 * 60 },
+            { start: 18 * 60, end: 26 * 60 },
+            { start: 19 * 60, end: 27 * 60 },
+            { start: 20 * 60, end: 28 * 60 },
+            { start: 21 * 60, end: 29 * 60 },
+            { start: 22 * 60, end: 30 * 60 }
+        ];
+        const SatShift = { start: 8 * 60, end: 12 * 60 };
 
-        const addBreakdown = (s, e, typeNameMatch, isHe) => {
-            if (e <= s) return;
-            const duration = (e - s) / 60;
-            const list = isHe ? tiposHora : tiposRecargo;
-            const search = typeNameMatch.toLowerCase();
-            const timeOfDay = search.includes('nocturn') ? 'nocturn' : 'diurn';
-            let tipo = list.find(t => {
-                const name = (t.nombre || '').toLowerCase();
-                const matchesTime = name.includes(timeOfDay);
-                const isSpecialType = name.includes('dominical') || name.includes('festivo');
-                return isSpecialDay ? (isSpecialType && matchesTime) : (!isSpecialType && matchesTime);
-            });
-            if (!tipo && isSpecialDay) tipo = list.find(t => { const n = (t.nombre || '').toLowerCase(); return n.includes('dominical') || n.includes('festivo'); });
-            if (!tipo) tipo = list.find(t => (t.nombre || '').toLowerCase().includes(search));
-            if (tipo) {
-                const existing = breakdownItems.find(item => item.typeId === tipo.id && item.isHe === isHe);
-                if (existing) existing.hours += duration;
-                else breakdownItems.push({ type: tipo.nombre, typeId: tipo.id, hours: duration, isHe });
+        // Identify best shift match for the ENTIRE duration before splitting into segments
+        let globalBaseStart = 0, globalBaseEnd = 0;
+        const isSundayStart = startDate.getDay() === 0;
+        const isHolidayStart = COLOMBIAN_HOLIDAYS.includes(formatISO(startDate));
+        const isSpecialDayStart = isSundayStart || isHolidayStart;
+        const isSaturdayStart = startDate.getDay() === 6;
+
+        if (!isSpecialDayStart) {
+            let bestMatch = null, maxOverlap = 0;
+
+            // On Saturdays, prioritize the 4h Saturday shift if there is significant overlap
+            if (isSaturdayStart) {
+                const satOverlap = Math.min(SatShift.end, endFull) - Math.max(SatShift.start, startFull);
+                if (satOverlap >= 120) { // If at least 2 hours overlap, it's almost certainly the Saturday shift
+                    bestMatch = SatShift;
+                    maxOverlap = satOverlap;
+                }
             }
-        };
 
-        const processSubInterval = (s, e, isOutsideShift) => {
-            if (e <= s) return;
-            if (s < NIGHT_END && e > NIGHT_END) { processSubInterval(s, NIGHT_END, isOutsideShift); processSubInterval(NIGHT_END, e, isOutsideShift); return; }
-            if (s < NIGHT_START && e > NIGHT_START) { processSubInterval(s, NIGHT_START, isOutsideShift); processSubInterval(NIGHT_START, e, isOutsideShift); return; }
-            const mid = (s + e) / 2;
-            const isNight = mid >= NIGHT_START || mid < NIGHT_END;
-            if (isSpecialDay) { addBreakdown(s, e, isNight ? 'Dominical Nocturna' : 'Dominical Diurna', true); }
-            else if (isOutsideShift) { addBreakdown(s, e, isNight ? 'Extra Nocturna' : 'Extra Diurna', true); }
-            else if (!isOutsideShift && isNight) { addBreakdown(s, e, 'Recargo Nocturno', false); }
-        };
+            if (!bestMatch) {
+                const relevantPatterns = isSaturdayStart ? [...Patterns, SatShift] : Patterns;
+                relevantPatterns.forEach(p => {
+                    const lap = Math.min(p.end, endFull) - Math.max(p.start, startFull);
+                    if (lap > maxOverlap) { maxOverlap = lap; bestMatch = p; }
+                });
+            }
+            if (bestMatch && maxOverlap >= 30) { globalBaseStart = bestMatch.start; globalBaseEnd = bestMatch.end; }
+        }
 
-        const processInterval = (s, e) => {
-            if (e <= s) return;
-            if (isSpecialDay) { processSubInterval(s, e, true); return; }
-            if (s < baseStart && e > baseStart) { processInterval(s, baseStart); processInterval(baseStart, e); return; }
-            if (s < baseEnd && e > baseEnd) { processInterval(s, baseEnd); processInterval(baseEnd, e); return; }
-            processSubInterval(s, e, e <= baseStart || s >= baseEnd);
-        };
+        segments.forEach(segment => {
+            const dateISO = formatISO(segment.date);
+            const isSunday = segment.date.getDay() === 0;
+            const isHoliday = COLOMBIAN_HOLIDAYS.includes(dateISO);
+            const isSpecialDay = isSunday || isHoliday;
+            const isSaturday = segment.date.getDay() === 6;
 
-        processInterval(start, end);
+            let baseStart = 0, baseEnd = 0;
+            if (isSpecialDay) {
+                baseStart = 0; baseEnd = 0;
+            } else {
+                baseStart = globalBaseStart;
+                baseEnd = globalBaseEnd;
+            }
+
+            const addBreakdown = (s, e, typeNameMatch, isHe) => {
+                if (e <= s) return;
+                const duration = (e - s) / 60;
+                const list = isHe ? tiposHora : tiposRecargo;
+                const search = typeNameMatch.toLowerCase();
+                const timeOfDay = search.includes('nocturn') ? 'nocturn' : 'diurn';
+                let tipo = list.find(t => {
+                    const name = (t.nombre || '').toLowerCase();
+                    const isSpecialType = name.includes('dominical') || name.includes('festivo');
+                    return isSpecialDay ? (isSpecialType && name.includes(timeOfDay)) : (!isSpecialType && name.includes(timeOfDay));
+                });
+                if (!tipo && isSpecialDay) tipo = list.find(t => { const n = (t.nombre || '').toLowerCase(); return n.includes('dominical') || n.includes('festivo'); });
+                if (!tipo) tipo = list.find(t => (t.nombre || '').toLowerCase().includes(search));
+                if (tipo) {
+                    const existing = breakdownItems.find(item => item.typeId === tipo.id && item.isHe === isHe);
+                    if (existing) existing.hours += duration;
+                    else breakdownItems.push({ type: tipo.nombre, typeId: tipo.id, hours: duration, isHe });
+                }
+            };
+
+            const processSubInterval = (s, e, isOutsideShift) => {
+                if (e <= s) return;
+                // Midnight wrap is already handled by segments. Just handle 19:00 and 06:00 boundaries within segment.
+                if (s < NIGHT_END && e > NIGHT_END) { processSubInterval(s, NIGHT_END, isOutsideShift); processSubInterval(NIGHT_END, e, isOutsideShift); return; }
+                if (s < NIGHT_START && e > NIGHT_START) { processSubInterval(s, NIGHT_START, isOutsideShift); processSubInterval(NIGHT_START, e, isOutsideShift); return; }
+
+                const mid = (s + e) / 2;
+                const isNight = mid >= NIGHT_START || mid < NIGHT_END;
+
+                if (isSpecialDay) {
+                    addBreakdown(s, e, isNight ? 'Dominical Nocturna' : 'Dominical Diurna', true);
+                } else {
+                    if (isOutsideShift) {
+                        if (isNight) {
+                            addBreakdown(s, e, 'Extra Nocturna', true);
+                        } else {
+                            addBreakdown(s, e, 'Extra Diurna', true);
+                        }
+                    } else if (isNight) {
+                        addBreakdown(s, e, 'Recargo Nocturno', false);
+                    }
+                }
+            };
+
+            const processInterval = (s, e) => {
+                if (e <= s) return;
+                if (isSpecialDay) { processSubInterval(s, e, true); return; }
+
+                // Normalizing against baseEnd > 1440
+                let bS = baseStart, bE = baseEnd;
+                // If segment is early morning (0-6) and shift is 19-30
+                if (s < 600 && bE > 1440) { bS -= 1440; bE -= 1440; }
+
+                if (s < bS && e > bS) { processInterval(s, bS); processInterval(bS, e); return; }
+                if (s < bE && e > bE) { processInterval(s, bE); processInterval(bE, e); return; }
+
+                const isOutside = (e <= bS || s >= bE);
+                processSubInterval(s, e, isOutside);
+            };
+
+            processInterval(segment.start, segment.end);
+        });
+
         setBreakdown(breakdownItems);
 
         // Calcular costo total
@@ -376,6 +441,7 @@ function GastosTab() {
             const tipo = list.find(t => t.id == item.typeId);
             if (tipo) totalCost += valorHoraBase * (parseFloat(tipo.factor) || 1.0) * item.hours;
         });
+
         if (totalCost > 0) {
             const selectedRubro = rubros.find(r => r.id == formData.rubroId);
             const isHE = selectedRubro?.nombre?.toLowerCase().includes('horas extras');
@@ -414,7 +480,8 @@ function GastosTab() {
             nota: gasto.nota || '', cantidadHoras: gasto.cantidadHoras?.toString() || '',
             numeroFactura: gasto.numeroFactura || '', facturaPdfUrl: gasto.facturaPdfUrl || '',
             numeroOP: gasto.numeroOP || '',
-            esPendiente: false // Force to false
+            esPendiente: false, // Force to false
+            esSolicitudCredito: gasto.esSolicitudCredito || false
         });
         setShowModal(true);
     };
@@ -431,7 +498,8 @@ function GastosTab() {
             nota: gasto.nota || '', cantidadHoras: gasto.cantidadHoras?.toString() || '',
             numeroFactura: gasto.numeroFactura || '', facturaPdfUrl: gasto.facturaPdfUrl || '',
             numeroOP: gasto.numeroOP || '',
-            esPendiente: gasto.esPendiente || false
+            esPendiente: gasto.esPendiente || false,
+            esSolicitudCredito: gasto.esSolicitudCredito || false
         });
         setShowModal(true);
     };
@@ -537,7 +605,8 @@ function GastosTab() {
                     numeroFactura: (isHorasExtras || isRecargo) ? null : formData.numeroFactura,
                     facturaPdfUrl: (isHorasExtras || isRecargo) ? null : formData.facturaPdfUrl,
                     numeroOP: (isHorasExtras || isRecargo || isInsumos) ? formData.numeroOP : null,
-                    esPendiente: formData.esPendiente || false
+                    esPendiente: formData.esPendiente || false,
+                    esSolicitudCredito: formData.esSolicitudCredito || false
                 };
 
                 // Si es Edición de Horas Extras/Recargos y hubo un cambio en el intervalo (breakdown)
@@ -622,6 +691,20 @@ function GastosTab() {
         gastos.some(g => g.rubroId.toString() === filterRubroId && g.maquinaId === m.id)
     ) : [];
 
+    const availableProviders = [...new Map(gastos
+        .filter(g => {
+            const matchRubro = !filterRubroId || g.rubroId?.toString() === filterRubroId || g.rubro?.id?.toString() === filterRubroId;
+            const matchUser = !showUserFilter || !filterUsuarioId || g.usuarioId?.toString() === filterUsuarioId;
+            const matchMachine = !showMachineFilter || !filterMaquinaId || g.maquinaId?.toString() === filterMaquinaId;
+            const hasProveedor = (g.proveedorId || g.proveedor?.id) && (g.proveedor?.nombre);
+            return matchRubro && matchUser && matchMachine && hasProveedor;
+        })
+        .map(g => {
+            const id = g.proveedorId || g.proveedor?.id;
+            const nombre = g.proveedor?.nombre;
+            return [id.toString(), { id, nombre }];
+        })).values()].sort((a, b) => a.nombre.localeCompare(b.nombre));
+
     // 4. Aplicar filtros
     const filteredGastos = gastos.filter(g => {
         // Filtro Fecha
@@ -645,6 +728,9 @@ function GastosTab() {
         // Filtro Pendientes
         if (filterPending && !g.esPendiente) return false;
 
+        // Filtro Crédito
+        if (filterCredit && !g.esSolicitudCredito) return false;
+
         return true;
     });
 
@@ -652,7 +738,12 @@ function GastosTab() {
     useEffect(() => {
         setFilterUsuarioId('');
         setFilterMaquinaId('');
+        setFilterProveedorId('');
     }, [filterRubroId]);
+
+    useEffect(() => {
+        setFilterProveedorId('');
+    }, [filterMaquinaId, filterUsuarioId]);
 
     // 5. Calcular totales para tarjetas (DINÁMICO)
     let displayedPresupuesto = resumen?.totalPresupuesto || 0;
@@ -715,7 +806,8 @@ function GastosTab() {
                                     border: '1px solid #ccc',
                                     borderRadius: 4,
                                     padding: '0 10px',
-                                    backgroundColor: '#fff'
+                                    backgroundColor: '#fff',
+                                    width: 150
                                 }}
                             />
                         ) : (
@@ -787,9 +879,9 @@ function GastosTab() {
                             style={styles.filterPicker}
                         >
                             <Picker.Item label="Todos los Proveedores" value="" />
-                            {[...new Map(gastos.filter(g => g.proveedorId && g.proveedorNombre).map(g => [g.proveedorId, { id: g.proveedorId, nombre: g.proveedorNombre }])).values()]
-                                .sort((a, b) => a.nombre.localeCompare(b.nombre))
-                                .map(p => <Picker.Item key={p.id} label={p.nombre} value={p.id.toString()} />)}
+                            {availableProviders.map(p => (
+                                <Picker.Item key={p.id} label={p.nombre} value={p.id.toString()} />
+                            ))}
                         </Picker>
                     </View>
 
@@ -815,6 +907,13 @@ function GastosTab() {
                         onPress={() => setFilterPending(!filterPending)}
                     >
                         <Text style={{ color: filterPending ? 'white' : '#374151', fontSize: 12 }}>⏳ Ver solo Pendientes</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={[styles.filterItem, styles.checkboxFilter, filterCredit && styles.checkboxFilterActive, { backgroundColor: filterCredit ? '#7C3AED' : 'white' }]}
+                        onPress={() => setFilterCredit(!filterCredit)}
+                    >
+                        <Text style={{ color: filterCredit ? 'white' : '#374151', fontSize: 12 }}>💳 Ver solo Crédito</Text>
                     </TouchableOpacity>
                 </View>
             </View>
@@ -868,6 +967,11 @@ function GastosTab() {
                                                 {gasto.esPendiente && (
                                                     <View style={[styles.pendingBadge, isOverdue && styles.pendingBadgeOverdue]}>
                                                         <Text style={styles.pendingText}>⏳ Pendiente</Text>
+                                                    </View>
+                                                )}
+                                                {gasto.esSolicitudCredito && (
+                                                    <View style={[styles.pendingBadge, { backgroundColor: '#7C3AED' }]}>
+                                                        <Text style={styles.pendingText}>💳 Crédito</Text>
                                                     </View>
                                                 )}
                                             </View>
@@ -979,140 +1083,104 @@ function GastosTab() {
                                     <Text style={styles.label}>Rubro *</Text>
                                     <View style={styles.pickerContainer}>
                                         <Picker selectedValue={formData.rubroId} onValueChange={(v) => setFormData(p => ({ ...p, rubroId: v }))}>
-                                            <Picker.Item label="Seleccione..." value="" />
+                                            <Picker.Item label="Seleccione un rubro..." value="" />
                                             {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
                                         </Picker>
                                     </View>
                                 </View>
                             )}
 
+                            {formData.rubroId ? (
+                                <>
+                                    {/* Solicitud de Crédito Checkbox */}
+                                    {!isHorasExtras && !isRecargo && (
+                                        <TouchableOpacity
+                                            style={{
+                                                flexDirection: 'row',
+                                                alignItems: 'center',
+                                                marginBottom: 15,
+                                                padding: 10,
+                                                backgroundColor: '#F5F3FF',
+                                                borderRadius: 8,
+                                                borderWidth: 1,
+                                                borderColor: '#DDD6FE'
+                                            }}
+                                            onPress={() => setFormData(p => ({ ...p, esSolicitudCredito: !p.esSolicitudCredito }))}
+                                        >
+                                            <View style={[styles.checkbox, formData.esSolicitudCredito && { backgroundColor: '#7C3AED', borderColor: '#7C3AED' }]}>
+                                                {formData.esSolicitudCredito && <Text style={styles.checkboxCheck}>✓</Text>}
+                                            </View>
+                                            <View>
+                                                <Text style={[styles.checkboxLabel, { color: '#5B21B6' }]}>Solicitud de Crédito</Text>
+                                                <Text style={{ fontSize: 10, color: '#6D28D9', marginLeft: 10 }}>Marcar para trámite de crédito</Text>
+                                            </View>
+                                        </TouchableOpacity>
+                                    )}
 
-                            {((isHorasExtras || isRecargo) && !isLegalizing) && (
-                                <View style={{ marginBottom: 15 }}>
-                                    <Text style={styles.label}>Operario *</Text>
-                                    <View style={styles.pickerContainer}>
-                                        <Picker selectedValue={formData.usuarioId} onValueChange={(v) => setFormData(p => ({ ...p, usuarioId: v }))}>
-                                            <Picker.Item label="Seleccione..." value="" />
-                                            {usuarios.map(u => <Picker.Item key={u.id} label={`${u.nombre}${u.esPorHoras ? ' (Por Horas)' : ''}`} value={u.id.toString()} />)}
-                                        </Picker>
-                                    </View>
+                                    {isMaintenance && (
+                                        <View style={{ marginBottom: 15 }}>
+                                            <Text style={styles.label}>Máquina *</Text>
+                                            <View style={styles.pickerContainer}>
+                                                <Picker
+                                                    selectedValue={formData.maquinaId}
+                                                    onValueChange={(v) => setFormData(p => ({ ...p, maquinaId: v }))}
+                                                >
+                                                    <Picker.Item label="Seleccione una máquina..." value="" />
+                                                    {maquinas.map(m => (
+                                                        <Picker.Item key={m.id} label={m.nombre || m.Nombre} value={m.id?.toString()} />
+                                                    ))}
+                                                </Picker>
+                                            </View>
+                                        </View>
+                                    )}
 
-                                    <Text style={styles.label}>Fecha *</Text>
-                                    {Platform.OS === 'web' ? (
-                                        <input type="date" value={formData.fecha} onChange={(e) => setFormData(p => ({ ...p, fecha: e.target.value }))} style={{ padding: 12, fontSize: 16, borderRadius: 8, border: '1px solid #D1D5DB', backgroundColor: '#F9FAFB', width: '100%', boxSizing: 'border-box', marginBottom: 10 }} />
+                                    {isHorasExtras || isRecargo ? (
+                                        <View style={{ marginBottom: 15 }}>
+                                            <Text style={styles.label}>Personal de Planta *</Text>
+                                            <View style={styles.pickerContainer}>
+                                                <Picker selectedValue={formData.usuarioId} onValueChange={(v) => {
+                                                    setFormData(p => ({ ...p, usuarioId: v }));
+                                                }}>
+                                                    <Picker.Item label="Seleccione..." value="" />
+                                                    {usuarios.map(u => <Picker.Item key={u.id} label={`${u.nombre} (${u.documento || u.cedula || 'S/D'})`} value={u.id.toString()} />)}
+                                                </Picker>
+                                            </View>
+                                        </View>
                                     ) : (
-                                        <TextInput style={styles.input} value={formData.fecha} onChangeText={(t) => setFormData(p => ({ ...p, fecha: t }))} placeholder="YYYY-MM-DD" />
-                                    )}
-
-                                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={styles.label}>Hora Inicio *</Text>
-                                            <TextInput
-                                                style={styles.input}
-                                                value={formData.horaInicio}
-                                                onChangeText={(t) => setFormData(p => ({ ...p, horaInicio: t }))}
-                                                placeholder="HH:MM"
-                                            />
-                                        </View>
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={styles.label}>Hora Fin *</Text>
-                                            <TextInput
-                                                style={styles.input}
-                                                value={formData.horaFin}
-                                                onChangeText={(t) => setFormData(p => ({ ...p, horaFin: t }))}
-                                                placeholder="HH:MM"
-                                            />
-                                        </View>
-                                    </View>
-
-                                    {!!formData.usuarioId && (() => {
-                                        const worker = usuarios.find(u => u.id?.toString() === formData.usuarioId.toString());
-                                        const hasSalary = (parseFloat(worker?.salario) || 0) > 0;
-                                        if (!hasSalary) {
-                                            return (
-                                                <View style={{ backgroundColor: '#FFF7ED', padding: 10, borderRadius: 8, marginBottom: 15, borderLeftWidth: 4, borderLeftColor: '#F97316' }}>
-                                                    <Text style={{ fontWeight: 'bold', color: '#9A3412', marginBottom: 5 }}>⚠️ Falta Salario:</Text>
-                                                    <Text style={{ fontSize: 13, color: '#9A3412' }}>Este operario no tiene un salario registrado. No se podrá calcular el costo de las horas extras.</Text>
-                                                </View>
-                                            );
-                                        }
-                                        return null;
-                                    })()}
-
-                                    {breakdown.length > 0 && (
-                                        <View style={{ backgroundColor: '#F0F9FF', padding: 10, borderRadius: 8, marginBottom: 15, borderLeftWidth: 4, borderLeftColor: '#0EA5E9' }}>
-                                            <Text style={{ fontWeight: 'bold', color: '#0369A1', marginBottom: 5 }}>📊 Desglose Automático:</Text>
-                                            {breakdown.map((item, idx) => (
-                                                <Text key={idx} style={{ fontSize: 13, color: '#0C4A6E' }}>
-                                                    • {item.type}: <Text style={{ fontWeight: 'bold' }}>{item.hours.toFixed(2)}h</Text>
-                                                </Text>
-                                            ))}
-                                            <Text style={{ fontSize: 11, color: '#64748B', marginTop: 5, fontStyle: 'italic' }}>
-                                                * Se crearán registros separados automáticamente.
-                                            </Text>
+                                        <View style={{ marginBottom: 15 }}>
+                                            <Text style={styles.label}>Proveedor {formData.esPendiente && !isLegalizing ? '(Opcional por ahora)' : ''}</Text>
+                                            <View style={styles.pickerContainer}>
+                                                <Picker selectedValue={formData.proveedorId} onValueChange={(v) => {
+                                                    setFormData(p => ({ ...p, proveedorId: v }));
+                                                }}>
+                                                    <Picker.Item label="Seleccione..." value="" />
+                                                    {proveedores
+                                                        .filter(p => !formData.rubroId || p.rubroId?.toString() === formData.rubroId)
+                                                        .map(p => <Picker.Item key={p.id} label={`${p.nombre}${p.precioCotizado ? ` - ${formatCurrency(p.precioCotizado)}` : ''}`} value={p.id.toString()} />)
+                                                    }
+                                                </Picker>
+                                            </View>
                                         </View>
                                     )}
 
-                                    {!!formData.horaInicio && !!formData.horaFin && breakdown.length === 0 && (
-                                        <View style={{ backgroundColor: '#FEF2F2', padding: 10, borderRadius: 8, marginBottom: 15, borderLeftWidth: 4, borderLeftColor: '#EF4444' }}>
-                                            <Text style={{ fontWeight: 'bold', color: '#991B1B', marginBottom: 5 }}>ℹ️ Sin horas adicionales:</Text>
-                                            <Text style={{ fontSize: 13, color: '#7F1D1D' }}>El intervalo coincide con el turno o no genera extras/recargos.</Text>
-                                        </View>
-                                    )}
-                                </View>
-                            )}
-
-
-
-                            {(isMaintenance && !isLegalizing) && (
-                                <View style={{ marginBottom: 15 }}>
-                                    <Text style={styles.label}>Máquina *</Text>
-                                    <View style={styles.pickerContainer}>
-                                        <Picker selectedValue={formData.maquinaId} onValueChange={(v) => setFormData(p => ({ ...p, maquinaId: v }))}>
-                                            <Picker.Item label="Seleccione..." value="" />
-                                            {maquinas.map(m => <Picker.Item key={m.id} label={m.nombre} value={m.id.toString()} />)}
-                                        </Picker>
-                                    </View>
-                                </View>
-                            )}
-
-                            {(!isHorasExtras && !isRecargo && !!formData.rubroId) && (
-                                <View style={{ marginBottom: 15 }}>
-                                    <Text style={styles.label}>Proveedor {formData.esPendiente && !isLegalizing ? '(Opcional por ahora)' : ''}</Text>
-                                    <View style={styles.pickerContainer}>
-                                        <Picker selectedValue={formData.proveedorId} onValueChange={(v) => {
-                                            setFormData(p => ({ ...p, proveedorId: v }));
-                                        }}>
-                                            <Picker.Item label="Seleccione..." value="" />
-                                            {proveedores
-                                                .filter(p => !formData.rubroId || p.rubroId?.toString() === formData.rubroId)
-                                                .map(p => <Picker.Item key={p.id} label={`${p.nombre}${p.precioCotizado ? ` - ${formatCurrency(p.precioCotizado)}` : ''}`} value={p.id.toString()} />)
-                                            }
-                                        </Picker>
-                                    </View>
-                                </View>
-                            )}
-
-                            {/* Checkbox de Pendiente - Hide when Legalizing */}
-                            {!isLegalizing && !isHorasExtras && !isRecargo && !!formData.rubroId && (
-                                <TouchableOpacity
-                                    style={styles.checkboxContainer}
-                                    onPress={() => setFormData(p => ({ ...p, esPendiente: !p.esPendiente }))}
-                                >
-                                    <View style={[styles.checkbox, formData.esPendiente && styles.checkboxChecked]}>
-                                        {formData.esPendiente && <Text style={styles.checkboxCheck}>✓</Text>}
-                                    </View>
-                                    <View>
-                                        <Text style={styles.checkboxLabel}>Marcar como Gasto Pendiente</Text>
-                                        <Text style={{ fontSize: 10, color: '#666', marginLeft: 10 }}>Permite guardar sin factura ni precio (2 días plazo)</Text>
-                                    </View>
-                                </TouchableOpacity>
-                            )}
-
-                            {!!formData.rubroId && (
-                                <View style={{ marginBottom: 15 }}>
+                                    {/* Checkbox de Pendiente - Hide when Legalizing */}
                                     {!isLegalizing && !isHorasExtras && !isRecargo && (
-                                        <View>
+                                        <TouchableOpacity
+                                            style={styles.checkboxContainer}
+                                            onPress={() => setFormData(p => ({ ...p, esPendiente: !p.esPendiente }))}
+                                        >
+                                            <View style={[styles.checkbox, formData.esPendiente && styles.checkboxChecked]}>
+                                                {formData.esPendiente && <Text style={styles.checkboxCheck}>✓</Text>}
+                                            </View>
+                                            <View>
+                                                <Text style={styles.checkboxLabel}>Marcar como Gasto Pendiente</Text>
+                                                <Text style={{ fontSize: 10, color: '#666', marginLeft: 10 }}>Permite guardar sin factura ni precio (2 días plazo)</Text>
+                                            </View>
+                                        </TouchableOpacity>
+                                    )}
+
+                                    {!isLegalizing && (
+                                        <View style={{ marginBottom: 15 }}>
                                             <Text style={styles.label}>Fecha</Text>
                                             {Platform.OS === 'web' ? (
                                                 <input type="date" value={formData.fecha} onChange={(e) => setFormData(p => ({ ...p, fecha: e.target.value }))} style={{ padding: 12, fontSize: 16, borderRadius: 8, border: '1px solid #D1D5DB', backgroundColor: '#F9FAFB', width: '100%', boxSizing: 'border-box', marginBottom: 10 }} />
@@ -1120,6 +1188,43 @@ function GastosTab() {
                                                 <TextInput style={styles.input} value={formData.fecha} onChangeText={(t) => setFormData(p => ({ ...p, fecha: t }))} placeholder="YYYY-MM-DD" />
                                             )}
                                         </View>
+                                    )}
+
+                                    {/* Overtime Time Selection UI */}
+                                    {(isHorasExtras || isRecargo) && (
+                                        <>
+                                            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={styles.label}>Hora Inicio *</Text>
+                                                    <TextInput
+                                                        style={styles.input}
+                                                        value={formData.horaInicio}
+                                                        onChangeText={(t) => setFormData(p => ({ ...p, horaInicio: t }))}
+                                                        placeholder="HH:MM"
+                                                    />
+                                                </View>
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={styles.label}>Hora Fin *</Text>
+                                                    <TextInput
+                                                        style={styles.input}
+                                                        value={formData.horaFin}
+                                                        onChangeText={(t) => setFormData(p => ({ ...p, horaFin: t }))}
+                                                        placeholder="HH:MM"
+                                                    />
+                                                </View>
+                                            </View>
+
+                                            {breakdown.length > 0 && (
+                                                <View style={{ backgroundColor: '#F3F4F6', padding: 10, borderRadius: 8, marginBottom: 15 }}>
+                                                    <Text style={{ fontWeight: 'bold', marginBottom: 5, fontSize: 13 }}>Desglose de Horas:</Text>
+                                                    {breakdown.map((item, idx) => (
+                                                        <Text key={idx} style={{ fontSize: 12, color: '#4B5563' }}>
+                                                            • {item.type}: {item.hours.toFixed(2)} hrs
+                                                        </Text>
+                                                    ))}
+                                                </View>
+                                            )}
+                                        </>
                                     )}
 
                                     {/* OP Number field - ONLY for Horas Extras and Recargos, BEFORE price */}
@@ -1178,7 +1283,7 @@ function GastosTab() {
                                         </View>
                                     )}
 
-                                    <View>
+                                    <View style={{ marginBottom: 15 }}>
                                         <Text style={styles.label}>Precio * {(isHorasExtras || isRecargo) ? (formData.numeroOP.trim() ? '(editable con OP)' : '(ingrese OP primero)') : (!formData.esPendiente && !formData.numeroFactura.trim() ? '(ingrese factura primero)' : '')}</Text>
                                         <TextInput
                                             style={[styles.input, ((isHorasExtras || isRecargo) ? !formData.numeroOP.trim() : (!formData.esPendiente && !formData.numeroFactura.trim())) && styles.inputDisabled]}
@@ -1189,89 +1294,94 @@ function GastosTab() {
                                             editable={(isHorasExtras || isRecargo) ? !!formData.numeroOP.trim() : (formData.esPendiente || !!formData.numeroFactura.trim())}
                                         />
                                     </View>
-                                </View>
-                            )}
 
-                            {/* Cuadro de presupuesto estilo SST - DEBAJO DEL PRECIO */}
-                            {presupuestoInfo && (
-                                <View style={styles.budgetContainer}>
-                                    <View style={styles.budgetHeader}>
-                                        <Text style={styles.budgetTitle}>
-                                            📊 Presupuesto: {presupuestoInfo.rubroNombre}
-                                        </Text>
-                                    </View>
-                                    {(() => {
-                                        // Live calculation like SST
-                                        const currentPrice = parseFloat(formData.precio) || 0;
-                                        const originalPrice = editItem ? (editItem.precio || 0) : 0;
-                                        const adjustedGastadoMes = (presupuestoInfo.gastadoMes || 0) - originalPrice;
-                                        const liveGastado = adjustedGastadoMes + currentPrice;
-                                        const liveRestante = (presupuestoInfo.presupuestoMensual || 0) - liveGastado;
+                                    {/* Cuadro de presupuesto estilo SST - DEBAJO DEL PRECIO */}
+                                    {presupuestoInfo && (
+                                        <View style={styles.budgetContainer}>
+                                            <View style={styles.budgetHeader}>
+                                                <Text style={styles.budgetTitle}>
+                                                    📊 Presupuesto: {presupuestoInfo.rubroNombre}
+                                                </Text>
+                                            </View>
+                                            {(() => {
+                                                // Live calculation like SST
+                                                const currentPrice = parseFloat(formData.precio) || 0;
+                                                const originalPrice = editItem ? (editItem.precio || 0) : 0;
+                                                const adjustedGastadoMes = (presupuestoInfo.gastadoMes || 0) - originalPrice;
+                                                const liveGastado = adjustedGastadoMes + currentPrice;
+                                                const liveRestante = (presupuestoInfo.presupuestoMensual || 0) - liveGastado;
 
-                                        return (
-                                            <>
-                                                <View style={styles.budgetInfoRow}>
-                                                    <View style={[styles.budgetInfoItem, { backgroundColor: '#E0E7FF' }]}>
-                                                        <Text style={styles.budgetInfoLabel}>Presupuesto Anual</Text>
-                                                        <Text style={styles.budgetInfoValue}>
-                                                            {formatCurrency(presupuestoInfo.presupuestoAnual || 0)}
-                                                        </Text>
-                                                    </View>
-                                                    <View style={[styles.budgetInfoItem, { backgroundColor: '#FEF3C7' }]}>
-                                                        <Text style={styles.budgetInfoLabel}>Gastado</Text>
-                                                        <Text style={[styles.budgetInfoValue, { color: '#D97706' }]}>
-                                                            {formatCurrency(liveGastado)}
-                                                        </Text>
-                                                    </View>
-                                                    <View style={[styles.budgetInfoItem, { backgroundColor: '#E0F2FE' }]}>
-                                                        <Text style={styles.budgetInfoLabel}>Presupuesto Mensual</Text>
-                                                        <Text style={styles.budgetInfoValue}>
-                                                            {formatCurrency(presupuestoInfo.presupuestoMensual || 0)}
-                                                        </Text>
-                                                    </View>
-                                                </View>
+                                                return (
+                                                    <>
+                                                        <View style={styles.budgetInfoRow}>
+                                                            <View style={[styles.budgetInfoItem, { backgroundColor: '#E0E7FF' }]}>
+                                                                <Text style={styles.budgetInfoLabel}>Presupuesto Anual</Text>
+                                                                <Text style={styles.budgetInfoValue}>
+                                                                    {formatCurrency(presupuestoInfo.presupuestoAnual || 0)}
+                                                                </Text>
+                                                            </View>
+                                                            <View style={[styles.budgetInfoItem, { backgroundColor: '#FEF3C7' }]}>
+                                                                <Text style={styles.budgetInfoLabel}>Gastado</Text>
+                                                                <Text style={[styles.budgetInfoValue, { color: '#D97706' }]}>
+                                                                    {formatCurrency(liveGastado)}
+                                                                </Text>
+                                                            </View>
+                                                            <View style={[styles.budgetInfoItem, { backgroundColor: '#E0F2FE' }]}>
+                                                                <Text style={styles.budgetInfoLabel}>Presupuesto Mensual</Text>
+                                                                <Text style={styles.budgetInfoValue}>
+                                                                    {formatCurrency(presupuestoInfo.presupuestoMensual || 0)}
+                                                                </Text>
+                                                            </View>
+                                                        </View>
 
-                                                {/* Live Restante Indicator */}
-                                                <View style={{ marginTop: 8, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
-                                                    <Text style={{ fontSize: 12, color: '#4B5563' }}>Restante Mensual:</Text>
-                                                    <Text style={{
-                                                        fontWeight: 'bold',
-                                                        fontSize: 14,
-                                                        color: liveRestante >= 0 ? '#059669' : '#DC2626'
-                                                    }}>
-                                                        {formatCurrency(liveRestante)}
-                                                    </Text>
-                                                </View>
+                                                        {/* Live Restante Indicator */}
+                                                        <View style={{ marginTop: 8, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
+                                                            <Text style={{ fontSize: 12, color: '#4B5563' }}>Restante Mensual:</Text>
+                                                            <Text style={{
+                                                                fontWeight: 'bold',
+                                                                fontSize: 14,
+                                                                color: liveRestante >= 0 ? '#059669' : '#DC2626'
+                                                            }}>
+                                                                {formatCurrency(liveRestante)}
+                                                            </Text>
+                                                        </View>
 
-                                                {liveRestante < 0 && (
-                                                    <Text style={styles.budgetWarning}>
-                                                        ⚠️ Este gasto excederá el presupuesto mensual en {formatCurrency(Math.abs(liveRestante))}
-                                                    </Text>
-                                                )}
-                                            </>
-                                        );
-                                    })()}
+                                                        {liveRestante < 0 && (
+                                                            <Text style={styles.budgetWarning}>
+                                                                ⚠️ Este gasto excederá el presupuesto mensual en {formatCurrency(Math.abs(liveRestante))}
+                                                            </Text>
+                                                        )}
+                                                    </>
+                                                );
+                                            })()}
 
-                                    {presupuestoInfo.presupuestoMensual === 0 && (
-                                        <Text style={styles.budgetNoData}>
-                                            ℹ️ No hay presupuesto mensual asignado para Horas Extra
-                                        </Text>
+                                            {presupuestoInfo.presupuestoMensual === 0 && (
+                                                <Text style={styles.budgetNoData}>
+                                                    ℹ️ No hay presupuesto mensual asignado para Horas Extra
+                                                </Text>
+                                            )}
+                                        </View>
                                     )}
+                                    <Text style={styles.label}>Nota</Text>
+                                    <TextInput style={[styles.input, styles.textArea]} value={formData.nota} onChangeText={(t) => setFormData(p => ({ ...p, nota: t }))} multiline placeholder="Opcional..." />
+
+                                    <View style={styles.modalActions}>
+                                        <TouchableOpacity style={styles.cancelButton} onPress={() => { resetForm(); setShowModal(false); }}>
+                                            <Text style={styles.cancelButtonText}>Cancelar</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity style={[styles.submitButton, saving && styles.submitButtonDisabled]} onPress={handleSubmit} disabled={saving}>
+                                            {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>Guardar</Text>}
+                                        </TouchableOpacity>
+                                    </View>
+                                </>
+                            ) : (
+                                <View style={{ padding: 20, alignItems: 'center' }}>
+                                    <Text style={{ color: '#666', fontStyle: 'italic' }}>Seleccione un rubro para continuar...</Text>
+                                    <TouchableOpacity style={[styles.cancelButton, { marginTop: 20, alignSelf: 'stretch' }]} onPress={() => { resetForm(); setShowModal(false); }}>
+                                        <Text style={[styles.cancelButtonText, { textAlign: 'center' }]}>Cancelar</Text>
+                                    </TouchableOpacity>
                                 </View>
                             )}
-
-
-                            <Text style={styles.label}>Nota</Text>
-                            <TextInput style={[styles.input, styles.textArea]} value={formData.nota} onChangeText={(t) => setFormData(p => ({ ...p, nota: t }))} multiline placeholder="Opcional..." />
-
-                            <View style={styles.modalActions}>
-                                <TouchableOpacity style={styles.cancelButton} onPress={() => { resetForm(); setShowModal(false); }}>
-                                    <Text style={styles.cancelButtonText}>Cancelar</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity style={[styles.submitButton, saving && styles.submitButtonDisabled]} onPress={handleSubmit} disabled={saving}>
-                                    {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>Guardar</Text>}
-                                </TouchableOpacity>
-                            </View>
                         </ScrollView>
 
                         {/* ABSOLUTE OVERLAY: SELECTOR DE COTIZACIONES */}

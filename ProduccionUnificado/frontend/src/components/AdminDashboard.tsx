@@ -24,6 +24,8 @@ import PlaneacionGastosScreen from '../screens/PlaneacionGastosScreen';
 import DisenoGastosScreen from '../screens/DisenoGastosScreen';
 import TicketsScreen from '../screens/TicketsScreen';
 import PlaneadorMaquinasScreen from '../screens/PlaneadorMaquinasScreen';
+import PlanAccionView from './PlanAccionView';
+import { api } from '../services/productionApi';
 
 
 // Theme Provider
@@ -33,6 +35,7 @@ interface AdminDashboardProps {
     onBack: () => void;
     role?: string;
     displayName?: string;
+    area?: string;
 }
 
 type TabName = 'captura' | 'desperdicio' | 'tablero' | 'historial' | 'maquinas' | 'operarios' | 'cartas' | 'calidad';
@@ -91,22 +94,23 @@ function DashboardCard({ title, description, icon, onPress, color, disabled }: D
     );
 }
 
-function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDashboardProps) {
+function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: AdminDashboardProps) {
     const { colors, isDarkMode } = useTheme();
-    // Mode: 'MENU' (Grid de tarjetas) | 'CONTENT' (Tabs existentes) | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS' | 'TICKETS' | 'PLANEADOR_MAQUINAS'
-    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS' | 'TICKETS' | 'PLANEADOR_MAQUINAS'>(() => {
+    // Mode: 'MENU' (Grid de tarjetas) | 'CONTENT' (Tabs existentes) | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS' | 'TICKETS' | 'PLANEADOR_MAQUINAS' | 'PLANES_ACCION'
+    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS' | 'TICKETS' | 'PLANEADOR_MAQUINAS' | 'PLANES_ACCION'>(() => {
 
         if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
             const savedMode = window.localStorage.getItem('adminDashboardMode');
-            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS' || savedMode === 'PRODUCCION_GASTOS' || savedMode === 'TALLERES_GASTOS' || savedMode === 'CALIDAD' || savedMode === 'PLANEACION_GASTOS' || savedMode === 'DISENO_GASTOS' || savedMode === 'TICKETS' || savedMode === 'PLANEADOR_MAQUINAS') {
+            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS' || savedMode === 'PRODUCCION_GASTOS' || savedMode === 'TALLERES_GASTOS' || savedMode === 'CALIDAD' || savedMode === 'PLANEACION_GASTOS' || savedMode === 'DISENO_GASTOS' || savedMode === 'TICKETS' || savedMode === 'PLANEADOR_MAQUINAS' || savedMode === 'PLANES_ACCION') {
 
-                return savedMode;
+                return savedMode as any;
             }
         }
         return 'MENU';
     });
     const [activeTab, setActiveTab] = useState<string>('captura');
     const [qualityTitle, setQualityTitle] = useState<string>('Control en Proceso de Calidad y Novedades');
+    const [pendingPlansCount, setPendingPlansCount] = useState(0);
     const [resumen, setResumen] = useState<any>(null);
     const { width } = useWindowDimensions();
     const isMobile = width < 768;
@@ -142,6 +146,20 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
         }
         loadTab();
     }, [role]);
+
+    useEffect(() => {
+        if (area) {
+            const fetchCount = async () => {
+                try {
+                    const res = await api.get(`planaccion/pendientes/area/${encodeURIComponent(area)}/count`);
+                    setPendingPlansCount(res.data);
+                } catch (e) {
+                    // Ignore gracefully
+                }
+            };
+            fetchCount();
+        }
+    }, [area]);
 
     useEffect(() => {
         // Save to localStorage on web, AsyncStorage on mobile
@@ -446,7 +464,12 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                         resizeMode="contain"
                     />
                 </View>
-                <CalidadDashboard onTabChange={setQualityTitle} navigation={mockNavigation} />
+                <CalidadDashboard
+                    onTabChange={setQualityTitle}
+                    navigation={mockNavigation}
+                    userArea={area}
+                    userRole={role}
+                />
             </View>
         );
     }
@@ -472,6 +495,39 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                     />
                 </View>
                 <TicketsScreen displayName={displayName} />
+            </View>
+        );
+    }
+
+    // --- VISTA PLANES DE ACCION ---
+    if (mode === 'PLANES_ACCION') {
+        return (
+            <View style={[styles.container, { backgroundColor: colors.background }]}>
+                <View style={[styles.header, { backgroundColor: colors.headerBackground }]}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => {
+                        setMode('MENU');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                    }}>
+                        <Text style={styles.backButtonText}>← Volver al Panel</Text>
+                    </TouchableOpacity>
+                    <View style={styles.centeredTitleContainer} pointerEvents="box-none">
+                        <Text style={styles.title}>Planes de Acción</Text>
+                    </View>
+                    <Image
+                        source={require('../../assets/logo_perla.png')}
+                        style={[styles.contentHeaderLogo, isDarkMode && { opacity: 0.95 }]}
+                        resizeMode="contain"
+                    />
+                </View>
+                <PlanAccionView
+                    userArea={area}
+                    userRole={role}
+                    canCreate={false}
+                    onClose={() => {
+                        setMode('MENU');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                    }}
+                />
             </View>
         );
     }
@@ -577,16 +633,38 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
                         </Text>
                     </View>
                     {!isMobile && (
-                        <TouchableOpacity
-                            style={styles.ticketHeaderBtn}
-                            onPress={() => {
-                                setMode('TICKETS');
-                                if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'TICKETS');
-                            }}
-                        >
-                            <Text style={{ fontSize: 20 }}>🎫</Text>
-                            <Text style={[styles.ticketHeaderBtnText, { color: colors.text }]}>Tickets</Text>
-                        </TouchableOpacity>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <TouchableOpacity
+                                style={[styles.ticketHeaderBtn, { marginRight: 15 }]}
+                                onPress={() => {
+                                    setMode('PLANES_ACCION');
+                                    if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'PLANES_ACCION');
+                                }}
+                            >
+                                <Text style={{ fontSize: 20 }}>🎯</Text>
+                                <Text style={[styles.ticketHeaderBtnText, { color: colors.text }]}>Planes Acción</Text>
+                                {pendingPlansCount > 0 && (
+                                    <View style={{
+                                        position: 'absolute', top: -10, right: -10, backgroundColor: 'red',
+                                        borderRadius: 15, paddingHorizontal: 8, paddingVertical: 2,
+                                        minWidth: 24, alignItems: 'center'
+                                    }}>
+                                        <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>{pendingPlansCount}</Text>
+                                    </View>
+                                )}
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={styles.ticketHeaderBtn}
+                                onPress={() => {
+                                    setMode('TICKETS');
+                                    if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'TICKETS');
+                                }}
+                            >
+                                <Text style={{ fontSize: 20 }}>🎫</Text>
+                                <Text style={[styles.ticketHeaderBtnText, { color: colors.text }]}>Tickets</Text>
+                            </TouchableOpacity>
+                        </View>
                     )}
                     <Image
                         source={require('../../assets/logo_perla.png')}
@@ -731,8 +809,8 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName }: AdminDas
     );
 }
 
-export function AdminDashboard({ onBack, role, displayName }: AdminDashboardProps) {
-    return <AdminDashboardContent onBack={onBack} role={role} displayName={displayName} />;
+export function AdminDashboard({ onBack, role, displayName, area }: AdminDashboardProps) {
+    return <AdminDashboardContent onBack={onBack} role={role} displayName={displayName} area={area} />;
 }
 
 const styles = StyleSheet.create({

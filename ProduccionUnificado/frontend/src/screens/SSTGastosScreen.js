@@ -111,7 +111,8 @@ function GastosTab() {
         nota: '',
         archivoFactura: null,
         archivoNombre: '',
-        esPendiente: false
+        esPendiente: false,
+        esSolicitudCredito: false
     });
     const [saving, setSaving] = useState(false);
 
@@ -127,6 +128,7 @@ function GastosTab() {
     const [filterPending, setFilterPending] = useState(false);
     const [filterProveedor, setFilterProveedor] = useState('');
     const [filterNumeroFactura, setFilterNumeroFactura] = useState('');
+    const [filterCredit, setFilterCredit] = useState(false);
 
     const anios = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
 
@@ -158,6 +160,9 @@ function GastosTab() {
 
             // Filtro Pendientes
             if (filterPending && !g.esPendiente) return false;
+
+            // Filtro Crédito
+            if (filterCredit && !g.esSolicitudCredito) return false;
 
             return true;
         });
@@ -339,7 +344,8 @@ function GastosTab() {
             nota: '',
             archivoFactura: null,
             archivoNombre: '',
-            esPendiente: false
+            esPendiente: false,
+            esSolicitudCredito: false
         });
         setIsLegalizing(false);
     };
@@ -357,7 +363,8 @@ function GastosTab() {
             nota: gasto.nota || '',
             archivoFactura: gasto.archivoFactura || null,
             archivoNombre: gasto.archivoFactura ? 'Archivo adjunto' : '',
-            esPendiente: gasto.esPendiente || false
+            esPendiente: gasto.esPendiente || false,
+            esSolicitudCredito: gasto.esSolicitudCredito || false
         });
         setIsLegalizing(false);
         setShowModal(true);
@@ -376,7 +383,8 @@ function GastosTab() {
             nota: gasto.nota || '',
             archivoFactura: null,
             archivoNombre: '',
-            esPendiente: false // Al legalizar, deja de ser pendiente
+            esPendiente: false, // Al legalizar, deja de ser pendiente
+            esSolicitudCredito: gasto.esSolicitudCredito || false
         });
         setIsLegalizing(true);
         setShowModal(true);
@@ -494,7 +502,8 @@ function GastosTab() {
                 nota: formData.nota,
                 archivoFactura: formData.archivoFactura,
                 archivoFacturaNombre: formData.archivoNombre,
-                esPendiente: formData.esPendiente
+                esPendiente: formData.esPendiente,
+                esSolicitudCredito: formData.esSolicitudCredito
             };
 
             if (editItem) {
@@ -675,6 +684,13 @@ function GastosTab() {
                     >
                         <Text style={{ color: filterPending ? 'white' : '#374151', fontSize: 13, fontWeight: '500' }}>⏳ Ver solo Pendientes</Text>
                     </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={{ height: 35, backgroundColor: filterCredit ? '#7C3AED' : '#FFF', borderWidth: 1, borderColor: filterCredit ? '#7C3AED' : '#D1D5DB', borderRadius: 5, justifyContent: 'center', paddingHorizontal: 12, marginLeft: 8 }}
+                        onPress={() => setFilterCredit(!filterCredit)}
+                    >
+                        <Text style={{ color: filterCredit ? 'white' : '#374151', fontSize: 13, fontWeight: '500' }}>💳 Ver solo Crédito</Text>
+                    </TouchableOpacity>
                 </View>
             </View>
 
@@ -772,6 +788,11 @@ function GastosTab() {
                                                     {gasto.esPendiente && (
                                                         <View style={{ backgroundColor: isOverdue ? '#DC2626' : '#FEF3C7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
                                                             <Text style={{ fontSize: 10, color: isOverdue ? '#FFF' : '#B45309', fontWeight: 'bold' }}>⏳ Pendiente</Text>
+                                                        </View>
+                                                    )}
+                                                    {gasto.esSolicitudCredito && (
+                                                        <View style={{ backgroundColor: '#F5F3FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#DDD6FE', marginLeft: 4 }}>
+                                                            <Text style={{ fontSize: 10, color: '#7C3AED', fontWeight: 'bold' }}>💳 Crédito</Text>
                                                         </View>
                                                     )}
                                                 </View>
@@ -883,7 +904,7 @@ function GastosTab() {
                                 </View>
                             )}
 
-                            {/* Rubro */}
+                            {/* Rubro selection - Always visible unless legalizing */}
                             {!isLegalizing && (
                                 <>
                                     <Text style={styles.label}>Rubro *</Text>
@@ -898,198 +919,205 @@ function GastosTab() {
                                             ))}
                                         </Picker>
                                     </View>
-
-                                    {/* Tipo Servicio */}
-                                    <Text style={styles.label}>Tipo de Servicio *</Text>
-                                    <View style={styles.pickerContainer}>
-                                        <Picker
-                                            selectedValue={formData.tipoServicioId}
-                                            onValueChange={(value) => setFormData(prev => ({ ...prev, tipoServicioId: value }))}
-                                            enabled={filteredTipos.length > 0}
-                                        >
-                                            <Picker.Item label="Seleccione..." value="" />
-                                            {filteredTipos.map(t => (
-                                                <Picker.Item key={t.id} label={t.nombre} value={t.id.toString()} />
-                                            ))}
-                                        </Picker>
-                                    </View>
                                 </>
                             )}
 
-                            {/* Proveedor */}
-                            <Text style={styles.label}>
-                                Proveedor {formData.esPendiente && !isLegalizing ? '(Opcional por ahora)' : '*'} {formData.tipoServicioId && filteredProveedores.length === 0 && '(No hay proveedores para este tipo - agrégalo en la pestaña Proveedores)'}
-                            </Text>
-                            <View style={[styles.pickerContainer, filteredProveedores.length === 0 && styles.pickerDisabled]}>
-                                <Picker
-                                    selectedValue={formData.proveedorId}
-                                    onValueChange={(value) => setFormData(prev => ({ ...prev, proveedorId: value }))}
-                                    enabled={filteredProveedores.length > 0}
-                                >
-                                    <Picker.Item label={filteredProveedores.length === 0 ? "Sin proveedores disponibles" : "Seleccione..."} value="" />
-                                    {filteredProveedores.map(p => (
-                                        <Picker.Item key={p.id} label={p.nombre} value={p.id.toString()} />
-                                    ))}
-                                </Picker>
-                            </View>
-
-                            {/* Checkbox de Pendiente - Hide when Legalizing */}
-                            {!isLegalizing && formData.rubroId && (
-                                <TouchableOpacity
-                                    style={{ flexDirection: 'row', alignItems: 'center', padding: 10, backgroundColor: '#FEF3C7', borderRadius: 8, marginBottom: 15, borderWidth: 1, borderColor: '#FCD34D' }}
-                                    onPress={() => setFormData(p => ({ ...p, esPendiente: !p.esPendiente }))}
-                                >
-                                    <View style={{ width: 22, height: 22, borderRadius: 4, borderWidth: 2, borderColor: formData.esPendiente ? '#B45309' : '#D1D5DB', backgroundColor: formData.esPendiente ? '#B45309' : '#FFF', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
-                                        {formData.esPendiente && <Text style={{ color: '#FFF', fontSize: 14, fontWeight: 'bold' }}>✓</Text>}
-                                    </View>
-                                    <View>
-                                        <Text style={{ fontWeight: 'bold', color: '#B45309' }}>Marcar como Gasto Pendiente</Text>
-                                        <Text style={{ fontSize: 11, color: '#92400E' }}>Permite guardar sin factura ni precio (2 días plazo)</Text>
-                                    </View>
-                                </TouchableOpacity>
-                            )}
-
-                            {/* Número de Factura - Required unless pending */}
-                            <Text style={styles.label}>Número de Factura {formData.esPendiente ? '(Opcional por ahora)' : '*'}</Text>
-                            <TextInput
-                                style={styles.input}
-                                value={formData.numeroFactura}
-                                onChangeText={(value) => setFormData(prev => ({ ...prev, numeroFactura: value }))}
-                                placeholder={formData.esPendiente ? "Opcional" : "Obligatorio para habilitar precio"}
-                            />
-
-                            {/* Precio with currency formatting - disabled until factura is filled or it is pending */}
-                            <Text style={styles.label}>Precio {formData.esPendiente ? '(Opcional por ahora)' : '*'} {(!formData.esPendiente && !formData.numeroFactura.trim()) ? '(ingrese factura primero)' : ''}</Text>
-                            <TextInput
-                                style={[styles.input, (!formData.esPendiente && !formData.numeroFactura.trim()) && styles.inputDisabled]}
-                                placeholder="$ 0"
-                                keyboardType="numeric"
-                                value={formData.precioDisplay}
-                                onChangeText={handlePriceChange}
-                                editable={formData.esPendiente || !!formData.numeroFactura.trim()}
-                            />
-
-                            {/* Budget Info Panel */}
-                            {presupuestoInfo && (
-                                <View style={styles.budgetInfoPanel}>
-                                    <Text style={styles.budgetInfoTitle}>
-                                        📊 Presupuesto: {presupuestoInfo.tipoServicioNombre}
-                                    </Text>
-                                    {(() => {
-                                        // Calculate live totals
-                                        const currentPrice = parseFloat(formData.precioDisplay.replace(/[^0-9]/g, '')) || 0;
-
-                                        // If editing, subtract the old price of this item from the total spent so far
-                                        const originalPrice = editItem ? (editItem.precio || 0) : 0;
-                                        const adjustedGastadoMes = (presupuestoInfo.gastadoMes || 0) - originalPrice;
-
-                                        const liveGastado = adjustedGastadoMes + currentPrice;
-                                        const liveRestante = (presupuestoInfo.presupuestoMensual || 0) - liveGastado;
-
-                                        return (
-                                            <>
-                                                <View style={styles.budgetInfoRow}>
-                                                    <View style={[styles.budgetInfoItem, { backgroundColor: '#E0E7FF' }]}>
-                                                        <Text style={styles.budgetInfoLabel}>Presupuesto Anual</Text>
-                                                        <Text style={styles.budgetInfoValue}>
-                                                            {formatCurrency(presupuestoInfo.presupuestoAnual || 0)}
-                                                        </Text>
-                                                    </View>
-                                                    <View style={[styles.budgetInfoItem, { backgroundColor: '#FEF3C7' }]}>
-                                                        <Text style={styles.budgetInfoLabel}>Gastado</Text>
-                                                        <Text style={[styles.budgetInfoValue, { color: '#D97706' }]}>
-                                                            {formatCurrency(liveGastado)}
-                                                        </Text>
-                                                    </View>
-                                                    <View style={[styles.budgetInfoItem, { backgroundColor: '#E0F2FE' }]}>
-                                                        <Text style={styles.budgetInfoLabel}>Presupuesto Mensual</Text>
-                                                        <Text style={styles.budgetInfoValue}>
-                                                            {formatCurrency(presupuestoInfo.presupuestoMensual || 0)}
-                                                        </Text>
-                                                    </View>
-                                                </View>
-
-                                                {/* Live Restante Indicator */}
-                                                <View style={{ marginTop: 8, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
-                                                    <Text style={{ fontSize: 12, color: '#4B5563' }}>Restante Mensual:</Text>
-                                                    <Text style={{
-                                                        fontWeight: 'bold',
-                                                        fontSize: 14,
-                                                        color: liveRestante >= 0 ? '#059669' : '#DC2626'
-                                                    }}>
-                                                        {formatCurrency(liveRestante)}
-                                                    </Text>
-                                                </View>
-
-                                                {liveRestante < 0 && (
-                                                    <Text style={styles.budgetWarning}>
-                                                        ⚠️ Este gasto excederá el presupuesto mensual en {formatCurrency(Math.abs(liveRestante))}
-                                                    </Text>
-                                                )}
-                                            </>
-                                        );
-                                    })()}
-
-                                    {presupuestoInfo.presupuestoMensual === 0 && (
-                                        <Text style={styles.budgetNoData}>
-                                            ℹ️ No hay presupuesto mensual asignado para este tipo de servicio
-                                        </Text>
+                            {/* Conditional Rendering: Only show fields if Rubro is selected */}
+                            {formData.rubroId ? (
+                                <>
+                                    {/* Solicitud de Crédito Checkbox */}
+                                    {!isLegalizing && (
+                                        <TouchableOpacity
+                                            style={{
+                                                flexDirection: 'row',
+                                                alignItems: 'center',
+                                                padding: 10,
+                                                backgroundColor: '#F5F3FF',
+                                                borderRadius: 8,
+                                                marginBottom: 15,
+                                                borderWidth: 1,
+                                                borderColor: '#DDD6FE'
+                                            }}
+                                            onPress={() => setFormData(p => ({ ...p, esSolicitudCredito: !p.esSolicitudCredito }))}
+                                        >
+                                            <View style={{
+                                                width: 20,
+                                                height: 20,
+                                                borderRadius: 4,
+                                                borderWidth: 2,
+                                                borderColor: formData.esSolicitudCredito ? '#7C3AED' : '#D1D5DB',
+                                                backgroundColor: formData.esSolicitudCredito ? '#7C3AED' : '#FFF',
+                                                justifyContent: 'center',
+                                                alignItems: 'center',
+                                                marginRight: 10
+                                            }}>
+                                                {formData.esSolicitudCredito && <Text style={{ color: '#FFF', fontSize: 12, fontWeight: 'bold' }}>✓</Text>}
+                                            </View>
+                                            <View>
+                                                <Text style={{ fontWeight: 'bold', color: '#5B21B6' }}>Solicitud de Crédito</Text>
+                                                <Text style={{ fontSize: 11, color: '#6D28D9' }}>Marcar para trámite de crédito</Text>
+                                            </View>
+                                        </TouchableOpacity>
                                     )}
+
+                                    {!isLegalizing && (
+                                        <>
+                                            {/* Tipo Servicio */}
+                                            <Text style={styles.label}>Tipo de Servicio *</Text>
+                                            <View style={styles.pickerContainer}>
+                                                <Picker
+                                                    selectedValue={formData.tipoServicioId}
+                                                    onValueChange={(value) => setFormData(prev => ({ ...prev, tipoServicioId: value }))}
+                                                    enabled={filteredTipos.length > 0}
+                                                >
+                                                    <Picker.Item label="Seleccione..." value="" />
+                                                    {filteredTipos.map(t => (
+                                                        <Picker.Item key={t.id} label={t.nombre} value={t.id.toString()} />
+                                                    ))}
+                                                </Picker>
+                                            </View>
+                                        </>
+                                    )}
+
+                                    {/* Proveedor */}
+                                    <Text style={styles.label}>
+                                        Proveedor {formData.esPendiente && !isLegalizing ? '(Opcional por ahora)' : '*'} {formData.tipoServicioId && filteredProveedores.length === 0 && '(No hay proveedores para este tipo - agrégalo en la pestaña Proveedores)'}
+                                    </Text>
+                                    <View style={[styles.pickerContainer, filteredProveedores.length === 0 && styles.pickerDisabled]}>
+                                        <Picker
+                                            selectedValue={formData.proveedorId}
+                                            onValueChange={(value) => setFormData(prev => ({ ...prev, proveedorId: value }))}
+                                            enabled={filteredProveedores.length > 0}
+                                        >
+                                            <Picker.Item label={filteredProveedores.length === 0 ? "Sin proveedores disponibles" : "Seleccione..."} value="" />
+                                            {filteredProveedores.map(p => (
+                                                <Picker.Item key={p.id} label={p.nombre} value={p.id.toString()} />
+                                            ))}
+                                        </Picker>
+                                    </View>
+
+                                    {/* Checkbox de Pendiente - Hide when Legalizing */}
+                                    {!isLegalizing && (
+                                        <TouchableOpacity
+                                            style={{ flexDirection: 'row', alignItems: 'center', padding: 10, backgroundColor: '#FEF3C7', borderRadius: 8, marginBottom: 15, borderWidth: 1, borderColor: '#FCD34D' }}
+                                            onPress={() => setFormData(p => ({ ...p, esPendiente: !p.esPendiente }))}
+                                        >
+                                            <View style={{ width: 22, height: 22, borderRadius: 4, borderWidth: 2, borderColor: formData.esPendiente ? '#B45309' : '#D1D5DB', backgroundColor: formData.esPendiente ? '#B45309' : '#FFF', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
+                                                {formData.esPendiente && <Text style={{ color: '#FFF', fontSize: 14, fontWeight: 'bold' }}>✓</Text>}
+                                            </View>
+                                            <View>
+                                                <Text style={{ fontWeight: 'bold', color: '#B45309' }}>Marcar como Gasto Pendiente</Text>
+                                                <Text style={{ fontSize: 11, color: '#92400E' }}>Permite guardar sin factura ni precio (2 días plazo)</Text>
+                                            </View>
+                                        </TouchableOpacity>
+                                    )}
+
+                                    <Text style={styles.label}>Número de Factura {formData.esPendiente && !isLegalizing ? '(Opcional por ahora)' : '*'}</Text>
+                                    <TextInput
+                                        style={styles.input}
+                                        value={formData.numeroFactura}
+                                        onChangeText={(t) => setFormData(p => ({ ...p, numeroFactura: t }))}
+                                        placeholder="Ej: FAC-001234"
+                                    />
+
+                                    <Text style={styles.label}>Factura PDF</Text>
+                                    {Platform.OS === 'web' && (
+                                        <input
+                                            type="file"
+                                            accept=".pdf"
+                                            onChange={async (e) => {
+                                                const file = e.target.files[0];
+                                                if (file) {
+                                                    try {
+                                                        const result = await sstApi.uploadFactura(file);
+                                                        setFormData(p => ({ ...p, facturaPdfUrl: result.url }));
+                                                        Alert.alert('Éxito', 'PDF subido correctamente');
+                                                    } catch (err) {
+                                                        Alert.alert('Error', 'No se pudo subir el PDF');
+                                                    }
+                                                }
+                                            }}
+                                            style={{ marginBottom: 10, display: 'block', width: '100%' }}
+                                        />
+                                    )}
+
+                                    <Text style={styles.label}>Fecha</Text>
+                                    {Platform.OS === 'web' ? (
+                                        <input
+                                            type="date"
+                                            value={formData.fechaCompra}
+                                            onChange={(e) => setFormData(p => ({ ...p, fechaCompra: e.target.value }))}
+                                            style={{ padding: 12, fontSize: 16, borderRadius: 8, border: '1px solid #D1D5DB', marginBottom: 10, width: '100%', boxSizing: 'border-box' }}
+                                        />
+                                    ) : (
+                                        <TextInput
+                                            style={styles.input}
+                                            value={formData.fechaCompra}
+                                            onChangeText={(t) => setFormData(p => ({ ...p, fechaCompra: t }))}
+                                            placeholder="YYYY-MM-DD"
+                                        />
+                                    )}
+
+                                    <Text style={styles.label}>Precio {formData.esPendiente && !isLegalizing ? '(Opcional por ahora)' : '*'}</Text>
+                                    <TextInput
+                                        style={styles.input}
+                                        value={formData.precio}
+                                        onChangeText={(t) => setFormData(p => ({ ...p, precio: t }))}
+                                        keyboardType="numeric"
+                                        placeholder="$ 0"
+                                    />
+
+                                    {/* Presupuesto SST Style */}
+                                    {presupuestoInfo && (
+                                        <View style={styles.budgetContainer}>
+                                            <View style={styles.budgetHeader}>
+                                                <Text style={styles.budgetTitle}>📊 Presupuesto: {presupuestoInfo.rubroNombre}</Text>
+                                            </View>
+                                            {(() => {
+                                                const currentPrice = parseFloat(formData.precio) || 0;
+                                                const originalPrice = editItem ? (editItem.precio || 0) : 0;
+                                                const adjustedGastadoMes = (presupuestoInfo.gastadoMes || 0) - originalPrice;
+                                                const liveGastado = adjustedGastadoMes + currentPrice;
+                                                const liveRestante = (presupuestoInfo.presupuestoMensual || 0) - liveGastado;
+
+                                                return (
+                                                    <View style={styles.budgetGrid}>
+                                                        <View style={[styles.budgetCard, { backgroundColor: '#E0E7FF' }]}>
+                                                            <Text style={styles.budgetLabel}>Anual</Text>
+                                                            <Text style={styles.budgetValue}>{formatCurrency(presupuestoInfo.presupuestoAnual)}</Text>
+                                                        </View>
+                                                        <View style={[styles.budgetCard, { backgroundColor: '#FEF3C7' }]}>
+                                                            <Text style={styles.budgetLabel}>Gastado</Text>
+                                                            <Text style={[styles.budgetValue, { color: '#D97706' }]}>{formatCurrency(liveGastado)}</Text>
+                                                        </View>
+                                                        <View style={[styles.budgetCard, { backgroundColor: '#E0F2FE' }]}>
+                                                            <Text style={styles.budgetLabel}>Mensual</Text>
+                                                            <Text style={styles.budgetValue}>{formatCurrency(presupuestoInfo.presupuestoMensual)}</Text>
+                                                        </View>
+                                                        <View style={[styles.budgetCard, { backgroundColor: liveRestante >= 0 ? '#DCFCE7' : '#FEE2E2' }]}>
+                                                            <Text style={styles.budgetLabel}>Restante</Text>
+                                                            <Text style={[styles.budgetValue, { color: liveRestante >= 0 ? '#059669' : '#DC2626' }]}>{formatCurrency(liveRestante)}</Text>
+                                                        </View>
+                                                    </View>
+                                                );
+                                            })()}
+                                        </View>
+                                    )}
+
+                                    <Text style={styles.label}>Observaciones</Text>
+                                    <TextInput
+                                        style={[styles.input, styles.textArea]}
+                                        value={formData.observaciones}
+                                        onChangeText={(t) => setFormData(p => ({ ...p, observaciones: t }))}
+                                        multiline
+                                        placeholder="Opcional..."
+                                    />
+                                </>
+                            ) : (
+                                <View style={{ padding: 20, alignItems: 'center' }}>
+                                    <Text style={{ color: '#6B7280', fontStyle: 'italic' }}>Seleccione un rubro para continuar con el ingreso de datos...</Text>
                                 </View>
                             )}
-
-                            {/* Fecha de Compra - Beautiful Calendar Picker */}
-                            <Text style={styles.label}>Fecha de Compra</Text>
-                            {Platform.OS === 'web' ? (
-                                <input
-                                    type="date"
-                                    value={formData.fechaCompra}
-                                    onChange={(e) => setFormData(prev => ({ ...prev, fechaCompra: e.target.value }))}
-                                    style={{
-                                        padding: 12,
-                                        fontSize: 16,
-                                        borderRadius: 8,
-                                        border: '1px solid #D1D5DB',
-                                        backgroundColor: '#F9FAFB',
-                                        width: '100%',
-                                        boxSizing: 'border-box',
-                                        cursor: 'pointer'
-                                    }}
-                                />
-                            ) : (
-                                <TextInput
-                                    style={styles.input}
-                                    value={formData.fechaCompra}
-                                    onChangeText={(value) => setFormData(prev => ({ ...prev, fechaCompra: value }))}
-                                    placeholder="YYYY-MM-DD"
-                                />
-                            )}
-
-                            {/* PDF Attachment */}
-                            <Text style={styles.label}>Factura Electrónica (PDF) - Opcional</Text>
-                            <TouchableOpacity style={styles.fileButton} onPress={handlePickFile}>
-                                <Text style={styles.fileButtonText}>
-                                    {formData.archivoNombre || '📎 Seleccionar archivo PDF'}
-                                </Text>
-                            </TouchableOpacity>
-                            {formData.archivoNombre && (
-                                <TouchableOpacity
-                                    onPress={() => setFormData(prev => ({ ...prev, archivoFactura: null, archivoNombre: '' }))}
-                                >
-                                    <Text style={styles.removeFile}>❌ Quitar archivo</Text>
-                                </TouchableOpacity>
-                            )}
-
-                            {/* Nota */}
-                            <Text style={styles.label}>Nota</Text>
-                            <TextInput
-                                style={[styles.input, styles.textArea]}
-                                value={formData.nota}
-                                onChangeText={(value) => setFormData(prev => ({ ...prev, nota: value }))}
-                                placeholder="Observaciones..."
-                                multiline
-                                numberOfLines={3}
-                            />
                         </ScrollView>
 
                         <View style={styles.modalActions}>
@@ -1099,19 +1127,22 @@ function GastosTab() {
                             >
                                 <Text style={styles.cancelButtonText}>Cancelar</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[styles.submitButton, saving && styles.submitButtonDisabled]}
-                                onPress={handleSubmit}
-                                disabled={saving}
-                            >
-                                {saving ? (
-                                    <ActivityIndicator color="#FFF" />
-                                ) : (
-                                    <Text style={styles.submitButtonText}>Guardar</Text>
-                                )}
-                            </TouchableOpacity>
+                            {formData.rubroId && (
+                                <TouchableOpacity
+                                    style={[styles.submitButton, saving && styles.submitButtonDisabled]}
+                                    onPress={handleSubmit}
+                                    disabled={saving}
+                                >
+                                    {saving ? (
+                                        <ActivityIndicator color="#FFF" />
+                                    ) : (
+                                        <Text style={styles.submitButtonText}>Guardar</Text>
+                                    )}
+                                </TouchableOpacity>
+                            )}
                         </View>
                     </View>
+
                 </View>
             </Modal>
 

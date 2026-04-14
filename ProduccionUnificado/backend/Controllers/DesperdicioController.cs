@@ -58,6 +58,25 @@ public class DesperdicioController : ControllerBase
         }
     }
 
+    [HttpGet("migracion-taller-externo")]
+    public IActionResult MigracionTallerExterno()
+    {
+        try
+        {
+            var sql = @"
+                ALTER TABLE ""RegistrosDesperdicio"" ALTER COLUMN ""MaquinaId"" DROP NOT NULL;
+                ALTER TABLE ""RegistrosDesperdicio"" ALTER COLUMN ""UsuarioId"" DROP NOT NULL;
+                ALTER TABLE ""RegistrosDesperdicio"" ADD COLUMN IF NOT EXISTS ""EsTallerExterno"" boolean NOT NULL DEFAULT false;
+            ";
+            _context.Database.ExecuteSqlRaw(sql);
+            return Ok("Migración manual para Taller Externo aplicada.");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, $"Error migrando: {ex.Message}");
+        }
+    }
+
     [HttpGet("fix-nullable")]
     public IActionResult FixNullable()
     {
@@ -207,9 +226,10 @@ public class DesperdicioController : ControllerBase
             {
                 r.Id,
                 r.MaquinaId,
-                MaquinaNombre = r.Maquina!.Nombre,
+                MaquinaNombre = r.EsTallerExterno ? "Taller Externo" : (r.Maquina != null ? r.Maquina.Nombre : "-"),
                 r.UsuarioId,
-                UsuarioNombre = r.Usuario!.Nombre,
+                UsuarioNombre = r.EsTallerExterno ? "Taller Externo" : (r.Usuario != null ? r.Usuario.Nombre : "-"),
+                r.EsTallerExterno,
                 r.Fecha,
                 r.OrdenProduccion,
                 r.CodigoDesperdicioId,
@@ -274,11 +294,11 @@ public class DesperdicioController : ControllerBase
             query = query.Where(r => r.OrdenProduccion != null && r.OrdenProduccion.Contains(ordenProduccion));
 
         var summary = await query
-            .GroupBy(t => new { t.MaquinaId, t.Maquina.Nombre })
+            .GroupBy(t => new { t.MaquinaId, t.EsTallerExterno, MaquinaNombre = t.Maquina != null ? t.Maquina.Nombre : null })
             .Select(g => new
             {
                 MaquinaId = g.Key.MaquinaId,
-                MaquinaNombre = g.Key.Nombre,
+                MaquinaNombre = g.Key.EsTallerExterno ? "Taller Externo" : g.Key.MaquinaNombre,
                 Cantidad = g.Sum(r => r.Cantidad)
             })
             .ToListAsync();
@@ -330,8 +350,9 @@ public class DesperdicioController : ControllerBase
         var existente = await _context.RegistrosDesperdicio.FindAsync(id);
         if (existente == null) return NotFound();
 
-        existente.MaquinaId = registro.MaquinaId;
-        existente.UsuarioId = registro.UsuarioId;
+        existente.MaquinaId = registro.EsTallerExterno ? null : registro.MaquinaId;
+        existente.UsuarioId = registro.EsTallerExterno ? null : registro.UsuarioId;
+        existente.EsTallerExterno = registro.EsTallerExterno;
         existente.Fecha = registro.Fecha;
         existente.OrdenProduccion = registro.OrdenProduccion;
         existente.CodigoDesperdicioId = registro.CodigoDesperdicioId;

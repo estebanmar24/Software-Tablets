@@ -7,7 +7,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
 
 interface AdminLoginProps {
-    onLoginSuccess: (role: string, nombreMostrar: string, username: string) => void;
+    onLoginSuccess: (role: string, nombreMostrar: string, username: string, area: string) => void;
     onBack: () => void;
 }
 
@@ -34,11 +34,13 @@ export function AdminLogin({ onLoginSuccess, onBack }: AdminLoginProps) {
             if (data.id) {
                 if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
                     window.localStorage.setItem('adminId', data.id.toString());
+                    if (data.area) window.localStorage.setItem('adminArea', data.area);
                 } else {
                     await AsyncStorage.setItem('adminId', data.id.toString());
+                    if (data.area) await AsyncStorage.setItem('adminArea', data.area);
                 }
             }
-            onLoginSuccess(data.role, data.nombreMostrar, data.username);
+            onLoginSuccess(data.role, data.nombreMostrar, data.username, data.area || '');
         } catch (err: any) {
             setError(err.message || 'Error de autenticación');
         } finally {

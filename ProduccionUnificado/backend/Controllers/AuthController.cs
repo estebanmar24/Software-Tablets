@@ -50,7 +50,8 @@ public class AuthController : ControllerBase
             new Claim(ClaimTypes.Name, user.Username),
             new Claim(ClaimTypes.Role, user.Role),
             new Claim("NombreMostrar", user.NombreMostrar),
-            new Claim("Id", user.Id.ToString())
+            new Claim("Id", user.Id.ToString()),
+            new Claim("Area", user.Area ?? string.Empty)
         };
 
         var tokenDescriptor = new SecurityTokenDescriptor
@@ -71,7 +72,8 @@ public class AuthController : ControllerBase
             Token = jwtString,
             Role = user.Role,
             Username = user.Username,
-            NombreMostrar = user.NombreMostrar
+            NombreMostrar = user.NombreMostrar,
+            Area = user.Area ?? string.Empty
         });
     }
 }

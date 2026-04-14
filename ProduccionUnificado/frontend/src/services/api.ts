@@ -90,7 +90,7 @@ export async function limpiarDatos(
 }
 
 // Login
-export async function adminLogin(username: string, password: string): Promise<{ id: number; token: string; role: string; username: string; nombreMostrar: string }> {
+export async function adminLogin(username: string, password: string): Promise<{ id: number; token: string; role: string; username: string; nombreMostrar: string; area?: string }> {
     const response = await api.post(`auth/login`, { username, password });
     return response.data;
 }

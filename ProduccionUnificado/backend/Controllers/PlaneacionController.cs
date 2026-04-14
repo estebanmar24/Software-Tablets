@@ -254,6 +254,7 @@ public class PlaneacionController : ControllerBase
                 g.CreadoPorId,
                 CreadoPorNombre = g.CreadoPor != null ? g.CreadoPor.NombreMostrar : "",
                 g.EsPendiente,
+                g.EsSolicitudCredito,
                 g.PersonalId,
                 PersonalNombre = g.Personal != null ? g.Personal.Nombre : "",
                 PersonalCedula = g.Personal != null ? g.Personal.Cedula : "",
