@@ -3,11 +3,9 @@
  * Handles all API calls for Orden y Aseo surveys
  */
 
-import axios from 'axios';
+import api from './apiClient';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
-
-const api = axios.create();
+const API_BASE_URL = '';
 
 // Get list of processes
 export async function getProcesos() {
@@ -56,7 +54,38 @@ export async function eliminarEncuesta(id) {
 }
 
 // Get photo URL
-export function getFotoUrl(filename) {
+/**
+ * Constructs the full URL for a photo
+ * @param {string} filename The name of the photo file
+ * @param {string} baseUrl Optional base URL (e.g., from getApiBaseUrl)
+ * @returns {string|null} The full URL or null if no filename
+ */
+export function getFotoUrl(filename, baseUrl = '') {
     if (!filename) return null;
-    return `${API_BASE_URL}/ordenaseo/foto/${filename}`;
+    
+    // Ensure we only have the filename part and remove any leading slashes
+    const cleanFilename = filename.split('|')[0].trim().replace(/^\//, '');
+    if (!cleanFilename) return null;
+
+    // Default to /api for same-origin relative URLs if no baseUrl is provided
+    let base = baseUrl || '/api';
+    
+    // Normalize: ensure it starts with / or http
+    if (!base.startsWith('/') && !base.startsWith('http')) {
+        base = '/' + base;
+    }
+
+    // Force /api prefix if missing. Backend routes are [Route("api/[controller]")]
+    if (!base.includes('/api')) {
+        base = base.endsWith('/') ? base + 'api' : base + '/api';
+    }
+
+    // Remove trailing slash for joining
+    const finalBase = base.endsWith('/') ? base.slice(0, -1) : base;
+    
+    // Final check: if we are in production web, ensure it starts with /api/ or domain/api/
+    const url = `${finalBase}/ordenaseo/foto/${cleanFilename}`;
+    
+    // Sanitize double slashes
+    return url.replace(/([^:]\/)\/+/g, "$1");
 }

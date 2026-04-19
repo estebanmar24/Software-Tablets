@@ -15,6 +15,7 @@ namespace TiempoProcesos.API.Controllers;
 /// hierarchy: Rubro -> Proveedor
 /// </summary>
 // [Authorize] removed - auth middleware still processes tokens so User.Claims works
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class PlaneacionController : ControllerBase
@@ -377,8 +378,10 @@ public class PlaneacionController : ControllerBase
     /// Upload PDF Factura
     /// </summary>
     [HttpPost("upload-factura")]
-    public async Task<ActionResult> UploadFactura(IFormFile file)
+    [Consumes("multipart/form-data")]
+    public async Task<ActionResult> UploadFactura([FromForm] DTOs.FileUploadDto dto)
     {
+        var file = dto.File;
         if (file == null || file.Length == 0)
             return BadRequest("No file uploaded");
 

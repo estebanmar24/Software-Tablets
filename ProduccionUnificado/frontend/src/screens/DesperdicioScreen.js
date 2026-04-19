@@ -5,8 +5,9 @@ import { Picker } from '@react-native-picker/picker';
 import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system/legacy';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { getFileServerUrl } from '../services/apiConfig';
+import api from '../services/apiClient';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
 
 export default function DesperdicioScreen({ navigation }) {
     const { colors } = useTheme();
@@ -29,6 +30,15 @@ export default function DesperdicioScreen({ navigation }) {
     const [selectedOP, setSelectedOP] = useState('');
     const [selectedMes, setSelectedMes] = useState(new Date().getMonth() + 1); // 1-12, default current month
     const [selectedAnio, setSelectedAnio] = useState(new Date().getFullYear());
+    const [serverUrl, setServerUrl] = useState('');
+
+    useEffect(() => {
+        const initUrls = async () => {
+            const sUrl = await getFileServerUrl();
+            setServerUrl(sUrl);
+        };
+        initUrls();
+    }, []);
 
     // Modales
     const [modalConfigVisible, setModalConfigVisible] = useState(false);
@@ -63,19 +73,19 @@ export default function DesperdicioScreen({ navigation }) {
     const loadInitialData = async () => {
         try {
             // Intentar inicializar DB por si faltan tablas (Hack para error 500)
-            await fetch(`${API_URL}/desperdicio/init`).catch(e => console.log("Init OK/Skip"));
+            await api.get(`desperdicio/init`).catch(e => console.log("Init OK/Skip"));
 
             const [resMaq, resUsu, resCod, resRel] = await Promise.all([
-                fetch(`${API_URL}/maquinas`),
-                fetch(`${API_URL}/usuarios`),
-                fetch(`${API_URL}/desperdicio/codigos`),
-                fetch(`${API_URL}/desperdicio/relaciones`)
+                api.get(`maquinas`),
+                api.get(`usuarios`),
+                api.get(`desperdicio/codigos`),
+                api.get(`desperdicio/relaciones`)
             ]);
 
-            if (resMaq.ok) setMaquinas(await resMaq.json());
-            if (resUsu.ok) setUsuarios(await resUsu.json());
-            if (resCod.ok) setCodigos(await resCod.json());
-            if (resRel.ok) setRelaciones(await resRel.json());
+            setMaquinas(resMaq.data);
+            setUsuarios(resUsu.data);
+            setCodigos(resCod.data);
+            setRelaciones(resRel.data);
         } catch (error) {
             console.error(error);
             Alert.alert('Error', 'Error cargando datos iniciales');
@@ -86,27 +96,25 @@ export default function DesperdicioScreen({ navigation }) {
         // Permitir carga sin máquina (trae todos los del día)
         setLoading(true);
         try {
-            let url = `${API_URL}/desperdicio?`;
+            let path = `desperdicio?`;
 
             // If a specific date is selected, use it; otherwise use mes/anio
             if (selectedFecha) {
                 const year = selectedFecha.getFullYear();
                 const month = String(selectedFecha.getMonth() + 1).padStart(2, '0');
                 const day = String(selectedFecha.getDate()).padStart(2, '0');
-                url += `fecha=${year}-${month}-${day}&`;
+                path += `fecha=${year}-${month}-${day}&`;
             } else if (selectedMes && selectedAnio) {
-                url += `mes=${selectedMes}&anio=${selectedAnio}&`;
+                path += `mes=${selectedMes}&anio=${selectedAnio}&`;
             }
 
-            if (selectedMaquina) url += `maquinaId=${selectedMaquina}&`;
-            if (selectedUsuario) url += `usuarioId=${selectedUsuario}&`;
-            if (selectedCodigo) url += `codigoDesperdicioId=${selectedCodigo}&`;
-            if (selectedOP) url += `ordenProduccion=${selectedOP}&`;
+            if (selectedMaquina) path += `maquinaId=${selectedMaquina}&`;
+            if (selectedUsuario) path += `usuarioId=${selectedUsuario}&`;
+            if (selectedCodigo) path += `codigoDesperdicioId=${selectedCodigo}&`;
+            if (selectedOP) path += `ordenProduccion=${selectedOP}&`;
 
-            const res = await fetch(url);
-            if (res.ok) {
-                setRegistros(await res.json());
-            }
+            const res = await api.get(path);
+            setRegistros(res.data);
         } catch (error) {
             console.error(error);
         } finally {
@@ -145,14 +153,9 @@ export default function DesperdicioScreen({ navigation }) {
                     fecha: newRegistro.fecha.toISOString(),
                     nota: item.nota
                 };
-                const res = await fetch(`${API_URL}/desperdicio/${newRegistro.id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                });
-                if (!res.ok) {
-                    const txt = await res.text();
-                    Alert.alert('Error', `No se pudo actualizar: ${txt}`);
+                const res = await api.put(`desperdicio/${newRegistro.id}`, body);
+                if (res.status !== 200 && res.status !== 204) {
+                    Alert.alert('Error', `No se pudo actualizar`);
                     return;
                 }
             } else {
@@ -168,14 +171,9 @@ export default function DesperdicioScreen({ navigation }) {
                         fecha: newRegistro.fecha.toISOString(),
                         nota: item.nota
                     };
-                    const res = await fetch(`${API_URL}/desperdicio`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(body)
-                    });
-                    if (!res.ok) {
-                        const txt = await res.text();
-                        Alert.alert('Error', `Error guardando código: ${txt}`);
+                    const res = await api.post(`desperdicio`, body);
+                    if (res.status !== 200 && res.status !== 201) {
+                        Alert.alert('Error', `Error guardando código`);
                         return;
                     }
                 }
@@ -218,8 +216,8 @@ export default function DesperdicioScreen({ navigation }) {
             if (!confirm('¿Eliminar este registro?')) return;
         }
         try {
-            const res = await fetch(`${API_URL}/desperdicio/${id}`, { method: 'DELETE' });
-            if (res.ok) loadRegistros();
+            const res = await api.delete(`desperdicio/${id}`);
+            if (res.status === 200 || res.status === 204) loadRegistros();
         } catch (error) {
             Alert.alert('Error', 'No se pudo eliminar');
         }
@@ -234,8 +232,8 @@ export default function DesperdicioScreen({ navigation }) {
 
         try {
             const url = editingCodigoId
-                ? `${API_URL}/desperdicio/codigos/${editingCodigoId}`
-                : `${API_URL}/desperdicio/codigos`;
+                ? `${apiUrl}/desperdicio/codigos/${editingCodigoId}`
+                : `${apiUrl}/desperdicio/codigos`;
 
             const method = editingCodigoId ? 'PUT' : 'POST';
 
@@ -247,22 +245,21 @@ export default function DesperdicioScreen({ navigation }) {
                 activo: newCodigo.activo !== undefined ? newCodigo.activo : true
             };
 
-            const res = await fetch(url, {
+            const res = await api.request({
+                url,
                 method,
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                data: payload
             });
 
-            if (res.ok) {
+            if (res.status === 200 || res.status === 201) {
                 Alert.alert('Éxito', 'Código guardado');
                 setNewCodigo({ codigo: '', descripcion: '', activo: true });
                 setEditingCodigoId(null);
                 // Recargar códigos
-                const resCod = await fetch(`${API_URL}/desperdicio/codigos`);
-                if (resCod.ok) setCodigos(await resCod.json());
+                const resCod = await api.get(`/desperdicio/codigos`);
+                setCodigos(resCod.data);
             } else {
-                const txt = await res.text();
-                Alert.alert('Error al guardar', `Detalle: ${txt}`);
+                Alert.alert('Error al guardar');
             }
         } catch (error) {
             console.error(error);
@@ -275,13 +272,10 @@ export default function DesperdicioScreen({ navigation }) {
             if (!confirm('¿Eliminar este código?')) return;
         }
         try {
-            const res = await fetch(`${API_URL}/desperdicio/codigos/${id}`, { method: 'DELETE' });
-            if (res.ok) {
-                const resCod = await fetch(`${API_URL}/desperdicio/codigos`);
-                if (resCod.ok) setCodigos(await resCod.json());
-            } else {
-                const txt = await res.text();
-                Alert.alert('Error', txt);
+            const res = await api.delete(`desperdicio/codigos/${id}`);
+            if (res.status === 200 || res.status === 204) {
+                const resCod = await api.get(`desperdicio/codigos`);
+                setCodigos(resCod.data);
             }
         } catch (error) {
             Alert.alert('Error', 'No se pudo eliminar');
@@ -461,21 +455,21 @@ export default function DesperdicioScreen({ navigation }) {
             let prodByMaq = {}; // { id: tiros }
             try {
                 // Use same endpoint as Dashboard to ensure consistency
-                let urlProd = `${API_URL}/produccion/resumen?mes=${targetMonth}&anio=${targetYear}`;
+                let urlProd = `produccion/resumen?mes=${targetMonth}&anio=${targetYear}`;
 
-                const resProd = await fetch(urlProd);
-                if (resProd.ok) {
-                    const data = await resProd.json();
-                    const list = data.resumenMaquinas || [];
-                    console.log("PROD SUMMARY RAW (from Dashboard):", list);
-                    list.forEach(p => {
-                        const mid = p.maquinaId !== undefined ? p.maquinaId : p.MaquinaId;
-                        // In GetResumen, the property is tirosTotales
-                        const t = p.tirosTotales !== undefined ? p.tirosTotales : p.TirosTotales;
-                        if (mid !== undefined) prodByMaq[mid] = t || 0;
-                    });
-                }
-            } catch (e) { console.log("Error fetching prod summary", e); }
+                const resProd = await api.get(urlProd);
+                const data = resProd.data;
+                const list = data.resumenMaquinas || [];
+                console.log("PROD SUMMARY RAW (from Dashboard):", list);
+                list.forEach(p => {
+                    const mid = p.maquinaId !== undefined ? p.maquinaId : p.MaquinaId;
+                    // In GetResumen, the property is tirosTotales
+                    const t = p.tirosTotales !== undefined ? p.tirosTotales : p.TirosTotales;
+                    if (mid !== undefined) prodByMaq[mid] = t || 0;
+                });
+            } catch (e) {
+                console.log("Error fetching prod summary", e);
+            }
 
             // 4. Merge Data for Table (Monthly View)
             // Iterate over ALL active machines in the system, not just those with waste/prod

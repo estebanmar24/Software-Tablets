@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
+using Microsoft.AspNetCore.Authorization;
 using TiempoProcesos.API.Services;
 using Microsoft.AspNetCore.Authorization;
 
@@ -13,8 +14,9 @@ namespace TiempoProcesos.API.Controllers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using System.IO;
+using Microsoft.AspNetCore.Authorization;
 
-// [Authorize]
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class ProduccionController : ControllerBase
@@ -213,8 +215,11 @@ public class ProduccionController : ControllerBase
     }
 
     [HttpPost("importar-excel")]
-    public async Task<IActionResult> ImportarExcel(IFormFile file, [FromForm] int? maquinaId)
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> ImportarExcel([FromForm] DTOs.ExcelImportDto dto)
     {
+        var file = dto.File;
+        var maquinaId = dto.MaquinaId;
         if (file == null || file.Length == 0)
             return BadRequest(new { error = "No se ha subido ningún archivo" });
 
@@ -226,7 +231,7 @@ public class ProduccionController : ControllerBase
             using (var stream = new MemoryStream())
             {
                 await file.CopyToAsync(stream);
-                OfficeOpenXml.ExcelPackage.License.SetNonCommercialOrganization("AlephImpresores");
+                OfficeOpenXml.ExcelPackage.LicenseContext = OfficeOpenXml.LicenseContext.NonCommercial;
                 using (var package = new OfficeOpenXml.ExcelPackage(stream))
                 {
                     var worksheet = package.Workbook.Worksheets[0]; // Leer la primera hoja

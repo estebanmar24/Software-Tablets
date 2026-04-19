@@ -1,3 +1,5 @@
+import { authFetch } from '../services/authFetch';
+import { getToken } from '../services/authStorage';
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
@@ -5,12 +7,11 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../contexts/ThemeContext';
+import { getFileServerUrl } from '../services/apiConfig';
 import {
     fetchTickets, fetchTicketStats, createTicket, updateTicket,
     deleteTicket, cambiarEstadoTicket, uploadTicketImagen
 } from '../services/ticketsApi';
-
-const API_BASE = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
 
 const MODULOS = [
     'Producción', 'Talleres y Despachos', 'Calidad', 'SST',
@@ -78,11 +79,20 @@ interface TicketsScreenProps {
 }
 
 export default function TicketsScreen({ displayName }: TicketsScreenProps) {
-    const { colors, isDarkMode } = useTheme();
+const { colors, isDarkMode } = useTheme();
     const [tickets, setTickets] = useState<Ticket[]>([]);
     const [stats, setStats] = useState<TicketStats | null>(null);
     const [loading, setLoading] = useState(true);
+    const [serverUrl, setServerUrl] = useState('');
     const [showCreateModal, setShowCreateModal] = useState(false);
+
+    useEffect(() => {
+        const initServer = async () => {
+            const url = await getFileServerUrl();
+            setServerUrl(url);
+        };
+        initServer();
+    }, []);
     const [showDetailModal, setShowDetailModal] = useState(false);
     const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
     const [filtroEstado, setFiltroEstado] = useState<string>('');
@@ -170,7 +180,7 @@ export default function TicketsScreen({ displayName }: TicketsScreenProps) {
                 const filename = asset.uri.split('/').pop() || 'image.jpg';
 
                 if (Platform.OS === 'web') {
-                    const response = await fetch(asset.uri);
+                    const response = await authFetch(asset.uri);
                     const blob = await response.blob();
                     formData.append('archivo', blob, filename);
                 } else {
@@ -507,7 +517,7 @@ export default function TicketsScreen({ displayName }: TicketsScreenProps) {
                             {formImagenes.map((url, i) => (
                                 <View key={i} style={styles.imageContainer}>
                                     <Image
-                                        source={{ uri: `${API_BASE.replace('/api', '')}${url}` }}
+                                        source={{ uri: `${serverUrl}${url}` }}
                                         style={styles.imageThumb}
                                         resizeMode="cover"
                                     />
@@ -647,7 +657,7 @@ export default function TicketsScreen({ displayName }: TicketsScreenProps) {
                                         {t.imagenes.map((img, i) => (
                                             <Image
                                                 key={i}
-                                                source={{ uri: `${API_BASE.replace('/api', '')}${img.imagenUrl}` }}
+                                                source={{ uri: `${serverUrl}${img.imagenUrl}` }}
                                                 style={styles.detailImage}
                                                 resizeMode="contain"
                                             />

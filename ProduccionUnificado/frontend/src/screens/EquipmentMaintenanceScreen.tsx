@@ -1,3 +1,4 @@
+import { authFetch } from '../services/authFetch';
 import React, { useState, useEffect } from 'react';
 import { MaterialIcons } from '@expo/vector-icons';
 import {
@@ -5,8 +6,9 @@ import {
     TextInput, Alert, ScrollView, ActivityIndicator, Platform, Image, TouchableWithoutFeedback
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { getToken } from '../services/authStorage';
+import { getApiBaseUrl, getFileServerUrl } from '../services/apiConfig';
 
-const API_BASE = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
 
 interface Equipo {
     id: number;
@@ -166,6 +168,40 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
     const [proximos, setProximos] = useState<ProximoMantenimiento[]>([]);
     const [proximasLicencias, setProximasLicencias] = useState<ProximaLicencia[]>([]);
     const [loading, setLoading] = useState(false);
+    const [apiBase, setApiBase] = useState('');
+    const [serverUrl, setServerUrl] = useState('');
+
+    useEffect(() => {
+        const initUrls = async () => {
+            const [aUrl, sUrl] = await Promise.all([getApiBaseUrl(), getFileServerUrl()]);
+            setApiBase(aUrl || '/api');
+            setServerUrl(sUrl || '');
+        };
+        initUrls();
+    }, []);
+
+    const getAppFotoUrl = (fotoUrl?: string, defaultFolder: string = 'equipos') => {
+        if (!fotoUrl) return null;
+        if (fotoUrl.startsWith('http')) return fotoUrl;
+        
+        // Extract just the filename to avoid path issues
+        const filename = fotoUrl.split(/[/\\]/).pop();
+        if (!filename) return null;
+
+        // Ensure apiBase doesn't have a trailing slash and join cleanly
+        const cleanBase = apiBase.endsWith('/') ? apiBase.slice(0, -1) : apiBase;
+        
+        let url;
+        if (defaultFolder === 'equipos') {
+            url = `${cleanBase}/equipos/foto/${filename}`;
+        } else {
+            const cleanServer = serverUrl.endsWith('/') ? serverUrl.slice(0, -1) : serverUrl;
+            url = `${cleanServer}/uploads/${defaultFolder}/${filename}`;
+        }
+        
+        // Final safety check for double slashes (except after http:)
+        return url.replace(/([^:]\/)\/+/g, "$1");
+    };
 
     // Filtros
     const [filtroEstado, setFiltroEstado] = useState<string>('');
@@ -233,28 +269,30 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
     const [editingMantenimientoId, setEditingMantenimientoId] = useState<number | null>(null);
 
     useEffect(() => {
-        loadData();
-    }, []);
+        if (apiBase) {
+            loadData();
+        }
+    }, [apiBase]);
 
     useEffect(() => {
-        if (activeTab === 'equipos') {
+        if (apiBase && activeTab === 'equipos') {
             loadEquipos();
-        } else if (activeTab === 'tickets') {
+        } else if (apiBase && activeTab === 'tickets') {
             loadAdminTickets();
         }
-    }, [activeTab, filtroEstado, filtroArea, adminTicketFiltroEstado, adminTicketFiltroPrioridad]);
+    }, [activeTab, apiBase, filtroEstado, filtroArea, adminTicketFiltroEstado, adminTicketFiltroPrioridad]);
 
     // ============ TICKETS ADMIN ============
     const loadAdminTickets = async () => {
         setAdminTicketsLoading(true);
         try {
-            let url = `${API_BASE}/tickets?`;
+            let url = `${apiBase}/tickets?`;
             if (adminTicketFiltroEstado) url += `estado=${adminTicketFiltroEstado}&`;
             if (adminTicketFiltroPrioridad) url += `prioridad=${adminTicketFiltroPrioridad}&`;
             if (adminTicketBuscar) url += `buscar=${encodeURIComponent(adminTicketBuscar)}&`;
             const [ticketsRes, statsRes] = await Promise.all([
-                fetch(url),
-                fetch(`${API_BASE}/tickets/stats`)
+                authFetch(url),
+                authFetch(`${apiBase}/tickets/stats`)
             ]);
             if (ticketsRes.ok) setAdminTickets(await ticketsRes.json());
             if (statsRes.ok) setAdminTicketStats(await statsRes.json());
@@ -267,7 +305,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
 
     const handleAdminCambiarEstado = async (ticketId: number, nuevoEstado: string) => {
         try {
-            const res = await fetch(`${API_BASE}/tickets/${ticketId}/estado`, {
+            const res = await authFetch(`${apiBase}/tickets/${ticketId}/estado`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ estado: nuevoEstado, comentarios: adminResolucion || null })
@@ -289,10 +327,10 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
         setLoading(true);
         try {
             const [statsRes, proximosRes, licenciasRes, areasRes] = await Promise.all([
-                fetch(`${API_BASE}/equipos/stats`),
-                fetch(`${API_BASE}/equipos/proximos-mantenimientos`),
-                fetch(`${API_BASE}/equipos/proximas-licencias`),
-                fetch(`${API_BASE}/equipos/areas`)
+                authFetch(`${apiBase}/equipos/stats`),
+                authFetch(`${apiBase}/equipos/proximos-mantenimientos`),
+                authFetch(`${apiBase}/equipos/proximas-licencias`),
+                authFetch(`${apiBase}/equipos/areas`)
             ]);
 
             if (statsRes.ok) setStats(await statsRes.json());
@@ -314,12 +352,12 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
     const loadEquipos = async () => {
         setLoading(true);
         try {
-            let url = `${API_BASE}/equipos?`;
+            let url = `${apiBase}/equipos?`;
             if (filtroEstado) url += `estado=${filtroEstado}&`;
             if (filtroArea) url += `area=${encodeURIComponent(filtroArea)}&`;
             if (busqueda) url += `buscar=${encodeURIComponent(busqueda)}`;
 
-            const res = await fetch(url);
+            const res = await authFetch(url);
             if (res.ok) setEquipos(await res.json());
         } catch (error) {
             console.error('Error loading equipos:', error);
@@ -370,7 +408,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
     const openHistorial = async (equipo: Equipo) => {
         setEquipoSeleccionado(equipo);
         try {
-            const res = await fetch(`${API_BASE}/equipos/${equipo.id}/mantenimientos`);
+            const res = await authFetch(`${apiBase}/equipos/${equipo.id}/mantenimientos`);
             if (res.ok) {
                 const data = await res.json();
                 setHistorial(data.mantenimientos || []);
@@ -402,7 +440,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
         }
         try {
             const method = isEditing ? 'PUT' : 'POST';
-            const url = isEditing ? `${API_BASE}/equipos/${formData.id}` : `${API_BASE}/equipos`;
+            const url = isEditing ? `${apiBase}/equipos/${formData.id}` : `${apiBase}/equipos`;
 
             // Sanitize data: convert empty strings to null for DateTime fields
             const sanitizedData = { ...formData };
@@ -417,7 +455,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
             console.log('💾 Saving Equipo:', JSON.stringify(sanitizedData, null, 2));
             console.log('📷 Fotos being sent:', sanitizedData.fotos);
 
-            const res = await fetch(url, {
+            const res = await authFetch(url, {
                 method,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(sanitizedData)
@@ -441,7 +479,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
 
     const handleCambiarEstado = async (equipo: Equipo, nuevoEstado: string) => {
         try {
-            const res = await fetch(`${API_BASE}/equipos/${equipo.id}/estado`, {
+            const res = await authFetch(`${apiBase}/equipos/${equipo.id}/estado`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ estado: nuevoEstado })
@@ -468,7 +506,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
 
         if (shouldDelete) {
             try {
-                const res = await fetch(`${API_BASE}/equipos/${id}`, { method: 'DELETE' });
+                const res = await authFetch(`${apiBase}/equipos/${id}`, { method: 'DELETE' });
                 if (res.ok) {
                     loadEquipos();
                     loadData();
@@ -492,10 +530,10 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
 
             const isEditing = editingMantenimientoId !== null;
             const url = isEditing
-                ? `${API_BASE}/equipos/${equipoSeleccionado.id}/mantenimientos/${editingMantenimientoId}`
-                : `${API_BASE}/equipos/${equipoSeleccionado.id}/mantenimientos`;
+                ? `${apiBase}/equipos/${equipoSeleccionado.id}/mantenimientos/${editingMantenimientoId}`
+                : `${apiBase}/equipos/${equipoSeleccionado.id}/mantenimientos`;
 
-            const res = await fetch(url, {
+            const res = await authFetch(url, {
                 method: isEditing ? 'PUT' : 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(sanitizedData)
@@ -506,7 +544,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                 setEditingMantenimientoId(null);
                 // Reload historial if open
                 if (equipoSeleccionado) {
-                    const histRes = await fetch(`${API_BASE}/equipos/${equipoSeleccionado.id}/mantenimientos`);
+                    const histRes = await authFetch(`${apiBase}/equipos/${equipoSeleccionado.id}/mantenimientos`);
                     if (histRes.ok) {
                         const data = await histRes.json();
                         setHistorial(data.mantenimientos || []);
@@ -542,7 +580,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
         // Use window.confirm on web, Alert.alert on native
         const doDelete = async () => {
             try {
-                const res = await fetch(`${API_BASE}/equipos/mantenimientos/${mantenimientoId}`, {
+                const res = await authFetch(`${apiBase}/equipos/mantenimientos/${mantenimientoId}`, {
                     method: 'DELETE'
                 });
                 if (res.ok) {
@@ -553,7 +591,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                     }
                     // Reload historial
                     if (equipoSeleccionado) {
-                        const histRes = await fetch(`${API_BASE}/equipos/${equipoSeleccionado.id}/mantenimientos`);
+                        const histRes = await authFetch(`${apiBase}/equipos/${equipoSeleccionado.id}/mantenimientos`);
                         if (histRes.ok) {
                             const data = await histRes.json();
                             setHistorial(data.mantenimientos || []);
@@ -595,7 +633,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
     // ============ LICENCIAS DE SOFTWARE ============
     const loadLicencias = async (equipoId: number) => {
         try {
-            const res = await fetch(`${API_BASE}/equipos/${equipoId}/licencias`);
+            const res = await authFetch(`${apiBase}/equipos/${equipoId}/licencias`);
             if (res.ok) setLicencias(await res.json());
         } catch (error) {
             console.error('Error loading licencias:', error);
@@ -610,10 +648,10 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
         try {
             const isEditing = editingLicenciaId !== null;
             const url = isEditing
-                ? `${API_BASE}/equipos/${equipoSeleccionado.id}/licencias/${editingLicenciaId}`
-                : `${API_BASE}/equipos/${equipoSeleccionado.id}/licencias`;
+                ? `${apiBase}/equipos/${equipoSeleccionado.id}/licencias/${editingLicenciaId}`
+                : `${apiBase}/equipos/${equipoSeleccionado.id}/licencias`;
 
-            const res = await fetch(url, {
+            const res = await authFetch(url, {
                 method: isEditing ? 'PUT' : 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(licenciaData)
@@ -646,7 +684,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
     const handleDeleteLicencia = async (licenciaId: number) => {
         const doDelete = async () => {
             try {
-                const res = await fetch(`${API_BASE}/equipos/licencias/${licenciaId}`, { method: 'DELETE' });
+                const res = await authFetch(`${apiBase}/equipos/licencias/${licenciaId}`, { method: 'DELETE' });
                 if (res.ok && equipoSeleccionado) {
                     Alert.alert('Éxito', 'Licencia eliminada');
                     loadLicencias(equipoSeleccionado.id);
@@ -689,7 +727,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
 
         if (Platform.OS === 'web') {
             // For Web: Fetch the blob from the URI
-            const response = await fetch(localUri);
+            const response = await authFetch(localUri);
             const blob = await response.blob();
 
             // Ensure filename has extension (Crucial for StaticFiles middleware)
@@ -707,7 +745,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
         }
 
         try {
-            const res = await fetch(`${API_BASE}/equipos/upload-foto`, {
+            const res = await authFetch(`${apiBase}/equipos/upload-foto`, {
                 method: 'POST',
                 body: formDataImg,
             });
@@ -937,7 +975,8 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                                     <Text style={{ fontSize: 13, fontWeight: '600', color: '#2D3748', marginBottom: 8 }}>Capturas de Pantalla</Text>
                                     <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
                                         {t.imagenes.map((img: any, i: number) => (
-                                            <Image key={i} source={{ uri: `${API_BASE.replace('/api', '')}${img.imagenUrl}` }}
+                                            <Image key={i}
+                                                source={{ uri: getAppFotoUrl(img.imagenUrl, 'tickets') || undefined }}
                                                 style={{ width: 120, height: 90, borderRadius: 8 }} resizeMode="cover" />
                                         ))}
                                     </View>
@@ -1186,7 +1225,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
 
                             {item.fotoUrl && (
                                 <Image
-                                    source={{ uri: `${API_BASE.replace('/api', '')}${item.fotoUrl}` }}
+                                    source={{ uri: getAppFotoUrl(item.fotoUrl) || undefined }}
                                     style={styles.equipoImageCard}
                                     resizeMode="cover"
                                 />
@@ -1327,7 +1366,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                                         <View key={index} style={{ marginLeft: 12, position: 'relative' }}>
                                             <TouchableOpacity onPress={() => setFullScreenImage(foto.fotoUrl)}>
                                                 <Image
-                                                    source={{ uri: `${API_BASE.replace('/api', '')}${foto.fotoUrl}` }}
+                                                    source={{ uri: getAppFotoUrl(foto.fotoUrl) || undefined }}
                                                     style={styles.photoPreview}
                                                 />
                                             </TouchableOpacity>
@@ -2176,20 +2215,11 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                                                     <TouchableOpacity
                                                         key={index}
                                                         onPress={() => setFullScreenImage(foto.fotoUrl)}
-                                                        style={{
-                                                            width: 150,
-                                                            height: 150,
-                                                            borderRadius: 12,
-                                                            overflow: 'hidden',
-                                                            borderWidth: 2,
-                                                            borderColor: '#e0e0e0',
-                                                            backgroundColor: '#f5f5f5'
-                                                        }}
+                                                        style={{ marginRight: 15 }}
                                                     >
                                                         <Image
-                                                            source={{ uri: `${API_BASE.replace('/api', '')}${foto.fotoUrl}` }}
-                                                            style={{ width: '100%', height: '100%' }}
-                                                            resizeMode="cover"
+                                                            source={{ uri: getAppFotoUrl(foto.fotoUrl) || undefined }}
+                                                            style={styles.thumbnailImage}
                                                         />
                                                     </TouchableOpacity>
                                                 ))}
@@ -2864,7 +2894,7 @@ export default function EquipmentMaintenanceScreen({ onBack }: { onBack: () => v
                     </TouchableOpacity>
                     {fullScreenImage && (
                         <Image
-                            source={{ uri: `${API_BASE.replace('/api', '')}${fullScreenImage}` }}
+                            source={{ uri: getAppFotoUrl(fullScreenImage) || undefined }}
                             style={{ width: '100%', height: '80%' }}
                             resizeMode="contain"
                         />
@@ -3035,6 +3065,15 @@ const styles = StyleSheet.create({
     // Gallery Styles
     photoSection: { marginVertical: 20 },
     photoPreview: { width: 80, height: 80, borderRadius: 8, borderWidth: 1, borderColor: '#eee' },
+    thumbnailImage: {
+        width: 150,
+        height: 150,
+        borderRadius: 12,
+        overflow: 'hidden',
+        borderWidth: 2,
+        borderColor: '#e0e0e0',
+        backgroundColor: '#f5f5f5'
+    },
     addPhotoBtn: { width: 80, height: 80, borderRadius: 8, borderStyle: 'dashed', borderWidth: 2, borderColor: '#4A90D9', justifyContent: 'center', alignItems: 'center', backgroundColor: '#f0f8ff', marginLeft: 12 },
     deletePhotoBtn: { position: 'absolute', top: -6, right: -6, backgroundColor: '#dc3545', borderRadius: 10, width: 20, height: 20, justifyContent: 'center', alignItems: 'center', zIndex: 10, borderWidth: 2, borderColor: '#fff' },
 

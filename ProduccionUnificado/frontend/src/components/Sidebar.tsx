@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Usuario, Maquina, OrdenProduccion, Actividad, Horario } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 import { ThemeToggle } from '../../App';
+import { NetworkSelector } from './NetworkSelector';
 
 interface SidebarProps {
     usuarios: Usuario[];
@@ -168,6 +169,7 @@ export function Sidebar({
                         resizeMode="contain"
                     />
                     <ThemeToggle />
+                    <NetworkSelector />
                 </View>
                 <Text style={{ fontSize: 10, color: colors.subText, marginTop: 4 }}>v2.1.4 - Planeador Hotfix 4</Text>
             </View>

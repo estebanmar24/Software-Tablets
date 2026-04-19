@@ -13,4 +13,6 @@ public class Usuario
     public decimal Salario { get; set; }
     [Column("EsPorHoras")]
     public bool EsPorHoras { get; set; } = false;
+
+    public string Email { get; set; } = string.Empty;
 }

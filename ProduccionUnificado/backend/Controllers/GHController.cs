@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 
 namespace TiempoProcesos.API.Controllers;
 
@@ -10,9 +11,9 @@ namespace TiempoProcesos.API.Controllers;
 /// Controller for GH (Gestión Humana) Budget and Expense Management.
 /// Handles Rubros, TiposServicio, Proveedores, Cotizaciones, and Gastos.
 /// </summary>
-// [Authorize]
+[Authorize]
 [ApiController]
-[Route("api/gh")]
+[Route("api/[controller]")]
 public class GHController : ControllerBase
 {
     private readonly AppDbContext _context;

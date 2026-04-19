@@ -1,10 +1,12 @@
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace TiempoProcesos.API.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class TicketsController : ControllerBase
@@ -269,8 +271,10 @@ public class TicketsController : ControllerBase
     /// Sube una imagen para un ticket
     /// </summary>
     [HttpPost("upload-imagen")]
-    public async Task<ActionResult> UploadImagen([FromForm] IFormFile archivo)
+    [Consumes("multipart/form-data")]
+    public async Task<ActionResult> UploadImagen([FromForm] DTOs.ArchivoUploadDto dto)
     {
+        var archivo = dto.Archivo;
         if (archivo == null || archivo.Length == 0)
             return BadRequest(new { message = "No se ha subido ningún archivo" });
 

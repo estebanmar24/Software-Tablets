@@ -14,6 +14,7 @@ namespace TiempoProcesos.API.Controllers;
 /// Handles Rubros, Proveedores, Presupuestos, Gastos, and Graficas.
 /// </summary>
 // [Authorize]
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class TalleresController : ControllerBase
@@ -81,8 +82,10 @@ public class TalleresController : ControllerBase
     /// Upload PDF Factura
     /// </summary>
     [HttpPost("upload-factura")]
-    public async Task<ActionResult> UploadFactura(IFormFile file)
+    [Consumes("multipart/form-data")]
+    public async Task<ActionResult> UploadFactura([FromForm] DTOs.FileUploadDto dto)
     {
+        var file = dto.File;
         if (file == null || file.Length == 0)
             return BadRequest("No file uploaded");
 

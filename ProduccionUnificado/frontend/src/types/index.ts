@@ -11,15 +11,27 @@ export interface Actividad {
 export interface Usuario {
   id: number;
   nombre: string;
+  documento: string;
+  activo: boolean;
+  salario: number;
+  esPorHoras: boolean;
+  email: string;
 }
 
 export interface Maquina {
   id: number;
   nombre: string;
-  metaRendimiento: number; // Daily goal
-  valorPorTiro: number; // Value per shot for bonus calculation
-  importancia: number; // Priority level (1 = most important)
-  meta100Porciento: number; // Shots that represent 100% performance
+  metaRendimiento: number;
+  metaDesperdicio: number;
+  valorPorTiro: number;
+  tirosReferencia: number;
+  semaforoMin: number;
+  semaforoNormal: number;
+  semaforoMax: number;
+  importancia: number;
+  meta100Porciento: number;
+  activo: boolean;
+  tarifa: number;
 }
 
 export interface OrdenProduccion {

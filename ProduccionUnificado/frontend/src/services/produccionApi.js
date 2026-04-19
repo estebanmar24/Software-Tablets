@@ -1,17 +1,8 @@
-import axios from 'axios';
-import { getToken } from './authStorage';
+import api from './apiClient';
 
-const api = axios.create();
-api.interceptors.request.use(async (config) => {
-    const token = await getToken();
-    if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-}, error => Promise.reject(error));
-
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
-const BASE_URL = `${API_URL}/produccion`;
+const BASE_URL = 'produccion';
+// API_URL kept for compatibility if exported elsewhere
+const API_URL = '';
 
 export const produccionApi = {
     getMaestros: async () => {

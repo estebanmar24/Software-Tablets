@@ -106,6 +106,10 @@ public class AppDbContext : DbContext
     // Planeador de Máquinas
     public DbSet<PlaneacionMaquina> PlaneacionesMaquinas { get; set; }
 
+    // Talleres Externos
+    public DbSet<TallerExterno> TalleresExternos { get; set; }
+    public DbSet<EncuestaCalidadTaller> EncuestasCalidadTalleres { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -568,6 +572,22 @@ public class AppDbContext : DbContext
             .HasOne(p => p.OrdenProduccion)
             .WithMany()
             .HasForeignKey(p => p.OrdenProduccionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Calidad Talleres Externos
+        modelBuilder.Entity<TallerExterno>().ToTable("TalleresExternos");
+        modelBuilder.Entity<EncuestaCalidadTaller>().ToTable("EncuestasCalidadTalleres");
+
+        modelBuilder.Entity<EncuestaCalidadTaller>()
+            .HasOne(e => e.Taller)
+            .WithMany()
+            .HasForeignKey(e => e.TallerId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<EncuestaCalidadTaller>()
+            .HasOne(e => e.Usuario)
+            .WithMany()
+            .HasForeignKey(e => e.UsuarioId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

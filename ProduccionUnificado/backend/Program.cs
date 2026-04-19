@@ -6,7 +6,8 @@ using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Services;
 using OfficeOpenXml;
 using Microsoft.OpenApi.Models;
-
+using Npgsql;
+using System.IO;
 
 var builder = WebApplication.CreateBuilder(args);
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
@@ -50,6 +51,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 // Register Services
 builder.Services.AddScoped<ITiempoProcesoService, TiempoProcesoService>();
+builder.Services.AddScoped<AlephEmailService>();
 
 // Configure JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("Jwt");
@@ -63,7 +65,7 @@ builder.Services.AddAuthentication(x =>
 })
 .AddJwtBearer(x =>
 {
-    x.RequireHttpsMetadata = false;
+    x.RequireHttpsMetadata = true; // Forzar HTTPS en producción
     x.SaveToken = true;
     x.TokenValidationParameters = new TokenValidationParameters
     {
@@ -93,7 +95,7 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Global exception handler - FIRST middleware to catch EVERYTHING
+// Global exception handler
 app.Use(async (context, next) =>
 {
     try
@@ -103,17 +105,17 @@ app.Use(async (context, next) =>
     catch (Exception ex)
     {
         Console.WriteLine($"[UNHANDLED EXCEPTION] {ex.GetType().Name}: {ex.Message}");
-        Console.WriteLine(ex.StackTrace);
         if (!context.Response.HasStarted)
         {
             context.Response.StatusCode = 500;
             context.Response.ContentType = "application/json";
-            await context.Response.WriteAsync($"{{\"error\": \"Internal server error\", \"detail\": \"{ex.Message.Replace("\"", "'")}\"}}");
+            // No enviar el mensaje real del error al cliente en producción
+            await context.Response.WriteAsync("{\"error\": \"Un error interno ha ocurrido en el servidor.\"}");
         }
     }
 });
 
-OfficeOpenXml.ExcelPackage.License.SetNonCommercialOrganization("AlephImpresores");
+ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
 
 // Initialize Database
 using (var scope = app.Services.CreateScope())
@@ -122,7 +124,15 @@ using (var scope = app.Services.CreateScope())
     try
     {
         var context = services.GetRequiredService<AppDbContext>();
-        try { context.Database.ExecuteSqlRaw("ALTER TABLE \"Talleres_Personal\" ADD COLUMN \"HorarioId\" integer NULL REFERENCES \"Horarios\"(\"Id\");"); } catch {}
+        
+        // Manual schema fixes for Action Plans
+        try { 
+            context.Database.ExecuteSqlRaw("DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='PlanesAccion' AND column_name='tipotrabajo') THEN ALTER TABLE \"PlanesAccion\" RENAME COLUMN \"tipotrabajo\" TO \"TipoTrabajo\"; END IF; END $$;");
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"PlanesAccion\" ADD COLUMN IF NOT EXISTS \"TipoTrabajo\" VARCHAR(50) DEFAULT 'Nuevo' NOT NULL;"); 
+        } catch (Exception ex) { Console.WriteLine($"[DB FIX] Error fixing PlanesAccion: {ex.Message}"); }
+        
+        try { context.Database.ExecuteSqlRaw("ALTER TABLE \"Talleres_Personal\" ADD COLUMN IF NOT EXISTS \"HorarioId\" integer NULL REFERENCES \"Horarios\"(\"Id\");"); } catch {}
+
         DbInitializer.Initialize(context);
     }
     catch (Exception ex)
@@ -132,7 +142,7 @@ using (var scope = app.Services.CreateScope())
 }
 
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment() || true) // Enable Swagger in prod for now if needed
+if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "TiempoProcesos API v1"));
@@ -143,5 +153,32 @@ app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+
+// SPA Fallback: serve index.html for any non-API, non-file request
+// This allows the React/Expo web app to handle client-side routing
+app.MapFallback(async context =>
+{
+    var path = context.Request.Path.Value ?? "";
+    // Don't intercept API routes, swagger, or uploads
+    if (path.StartsWith("/api", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("/uploads", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.StatusCode = 404;
+        return;
+    }
+    
+    var indexPath = Path.Combine(app.Environment.WebRootPath ?? "wwwroot", "index.html");
+    if (File.Exists(indexPath))
+    {
+        context.Response.ContentType = "text/html";
+        await context.Response.SendFileAsync(indexPath);
+    }
+    else
+    {
+        context.Response.StatusCode = 404;
+        await context.Response.WriteAsync("Frontend not built. Run 'npx expo export --platform web' and copy dist/ to wwwroot/");
+    }
+});
 
 app.Run();

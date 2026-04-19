@@ -1,3 +1,0 @@
-Error importando Excel: Please use the static 'ExcelPackage.License' property to set the required license information from EPPlus 8 and later versions. For more info see http://epplussoftware.com/developers/licensenotsetexception.
-Stack:    at OfficeOpenXml.ExcelPackage.set_LicenseContext(Nullable`1 value)
-   at TiempoProcesos.API.Controllers.ProduccionController.ImportarExcel(IFormFile file, Nullable`1 maquinaId) in G:\Proyecto-Tablets\ProduccionUnificado\backend\Controllers\ProduccionController.cs:line 229

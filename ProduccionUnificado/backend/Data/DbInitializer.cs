@@ -1,5 +1,9 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
 using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
+using TiempoProcesos.API.Models;
 
 namespace TiempoProcesos.API.Data;
 
@@ -46,11 +50,14 @@ public static class DbInitializer
                     ""Nombre"" TEXT NOT NULL,
                     ""Estado"" BOOLEAN NOT NULL DEFAULT TRUE,
                     ""FechaCreacion"" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    ""Salario"" DECIMAL(18,2) NOT NULL DEFAULT 0
+                    ""Salario"" DECIMAL(18,2) NOT NULL DEFAULT 0,
+                    ""Documento"" TEXT NOT NULL DEFAULT '',
+                    ""Email"" TEXT NOT NULL DEFAULT '',
+                    ""EsPorHoras"" BOOLEAN NOT NULL DEFAULT FALSE
                 );
                 
                 INSERT INTO ""Usuarios"" (""Nombre"", ""Estado"") 
-                SELECT * FROM (VALUES 
+                SELECT v.""Nombre"", v.""Estado"" FROM (VALUES 
                     ('Blandon Moreno Jose Lizandro', CAST(1 AS BOOLEAN)), ('Cruz Pinto Alberto', CAST(1 AS BOOLEAN)), ('Enrique Muñoz Hector Hilde', CAST(1 AS BOOLEAN)), ('Escobar Cardona John Fredy', CAST(1 AS BOOLEAN)),
                     ('Martinez Osorno Karen Lizeth', CAST(1 AS BOOLEAN)), ('Millan Salazar Magaly', CAST(1 AS BOOLEAN)), ('Moreno Mendez Angel Julio', CAST(1 AS BOOLEAN)), ('Moreno Urrea Marlene', CAST(1 AS BOOLEAN)),
                     ('Motta Talaga Leidy Jhoanna', CAST(1 AS BOOLEAN)), ('Obando Higuita Jose Luis', CAST(1 AS BOOLEAN)), ('Ramirez Romero Andres Mauricio', CAST(1 AS BOOLEAN)), ('Sarmiento Rincon Yhan Otoniel', CAST(1 AS BOOLEAN)),
@@ -59,10 +66,12 @@ public static class DbInitializer
                     ('Riascos Castillo Andres Felipe', CAST(1 AS BOOLEAN)), ('Roldan Barona Erik Esteban', CAST(1 AS BOOLEAN)), ('Renteria Mejia Nestor Alfonso', CAST(1 AS BOOLEAN)), ('Mina Sinisterra Jhon Jairo', CAST(1 AS BOOLEAN)),
                     ('Valencia Mirquez Nicol', CAST(1 AS BOOLEAN)), ('Uran Quintero Yohao Alexander', CAST(1 AS BOOLEAN)), ('Preciado Rivas Johan Alexander', CAST(1 AS BOOLEAN)), ('Jose Fernando Ruiz', CAST(1 AS BOOLEAN))
                 ) AS v(""Nombre"", ""Estado"")
-                WHERE NOT EXISTS (SELECT 1 FROM ""Usuarios"");
+                WHERE NOT EXISTS (SELECT 1 FROM ""Usuarios"" WHERE ""Nombre"" = v.""Nombre"");
 
-                -- ADD Documento COLUMN
+                -- ADD Documento and other columns
                 ALTER TABLE ""Usuarios"" ADD COLUMN IF NOT EXISTS ""Documento"" TEXT NOT NULL DEFAULT '';
+                ALTER TABLE ""Usuarios"" ADD COLUMN IF NOT EXISTS ""Email"" TEXT NOT NULL DEFAULT '';
+                ALTER TABLE ""Usuarios"" ADD COLUMN IF NOT EXISTS ""EsPorHoras"" BOOLEAN NOT NULL DEFAULT FALSE;
             ");
             Console.WriteLine("[DB INIT] Usuarios checked/created/updated.");
         }
@@ -84,12 +93,14 @@ public static class DbInitializer
                     ""SemaforoMax"" INTEGER NOT NULL DEFAULT 0,
                     ""Importancia"" DECIMAL(5,2) NOT NULL DEFAULT 0,
                     ""Meta100Porciento"" INTEGER NOT NULL DEFAULT 0,
-                    ""Activa"" BOOLEAN DEFAULT TRUE
+                    ""Activa"" BOOLEAN DEFAULT TRUE,
+                    CONSTRAINT ""UQ_Maquinas_Nombre"" UNIQUE (""Nombre"")
                 );
 
-                -- Insertar si no existen
+                -- Insertar si no existen por ID o Nombre para evitar colisiones 23505
                 INSERT INTO ""Maquinas"" (""Id"", ""Nombre"", ""MetaRendimiento"", ""MetaDesperdicio"", ""ValorPorTiro"", ""TirosReferencia"", ""SemaforoMin"", ""SemaforoNormal"", ""SemaforoMax"", ""Importancia"", ""Meta100Porciento"", ""Activa"")
-                SELECT * FROM (VALUES
+                SELECT v.""Id"", v.""Nombre"", v.""MetaRendimiento"", v.""MetaDesperdicio"", v.""ValorPorTiro"", v.""TirosReferencia"", v.""SemaforoMin"", v.""SemaforoNormal"", v.""SemaforoMax"", v.""Importancia"", v.""Meta100Porciento"", v.""Activa""
+                FROM (VALUES
                     (-1, 'MANUAL / TERMINADOS', 0, 0, 0, 0, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
                     (1, 'CONVERTIDORA 1A', 15000, 0.25, 5, 1250, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
                     (2, 'CONVERTIDORA 1B', 15000, 0.25, 5, 1250, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
@@ -115,16 +126,13 @@ public static class DbInitializer
                     (22, '12 Maquina de Cordon', 2100, 0.25, 10, 2000, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)),
                     (23, '12 Cortadora de Manijas', 9000, 0.25, 5, 2000, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN))
                 ) AS v(""Id"", ""Nombre"", ""MetaRendimiento"", ""MetaDesperdicio"", ""ValorPorTiro"", ""TirosReferencia"", ""SemaforoMin"", ""SemaforoNormal"", ""SemaforoMax"", ""Importancia"", ""Meta100Porciento"", ""Activa"")
-                WHERE NOT EXISTS (SELECT 1 FROM ""Maquinas"" WHERE ""Id"" = v.""Id"");
-                
-                -- Ensure -1 exists separately if others already exist
-                INSERT INTO ""Maquinas"" (""Id"", ""Nombre"", ""MetaRendimiento"", ""MetaDesperdicio"", ""ValorPorTiro"", ""TirosReferencia"", ""SemaforoMin"", ""SemaforoNormal"", ""SemaforoMax"", ""Importancia"", ""Meta100Porciento"", ""Activa"")
-                SELECT -1, 'MANUAL / TERMINADOS', 0, 0, 0, 0, 0, 0, 0, 0, 0, CAST(1 AS BOOLEAN)
-                WHERE NOT EXISTS (SELECT 1 FROM ""Maquinas"" WHERE ""Id"" = -1);
+                WHERE NOT EXISTS (SELECT 1 FROM ""Maquinas"" WHERE ""Id"" = v.""Id"")
+                  AND NOT EXISTS (SELECT 1 FROM ""Maquinas"" WHERE ""Nombre"" = v.""Nombre"");
 
                 -- Update existing columns if they don't exist
                 ALTER TABLE ""Maquinas"" ADD COLUMN IF NOT EXISTS ""Importancia"" DECIMAL(5,2) NOT NULL DEFAULT 0;
                 ALTER TABLE ""Maquinas"" ADD COLUMN IF NOT EXISTS ""Meta100Porciento"" INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE ""Maquinas"" ADD COLUMN IF NOT EXISTS ""Tarifa"" INTEGER NOT NULL DEFAULT 0;
             ");
             Console.WriteLine("[DB INIT] Maquinas checked/created.");
         }
@@ -440,6 +448,7 @@ public static class DbInitializer
                     ""FechaInicio"" TIMESTAMP WITH TIME ZONE NOT NULL,
                     ""FechaCompromiso"" TIMESTAMP WITH TIME ZONE NOT NULL,
                     ""Estado"" VARCHAR(50) NOT NULL DEFAULT 'pendiente',
+                    ""TipoTrabajo"" VARCHAR(50) NOT NULL DEFAULT 'Nuevo',
                     ""PorcentajeAvance"" INTEGER NOT NULL DEFAULT 0,
                     ""Observaciones"" TEXT,
                     ""FechaCreacion"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -492,6 +501,7 @@ public static class DbInitializer
                     ""NombreMostrar"" VARCHAR(200) NOT NULL,
                     CONSTRAINT ""UQ_AdminUsuarios_Username"" UNIQUE (""Username"")
                 );
+                ALTER TABLE ""AdminUsuarios"" ADD COLUMN IF NOT EXISTS ""Activo"" BOOLEAN NOT NULL DEFAULT TRUE;
             ");
             Console.WriteLine("[DB INIT] AdminUsuarios checked/created.");
 
@@ -1197,5 +1207,53 @@ public static class DbInitializer
             }
         }
         catch (Exception ex) { Console.WriteLine($"[DB ERROR] MetasMensuales: {ex.Message}"); }
+
+        // TALLERES EXTERNOS
+        try
+        {
+            context.Database.ExecuteSqlRaw(@"
+                CREATE TABLE IF NOT EXISTS ""TalleresExternos"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""Nombre"" TEXT NOT NULL UNIQUE
+                );
+
+                CREATE TABLE IF NOT EXISTS ""EncuestasCalidadTalleres"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""TallerId"" INTEGER NOT NULL REFERENCES ""TalleresExternos""(""Id"") ON DELETE RESTRICT,
+                    ""HoraLlegada"" TEXT NOT NULL,
+                    ""HoraSalida"" TEXT NOT NULL,
+                    ""OrdenProduccion"" TEXT NOT NULL,
+                    ""NumeroRemision"" TEXT NOT NULL,
+                    ""CantidadProducir"" DECIMAL(18,2) NOT NULL,
+                    ""CantidadEvaluada"" DECIMAL(18,2) NOT NULL,
+                    ""EstadoProceso"" TEXT NOT NULL,
+                    ""UsuarioId"" INTEGER NOT NULL REFERENCES ""Usuarios""(""Id"") ON DELETE RESTRICT,
+                    ""FechaCreacion"" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+            ");
+            Console.WriteLine("[DB INIT] Taller tables checked/created.");
+
+            // Seeding Talleres if empty
+            if (!context.TalleresExternos.Any())
+            {
+                var talleresInitial = new List<string> {
+                    "ANDREA HERNANDEZ", "ELIZABETH MOSQUERA", "JANETH OSORNO", "JANID RENGIFO",
+                    "LILIANA ALQUEDAN", "LILIANA NIETO", "LILIANA REYES", "LILIBETH PIEDRAHITA",
+                    "LUZ IRMA MORENO", "MARIA ELSY ROBAYO", "MARIELA QUINTERO", "MEIDY PEÑA",
+                    "NATHALIA SALAMANKA", "OSCAR ZAPATA", "STHER POLANCO", "CARMEN QUIÑONEZ",
+                    "YURANI RIOS ROBAYO", "ZENAIDA CASTILLO", "CONSUELO BENITEZ", "MAGALI",
+                    "ANA OROZCO", "ELEONORA MIRQUEZ", "LUZ MARINA", "PATRICIA PINEDA",
+                    "WILLIAM MUNERA", "CLAUDIA PATRICIA MORALES", "MABEL GIRONZA"
+                };
+
+                foreach (var nombre in talleresInitial)
+                {
+                    context.TalleresExternos.Add(new TallerExterno { Nombre = nombre });
+                }
+                context.SaveChanges();
+                Console.WriteLine($"[DB INIT] TalleresExternos seeded with {talleresInitial.Count} names.");
+            }
+        }
+        catch (Exception ex) { Console.WriteLine($"[DB ERROR] TalleresExternos: {ex.Message}"); }
     }
 }

@@ -7,6 +7,7 @@ import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { api } from '../services/productionApi';
+import { getFileServerUrl } from '../services/apiConfig';
 
 const AREAS = ["Gerencia", "SST", "Planeacion", "Gestion Humana", "Talleres y Despachos", "Calidad", "Produccion", "Almacen", "Diseño", "Contabilidad"];
 
@@ -74,6 +75,7 @@ export default function PlanAccionView({ onClose, userArea, userRole, canCreate 
     const [formData, setFormData] = useState({ ...emptyForm });
     const [detailVisible, setDetailVisible] = useState(false);
     const [selectedPlan, setSelectedPlan] = useState<PlanAccion | null>(null);
+    const [fileServer, setFileServer] = useState('');
 
     // canCreate=false means we came from the dashboard shortcut (Consultative/Execution mode)
     const canEditCore = canCreate || !editingId;
@@ -92,7 +94,10 @@ export default function PlanAccionView({ onClose, userArea, userRole, canCreate 
         }
     }, [userArea, showAll]);
 
-    useEffect(() => { loadData(); }, [loadData]);
+    useEffect(() => { 
+        loadData(); 
+        getFileServerUrl().then(url => setFileServer(url));
+    }, [loadData]);
 
     const handlePickImage = async () => {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -397,6 +402,7 @@ export default function PlanAccionView({ onClose, userArea, userRole, canCreate 
                                 editable={canEditCore}
                             />
 
+
                             <Text style={styles.label}>Causa Raíz</Text>
                             <TextInput
                                 style={[styles.input, { height: 60 }, !canEditCore && styles.disabledInput]}
@@ -558,14 +564,14 @@ export default function PlanAccionView({ onClose, userArea, userRole, canCreate 
                                             <Text style={{ fontSize: 13, color: '#4A5568', marginBottom: 10 }}>{ev.fileName}</Text>
                                             {ev.fileType === 'Photo' ? (
                                                 <Image
-                                                    source={{ uri: `${api.defaults.baseURL?.replace('/api', '')}/${ev.filePath}` }}
+                                                    source={{ uri: `${fileServer}/${ev.filePath}` }}
                                                     style={styles.detailImage}
                                                     resizeMode="contain"
                                                 />
                                             ) : (
                                                 <TouchableOpacity
                                                     style={styles.btnPdfLink}
-                                                    onPress={() => window.open(`${api.defaults.baseURL?.replace('/api', '')}/${ev.filePath}`, '_blank')}
+                                                    onPress={() => window.open(`${fileServer}/${ev.filePath}`, '_blank')}
                                                 >
                                                     <Text style={{ color: '#fff', fontWeight: 'bold' }}>📄 Abrir PDF</Text>
                                                 </TouchableOpacity>

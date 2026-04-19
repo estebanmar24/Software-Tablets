@@ -1,10 +1,11 @@
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
+using Microsoft.AspNetCore.Authorization;
 
 namespace TiempoProcesos.API.Controllers;
 
+[Authorize(Roles = "Admin")]
 [ApiController]
 [Route("api/[controller]")]
 public class AdminUsuariosController : ControllerBase
@@ -26,7 +27,9 @@ public class AdminUsuariosController : ControllerBase
                 u.Username,
                 u.Role,
                 u.NombreMostrar,
-                u.Area
+                u.Area,
+                u.Email,
+                u.Activo
                 // Do not return PasswordHash
             })
             .ToListAsync();
@@ -46,6 +49,8 @@ public class AdminUsuariosController : ControllerBase
             Role = dto.Role,
             NombreMostrar = dto.NombreMostrar,
             Area = dto.Area ?? string.Empty,
+            Email = dto.Email ?? string.Empty,
+            Activo = dto.Activo,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password)
         };
 
@@ -64,6 +69,8 @@ public class AdminUsuariosController : ControllerBase
         user.Role = dto.Role;
         user.NombreMostrar = dto.NombreMostrar;
         user.Area = dto.Area ?? string.Empty;
+        user.Email = dto.Email ?? string.Empty;
+        user.Activo = dto.Activo;
 
         if (!string.IsNullOrEmpty(dto.Password))
         {
@@ -100,6 +107,8 @@ public class CreateUserDto
     public string Role { get; set; }
     public string NombreMostrar { get; set; }
     public string? Area { get; set; }
+    public string? Email { get; set; }
+    public bool Activo { get; set; } = true;
 }
 
 public class UpdateUserDto
@@ -107,5 +116,7 @@ public class UpdateUserDto
     public string Role { get; set; }
     public string NombreMostrar { get; set; }
     public string? Area { get; set; }
+    public string? Email { get; set; }
     public string? Password { get; set; } // Opcional
+    public bool Activo { get; set; } = true;
 }

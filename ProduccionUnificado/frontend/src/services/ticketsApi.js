@@ -1,10 +1,6 @@
-import axios from 'axios';
+import api from './apiClient';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
-
-const api = axios.create({
-    timeout: 15000,
-});
+const API_BASE_URL = '';
 
 // ============ TICKETS ============
 export const fetchTicketStats = async (reportadoPor) => {

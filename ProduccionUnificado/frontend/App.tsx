@@ -34,7 +34,7 @@ import { AdminDashboard } from './src/components/AdminDashboard';
 import CalidadScreen from './src/screens/CalidadScreen';
 import OrdenAseoScreen from './src/screens/OrdenAseoScreen';
 import UserManagementScreen from './src/screens/UserManagementScreen';
-
+import CalidadTalleresScreen from './src/screens/CalidadTalleresScreen';
 
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
 
@@ -115,7 +115,7 @@ function AppContent() {
   }, [isPhone]);
 
   // Estado de vista
-  const [currentView, setCurrentView] = useState<'timer' | 'login' | 'admin' | 'calidad' | 'develop' | 'esst'>('timer');
+  const [currentView, setCurrentView] = useState<'timer' | 'login' | 'admin' | 'calidad' | 'calidad_talleres' | 'develop' | 'esst'>('timer');
   const [adminRole, setAdminRole] = useState<string>('admin');
   const [adminName, setAdminName] = useState<string>('');
   const [adminArea, setAdminArea] = useState<string>('');
@@ -145,8 +145,8 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    // Persistir estado de vista para admin, calidad y esst
-    if (currentView === 'admin' || currentView === 'calidad' || currentView === 'esst') {
+    // Persistir estado de vista para admin, calidad, eesst y calidad talleres
+    if (currentView === 'admin' || currentView === 'calidad' || currentView === 'esst' || currentView === 'calidad_talleres') {
       AsyncStorage.setItem('lastView', currentView);
       AsyncStorage.setItem('adminRole', adminRole);
       AsyncStorage.setItem('adminName', adminName);
@@ -171,6 +171,8 @@ function AppContent() {
     } else if (normalizedRole === 'calidad') {
       // Exclusive view only if specific role is strictly 'calidad' and nothing else
       setCurrentView('calidad');
+    } else if (normalizedRole === 'calidad_talleres') {
+      setCurrentView('calidad_talleres');
     } else if (
       normalizedUsername === 'esst' || // FORCE REDIRECT BY USERNAME
       normalizedRole.includes('esst') ||
@@ -378,9 +380,16 @@ function AppContent() {
         id: m.id || m.Id,
         nombre: m.nombre || m.Nombre,
         metaRendimiento: m.metaRendimiento || m.MetaRendimiento || 0,
+        metaDesperdicio: m.metaDesperdicio || m.MetaDesperdicio || 0,
         valorPorTiro: m.valorPorTiro || m.ValorPorTiro || 0,
-        importancia: m.importancia || m.Importancia || 1,
-        meta100Porciento: m.meta100Porciento || m.Meta100Porciento || 0
+        tirosReferencia: m.tirosReferencia || m.TirosReferencia || 0,
+        semaforoMin: m.semaforoMin || m.SemaforoMin || 0,
+        semaforoNormal: m.semaforoNormal || m.SemaforoNormal || 0,
+        semaforoMax: m.semaforoMax || m.SemaforoMax || 0,
+        importancia: m.importancia || m.Importancia || 0,
+        meta100Porciento: m.meta100Porciento || m.Meta100Porciento || 0,
+        activo: m.activo ?? m.Activo ?? true,
+        tarifa: m.tarifa || m.Tarifa || 0,
       }));
       console.log('Maquinas Mapped:', JSON.stringify(mappedMaquinas.slice(0, 3), null, 2)); // Debug log
       setMaquinas(mappedMaquinas);
@@ -389,7 +398,7 @@ function AppContent() {
     } catch (error: any) {
       const errorMsg = error?.message || 'Error desconocido';
       console.error('Error al cargar catálogos:', error);
-      console.error('URL de API:', process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api');
+      console.error('URL de API:', coreApi.API_URL);
       Alert.alert(
         'Error de Conexión',
         `No se pudo conectar al servidor.\n\nError: ${errorMsg}\n\nUsando datos de demostración.`
@@ -406,14 +415,14 @@ function AppContent() {
         { id: 8, codigo: '14', nombre: 'Otros tiempos', esProductiva: false, observaciones: 'Calibración, cambios de formato y reuniones' },
       ]);
       setUsuarios([
-        { id: 1, nombre: 'Juan Pérez' },
-        { id: 2, nombre: 'María García' },
-        { id: 3, nombre: 'Carlos López' },
+        { id: 1, nombre: 'Juan Pérez', documento: '', activo: true, salario: 0, esPorHoras: false, email: '' },
+        { id: 2, nombre: 'María García', documento: '', activo: true, salario: 0, esPorHoras: false, email: '' },
+        { id: 3, nombre: 'Carlos López', documento: '', activo: true, salario: 0, esPorHoras: false, email: '' },
       ]);
       setMaquinas([
-        { id: 1, nombre: 'Convertidora 1', metaRendimiento: 15000, valorPorTiro: 0.5, importancia: 1, meta100Porciento: 20000 },
-        { id: 2, nombre: 'Guillotina Principal', metaRendimiento: 20000, valorPorTiro: 0.3, importancia: 2, meta100Porciento: 25000 },
-        { id: 3, nombre: 'Troqueladora A', metaRendimiento: 10000, valorPorTiro: 0.8, importancia: 3, meta100Porciento: 15000 },
+        { id: 1, nombre: 'Convertidora 1', metaRendimiento: 15000, metaDesperdicio: 0.25, valorPorTiro: 0.5, tirosReferencia: 1250, semaforoMin: 0, semaforoNormal: 0, semaforoMax: 0, importancia: 1, meta100Porciento: 20000, activo: true, tarifa: 0 },
+        { id: 2, nombre: 'Guillotina Principal', metaRendimiento: 20000, metaDesperdicio: 0.25, valorPorTiro: 0.3, tirosReferencia: 1250, semaforoMin: 0, semaforoNormal: 0, semaforoMax: 0, importancia: 2, meta100Porciento: 25000, activo: true, tarifa: 0 },
+        { id: 3, nombre: 'Troqueladora A', metaRendimiento: 10000, metaDesperdicio: 0.25, valorPorTiro: 0.8, tirosReferencia: 1000, semaforoMin: 0, semaforoNormal: 0, semaforoMax: 0, importancia: 3, meta100Porciento: 15000, activo: true, tarifa: 0 },
       ]);
       setOrdenes([
         { id: 1, numero: 'OP-2024-001', descripcion: 'Etiquetas para producto A', estado: 'EnProceso' },
@@ -782,6 +791,26 @@ function AppContent() {
           },
           navigate: (screen: string, params?: any) => {
             // Simple navigation handler for quality screens
+            console.log('Navigate to:', screen, params);
+          },
+          addListener: () => () => { }
+        }}
+      />
+    );
+  }
+
+  if (currentView === 'calidad_talleres') {
+    return (
+      <CalidadTalleresScreen
+        navigation={{
+          goBack: () => {
+            setAdminRole('');
+            setAdminName('');
+            AsyncStorage.removeItem('adminRole');
+            AsyncStorage.removeItem('lastView');
+            setCurrentView('timer');
+          },
+          navigate: (screen: string, params?: any) => {
             console.log('Navigate to:', screen, params);
           },
           addListener: () => () => { }

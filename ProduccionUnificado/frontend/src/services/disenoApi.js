@@ -3,41 +3,29 @@
  * Handles all API calls for Diseño Budget and Expense Management
  */
 
-import axios from 'axios';
-import { getToken } from './authStorage';
+import api from './apiClient';
 
-const api = axios.create();
-
-// Attach auth token to every request so backend can identify user
-api.interceptors.request.use(async (config) => {
-    const token = await getToken();
-    if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-});
-
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
+const API_BASE_URL = 'diseno';
 
 // ==================== RUBROS ====================
 
 export async function getRubros() {
-    const response = await api.get(`${API_BASE_URL}/diseno/rubros`);
+    const response = await api.get(`${API_BASE_URL}/rubros`);
     return response.data;
 }
 
 export async function createRubro(rubro) {
-    const response = await api.post(`${API_BASE_URL}/diseno/rubros`, rubro);
+    const response = await api.post(`${API_BASE_URL}/rubros`, rubro);
     return response.data;
 }
 
 export async function updateRubro(id, rubro) {
-    const response = await api.put(`${API_BASE_URL}/diseno/rubros/${id}`, { ...rubro, id });
+    const response = await api.put(`${API_BASE_URL}/rubros/${id}`, { ...rubro, id });
     return response.data;
 }
 
 export async function deleteRubro(id) {
-    await api.delete(`${API_BASE_URL}/diseno/rubros/${id}`);
+    await api.delete(`${API_BASE_URL}/rubros/${id}`);
     return true;
 }
 
@@ -46,31 +34,31 @@ export async function deleteRubro(id) {
 // ==================== PROVEEDORES ====================
 
 export async function getProveedores(rubroId = null) {
-    let url = `${API_BASE_URL}/diseno/proveedores`;
+    let url = `${API_BASE_URL}/proveedores`;
     if (rubroId) url += `?rubroId=${rubroId}`;
     const response = await api.get(url);
     return response.data;
 }
 
 export async function createProveedor(proveedor) {
-    const response = await api.post(`${API_BASE_URL}/diseno/proveedores`, proveedor);
+    const response = await api.post(`${API_BASE_URL}/proveedores`, proveedor);
     return response.data;
 }
 
 export async function updateProveedor(id, proveedor) {
-    const response = await api.put(`${API_BASE_URL}/diseno/proveedores/${id}`, { ...proveedor, id });
+    const response = await api.put(`${API_BASE_URL}/proveedores/${id}`, { ...proveedor, id });
     return response.data;
 }
 
 export async function deleteProveedor(id) {
-    await api.delete(`${API_BASE_URL}/diseno/proveedores/${id}`);
+    await api.delete(`${API_BASE_URL}/proveedores/${id}`);
     return true;
 }
 
 // ==================== COTIZACIONES ====================
 
 export async function getCotizaciones(proveedorId = null, anio = null, mes = null) {
-    let url = `${API_BASE_URL}/diseno/cotizaciones`;
+    let url = `${API_BASE_URL}/cotizaciones`;
     const params = [];
     if (proveedorId) params.push(`proveedorId=${proveedorId}`);
     if (anio) params.push(`anio=${anio}`);
@@ -82,90 +70,89 @@ export async function getCotizaciones(proveedorId = null, anio = null, mes = nul
 }
 
 export async function createCotizacion(cotizacion) {
-    const response = await api.post(`${API_BASE_URL}/diseno/cotizaciones`, cotizacion);
+    const response = await api.post(`${API_BASE_URL}/cotizaciones`, cotizacion);
     return response.data;
 }
 
 export async function updateCotizacion(id, cotizacion) {
-    const response = await api.put(`${API_BASE_URL}/diseno/cotizaciones/${id}`, { ...cotizacion, id });
+    const response = await api.put(`${API_BASE_URL}/cotizaciones/${id}`, { ...cotizacion, id });
     return response.data;
 }
 
 export async function deleteCotizacion(id) {
-    await api.delete(`${API_BASE_URL}/diseno/cotizaciones/${id}`);
+    await api.delete(`${API_BASE_URL}/cotizaciones/${id}`);
     return true;
 }
 
 // ==================== PRESUPUESTOS ====================
 
 export async function getPresupuestos(anio) {
-    const response = await api.get(`${API_BASE_URL}/diseno/presupuestos?anio=${anio}`);
+    const response = await api.get(`${API_BASE_URL}/presupuestos?anio=${anio}`);
     return response.data;
 }
 
 export async function getPresupuestosGrid(anio) {
-    const response = await api.get(`${API_BASE_URL}/diseno/presupuestos/grid?anio=${anio}`);
+    const response = await api.get(`${API_BASE_URL}/presupuestos/grid?anio=${anio}`);
     return response.data;
 }
 
 export async function setPresupuesto(presupuesto) {
-    const response = await api.post(`${API_BASE_URL}/diseno/presupuestos`, presupuesto);
+    const response = await api.post(`${API_BASE_URL}/presupuestos`, presupuesto);
     return response.data;
 }
 
 export async function setPresupuestosBulk(presupuestos) {
-    const response = await api.post(`${API_BASE_URL}/diseno/presupuestos/bulk`, presupuestos);
+    const response = await api.post(`${API_BASE_URL}/presupuestos/bulk`, presupuestos);
     return response.data;
 }
 
 // ==================== GASTOS ====================
 
 export async function getGastos(anio, mes) {
-    const response = await api.get(`${API_BASE_URL}/diseno/gastos?anio=${anio}&mes=${mes}`);
+    const response = await api.get(`${API_BASE_URL}/gastos?anio=${anio}&mes=${mes}`);
     return response.data;
 }
 
 export async function createGasto(gasto) {
-    const response = await api.post(`${API_BASE_URL}/diseno/gastos`, gasto);
+    const response = await api.post(`${API_BASE_URL}/gastos`, gasto);
     return response.data;
 }
 
 export async function updateGasto(id, gasto) {
-    const response = await api.put(`${API_BASE_URL}/diseno/gastos/${id}`, { ...gasto, id });
+    const response = await api.put(`${API_BASE_URL}/gastos/${id}`, { ...gasto, id });
     return response.data;
 }
 
 export async function deleteGasto(id) {
-    await api.delete(`${API_BASE_URL}/diseno/gastos/${id}`);
+    await api.delete(`${API_BASE_URL}/gastos/${id}`);
     return true;
 }
 
 // ==================== GRAFICAS ====================
 
 export async function getGraficas(anio, mes) {
-    const response = await api.get(`${API_BASE_URL}/diseno/graficas/${anio}/${mes}`);
+    const response = await api.get(`${API_BASE_URL}/graficas/${anio}/${mes}`);
     return response.data;
 }
 
 export async function getGraficasAnual(anio) {
-    const response = await api.get(`${API_BASE_URL}/diseno/graficas/anual/${anio}`);
+    const response = await api.get(`${API_BASE_URL}/graficas/anual/${anio}`);
     return response.data;
 }
 
-// ==================== UPLOAD FACTURA ====================
+import { getFileServerUrl } from './apiConfig';
 
 export async function uploadFactura(file) {
     const formData = new FormData();
     formData.append('file', file);
-    const response = await api.post(`${API_BASE_URL}/diseno/upload-factura`, formData, {
+    const response = await api.post(`${API_BASE_URL}/upload-factura`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
     });
     return response.data;
 }
 
-export function getBaseUrl() {
-    // API_BASE_URL = http://192.168.100.227:5144/api → server root = http://192.168.100.227:5144
-    return API_BASE_URL.replace(/\/api$/, '');
+export async function getFileUrl() {
+    return await getFileServerUrl();
 }
 // ==================== HELPERS ====================
 

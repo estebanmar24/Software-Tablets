@@ -362,7 +362,7 @@ export default function DashboardScreen({ navigation }) {
             // Calificación Real de la Planta (Sem100% × Importancia por cada máquina)
             let historialCalificaciones = [];
             if (resumen?.calificacionTotalPlanta !== undefined && reportType !== 'operario') {
-                const calificacion = resumen.calificacionTotalPlanta;
+                const calificacion = resumen?.calificacionTotalPlanta || 0;
 
                 doc.setFontSize(16);
                 doc.setFont('helvetica', 'bold');
@@ -414,7 +414,7 @@ export default function DashboardScreen({ navigation }) {
                 // Summary for general report - ordenada por número natural
                 if (resumen?.resumenMaquinas?.length > 0) {
                     const maqColumns = ['Maquina', 'Tiros Totales', 'Meta 100%', 'Sem 100%'];
-                    const maqData = [...resumen.resumenMaquinas]
+                    const maqData = [...(resumen?.resumenMaquinas || [])]
                         .sort(naturalSort) // Orden natural (1, 2, 3... 10, 11)
                         .map(item => {
                             // Calcular color del semáforo basado en porcentajeRendimiento100
@@ -855,7 +855,7 @@ export default function DashboardScreen({ navigation }) {
                     let totalReparacion = 0;
                     let totalOtros = 0;
 
-                    const hmData = resumen.resumenMaquinas
+                    const hmData = (resumen?.resumenMaquinas || [])
                         .filter(m => (m.totalTiemposMuertos || 0) > 0) // Hide if 0 hours
                         .sort((a, b) => (b.totalTiemposMuertos || 0) - (a.totalTiemposMuertos || 0)) // Mayor a menor
                         .map(m => {
@@ -945,7 +945,7 @@ export default function DashboardScreen({ navigation }) {
 
                     // Calculate total reported hours for the filtered group to perform correct % calc on Total Row
                     // Filter machines with setup activity or changes
-                    const papMachines = resumen.resumenMaquinas
+                    const papMachines = (resumen?.resumenMaquinas || [])
                         .filter(m => (m.totalTiempoPuestaPunto || 0) > 0 || (m.totalCambios || 0) > 0)
                         .sort((a, b) => (b.totalTiempoPuestaPunto || 0) - (a.totalTiempoPuestaPunto || 0));
 
@@ -1096,7 +1096,7 @@ export default function DashboardScreen({ navigation }) {
 
                     let totalProd = 0, totalAux = 0, totalMuertas = 0, totalRep = 0;
 
-                    const dispData = resumen.resumenMaquinas
+                    const dispData = (resumen?.resumenMaquinas || [])
                         .filter(m => (m.totalHorasProductivas || 0) > 0 || (m.totalHoras || 0) > 0)
                         .sort(naturalSort)
                         .map(m => {
@@ -1202,7 +1202,7 @@ export default function DashboardScreen({ navigation }) {
 
                     const tirosColumns = ['Máquina', 'Meta Diaria', 'Meta Mes', 'Tiros Reales', 'Disponibilidad (%)'];
 
-                    const tirosData = resumen.resumenMaquinas
+                    const tirosData = (resumen?.resumenMaquinas || [])
                         .filter(m => (m.metaDiariaBase || 0) > 0)
                         .sort(naturalSort)
                         .map(m => {
@@ -1261,7 +1261,7 @@ export default function DashboardScreen({ navigation }) {
                 }
                 // Chart: Daily Trend (line chart for general report) - KEEPING THIS ONE? User said "solo quita esas 3".
                 if ((resumen?.tendenciaDiaria || []).length > 0) {
-                    const dailyData = [...resumen.tendenciaDiaria].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+                    const dailyData = [...(resumen?.tendenciaDiaria || [])].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
                     const dailyLabels = dailyData.map(d => d.fecha.split('T')[0].split('-').slice(1).join('/'));
                     const dailyValues = dailyData.map(d => d.tiros);
 
@@ -1272,7 +1272,7 @@ export default function DashboardScreen({ navigation }) {
             // Chart: Efficiency by Machine (ONLY for machine report now, removed from general)
             if (reportType === 'maquina') {
                 if ((resumen?.resumenMaquinas || []).length > 0) {
-                    const chartDataEff = [...resumen.resumenMaquinas]
+                    const chartDataEff = [...(resumen?.resumenMaquinas || [])]
                         .sort((a, b) => b.porcentajeRendimiento - a.porcentajeRendimiento);
 
                     const effColors = chartDataEff.map(m => m.porcentajeRendimiento >= 0.75 ? '#28a745' : '#dc3545');
@@ -1384,7 +1384,7 @@ export default function DashboardScreen({ navigation }) {
 
                 // Tabla de calificaciones - ordenada por nombre descendente
                 const calColumns = ['Máquina', 'Sem 100%', 'Importancia', 'Puntos'];
-                const calData = resumen.resumenMaquinas
+                const calData = (resumen?.resumenMaquinas || [])
                     //.filter(m => m.importancia > 0) // REMOVED FILTER to show all machines (even with 0 perf/importance)
                     .sort(naturalSort) // Orden natural (1, 2, 3... 10, 11)
                     .map(m => [
@@ -1399,7 +1399,7 @@ export default function DashboardScreen({ navigation }) {
                     'TOTAL PLANTA',
                     '',
                     '100%',
-                    (resumen.calificacionTotalPlanta || 0).toFixed(2)
+                    (resumen?.calificacionTotalPlanta || 0).toFixed(2)
                 ]);
 
                 autoTable(doc, {

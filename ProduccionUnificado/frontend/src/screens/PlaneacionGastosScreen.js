@@ -109,6 +109,15 @@ function GastosTab() {
     const [personal, setPersonal] = useState([]);
     const [tiposHorasRecargos, setTiposHorasRecargos] = useState({ tiposHora: [], tiposRecargo: [] });
     const [gastos, setGastos] = useState([]);
+    const [fileServerUrl, setFileServerUrl] = useState('');
+
+    useEffect(() => {
+        const init = async () => {
+            const url = await planeacionApi.getFileUrl();
+            setFileServerUrl(url);
+        };
+        init();
+    }, []);
     const [resumen, setResumen] = useState(null);
     const [resumenAnual, setResumenAnual] = useState(null);
     const [presupuestoInfo, setPresupuestoInfo] = useState(null);
@@ -724,7 +733,7 @@ function GastosTab() {
                                             </>
                                         )}
                                         {gasto.facturaPdfUrl && (
-                                            <TouchableOpacity onPress={() => { if (Platform.OS === 'web') window.open(`${planeacionApi.getBaseUrl()}${gasto.facturaPdfUrl}`, '_blank'); }}>
+                                            <TouchableOpacity onPress={() => { if (Platform.OS === 'web') window.open(`${fileServerUrl}${gasto.facturaPdfUrl}`, '_blank'); }}>
                                                 <Text style={[styles.gastoDetail, { color: '#2563EB', textDecorationLine: 'underline' }]}>📎 Ver PDF Factura</Text>
                                             </TouchableOpacity>
                                         )}

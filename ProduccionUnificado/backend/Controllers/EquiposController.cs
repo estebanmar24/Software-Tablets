@@ -1,19 +1,23 @@
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace TiempoProcesos.API.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class EquiposController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly IWebHostEnvironment _env;
 
-    public EquiposController(AppDbContext context)
+    public EquiposController(AppDbContext context, IWebHostEnvironment env)
     {
         _context = context;
+        _env = env;
     }
 
     /// <summary>
@@ -588,8 +592,10 @@ public class EquiposController : ControllerBase
     /// Sube una foto de equipo
     /// </summary>
     [HttpPost("upload-foto")]
-    public async Task<ActionResult> UploadFoto([FromForm] IFormFile archivo)
+    [Consumes("multipart/form-data")]
+    public async Task<ActionResult> UploadFoto([FromForm] EquipoFotoUploadDto dto)
     {
+        var archivo = dto.Archivo;
         if (archivo == null || archivo.Length == 0)
             return BadRequest(new { message = "No se ha subido ningún archivo" });
 
@@ -624,9 +630,65 @@ public class EquiposController : ControllerBase
 
         return Ok(areas);
     }
+
+    /// <summary>
+    /// Sirve la imagen físicamente desde el servidor (evita problemas de StaticFiles en producción)
+    /// </summary>
+    [AllowAnonymous]
+    [HttpGet("foto/{filename}")]
+    public IActionResult GetFoto(string filename)
+    {
+        if (string.IsNullOrEmpty(filename)) return NotFound();
+
+        // Extraer solo el nombre del archivo para seguridad
+        var actualFilename = Path.GetFileName(filename);
+        var baseDirectory = Path.Combine(_env.ContentRootPath, "wwwroot", "uploads", "equipos");
+        var filePath = Path.Combine(baseDirectory, actualFilename);
+
+        // Si el archivo no existe, intentar con extensiones comunes
+        if (!System.IO.File.Exists(filePath))
+        {
+            string[] extensions = { ".jpeg", ".jpg", ".png" };
+            foreach (var ext in extensions)
+            {
+                var trialPath = filePath + ext;
+                if (System.IO.File.Exists(trialPath))
+                {
+                    filePath = trialPath;
+                    break;
+                }
+            }
+        }
+
+        // LOG DE DEPURACIÓN
+        Console.WriteLine($"[DEBUG] Solicitud foto: {filename}");
+        Console.WriteLine($"[DEBUG] Ruta final: {filePath}");
+        Console.WriteLine($"[DEBUG] Existe: {System.IO.File.Exists(filePath)}");
+
+        if (!System.IO.File.Exists(filePath))
+            return NotFound();
+
+        var extension = Path.GetExtension(filePath).ToLowerInvariant();
+        var contentType = extension switch
+        {
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".png" => "image/png",
+            ".gif" => "image/gif",
+            _ => "application/octet-stream"
+        };
+
+        // Stream the file for better memory management
+        var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        return new FileStreamResult(fileStream, contentType);
+    }
 }
 
 public class CambiarEstadoDto
 {
     public string Estado { get; set; } = string.Empty;
+}
+
+public class EquipoFotoUploadDto
+{
+    public IFormFile Archivo { get; set; } = null!;
 }

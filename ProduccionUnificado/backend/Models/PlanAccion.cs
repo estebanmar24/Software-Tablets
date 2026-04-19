@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -36,6 +37,10 @@ namespace TiempoProcesos.API.Models
         [Required]
         [StringLength(50)]
         public string Estado { get; set; } = "pendiente";
+
+        [Required]
+        [StringLength(50)]
+        public string TipoTrabajo { get; set; } = "Nuevo";
 
         [Range(0, 100)]
         public int PorcentajeAvance { get; set; } = 0;

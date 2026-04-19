@@ -108,11 +108,11 @@ export async function createUser(user: any): Promise<any> {
 }
 
 export async function updateUser(id: number, user: any): Promise<void> {
-    await api.put(`/adminusuarios/${id}`, user);
+    await api.put(`adminusuarios/${id}`, user);
 }
 
 export async function deleteUser(id: number): Promise<void> {
-    await api.delete(`/adminusuarios/${id}`);
+    await api.delete(`adminusuarios/${id}`);
 }
 export async function getCodigosDesperdicio(): Promise<import('../types').CodigoDesperdicio[]> {
     const response = await api.get(`desperdicio/codigos/activos`);
@@ -123,3 +123,5 @@ export async function registrarDesperdicio(data: import('../types').RegistroDesp
     const response = await api.post(`desperdicio`, data);
     return response.data;
 }
+
+export { API_URL } from './apiConfig';

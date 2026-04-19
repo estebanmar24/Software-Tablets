@@ -28,6 +28,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { Asset } from 'expo-asset';
 import { ExpenseHistoryModal } from '../components/ExpenseHistoryModal';
+import { getApiBaseUrl, getFileServerUrl } from '../services/apiConfig';
 
 const TABS = [
     { key: 'gastos', label: 'Captura de Gastos', icon: '💰' },
@@ -42,6 +43,21 @@ const TABS = [
 export default function SSTGastosScreen({ navigation }) {
     const { colors } = useTheme();
     const [activeTab, setActiveTab] = useState('gastos');
+    const [apiBaseUrl, setApiBaseUrl] = useState('');
+    const [fileServerUrl, setFileServerUrl] = useState('');
+
+    useEffect(() => {
+        const initUrls = async () => {
+            const baseUrl = await getApiBaseUrl();
+            const serverUrl = await getFileServerUrl();
+            // Default to '/api' if empty to ensure initial relative URLs work
+            const safeBaseUrl = baseUrl || '/api';
+            setApiBaseUrl(safeBaseUrl);
+            setFileServerUrl(serverUrl || '');
+            console.log(`[SST] API Base: ${safeBaseUrl}, File Server: ${serverUrl}`);
+        };
+        initUrls();
+    }, []);
 
     return (
         <View style={styles.container}>
@@ -62,19 +78,19 @@ export default function SSTGastosScreen({ navigation }) {
             </View>
 
             {/* Content based on active tab */}
-            {activeTab === 'gastos' && <GastosTab />}
+            {activeTab === 'gastos' && <GastosTab fileServerUrl={fileServerUrl} />}
             {activeTab === 'cotizaciones' && <CotizacionesTab />}
             {activeTab === 'graficas' && <GraficasTab />}
             {activeTab === 'rubros' && <RubrosTab />}
             {activeTab === 'servicios' && <ServiciosTab />}
             {activeTab === 'proveedores' && <ProveedoresTab />}
-            {activeTab === 'ordenaseo' && <OrdenAseoTab />}
+            {activeTab === 'ordenaseo' && <OrdenAseoTab apiBaseUrl={apiBaseUrl} />}
         </View>
     );
 }
 
 // ===================== GASTOS TAB =====================
-function GastosTab() {
+function GastosTab({ fileServerUrl }) {
     const [loading, setLoading] = useState(true);
     const [anio, setAnio] = useState(new Date().getFullYear());
     const [mes, setMes] = useState(new Date().getMonth() + 1); // v2.1 Fixed imports
@@ -837,7 +853,10 @@ function GastosTab() {
                                                     onPress={() => {
                                                         if (Platform.OS === 'web') {
                                                             const link = document.createElement('a');
-                                                            link.href = gasto.archivoFactura;
+                                                            // Resolve full URL
+                                                            const invoiceUrl = gasto.archivoFactura;
+                                                            link.href = `${fileServerUrl}${invoiceUrl.startsWith('/') ? '' : '/'}${invoiceUrl}`;
+                                                            link.target = '_blank';
                                                             link.download = gasto.archivoFacturaNombre || `factura_${gasto.numeroFactura || gasto.id}.pdf`;
                                                             document.body.appendChild(link);
                                                             link.click();
@@ -2878,7 +2897,7 @@ const PREGUNTAS_ASEO = [
     { key: 'MesasTrabajo', label: '¿Las mesas de trabajo están limpias, sin elementos no permitidos?' }
 ];
 
-function OrdenAseoTab() {
+function OrdenAseoTab({ apiBaseUrl }) {
     const [encuestas, setEncuestas] = useState([]);
     const [loading, setLoading] = useState(false);
     const [detailModalVisible, setDetailModalVisible] = useState(false);
@@ -3237,7 +3256,7 @@ function OrdenAseoTab() {
                                     try {
                                         console.log(`[PDF] Loading image for ${item.key}: ${file}`);
                                         // Cache busting param to ensure CORS headers are fresh
-                                        const photoUrl = ordenAseoApi.getFotoUrl(file) + `?t=${Date.now()}`;
+                                        const photoUrl = ordenAseoApi.getFotoUrl(file, apiBaseUrl) + `?t=${Date.now()}`;
 
                                         const startResize = Date.now();
                                         const photoBase64 = await getBase64FromUrl(photoUrl);
@@ -3509,7 +3528,7 @@ function OrdenAseoTab() {
                                                                 {photoVal.split('|').map((photo, idx) => (
                                                                     <Image
                                                                         key={idx}
-                                                                        source={{ uri: ordenAseoApi.getFotoUrl(photo) }}
+                                                                        source={{ uri: ordenAseoApi.getFotoUrl(photo, apiBaseUrl) }}
                                                                         style={{ width: '100%', height: 300, borderRadius: 8, backgroundColor: '#F3F4F6', marginBottom: 12 }}
                                                                         resizeMode="contain"
                                                                     />
@@ -3517,7 +3536,7 @@ function OrdenAseoTab() {
                                                             </View>
                                                         ) : (
                                                             <Image
-                                                                source={{ uri: ordenAseoApi.getFotoUrl(photoVal) }}
+                                                                source={{ uri: ordenAseoApi.getFotoUrl(photoVal, apiBaseUrl) }}
                                                                 style={{ width: '100%', height: 250, borderRadius: 8, backgroundColor: '#F3F4F6' }}
                                                                 resizeMode="contain"
                                                             />

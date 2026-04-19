@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import * as talleresApi from '../services/talleresApi';
+import { getFileServerUrl } from '../services/apiConfig';
 import { ExpenseHistoryModal } from '../components/ExpenseHistoryModal';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
@@ -110,6 +111,16 @@ export default function TalleresGastosScreen({ navigation }) {
 // ===================== GASTOS TAB =====================
 function GastosTab() {
     const [loading, setLoading] = useState(true);
+    const [serverUrl, setServerUrl] = useState('');
+
+    useEffect(() => {
+        const initServer = async () => {
+            const url = await getFileServerUrl();
+            setServerUrl(url);
+        };
+        initServer();
+    }, []);
+
     const [anio, setAnio] = useState(new Date().getFullYear());
     const [mes, setMes] = useState(new Date().getMonth() + 1);
     const [rubros, setRubros] = useState([]);
@@ -1066,7 +1077,7 @@ function GastosTab() {
                                         </View>
                                         {!!gasto.facturaPdfUrl && Platform.OS === 'web' && (
                                             <a
-                                                href={`${process.env.EXPO_PUBLIC_API_URL?.replace('/api', '') || 'http://192.168.100.227:5144'}${gasto.facturaPdfUrl}`}
+                                                href={`${serverUrl}${gasto.facturaPdfUrl}`}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 style={{ color: '#2563EB', textDecoration: 'none', marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 'bold' }}
@@ -1349,7 +1360,7 @@ function GastosTab() {
                                                             }
                                                         }} style={{ padding: 8 }} />
                                                         {!!formData.facturaPdfUrl && (
-                                                            <a href={`${process.env.EXPO_PUBLIC_API_URL?.replace('/api', '') || 'http://192.168.100.227:5144'}${formData.facturaPdfUrl}`} target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB', textDecoration: 'none', fontWeight: 'bold' }}>
+                                                            <a href={`${serverUrl}${formData.facturaPdfUrl}`} target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB', textDecoration: 'none', fontWeight: 'bold' }}>
                                                                 📄 Ver PDF
                                                             </a>
                                                         )}

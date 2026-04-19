@@ -60,7 +60,14 @@ namespace TiempoProcesos.API.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Area")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Email")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -563,6 +570,112 @@ namespace TiempoProcesos.API.Migrations
                     b.HasIndex("EncuestaId");
 
                     b.ToTable("EncuestaCalidadProduccionProcesos", (string)null);
+                });
+
+            modelBuilder.Entity("TiempoProcesos.API.Models.EncuestaCalidadTaller", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("CantidadEvaluada")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("CantidadProducir")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<bool>("ConoceFormaEmpaque")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("DesgasteImpresion")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("EsquinaDefectuosa")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("EstadoProceso")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<bool>("GrafadoRoto")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("HoraLlegada")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("HoraSalida")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("InsumosPendientes")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("Manchas")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("NovedadBPM")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("NumeroRemision")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Observaciones")
+                        .HasColumnType("text");
+
+                    b.Property<string>("OrdenProduccion")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("PresenciaPestanas")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("QuebradoArrugado")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ReservaPega")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("TallerId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("TieneInsumosCompletos")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("TieneMuestra")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("TieneRemision")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("TipoInsumosPendientes")
+                        .HasColumnType("text");
+
+                    b.Property<string>("TipoProducto")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("UsaCofia")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("UsuarioId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("VariacionTono")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TallerId");
+
+                    b.HasIndex("UsuarioId");
+
+                    b.ToTable("EncuestasCalidadTalleres", (string)null);
                 });
 
             modelBuilder.Entity("TiempoProcesos.API.Models.EncuestaNovedad", b =>
@@ -1496,6 +1609,11 @@ namespace TiempoProcesos.API.Migrations
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
+
+                    b.Property<string>("TipoTrabajo")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.HasKey("Id");
 
@@ -2556,6 +2674,23 @@ namespace TiempoProcesos.API.Migrations
                     b.ToTable("SST_TiposServicio", (string)null);
                 });
 
+            modelBuilder.Entity("TiempoProcesos.API.Models.TallerExterno", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("TalleresExternos", (string)null);
+                });
+
             modelBuilder.Entity("TiempoProcesos.API.Models.Talleres_Cotizacion", b =>
                 {
                     b.Property<int>("Id")
@@ -2991,6 +3126,10 @@ namespace TiempoProcesos.API.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<bool>("EsPorHoras")
                         .HasColumnType("boolean")
                         .HasColumnName("EsPorHoras");
@@ -3125,6 +3264,25 @@ namespace TiempoProcesos.API.Migrations
                         .IsRequired();
 
                     b.Navigation("Encuesta");
+                });
+
+            modelBuilder.Entity("TiempoProcesos.API.Models.EncuestaCalidadTaller", b =>
+                {
+                    b.HasOne("TiempoProcesos.API.Models.TallerExterno", "Taller")
+                        .WithMany()
+                        .HasForeignKey("TallerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("TiempoProcesos.API.Models.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Taller");
+
+                    b.Navigation("Usuario");
                 });
 
             modelBuilder.Entity("TiempoProcesos.API.Models.EncuestaNovedad", b =>

@@ -24,6 +24,7 @@ import { Picker } from '@react-native-picker/picker';
 import { produccionApi } from '../services/produccionApi';
 import { ExpenseHistoryModal } from '../components/ExpenseHistoryModal';
 import { useTheme } from '../contexts/ThemeContext';
+import { getFileServerUrl, getApiBaseUrl } from '../services/apiConfig';
 
 // TABS - Same structure as SST
 const TABS = [
@@ -115,6 +116,18 @@ export default function ProduccionGastosScreen() {
 // ===================== GASTOS TAB =====================
 function GastosTab() {
     const [loading, setLoading] = useState(true);
+    const [serverUrl, setServerUrl] = useState('');
+    const [apiBaseUrl, setApiBaseUrl] = useState('');
+
+    useEffect(() => {
+        const initUrls = async () => {
+            const [sUrl, aUrl] = await Promise.all([getFileServerUrl(), getApiBaseUrl()]);
+            setServerUrl(sUrl);
+            setApiBaseUrl(aUrl);
+        };
+        initUrls();
+    }, []);
+
     const [anio, setAnio] = useState(new Date().getFullYear());
     const [mes, setMes] = useState(new Date().getMonth() + 1);
 
@@ -1005,7 +1018,7 @@ function GastosTab() {
                                     {!!gasto.numeroFactura && <Text style={styles.gastoDetail}>📄 Factura: {gasto.numeroFactura}</Text>}
                                     {!!gasto.facturaPdfUrl && Platform.OS === 'web' && (
                                         <a
-                                            href={`${process.env.EXPO_PUBLIC_API_URL?.replace('/api', '') || 'http://192.168.100.227:5144'}${gasto.facturaPdfUrl}`}
+                                            href={`${serverUrl}${gasto.facturaPdfUrl}`}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             style={{ color: '#2563EB', textDecoration: 'none', marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }}
@@ -1272,7 +1285,7 @@ function GastosTab() {
                                                         style={{ padding: 8 }}
                                                     />
                                                     {!!formData.facturaPdfUrl && (
-                                                        <a href={`${process.env.EXPO_PUBLIC_API_URL?.replace('/api', '') || 'http://192.168.100.227:5144'}${formData.facturaPdfUrl}`} target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB' }}>
+                                                        <a href={`${serverUrl}${formData.facturaPdfUrl}`} target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB' }}>
                                                             📄 Ver PDF
                                                         </a>
                                                     )}
@@ -3025,7 +3038,7 @@ function SalariosTab() {
         try {
             setSaving(true);
             // Update salario AND documento via PUT /api/usuarios/:id
-            const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api'}/usuarios/${editItem.id}`, {
+            const response = await fetch(`${apiBaseUrl}/usuarios/${editItem.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -3061,7 +3074,7 @@ function SalariosTab() {
         try {
             setSaving(true);
             // Use existing createUsuario API
-            const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api'}/usuarios`, {
+            const response = await fetch(`${apiBaseUrl}/usuarios`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

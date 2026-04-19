@@ -1,3 +1,5 @@
+import { authFetch } from '../services/authFetch';
+import { getToken } from '../services/authStorage';
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Modal, TextInput, Alert, ScrollView, Platform } from 'react-native';
 import { getUsers, createUser, updateUser, deleteUser } from '../services/api';
@@ -11,6 +13,8 @@ interface User {
     role: string;
     nombreMostrar: string;
     area: string;
+    email?: string;
+    activo: boolean;
 }
 
 export default function UserManagementScreen({ onBack }: { onBack: () => void }) {
@@ -26,8 +30,10 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
     // const [role, setRole] = useState('admin'); // Removed single role
     const [selectedRoles, setSelectedRoles] = useState<string[]>(['produccion']); // Multi-role state
     const [nombreMostrar, setNombreMostrar] = useState('');
+    const [email, setEmail] = useState('');
     const [selectedAreas, setSelectedAreas] = useState<string[]>([]); // Multi-area state
     const [showPassword, setShowPassword] = useState(false);
+    const [activo, setActivo] = useState(true);
 
     const areasDisponibles = [
         "Gerencia", "SST", "Planeacion", "Gestion Humana", "Talleres y Despachos", "Calidad", "Produccion", "Almacen", "Diseño", "Contabilidad"
@@ -37,6 +43,7 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
         { label: 'Administrador Master', value: 'admin' },
         { label: 'Cuadro Master (Solo Vista)', value: 'master' },
         { label: 'Control en proceso de Calidad', value: 'calidad' },
+        { label: 'Encuestas Calidad - Talleres Externos', value: 'calidad_talleres' },
         { label: 'Módulo Calidad', value: 'modulo_calidad' },
         { label: 'Gerente Producción', value: 'produccion' },
         { label: 'Seguridad y Salud', value: 'sst' },
@@ -46,6 +53,7 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
         { label: 'Equipos (Mantenimiento)', value: 'equipos' },
         { label: 'Diseño', value: 'diseno' },
         { label: 'Planeación', value: 'planeacion' },
+        { label: 'Planeador de Máquinas', value: 'planeador' },
         { label: 'Desarrollador', value: 'develop' }
     ];
 
@@ -97,10 +105,10 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
 
         try {
             if (isEditing && editingId) {
-                await updateUser(editingId, { role: roleString, nombreMostrar, area: areaString, password: password ? password.trim() : undefined });
+                await updateUser(editingId, { role: roleString, nombreMostrar, email: email.trim(), area: areaString, password: password ? password.trim() : undefined, activo });
                 Alert.alert('Éxito', 'Usuario actualizado');
             } else {
-                await createUser({ username: username.trim(), password: password.trim(), role: roleString, nombreMostrar, area: areaString });
+                await createUser({ username: username.trim(), password: password.trim(), role: roleString, nombreMostrar, email: email.trim(), area: areaString, activo });
                 Alert.alert('Éxito', 'Usuario creado');
             }
             setModalVisible(false);
@@ -143,8 +151,10 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
         // Split role string into array, defaulting to empty if null
         setSelectedRoles(user.role ? user.role.split(',').map(r => r.trim()) : []);
         setNombreMostrar(user.nombreMostrar);
+        setEmail(user.email || '');
         setSelectedAreas(user.area ? user.area.split(',').map(a => a.trim()) : []);
         setPassword(''); // Password blank on edit
+        setActivo(user.activo !== false); // Default true if undefined
         setIsEditing(true);
         setModalVisible(true);
     };
@@ -161,8 +171,10 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
         setPassword('');
         setSelectedRoles(['produccion']);
         setNombreMostrar('');
+        setEmail('');
         setSelectedAreas([]);
         setShowPassword(false);
+        setActivo(true);
     };
 
     const renderItem = ({ item }: { item: User }) => {
@@ -173,6 +185,7 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
                 <View style={styles.cardInfo}>
                     <Text style={styles.cardTitle}>{item.nombreMostrar}</Text>
                     <Text style={styles.cardSubtitle}>Usuario: {item.username}</Text>
+                    {item.email ? <Text style={styles.cardSubtitle}>Correo: {item.email}</Text> : null}
                     <View style={styles.rolesContainer}>
                         {userRoles.map((r, i) => (
                             <View key={i} style={[styles.badge, { backgroundColor: r.trim() === 'develop' ? '#000' : '#2196F3', marginRight: 4, marginBottom: 4 }]}>
@@ -184,6 +197,11 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
                                 <Text style={styles.badgeText}>Área: {a.trim()}</Text>
                             </View>
                         )) : null}
+                        {!item.activo && (
+                            <View style={[styles.badge, { backgroundColor: '#F44336', marginRight: 4, marginBottom: 4 }]}>
+                                <Text style={styles.badgeText}>Bloqueado</Text>
+                            </View>
+                        )}
                     </View>
                 </View>
                 <View style={styles.cardActions}>
@@ -244,6 +262,15 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
                                 onChangeText={setNombreMostrar}
                             />
 
+                            <Text style={styles.label}>Correo Electrónico (Para alertas):</Text>
+                            <TextInput
+                                style={styles.input}
+                                value={email}
+                                onChangeText={setEmail}
+                                keyboardType="email-address"
+                                autoCapitalize="none"
+                            />
+
                             <Text style={styles.label}>Roles:</Text>
                             <View style={styles.rolesList}>
                                 {rolesDisponibles.map(r => {
@@ -301,6 +328,19 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
                                     />
                                 </TouchableOpacity>
                             </View>
+
+                            <Text style={styles.label}>Estado de la Cuenta:</Text>
+                            <TouchableOpacity
+                                style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 15 }]}
+                                onPress={() => setActivo(!activo)}
+                            >
+                                <Text style={{ color: activo ? '#4CAF50' : '#F44336', fontWeight: 'bold' }}>
+                                    {activo ? 'Activo (Puede ingresar)' : 'Bloqueado (No puede ingresar)'}
+                                </Text>
+                                <View style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: activo ? '#4CAF50' : '#ccc', padding: 2, justifyContent: 'center', alignItems: activo ? 'flex-end' : 'flex-start' }}>
+                                    <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: 'white' }} />
+                                </View>
+                            </TouchableOpacity>
                         </ScrollView>
 
                         <View style={styles.modalActions}>

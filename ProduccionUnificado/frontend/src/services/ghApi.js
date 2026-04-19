@@ -4,48 +4,36 @@
  * Includes Cotizaciones (Quotations) for price comparison
  */
 
-import axios from 'axios';
-import { getToken } from './authStorage';
+import api from './apiClient';
 
-const api = axios.create();
-/*
-api.interceptors.request.use(async (config) => {
-    const token = await getToken();
-    if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-}, error => Promise.reject(error));
-*/
-
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
+const API_BASE_URL = '';
 
 // ==================== RUBROS ====================
 
 export async function getRubros() {
-    const response = await api.get(`${API_BASE_URL}/gh/rubros`);
+    const response = await api.get(`${API_BASE_URL}gh/rubros`);
     return response.data;
 }
 
 export async function createRubro(rubro) {
-    const response = await api.post(`${API_BASE_URL}/gh/rubros`, rubro);
+    const response = await api.post(`${API_BASE_URL}gh/rubros`, rubro);
     return response.data;
 }
 
 export async function updateRubro(id, rubro) {
-    const response = await api.put(`${API_BASE_URL}/gh/rubros/${id}`, { ...rubro, id });
+    const response = await api.put(`${API_BASE_URL}gh/rubros/${id}`, { ...rubro, id });
     return response.data;
 }
 
 export async function deleteRubro(id) {
-    await api.delete(`${API_BASE_URL}/gh/rubros/${id}`);
+    await api.delete(`${API_BASE_URL}gh/rubros/${id}`);
     return true;
 }
 
 // ==================== TIPOS DE SERVICIO ====================
 
 export async function getTiposServicio(rubroId = null) {
-    let url = `${API_BASE_URL}/gh/tipos-servicio`;
+    let url = `${API_BASE_URL}gh/tipos-servicio`;
     if (rubroId) url += `?rubroId=${rubroId}`;
 
     const response = await api.get(url);
@@ -53,17 +41,17 @@ export async function getTiposServicio(rubroId = null) {
 }
 
 export async function createTipoServicio(tipoServicio) {
-    const response = await api.post(`${API_BASE_URL}/gh/tipos-servicio`, tipoServicio);
+    const response = await api.post(`${API_BASE_URL}gh/tipos-servicio`, tipoServicio);
     return response.data;
 }
 
 export async function updateTipoServicio(id, tipoServicio) {
-    const response = await api.put(`${API_BASE_URL}/gh/tipos-servicio/${id}`, { ...tipoServicio, id });
+    const response = await api.put(`${API_BASE_URL}gh/tipos-servicio/${id}`, { ...tipoServicio, id });
     return response.data;
 }
 
 export async function deleteTipoServicio(id) {
-    await api.delete(`${API_BASE_URL}/gh/tipos-servicio/${id}`);
+    await api.delete(`${API_BASE_URL}gh/tipos-servicio/${id}`);
     return true;
 }
 
@@ -72,7 +60,7 @@ export async function deleteTipoServicio(id) {
  * @param {Array} presupuestos - Array of {tipoServicioId, anio, mes, presupuesto}
  */
 export async function setPresupuestosBulk(presupuestos) {
-    const response = await api.post(`${API_BASE_URL}/gh/tipos-servicio/presupuestos`, presupuestos);
+    const response = await api.post(`${API_BASE_URL}gh/tipos-servicio/presupuestos`, presupuestos);
     return response.data;
 }
 
@@ -81,7 +69,7 @@ export async function setPresupuestosBulk(presupuestos) {
  * @param {number} anio 
  */
 export async function getPresupuestos(anio) {
-    const response = await api.get(`${API_BASE_URL}/gh/presupuestos/list?anio=${anio}`);
+    const response = await api.get(`${API_BASE_URL}gh/presupuestos/list?anio=${anio}`);
     return response.data;
 }
 
@@ -90,14 +78,14 @@ export async function getPresupuestos(anio) {
  * @param {number} anio - Year to get presupuestos for
  */
 export async function getPresupuestosGrid(anio) {
-    const response = await api.get(`${API_BASE_URL}/gh/presupuestos?anio=${anio}`);
+    const response = await api.get(`${API_BASE_URL}gh/presupuestos?anio=${anio}`);
     return response.data;
 }
 
 // ==================== PROVEEDORES (Extended with contact info) ====================
 
 export async function getProveedores(tipoServicioId = null) {
-    let url = `${API_BASE_URL}/gh/proveedores`;
+    let url = `${API_BASE_URL}gh/proveedores`;
     if (tipoServicioId) url += `?tipoServicioId=${tipoServicioId}`;
 
     const response = await api.get(url);
@@ -105,24 +93,24 @@ export async function getProveedores(tipoServicioId = null) {
 }
 
 export async function createProveedor(proveedor) {
-    const response = await api.post(`${API_BASE_URL}/gh/proveedores`, proveedor);
+    const response = await api.post(`${API_BASE_URL}gh/proveedores`, proveedor);
     return response.data;
 }
 
 export async function updateProveedor(id, proveedor) {
-    const response = await api.put(`${API_BASE_URL}/gh/proveedores/${id}`, { ...proveedor, id });
+    const response = await api.put(`${API_BASE_URL}gh/proveedores/${id}`, { ...proveedor, id });
     return response.data;
 }
 
 export async function deleteProveedor(id) {
-    await api.delete(`${API_BASE_URL}/gh/proveedores/${id}`);
+    await api.delete(`${API_BASE_URL}gh/proveedores/${id}`);
     return true;
 }
 
 // ==================== COTIZACIONES (New feature for price comparison) ====================
 
 export async function getCotizaciones(proveedorId = null, anio = null, mes = null) {
-    let url = `${API_BASE_URL}/gh/cotizaciones`;
+    let url = `${API_BASE_URL}gh/cotizaciones`;
     const params = [];
     if (proveedorId) params.push(`proveedorId=${proveedorId}`);
     if (anio) params.push(`anio=${anio}`);
@@ -134,24 +122,24 @@ export async function getCotizaciones(proveedorId = null, anio = null, mes = nul
 }
 
 export async function createCotizacion(cotizacion) {
-    const response = await api.post(`${API_BASE_URL}/gh/cotizaciones`, cotizacion);
+    const response = await api.post(`${API_BASE_URL}gh/cotizaciones`, cotizacion);
     return response.data;
 }
 
 export async function updateCotizacion(id, cotizacion) {
-    const response = await api.put(`${API_BASE_URL}/gh/cotizaciones/${id}`, { ...cotizacion, id });
+    const response = await api.put(`${API_BASE_URL}gh/cotizaciones/${id}`, { ...cotizacion, id });
     return response.data;
 }
 
 export async function deleteCotizacion(id) {
-    await api.delete(`${API_BASE_URL}/gh/cotizaciones/${id}`);
+    await api.delete(`${API_BASE_URL}gh/cotizaciones/${id}`);
     return true;
 }
 
 // ==================== GASTOS ====================
 
 export async function getGastos(anio, mes = null) {
-    let url = `${API_BASE_URL}/gh/gastos?anio=${anio}`;
+    let url = `${API_BASE_URL}gh/gastos?anio=${anio}`;
     if (mes) url += `&mes=${mes}`;
 
     const response = await api.get(url);
@@ -159,7 +147,7 @@ export async function getGastos(anio, mes = null) {
 }
 
 export async function getGastosResumen(anio, mes = null) {
-    let url = `${API_BASE_URL}/gh/gastos/resumen?anio=${anio}`;
+    let url = `${API_BASE_URL}gh/gastos/resumen?anio=${anio}`;
     if (mes) url += `&mes=${mes}`;
 
     const response = await api.get(url);
@@ -167,17 +155,17 @@ export async function getGastosResumen(anio, mes = null) {
 }
 
 export async function createGasto(gasto) {
-    const response = await api.post(`${API_BASE_URL}/gh/gastos`, gasto);
+    const response = await api.post(`${API_BASE_URL}gh/gastos`, gasto);
     return response.data;
 }
 
 export async function updateGasto(id, gasto) {
-    const response = await api.put(`${API_BASE_URL}/gh/gastos/${id}`, { ...gasto, id });
+    const response = await api.put(`${API_BASE_URL}gh/gastos/${id}`, { ...gasto, id });
     return response.data;
 }
 
 export async function deleteGasto(id) {
-    await api.delete(`${API_BASE_URL}/gh/gastos/${id}`);
+    await api.delete(`${API_BASE_URL}gh/gastos/${id}`);
     return true;
 }
 

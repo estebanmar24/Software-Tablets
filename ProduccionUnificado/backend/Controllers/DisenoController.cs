@@ -14,7 +14,7 @@ namespace TiempoProcesos.API.Controllers;
 /// Handles Rubros, Proveedores, Cotizaciones, Presupuestos, and Gastos.
 /// hierarchy: Rubro -> Proveedor
 /// </summary>
-// [Authorize]
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class DisenoController : ControllerBase
@@ -254,8 +254,10 @@ public class DisenoController : ControllerBase
     }
 
     [HttpPost("upload-factura")]
-    public async Task<ActionResult> UploadFactura(IFormFile file)
+    [Consumes("multipart/form-data")]
+    public async Task<ActionResult> UploadFactura([FromForm] DTOs.FileUploadDto dto)
     {
+        var file = dto.File;
         if (file == null || file.Length == 0) return BadRequest("No file uploaded");
         var uploadsFolder = Path.Combine(_env.WebRootPath, "uploads", "facturas");
         if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);

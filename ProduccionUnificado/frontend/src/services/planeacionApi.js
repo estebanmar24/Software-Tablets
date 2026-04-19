@@ -3,19 +3,9 @@
  * Handles all API calls for Planeación Budget and Expense Management
  */
 
-import axios from 'axios';
-import { getToken } from './authStorage';
+import api from './apiClient';
 
-const api = axios.create();
-api.interceptors.request.use(async (config) => {
-    const token = await getToken();
-    if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-}, error => Promise.reject(error));
-
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.227:5144/api';
+const API_BASE_URL = '';
 
 // ==================== RUBROS ====================
 
@@ -190,9 +180,10 @@ export async function uploadFactura(file) {
     return response.data;
 }
 
-export function getBaseUrl() {
-    // API_BASE_URL = http://192.168.100.227:5144/api → server root = http://192.168.100.227:5144
-    return API_BASE_URL.replace(/\/api$/, '');
+import { getFileServerUrl } from './apiConfig';
+
+export async function getFileUrl() {
+    return await getFileServerUrl();
 }
 // ==================== HELPERS ====================
 

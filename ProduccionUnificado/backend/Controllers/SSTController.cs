@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 
 namespace TiempoProcesos.API.Controllers;
 
@@ -10,16 +11,18 @@ namespace TiempoProcesos.API.Controllers;
 /// Controller for SST (Salud y Seguridad en el Trabajo) Budget and Expense Management.
 /// Handles Rubros, TiposServicio, Proveedores, Presupuestos, and Gastos.
 /// </summary>
-// [Authorize]
+[Authorize]
 [ApiController]
-[Route("api/sst")]
+[Route("api/[controller]")]
 public class SSTController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly IWebHostEnvironment _env;
 
-    public SSTController(AppDbContext context)
+    public SSTController(AppDbContext context, IWebHostEnvironment env)
     {
         _context = context;
+        _env = env;
     }
 
     #region Rubros
@@ -594,6 +597,34 @@ public class SSTController : ControllerBase
         _context.SST_GastosMensuales.Remove(gasto);
         await _context.SaveChangesAsync();
         return NoContent();
+    }
+
+    /// <summary>
+    /// Upload PDF Factura
+    /// </summary>
+    [HttpPost("upload-factura")]
+    [Consumes("multipart/form-data")]
+    public async Task<ActionResult> UploadFactura([FromForm] DTOs.FileUploadDto dto)
+    {
+        var file = dto.File;
+        if (file == null || file.Length == 0)
+            return BadRequest("No file uploaded");
+
+        // Ensure uploads folder exists
+        var uploadsFolder = Path.Combine(_env.WebRootPath, "uploads", "facturas");
+        if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
+
+        // Generate unique filename
+        var uniqueFileName = Guid.NewGuid().ToString() + "_" + file.FileName;
+        var filePath = Path.Combine(uploadsFolder, uniqueFileName);
+
+        using (var stream = new FileStream(filePath, FileMode.Create))
+        {
+            await file.CopyToAsync(stream);
+        }
+
+        // Return relative URL
+        return Ok(new { url = $"/uploads/facturas/{uniqueFileName}" });
     }
 
     #endregion

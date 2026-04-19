@@ -93,6 +93,15 @@ function GastosTab() {
     const [gastos, setGastos] = useState([]);
     const [resumen, setResumen] = useState(null);
     const [resumenAnual, setResumenAnual] = useState(null);
+    const [fileServerUrl, setFileServerUrl] = useState('');
+
+    useEffect(() => {
+        const init = async () => {
+            const url = await disenoApi.getFileUrl();
+            setFileServerUrl(url);
+        };
+        init();
+    }, []);
     const [presupuestoInfo, setPresupuestoInfo] = useState(null);
     const [filterRubro, setFilterRubro] = useState('');
     const [filterFecha, setFilterFecha] = useState('');
@@ -477,7 +486,7 @@ function GastosTab() {
                                     <Text style={styles.gastoDetail}>🏢 NIT: {gasto.proveedorNit}</Text>
                                     <Text style={styles.gastoDetail}>📄 Factura: {gasto.numeroFactura}</Text>
                                     {gasto.facturaPdfUrl && (
-                                        <TouchableOpacity onPress={() => { if (Platform.OS === 'web') window.open(`${disenoApi.getBaseUrl()}${gasto.facturaPdfUrl}`, '_blank'); }}>
+                                        <TouchableOpacity onPress={() => { if (Platform.OS === 'web') window.open(`${fileServerUrl}${gasto.facturaPdfUrl}`, '_blank'); }}>
                                             <Text style={[styles.gastoDetail, { color: '#2563EB', textDecorationLine: 'underline' }]}>📎 Ver PDF Factura</Text>
                                         </TouchableOpacity>
                                     )}
@@ -550,8 +559,25 @@ function GastosTab() {
                                     </TouchableOpacity>
                                 )}
 
-                                {!isLegalizing && (
-                                    <TextInput style={styles.input} value={formData.ordenProduccion} onChangeText={(t) => setFormData(p => ({ ...p, ordenProduccion: t }))} placeholder="Ej: OP-12345" />
+                                {requiereTipoTrabajo && (
+                                    <>
+                                        <Text style={styles.label}>Tipo de Trabajo *</Text>
+                                        <View style={styles.pickerContainer}>
+                                            <Picker selectedValue={formData.tipoTrabajo} onValueChange={(v) => setFormData(p => ({ ...p, tipoTrabajo: v }))}>
+                                                <Picker.Item label="Seleccione..." value="" />
+                                                <Picker.Item label="Nuevo" value="Nuevo" />
+                                                <Picker.Item label="Repetido" value="Repetido" />
+                                            </Picker>
+                                        </View>
+
+                                        <Text style={styles.label}>Orden de Producción (OP) *</Text>
+                                        <TextInput
+                                            style={styles.input}
+                                            value={formData.ordenProduccion}
+                                            onChangeText={(t) => setFormData(p => ({ ...p, ordenProduccion: t }))}
+                                            placeholder="Ej: OP-12345"
+                                        />
+                                    </>
                                 )}
 
                                 <Text style={styles.label}>Proveedor {formData.esPendiente && !isLegalizing ? '(Opcional por ahora)' : '*'}</Text>
