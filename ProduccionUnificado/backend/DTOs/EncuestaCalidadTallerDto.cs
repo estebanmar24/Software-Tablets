@@ -1,3 +1,5 @@
+using System;
+
 namespace TiempoProcesos.API.DTOs;
 
 public class CrearEncuestaCalidadTallerDto
@@ -29,6 +31,19 @@ public class CrearEncuestaCalidadTallerDto
     public bool InsumosPendientes { get; set; }
     public string? TipoInsumosPendientes { get; set; }
     public string? Observaciones { get; set; }
+
+    // Photos (Base64)
+    public string? FotoVariacionTonoBase64 { get; set; }
+    public string? FotoQuebradoArrugadoBase64 { get; set; }
+    public string? FotoEsquinaDefectuosaBase64 { get; set; }
+    public string? FotoPresenciaPestanasBase64 { get; set; }
+    public string? FotoDesgasteImpresionBase64 { get; set; }
+    public string? FotoManchasBase64 { get; set; }
+    public string? FotoReservaPegaBase64 { get; set; }
+    public string? FotoGrafadoRotoBase64 { get; set; }
+    public string? FotoNovedadBPMBase64 { get; set; }
+    public string? FotoUsaCofiaBase64 { get; set; }
+    public string? FotoInsumosPendientesBase64 { get; set; }
 }
 
 public class EncuestaCalidadTallerResumenDto
@@ -38,6 +53,7 @@ public class EncuestaCalidadTallerResumenDto
     public string TallerNombre { get; set; } = string.Empty;
     public string OrdenProduccion { get; set; } = string.Empty;
     public string EstadoProceso { get; set; } = string.Empty;
+    public string Inspector { get; set; } = string.Empty;
     public DateTime FechaCreacion { get; set; }
 }
 
@@ -71,6 +87,19 @@ public class EncuestaCalidadTallerDetalleDto
     public bool InsumosPendientes { get; set; }
     public string? TipoInsumosPendientes { get; set; }
     public string? Observaciones { get; set; }
+    
+    // Photo Paths
+    public string? FotoVariacionTono { get; set; }
+    public string? FotoQuebradoArrugado { get; set; }
+    public string? FotoEsquinaDefectuosa { get; set; }
+    public string? FotoPresenciaPestanas { get; set; }
+    public string? FotoDesgasteImpresion { get; set; }
+    public string? FotoManchas { get; set; }
+    public string? FotoReservaPega { get; set; }
+    public string? FotoGrafadoRoto { get; set; }
+    public string? FotoNovedadBPM { get; set; }
+    public string? FotoUsaCofia { get; set; }
+    public string? FotoInsumosPendientes { get; set; }
     public string Inspector { get; set; } = string.Empty;
     public DateTime FechaCreacion { get; set; }
 }

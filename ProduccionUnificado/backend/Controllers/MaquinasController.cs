@@ -16,6 +16,7 @@ namespace TiempoProcesos.API.Controllers
             _context = context;
         }
 
+        [AllowAnonymous]
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Maquina>>> GetMaquinas([FromQuery] bool? soloActivas = null)
         {

@@ -172,7 +172,7 @@ export default function CaptureGridScreen({ navigation }) {
             console.log(`Cargando datos Maq:${maquinaIdToLoad} Op:${opToLoad}`);
             const [res, resDesp] = await Promise.all([
                 getProduccionDetalles(mes, anio, maquinaIdToLoad, opToLoad),
-                axios.get(`${API_URL}/desperdicio/reporte?maquinaId=${maquinaIdToLoad}&mes=${mes}&anio=${anio}`).catch(e => ({ data: {} }))
+                api.get(`desperdicio/reporte?maquinaId=${maquinaIdToLoad}&mes=${mes}&anio=${anio}`).catch(e => ({ data: {} }))
             ]);
 
             let dbData = res.data || [];
@@ -375,7 +375,7 @@ export default function CaptureGridScreen({ navigation }) {
         try {
             const [res, resDesp] = await Promise.all([
                 getProduccionPorMaquina(mes, anio, maquinaId),
-                axios.get(`${API_URL}/desperdicio/reporte?maquinaId=${maquinaId}&mes=${mes}&anio=${anio}`).catch(e => ({ data: {} }))
+                api.get(`desperdicio/reporte?maquinaId=${maquinaId}&mes=${mes}&anio=${anio}`).catch(e => ({ data: {} }))
             ]);
             const dbData = res.data;
             const desperdicios = resDesp.data || {};
@@ -1077,9 +1077,12 @@ export default function CaptureGridScreen({ navigation }) {
         const TotalAux = MantAseo + Descansos + OtrosAux;
         const TotalMuertos = FaltaTrabajo + Reparacion + OtroMuerto;
         const TotalHoras = TotalHorasProd + TotalAux + TotalMuertos;
+        
+        // Excluir descansos para calcular la meta
+        const TotalHorasMeta = TotalHoras - Descansos;
 
         let MetaPorHora = MetaBase > 0 ? (MetaBase / 8) : 0;
-        let MetaRendimiento = MetaPorHora * TotalHoras;
+        let MetaRendimiento = MetaPorHora * TotalHorasMeta;
 
         // Si Horas son 0, Meta es 0 (correcto)
 
@@ -1121,7 +1124,7 @@ export default function CaptureGridScreen({ navigation }) {
 
         return {
             TirosEquivalentes, TotalHorasProd, Promedio, Meta75Diff, VrPagar,
-            TotalAux, TotalMuertos, TotalHoras,
+            TotalAux, TotalMuertos, TotalHoras, TotalHorasMeta,
             // Nuevos campos bonificables
             PorcentajeBonif: porcentajeBonif,
             TirosBonificables,
@@ -1211,7 +1214,7 @@ export default function CaptureGridScreen({ navigation }) {
                         onPress: async () => {
                             try {
                                 setLoading(true);
-                                await axios.delete(`${API_URL}/produccion/borrar?mes=${mes}&anio=${anio}&maquinaId=${selectedMaquina}`);
+                                await api.delete(`produccion/borrar?mes=${mes}&anio=${anio}&maquinaId=${selectedMaquina}`);
                                 setLoading(false);
                                 Alert.alert("Éxito", "Se han eliminado todos los registros del mes.");
                                 resetGrid();
@@ -1233,7 +1236,7 @@ export default function CaptureGridScreen({ navigation }) {
             // Enviar todos los datos juntos para reemplazo total (sincronización)
             // Esto asegura que si se borraron días en el grid, se borren en BD
             console.log("[DEBUG] Sending payload to /produccion/mensual:", JSON.stringify(dataToSave, null, 2));
-            await axios.post(`${API_URL}/produccion/mensual`, dataToSave);
+            await api.post(`produccion/mensual`, dataToSave);
             console.log("[DEBUG] Save successful");
 
             setLoading(false);
@@ -1466,6 +1469,7 @@ export default function CaptureGridScreen({ navigation }) {
                         <Text style={[styles.cell]}>Otros M.</Text>
                         <Text style={[styles.cell, styles.calc]}>T.Muer</Text>
                         <Text style={[styles.cell, styles.total]}>T. Horas</Text>
+                        <Text style={[styles.cell, styles.total, { backgroundColor: '#e3f2fd' }]}>T.H. Neto</Text>
                         <Text style={[styles.cell]}>Desperdicio</Text>
                         <Text style={[styles.cell, { width: 100 }]}>OP / Ref</Text>
                         <Text style={[styles.cell, { width: 100 }]}>Novedades</Text>
@@ -1557,6 +1561,7 @@ export default function CaptureGridScreen({ navigation }) {
                                     <Text style={[styles.cell, styles.calc]}>{calcs.TotalMuertos?.toFixed(2)}</Text>
 
                                     <Text style={[styles.cell, styles.total]}>{calcs.TotalHoras?.toFixed(2)}</Text>
+                                    <Text style={[styles.cell, styles.total, { backgroundColor: '#e3f2fd', color: '#1565C0' }]}>{calcs.TotalHorasMeta?.toFixed(2)}</Text>
 
                                     <TextInput style={styles.cell} keyboardType="numeric" value={day.desperdicio} onChangeText={t => handleNumericInput(index, 'desperdicio', t)} editable={!!selectedMaquina} />
                                     <TextInput style={[styles.cell, { width: 100 }]} value={day.referenciaOP} onChangeText={t => updateDay(index, 'referenciaOP', t)} editable={!!selectedMaquina} />
@@ -1597,6 +1602,7 @@ export default function CaptureGridScreen({ navigation }) {
                                     otroMuerto: acc.otroMuerto + parseNumberInput(day.otroMuerto),
                                     TotalMuertos: acc.TotalMuertos + (calcs.TotalMuertos || 0),
                                     TotalHoras: acc.TotalHoras + (calcs.TotalHoras || 0),
+                                    TotalHorasMeta: acc.TotalHorasMeta + (calcs.TotalHorasMeta || 0),
                                     desperdicio: acc.desperdicio + parseNumberInput(day.desperdicio),
                                     MetaRendimiento: acc.MetaRendimiento + (calcs.MetaRendimiento || 0), // Sumar Metas
                                 };
@@ -1607,7 +1613,7 @@ export default function CaptureGridScreen({ navigation }) {
                                 diasConDatos: 0,
                                 mantenimiento: 0, descansos: 0, otrosAux: 0, TotalAux: 0,
                                 faltaTrabajo: 0, reparacion: 0, otroMuerto: 0, TotalMuertos: 0,
-                                TotalHoras: 0, desperdicio: 0,
+                                TotalHoras: 0, TotalHorasMeta: 0, desperdicio: 0,
                                 MetaRendimiento: 0 // Init MetaRendimiento
                             });
 
@@ -1648,6 +1654,7 @@ export default function CaptureGridScreen({ navigation }) {
                                         <Text style={[styles.cell, { color: 'black' }]}>{totals.otroMuerto.toFixed(2)}</Text>
                                         <Text style={[styles.cell, styles.calc, { color: 'black' }]}>{totals.TotalMuertos.toFixed(2)}</Text>
                                         <Text style={[styles.cell, styles.total, { color: 'black', fontWeight: 'bold' }]}>{totals.TotalHoras.toFixed(2)}</Text>
+                                        <Text style={[styles.cell, styles.total, { backgroundColor: '#e3f2fd', color: 'black', fontWeight: 'bold' }]}>{totals.TotalHorasMeta.toFixed(2)}</Text>
                                         <Text style={[styles.cell, { color: 'black' }]}>{formatNumber(totals.desperdicio.toFixed(0))}</Text>
                                         <Text style={[styles.cell, { width: 100, color: 'black' }]}>--</Text>
                                         <Text style={[styles.cell, { width: 100, color: 'black' }]}>--</Text>

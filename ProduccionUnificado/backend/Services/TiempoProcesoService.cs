@@ -57,7 +57,8 @@ public class TiempoProcesoService : ITiempoProcesoService
             .Select(u => new UsuarioDto
             {
                 Id = u.Id,
-                Nombre = u.Nombre
+                Nombre = u.Nombre,
+                Area = u.Area ?? ""
             })
             .ToListAsync();
     }

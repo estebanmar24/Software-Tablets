@@ -74,14 +74,15 @@ public class CalificacionController : ControllerBase
                     var snapshot = metaSnapshots.FirstOrDefault(s => s.MaquinaId == maq.Id);
                     var tirosReferencia = snapshot?.TirosReferencia ?? maq.TirosReferencia;
                     // Same formula as ProduccionController.GetResumen
-                    var tirosTotales = grupoMaquina.Sum(p => (p.Cambios * tirosReferencia) + p.TirosDiarios);
+                    var tirosTotales = grupoMaquina.Sum(p => (p.Cambios * tirosReferencia) + (int)Math.Round(p.RendimientoFinal));
                     
                     var meta100PorcientoBase = snapshot != null
                         ? (snapshot.Meta100Porciento > 0 ? snapshot.Meta100Porciento : snapshot.MetaRendimiento)
                         : (maq.Meta100Porciento > 0 ? maq.Meta100Porciento : maq.MetaRendimiento);
                     
                     // REVERTED: Use TotalHoras to prorate Meta100 (Global Logic)
-                    decimal totalHorasMaq = grupoMaquina.Sum(p => p.TotalHoras);
+                    // EXCLUDE RESTS: (TotalHoras - HorasDescanso)
+                    decimal totalHorasMaq = grupoMaquina.Sum(p => p.TotalHoras - p.HorasDescanso);
                     decimal metaPorHora = (decimal)meta100PorcientoBase / 8;
                     decimal meta100 = totalHorasMaq * metaPorHora;
                     
@@ -224,14 +225,15 @@ public class CalificacionController : ControllerBase
                     var snapshot = metaSnapshots.FirstOrDefault(s => s.MaquinaId == maquina.Id);
                     var tirosReferencia = snapshot?.TirosReferencia ?? maquina.TirosReferencia;
                     // Calcular directamente en lugar de usar la propiedad computada
-                    var tirosTotales = grupoMaquina.Sum(x => (x.Cambios * tirosReferencia) + x.TirosDiarios);
+                    var tirosTotales = grupoMaquina.Sum(x => (x.Cambios * tirosReferencia) + (int)Math.Round(x.RendimientoFinal));
                     
                     var meta100PorcientoBase = snapshot != null
                         ? (snapshot.Meta100Porciento > 0 ? snapshot.Meta100Porciento : snapshot.MetaRendimiento)
                         : (maquina.Meta100Porciento > 0 ? maquina.Meta100Porciento : maquina.MetaRendimiento);
                     
                      // REVERTED: Use TotalHoras to prorate Meta100 (Global Logic)
-                    decimal totalHorasMaq = grupoMaquina.Sum(p => p.TotalHoras);
+                     // EXCLUDE RESTS: (TotalHoras - HorasDescanso)
+                    decimal totalHorasMaq = grupoMaquina.Sum(p => p.TotalHoras - p.HorasDescanso);
                     decimal metaPorHora = (decimal)meta100PorcientoBase / 8;
                     decimal meta100 = totalHorasMaq * metaPorHora;
                     
@@ -351,14 +353,15 @@ public class CalificacionController : ControllerBase
                         var snapshot = metaSnapshots.FirstOrDefault(s => s.MaquinaId == maquina.Id);
                         var tirosReferencia = snapshot?.TirosReferencia ?? maquina.TirosReferencia;
                         // Same formula as calcular-y-guardar
-                        var tirosTotales = grupoMaquina.Sum(x => (x.Cambios * tirosReferencia) + x.TirosDiarios);
+                        var tirosTotales = grupoMaquina.Sum(x => (x.Cambios * tirosReferencia) + (int)Math.Round(x.RendimientoFinal));
                         
                         var meta100PorcientoBase = snapshot != null
                             ? (snapshot.Meta100Porciento > 0 ? snapshot.Meta100Porciento : snapshot.MetaRendimiento)
                             : (maquina.Meta100Porciento > 0 ? maquina.Meta100Porciento : maquina.MetaRendimiento);
                         
                         // REVERTED: Use TotalHoras to prorate Meta100 (Global Logic)
-                        decimal totalHorasMaq = grupoMaquina.Sum(p => p.TotalHoras);
+                        // EXCLUDE RESTS: (TotalHoras - HorasDescanso)
+                        decimal totalHorasMaq = grupoMaquina.Sum(p => p.TotalHoras - p.HorasDescanso);
                         decimal metaPorHora = (decimal)meta100PorcientoBase / 8;
                         decimal meta100 = totalHorasMaq * metaPorHora;
                         

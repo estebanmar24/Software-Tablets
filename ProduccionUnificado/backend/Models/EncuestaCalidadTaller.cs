@@ -21,7 +21,7 @@ public class EncuestaCalidadTaller
     
     public string EstadoProceso { get; set; } = string.Empty;
     
-    // Nuevas preguntas de calidad (Screenshot requirements)
+    // Quality questions
     public bool TieneMuestra { get; set; }
     public string? TipoProducto { get; set; }
     public bool ConoceFormaEmpaque { get; set; }
@@ -29,18 +29,38 @@ public class EncuestaCalidadTaller
     public bool TieneInsumosCompletos { get; set; }
     
     public bool VariacionTono { get; set; }
+    public string? FotoVariacionTono { get; set; }
+
     public bool QuebradoArrugado { get; set; }
+    public string? FotoQuebradoArrugado { get; set; }
+
     public bool EsquinaDefectuosa { get; set; }
+    public string? FotoEsquinaDefectuosa { get; set; }
+
     public bool PresenciaPestanas { get; set; }
+    public string? FotoPresenciaPestanas { get; set; }
+
     public bool DesgasteImpresion { get; set; }
+    public string? FotoDesgasteImpresion { get; set; }
+
     public bool Manchas { get; set; }
+    public string? FotoManchas { get; set; }
+
     public bool ReservaPega { get; set; }
+    public string? FotoReservaPega { get; set; }
+
     public bool GrafadoRoto { get; set; }
+    public string? FotoGrafadoRoto { get; set; }
     
     public bool NovedadBPM { get; set; }
+    public string? FotoNovedadBPM { get; set; }
+
     public bool UsaCofia { get; set; }
+    public string? FotoUsaCofia { get; set; }
+
     public bool InsumosPendientes { get; set; }
     public string? TipoInsumosPendientes { get; set; }
+    public string? FotoInsumosPendientes { get; set; }
     public string? Observaciones { get; set; }
 
     public int UsuarioId { get; set; }
@@ -48,5 +68,7 @@ public class EncuestaCalidadTaller
 
     // Navigation properties
     public TallerExterno? Taller { get; set; }
-    public Usuario? Usuario { get; set; }
+    
+    [ForeignKey("UsuarioId")]
+    public AdminUsuario? AdminUsuario { get; set; }
 }

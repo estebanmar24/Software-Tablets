@@ -325,7 +325,7 @@ function GastosTab() {
         const Patterns = [
             { start: 6 * 60, end: 14 * 60 },
             { start: 7 * 60, end: 15 * 60 },
-            { start: 7 * 60, end: 16 * 60 },
+            { start: 7.5 * 60, end: 16.5 * 60 }, // Turno 7:30 - 4:30 (Base 8h + 1h Almuerzo)
             { start: 8 * 60, end: 16 * 60 },
             { start: 14 * 60, end: 22 * 60 },
             { start: 18 * 60, end: 26 * 60 },
@@ -443,7 +443,14 @@ function GastosTab() {
             processInterval(segment.start, segment.end);
         });
 
-        setBreakdown(breakdownItems);
+        const formatHours = (h) => {
+            const totalMin = Math.round(h * 60);
+            const hh = Math.floor(totalMin / 60);
+            const mm = totalMin % 60;
+            return `${hh}:${mm.toString().padStart(2, '0')}`;
+        };
+
+        setBreakdown(breakdownItems.map(item => ({ ...item, formattedHours: formatHours(item.hours) })));
 
         // Calcular costo total
         let totalCost = 0;
@@ -1005,7 +1012,16 @@ function GastosTab() {
                                         {gasto.maquina && <Text style={styles.gastoDetail}>⚙️ {gasto.maquina.nombre}</Text>}
                                         {gasto.proveedor && <Text style={styles.gastoDetail}>🏢 {gasto.proveedor.nombre}</Text>}
                                         <Text style={styles.gastoDetail}>📅 {formatDate(gasto.fecha)}</Text>
-                                        {gasto.cantidadHoras && <Text style={styles.gastoDetail}>⏱️ {gasto.cantidadHoras} hrs</Text>}
+                                        {gasto.cantidadHoras ? (
+                                            <Text style={styles.gastoDetail}>
+                                                ⏱️ {(() => {
+                                                    const totalMin = Math.round(gasto.cantidadHoras * 60);
+                                                    const hh = Math.floor(totalMin / 60);
+                                                    const mm = totalMin % 60;
+                                                    return `${hh}:${mm.toString().padStart(2, '0')}`;
+                                                })()}
+                                            </Text>
+                                        ) : null}
                                     </View>
                                     {/* Show OP number for Horas Extras/Recargos */}
                                     {!!gasto.numeroOP && (
@@ -1231,8 +1247,8 @@ function GastosTab() {
                                                 <View style={{ backgroundColor: '#F3F4F6', padding: 10, borderRadius: 8, marginBottom: 15 }}>
                                                     <Text style={{ fontWeight: 'bold', marginBottom: 5, fontSize: 13 }}>Desglose de Horas:</Text>
                                                     {breakdown.map((item, idx) => (
-                                                        <Text key={idx} style={{ fontSize: 12, color: '#4B5563' }}>
-                                                            • {item.type}: {item.hours.toFixed(2)} hrs
+                                                        <Text key={idx} style={{ fontSize: 13, color: '#4B5563', fontWeight: 'bold' }}>
+                                                            • {item.type}: {item.formattedHours || item.hours.toFixed(2)}
                                                         </Text>
                                                     ))}
                                                 </View>

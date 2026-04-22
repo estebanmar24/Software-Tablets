@@ -29,10 +29,10 @@ public class AppDbContext : DbContext
     public DbSet<CodigoDesperdicio> CodigosDesperdicio { get; set; }
     public DbSet<RegistroDesperdicio> RegistrosDesperdicio { get; set; }
 
-    // Horarios/Turnos
+    // Horarios
     public DbSet<Horario> Horarios { get; set; }
 
-    // SST Budget and Expense Management
+    // SST Management
     public DbSet<SST_Rubro> SST_Rubros { get; set; }
     public DbSet<SST_TipoServicio> SST_TiposServicio { get; set; }
     public DbSet<SST_Proveedor> SST_Proveedores { get; set; }
@@ -41,7 +41,7 @@ public class AppDbContext : DbContext
     public DbSet<PlanAccion> PlanesAccion { get; set; }
     public DbSet<PlanAccionEvidencia> PlanAccionEvidencias { get; set; }
 
-    // GH (Gestión Humana) Management
+    // GH Management
     public DbSet<GH_Rubro> GH_Rubros { get; set; }
     public DbSet<GH_TipoServicio> GH_TiposServicio { get; set; }
     public DbSet<GH_Proveedor> GH_Proveedores { get; set; }
@@ -50,25 +50,26 @@ public class AppDbContext : DbContext
     public DbSet<GH_GastoMensual> GH_GastosMensuales { get; set; }
     public DbSet<GH_PresupuestoMensual> GH_PresupuestosMensuales { get; set; }
 
-    // Produccion (Control Gastos)
+    // Produccion
     public DbSet<Produccion_Rubro> Produccion_Rubros { get; set; }
     public DbSet<Produccion_Proveedor> Produccion_Proveedores { get; set; }
     public DbSet<Produccion_TipoHora> Produccion_TiposHora { get; set; }
     public DbSet<Produccion_Gasto> Produccion_Gastos { get; set; }
+    
     // Talleres
     public DbSet<Talleres_Personal> Talleres_Personal { get; set; }
     public DbSet<Produccion_Cotizacion> Produccion_Cotizaciones { get; set; }
     public DbSet<Produccion_PresupuestoMensual> Produccion_PresupuestosMensuales { get; set; }
     public DbSet<Produccion_TipoRecargo> Produccion_TiposRecargo { get; set; }
 
-    // Talleres y Despachos Management
+    // Talleres y Despachos
     public DbSet<Talleres_Rubro> Talleres_Rubros { get; set; }
     public DbSet<Talleres_Proveedor> Talleres_Proveedores { get; set; }
     public DbSet<Talleres_Cotizacion> Talleres_Cotizaciones { get; set; }
     public DbSet<Talleres_Gasto> Talleres_Gastos { get; set; }
     public DbSet<Talleres_PresupuestoMensual> Talleres_PresupuestosMensuales { get; set; }
 
-    // Planeación Management
+    // Planeacion
     public DbSet<Planeacion_Rubro> Planeacion_Rubros { get; set; }
     public DbSet<Planeacion_Proveedor> Planeacion_Proveedores { get; set; }
     public DbSet<Planeacion_Cotizacion> Planeacion_Cotizaciones { get; set; }
@@ -76,7 +77,7 @@ public class AppDbContext : DbContext
     public DbSet<Planeacion_PresupuestoMensual> Planeacion_PresupuestosMensuales { get; set; }
     public DbSet<Planeacion_Personal> Planeacion_Personal { get; set; }
 
-    // Diseño Management
+    // Diseno
     public DbSet<Diseno_Rubro> Diseno_Rubros { get; set; }
     public DbSet<Diseno_Proveedor> Diseno_Proveedores { get; set; }
     public DbSet<Diseno_Cotizacion> Diseno_Cotizaciones { get; set; }
@@ -86,35 +87,39 @@ public class AppDbContext : DbContext
     // Orden y Aseo Surveys
     public DbSet<EncuestaOrdenAseo> EncuestasOrdenAseo { get; set; }
 
-    // Detalle diario de producción
+    // Produccion Diario
     public DbSet<ProduccionDiariaDetalle> ProduccionDiariaDetalles { get; set; }
 
-    // Metas mensuales por máquina
+    // Metas mensuales
     public DbSet<MetaMensual> MetasMensuales { get; set; }
 
-    // Calidad Producción
+    // Calidad Produccion
     public DbSet<EncuestaCalidadProduccion> EncuestasCalidadProduccion { get; set; }
     public DbSet<EncuestaCalidadProduccionProceso> EncuestaCalidadProduccionProcesos { get; set; }
 
-    // Consolidado NC (No Conformidad)
+    // Consolidado NC
     public DbSet<ConsolidadoNC> ConsolidadosNC { get; set; }
 
-    // Tickets de Reporte de Errores
+    // Tickets
     public DbSet<Ticket> Tickets { get; set; }
     public DbSet<TicketImagen> TicketImagenes { get; set; }
 
-    // Planeador de Máquinas
+    // Planeador
     public DbSet<PlaneacionMaquina> PlaneacionesMaquinas { get; set; }
 
-    // Talleres Externos
+    // Calidad Talleres Externos
     public DbSet<TallerExterno> TalleresExternos { get; set; }
     public DbSet<EncuestaCalidadTaller> EncuestasCalidadTalleres { get; set; }
+
+    // Hoja de Vida Maquinas
+    public DbSet<HojaVidaMaquina> HojasVidaMaquinas { get; set; }
+    public DbSet<MantenimientoHojaVida> MantenimientosHojaVida { get; set; }
+    public DbSet<HojaVidaFoto> HojaVidaFotos { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
-        // Mapeo explícito de tablas para coincidir con init_db.sql
         modelBuilder.Entity<Usuario>().ToTable("Usuarios");
         modelBuilder.Entity<Maquina>().ToTable("Maquinas");
         modelBuilder.Entity<Actividad>().ToTable("Actividades");
@@ -135,7 +140,6 @@ public class AppDbContext : DbContext
             .HasForeignKey(e => e.PlanAccionId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // Configurar relaciones para TiempoProceso
         modelBuilder.Entity<TiempoProceso>()
             .HasOne(t => t.Usuario)
             .WithMany()
@@ -160,7 +164,6 @@ public class AppDbContext : DbContext
             .HasForeignKey(t => t.OrdenProduccionId)
             .OnDelete(DeleteBehavior.SetNull);
 
-        // Configurar relaciones para ProduccionDiaria
         modelBuilder.Entity<ProduccionDiaria>()
             .HasOne(p => p.Usuario)
             .WithMany()
@@ -173,7 +176,6 @@ public class AppDbContext : DbContext
             .HasForeignKey(p => p.MaquinaId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // Configurar relaciones para EncuestaCalidad
         modelBuilder.Entity<EncuestaCalidad>()
             .HasOne(e => e.Operario)
             .WithMany()
@@ -198,7 +200,6 @@ public class AppDbContext : DbContext
             .HasForeignKey(n => n.EncuestaId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // Configurar Equipos y HistorialMantenimientos
         modelBuilder.Entity<Equipo>().ToTable("Equipos");
         modelBuilder.Entity<EquipoFoto>().ToTable("EquipoFotos");
         modelBuilder.Entity<HistorialMantenimiento>().ToTable("HistorialMantenimientos");
@@ -216,14 +217,12 @@ public class AppDbContext : DbContext
             .HasForeignKey(l => l.EquipoId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // SST Tables Configuration
         modelBuilder.Entity<SST_Rubro>().ToTable("SST_Rubros");
         modelBuilder.Entity<SST_TipoServicio>().ToTable("SST_TiposServicio");
         modelBuilder.Entity<SST_Proveedor>().ToTable("SST_Proveedores");
         modelBuilder.Entity<SST_PresupuestoMensual>().ToTable("SST_PresupuestosMensuales");
         modelBuilder.Entity<SST_GastoMensual>().ToTable("SST_GastosMensuales");
 
-        // SST Relationships
         modelBuilder.Entity<SST_TipoServicio>()
             .HasOne(t => t.Rubro)
             .WithMany(r => r.TiposServicio)
@@ -242,7 +241,6 @@ public class AppDbContext : DbContext
             .HasForeignKey(p => p.TipoServicioId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // Unique constraint: One budget per TipoServicio per month/year
         modelBuilder.Entity<SST_PresupuestoMensual>()
             .HasIndex(p => new { p.TipoServicioId, p.Anio, p.Mes })
             .IsUnique();
@@ -265,7 +263,6 @@ public class AppDbContext : DbContext
             .HasForeignKey(g => g.ProveedorId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // GH Tables Configuration
         modelBuilder.Entity<GH_Rubro>().ToTable("GH_Rubros");
         modelBuilder.Entity<GH_TipoServicio>().ToTable("GH_TiposServicio");
         modelBuilder.Entity<GH_Proveedor>().ToTable("GH_Proveedores");
@@ -273,7 +270,6 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<GH_GastoMensual>().ToTable("GH_GastosMensuales");
         modelBuilder.Entity<GH_PresupuestoMensual>().ToTable("GH_PresupuestosMensuales");
 
-        // GH Relationships
         modelBuilder.Entity<GH_TipoServicio>()
             .HasOne(t => t.Rubro)
             .WithMany(r => r.TiposServicio)
@@ -316,10 +312,6 @@ public class AppDbContext : DbContext
             .HasForeignKey(g => g.CotizacionId)
             .OnDelete(DeleteBehavior.SetNull);
 
-        // NOTA: Los datos semilla se cargan directamente con init_db.sql
-        // No usar HasData() para evitar conflictos con BD en la nube
-
-        // Produccion Tables Configuration
         modelBuilder.Entity<Produccion_Rubro>().ToTable("Produccion_Rubros");
         modelBuilder.Entity<Produccion_Proveedor>().ToTable("Produccion_Proveedores");
         modelBuilder.Entity<Produccion_TipoHora>().ToTable("Produccion_TiposHora");
@@ -327,25 +319,21 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Produccion_Gasto>().ToTable("Produccion_Gastos");
         modelBuilder.Entity<Produccion_PresupuestoMensual>().ToTable("Produccion_PresupuestosMensuales");
 
-        // Produccion Budget Relationship
         modelBuilder.Entity<Produccion_PresupuestoMensual>()
             .HasOne(p => p.Rubro)
             .WithMany()
             .HasForeignKey(p => p.RubroId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // Unique constraint: One budget per Rubro per month/year
         modelBuilder.Entity<Produccion_PresupuestoMensual>()
             .HasIndex(p => new { p.RubroId, p.Anio, p.Mes })
             .IsUnique();
 
-        // Talleres Tables Configuration
         modelBuilder.Entity<Talleres_Rubro>().ToTable("Talleres_Rubros");
         modelBuilder.Entity<Talleres_Proveedor>().ToTable("Talleres_Proveedores");
         modelBuilder.Entity<Talleres_Gasto>().ToTable("Talleres_Gastos");
         modelBuilder.Entity<Talleres_PresupuestoMensual>().ToTable("Talleres_PresupuestosMensuales");
 
-        // Talleres Relationships
         modelBuilder.Entity<Talleres_Gasto>()
             .HasOne(g => g.Proveedor)
             .WithMany(p => p.Gastos)
@@ -364,12 +352,10 @@ public class AppDbContext : DbContext
             .HasForeignKey(p => p.RubroId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // Unique constraint: One budget per Rubro per month/year
         modelBuilder.Entity<Talleres_PresupuestoMensual>()
             .HasIndex(p => new { p.RubroId, p.Anio, p.Mes })
             .IsUnique();
 
-        // Planeación Tables Configuration
         modelBuilder.Entity<Planeacion_Rubro>().ToTable("Planeacion_Rubros");
         modelBuilder.Entity<Planeacion_Proveedor>().ToTable("Planeacion_Proveedores");
         modelBuilder.Entity<Planeacion_Cotizacion>().ToTable("Planeacion_Cotizaciones");
@@ -377,7 +363,6 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Planeacion_PresupuestoMensual>().ToTable("Planeacion_PresupuestosMensuales");
         modelBuilder.Entity<Planeacion_Personal>().ToTable("Planeacion_Personal");
 
-        // Planeación Relationships
         modelBuilder.Entity<Planeacion_Proveedor>()
             .HasOne(p => p.Rubro)
             .WithMany(r => r.Proveedores)
@@ -426,19 +411,16 @@ public class AppDbContext : DbContext
             .HasForeignKey(p => p.RubroId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // Unique constraint: One budget per Rubro per month/year
         modelBuilder.Entity<Planeacion_PresupuestoMensual>()
             .HasIndex(p => new { p.RubroId, p.Anio, p.Mes })
             .IsUnique();
 
-        // Diseño Tables Configuration
         modelBuilder.Entity<Diseno_Rubro>().ToTable("Diseno_Rubros");
         modelBuilder.Entity<Diseno_Proveedor>().ToTable("Diseno_Proveedores");
         modelBuilder.Entity<Diseno_Cotizacion>().ToTable("Diseno_Cotizaciones");
         modelBuilder.Entity<Diseno_Gasto>().ToTable("Diseno_Gastos");
         modelBuilder.Entity<Diseno_PresupuestoMensual>().ToTable("Diseno_PresupuestosMensuales");
 
-        // Diseño Relationships
         modelBuilder.Entity<Diseno_Proveedor>()
             .HasOne(p => p.Rubro)
             .WithMany(r => r.Proveedores)
@@ -469,19 +451,15 @@ public class AppDbContext : DbContext
             .HasForeignKey(p => p.RubroId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // Unique constraint: One budget per Rubro per month/year
         modelBuilder.Entity<Diseno_PresupuestoMensual>()
             .HasIndex(p => new { p.RubroId, p.Anio, p.Mes })
             .IsUnique();
 
-        // Desperdicio Tables Configuration
         modelBuilder.Entity<CodigoDesperdicio>().ToTable("CodigosDesperdicio");
         modelBuilder.Entity<RegistroDesperdicio>().ToTable("RegistrosDesperdicio");
 
-        // Orden y Aseo Configuration
         modelBuilder.Entity<EncuestaOrdenAseo>().ToTable("EncuestasOrdenAseo");
 
-        // ProduccionDiariaDetalle Configuration
         modelBuilder.Entity<ProduccionDiariaDetalle>().ToTable("ProduccionDiariaDetalles");
         modelBuilder.Entity<ProduccionDiariaDetalle>()
             .HasOne(d => d.ProduccionDiaria)
@@ -494,7 +472,6 @@ public class AppDbContext : DbContext
             .HasForeignKey(d => d.ActividadId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // MetasMensuales Configuration
         modelBuilder.Entity<MetaMensual>().ToTable("MetasMensuales");
         modelBuilder.Entity<MetaMensual>()
             .HasOne(m => m.Maquina)
@@ -505,7 +482,6 @@ public class AppDbContext : DbContext
             .HasIndex(m => new { m.MaquinaId, m.Mes, m.Anio })
             .IsUnique();
 
-        // Calidad Producción Configuration
         modelBuilder.Entity<EncuestaCalidadProduccion>().ToTable("EncuestasCalidadProduccion");
         modelBuilder.Entity<EncuestaCalidadProduccionProceso>().ToTable("EncuestaCalidadProduccionProcesos");
         modelBuilder.Entity<EncuestaCalidadProduccion>()
@@ -514,7 +490,6 @@ public class AppDbContext : DbContext
             .HasForeignKey(p => p.EncuestaId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // Consolidado NC Configuration
         modelBuilder.Entity<ConsolidadoNC>().ToTable("ConsolidadosNC");
         modelBuilder.Entity<ConsolidadoNC>()
             .HasOne(nc => nc.EncuestaProduccion)
@@ -549,7 +524,6 @@ public class AppDbContext : DbContext
             .HasForeignKey(p => p.HorarioId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // Tickets Configuration
         modelBuilder.Entity<Ticket>().ToTable("Tickets");
         modelBuilder.Entity<TicketImagen>().ToTable("TicketImagenes");
 
@@ -559,7 +533,6 @@ public class AppDbContext : DbContext
             .HasForeignKey(ti => ti.TicketId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // PlaneacionMaquina Configuration
         modelBuilder.Entity<PlaneacionMaquina>().ToTable("PlaneacionesMaquinas");
 
         modelBuilder.Entity<PlaneacionMaquina>()
@@ -574,7 +547,6 @@ public class AppDbContext : DbContext
             .HasForeignKey(p => p.OrdenProduccionId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // Calidad Talleres Externos
         modelBuilder.Entity<TallerExterno>().ToTable("TalleresExternos");
         modelBuilder.Entity<EncuestaCalidadTaller>().ToTable("EncuestasCalidadTalleres");
 
@@ -585,9 +557,26 @@ public class AppDbContext : DbContext
             .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<EncuestaCalidadTaller>()
-            .HasOne(e => e.Usuario)
+            .HasOne(e => e.AdminUsuario)
             .WithMany()
             .HasForeignKey(e => e.UsuarioId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // Hoja de Vida Maquinas
+        modelBuilder.Entity<HojaVidaMaquina>().ToTable("HojasVidaMaquinas");
+        modelBuilder.Entity<MantenimientoHojaVida>().ToTable("MantenimientosHojaVida");
+        modelBuilder.Entity<HojaVidaFoto>().ToTable("HojaVidaFotos");
+
+        modelBuilder.Entity<MantenimientoHojaVida>()
+            .HasOne(m => m.HojaVida)
+            .WithMany(h => h.Mantenimientos)
+            .HasForeignKey(m => m.HojaVidaId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<HojaVidaFoto>()
+            .HasOne(f => f.HojaVida)
+            .WithMany(h => h.Fotos)
+            .HasForeignKey(f => f.HojaVidaId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

@@ -11,7 +11,7 @@ namespace TiempoProcesos.API.Controllers;
 /// Controller for SST (Salud y Seguridad en el Trabajo) Budget and Expense Management.
 /// Handles Rubros, TiposServicio, Proveedores, Presupuestos, and Gastos.
 /// </summary>
-[Authorize]
+[AllowAnonymous]
 [ApiController]
 [Route("api/[controller]")]
 public class SSTController : ControllerBase

@@ -136,8 +136,8 @@ export function Sidebar({
 
     const toggleMenu = () => setIsOpen(!isOpen);
 
-    const filteredOrdenes = ordenes.filter(op =>
-        op.numero.includes(opSearchText) && op.id !== selectedOrden
+    const filteredOrdenes = (ordenes || []).filter(op =>
+        op && op.numero && op.numero.includes(opSearchText) && op.id !== selectedOrden
     );
 
     const handleOpSearch = (text: string) => {

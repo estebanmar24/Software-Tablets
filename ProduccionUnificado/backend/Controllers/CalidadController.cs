@@ -43,18 +43,21 @@ public class CalidadController : ControllerBase
     // Estados de proceso
     private static readonly string[] EstadosProceso = { "En proceso", "Terminado" };
 
+    [AllowAnonymous]
     [HttpGet("procesos")]
     public ActionResult<IEnumerable<string>> GetProcesos()
     {
         return Ok(Procesos);
     }
 
+    [AllowAnonymous]
     [HttpGet("novedades")]
     public ActionResult<IEnumerable<string>> GetTiposNovedad()
     {
         return Ok(TiposNovedad);
     }
 
+    [AllowAnonymous]
     [HttpGet("estados")]
     public ActionResult<IEnumerable<string>> GetEstadosProceso()
     {
@@ -143,6 +146,7 @@ public class CalidadController : ControllerBase
         });
     }
 
+    [AllowAnonymous]
     [HttpPost("encuestas")]
     public async Task<ActionResult<EncuestaCalidadDetalleDto>> CrearEncuesta([FromBody] CrearEncuestaCalidadDto dto)
     {

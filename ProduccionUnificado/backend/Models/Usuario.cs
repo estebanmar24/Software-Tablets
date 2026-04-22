@@ -15,4 +15,5 @@ public class Usuario
     public bool EsPorHoras { get; set; } = false;
 
     public string Email { get; set; } = string.Empty;
+    public string Area { get; set; } = string.Empty;
 }

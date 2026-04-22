@@ -1439,8 +1439,18 @@ export default function DashboardScreen({ navigation }) {
                 if (historialCalificaciones.length >= 1) {
                     const mesesNombres = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
-                    // Ordenar por fecha (más antiguo primero)
+                    // Ordenar por fecha (más antiguo primero) y filtrar
                     const historialOrdenado = [...historialCalificaciones]
+                        .filter(h => {
+                            // Excluir Noviembre (11) y Diciembre (12)
+                            if (h.mes === 11 || h.mes === 12) return false;
+                            
+                            // No dejar que se pongan datos de meses después del mes generado
+                            if (h.anio > anio) return false;
+                            if (h.anio === anio && h.mes > mes) return false;
+                            
+                            return true;
+                        })
                         .sort((a, b) => {
                             if (a.anio !== b.anio) return a.anio - b.anio;
                             return a.mes - b.mes;

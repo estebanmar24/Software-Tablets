@@ -99,6 +99,7 @@ public class CalidadProduccionController : ControllerBase
         });
     }
 
+    [AllowAnonymous]
     [HttpPost("encuestas")]
     public async Task<ActionResult> CrearEncuesta([FromBody] CrearEncuestaCalidadProduccionDto dto)
     {

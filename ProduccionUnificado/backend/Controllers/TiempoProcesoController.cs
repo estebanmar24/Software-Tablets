@@ -5,7 +5,7 @@ using TiempoProcesos.API.Services;
 
 namespace TiempoProcesos.API.Controllers;
 
-[Authorize]
+[AllowAnonymous]
 [ApiController]
 [Route("api/[controller]")]
 public class TiempoProcesoController : ControllerBase

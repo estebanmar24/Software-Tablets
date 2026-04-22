@@ -23,9 +23,10 @@ import CalidadDashboard from './CalidadDashboard';
 import PlaneacionGastosScreen from '../screens/PlaneacionGastosScreen';
 import DisenoGastosScreen from '../screens/DisenoGastosScreen';
 import TicketsScreen from '../screens/TicketsScreen';
-import PlaneadorMaquinasScreen from '../screens/PlaneadorMaquinasScreen';
+import CalidadExternaView from './CalidadExternaView';
 import PlanAccionView from './PlanAccionView';
 import UserManagementScreen from '../screens/UserManagementScreen';
+import MaquinasScreen from '../screens/MaquinasScreen';
 import { api } from '../services/productionApi';
 
 
@@ -39,7 +40,7 @@ interface AdminDashboardProps {
     area?: string;
 }
 
-type TabName = 'captura' | 'desperdicio' | 'tablero' | 'historial' | 'maquinas' | 'operarios' | 'cartas' | 'calidad' | 'planeador';
+type TabName = 'captura' | 'desperdicio' | 'tablero' | 'historial' | 'maquinas' | 'operarios' | 'cartas' | 'calidad' | 'calidadExterna';
 
 const allTabs: { key: TabName; label: string; icon: string; roles: string[] }[] = [
     { key: 'captura', label: 'Captura Mensual', icon: '📝', roles: ['admin', 'master', 'produccion'] },
@@ -50,7 +51,7 @@ const allTabs: { key: TabName; label: string; icon: string; roles: string[] }[] 
     { key: 'operarios', label: 'Operarios', icon: '👥', roles: ['admin', 'master', 'gh'] },
     { key: 'calidad', label: 'Novedades de OP y Calidad', icon: '✅', roles: ['admin', 'master', 'calidad'] },
     { key: 'cartas', label: 'Cartas', icon: '📄', roles: ['admin', 'master'] },
-    { key: 'planeador', label: 'Planeador Máquinas', icon: '🚜', roles: ['admin', 'planeador'] },
+    { key: 'calidadExterna', label: 'Calidad Externa', icon: '🏭', roles: ['admin', 'calidad', 'modulo_calidad'] },
 ];
 
 /**
@@ -99,11 +100,11 @@ function DashboardCard({ title, description, icon, onPress, color, disabled }: D
 function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: AdminDashboardProps) {
     const { colors, isDarkMode } = useTheme();
     // Mode: 'MENU' | 'CONTENT' ...
-    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS' | 'TICKETS' | 'PLANEADOR_MAQUINAS' | 'PLANES_ACCION' | 'USUARIOS'>(() => {
+    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS' | 'TICKETS' | 'CALIDAD_EXTERNA' | 'PLANES_ACCION' | 'USUARIOS' | 'MAQUINAS'>(() => {
 
         if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
             const savedMode = window.localStorage.getItem('adminDashboardMode');
-            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS' || savedMode === 'PRODUCCION_GASTOS' || savedMode === 'TALLERES_GASTOS' || savedMode === 'CALIDAD' || savedMode === 'PLANEACION_GASTOS' || savedMode === 'DISENO_GASTOS' || savedMode === 'TICKETS' || savedMode === 'PLANEADOR_MAQUINAS' || savedMode === 'PLANES_ACCION' || savedMode === 'USUARIOS') {
+            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS' || savedMode === 'PRODUCCION_GASTOS' || savedMode === 'TALLERES_GASTOS' || savedMode === 'CALIDAD' || savedMode === 'PLANEACION_GASTOS' || savedMode === 'DISENO_GASTOS' || savedMode === 'TICKETS' || savedMode === 'CALIDAD_EXTERNA' || savedMode === 'PLANES_ACCION' || savedMode === 'USUARIOS' || savedMode === 'MAQUINAS') {
 
                 return savedMode as any;
             }
@@ -117,8 +118,8 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
     const { width } = useWindowDimensions();
     const isMobile = width < 768;
 
-    const userRoles = role.split(',').map(r => r.trim().toLowerCase());
-    const tabs = allTabs.filter(t => t.roles.some(r => userRoles.includes(r)));
+    const userRoles = (role || '').split(',').map(r => r.trim().toLowerCase());
+    const tabs = allTabs.filter(t => t.roles && t.roles.some(r => userRoles.includes(r)));
 
     useEffect(() => {
         if (tabs.length > 0 && !tabs.find(t => t.key === activeTab)) {
@@ -215,6 +216,8 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
                 return <QualityView navigation={mockNavigation} />;
             case 'cartas':
                 return <CartasScreen navigation={mockNavigation} />;
+            case 'calidadExterna':
+                return <CalidadExternaView />;
             default:
                 return null;
         }
@@ -371,7 +374,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
     }
 
     // --- VISTA PLANEADOR DE MAQUINAS ---
-    if (mode === 'PLANEADOR_MAQUINAS') {
+    if (mode === 'CALIDAD_EXTERNA') {
         return (
             <View style={styles.container}>
                 <View style={styles.header}>
@@ -390,7 +393,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
                         resizeMode="contain"
                     />
                 </View>
-                <PlaneadorMaquinasScreen />
+                <CalidadExternaView />
             </View>
         );
     }
@@ -562,6 +565,31 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
         );
     }
 
+    // --- VISTA MAQUINAS ---
+    if (mode === 'MAQUINAS') {
+        return (
+            <View style={[styles.container, { backgroundColor: colors.background }]}>
+                <View style={[styles.header, { backgroundColor: colors.headerBackground }]}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => {
+                        setMode('MENU');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                    }}>
+                        <Text style={styles.backButtonText}>← Volver al Panel</Text>
+                    </TouchableOpacity>
+                    <View style={styles.centeredTitleContainer} pointerEvents="box-none">
+                        <Text style={styles.title}>Módulo de Máquinas</Text>
+                    </View>
+                    <Image
+                        source={require('../../assets/logo_perla.png')}
+                        style={[styles.contentHeaderLogo, isDarkMode && { opacity: 0.95 }]}
+                        resizeMode="contain"
+                    />
+                </View>
+                <MaquinasScreen />
+            </View>
+        );
+    }
+
     // --- VISTA CONTENT (SISTEMA ACTUAL) ---
     if (mode === 'CONTENT') {
         return (
@@ -634,7 +662,8 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
     const isEquiposEnabled = userRoles.includes('admin') || userRoles.includes('equipos');
     const isPlaneacionEnabled = userRoles.includes('admin') || userRoles.includes('planeacion');
     const isDisenoEnabled = userRoles.includes('admin') || userRoles.includes('diseno');
-    const isPlaneadorEnabled = userRoles.includes('admin') || userRoles.includes('planeador');
+    const isPlaneadorEnabled = userRoles.includes('admin') || userRoles.includes('calidad') || userRoles.includes('modulo_calidad') || userRoles.includes('planeador');
+    const isMaquinasEnabled = userRoles.includes('admin') || userRoles.includes('maquinas');
 
     const roleDisplayNames: Record<string, string> = {
         'admin': 'Administrador',
@@ -648,6 +677,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
         'equipos': 'Mantenimiento Equipos',
         'planeacion': 'Planeación',
         'planeador': 'Planeador de Máquinas',
+        'maquinas': 'Maquinas',
         'diseno': 'Diseño'
     };
 
@@ -827,12 +857,23 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
                     <DashboardCard
                         title="Planeador Máquinas"
                         description="Programación de OPs por Horarios"
-                        icon="🚜"
+                        icon="🏭"
                         onPress={() => {
-                            setMode('PLANEADOR_MAQUINAS');
-                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'PLANEADOR_MAQUINAS');
+                            setMode('CALIDAD_EXTERNA');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'CALIDAD_EXTERNA');
                         }}
                         disabled={!isPlaneadorEnabled}
+                    />
+
+                    <DashboardCard
+                        title="Máquinas"
+                        description="Gestión integral y Estado de Máquinas"
+                        icon="🤖"
+                        onPress={() => {
+                            setMode('MAQUINAS');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MAQUINAS');
+                        }}
+                        disabled={!isMaquinasEnabled}
                     />
                 </ScrollView>
 

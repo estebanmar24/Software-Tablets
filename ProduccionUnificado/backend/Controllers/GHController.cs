@@ -11,7 +11,7 @@ namespace TiempoProcesos.API.Controllers;
 /// Controller for GH (Gestión Humana) Budget and Expense Management.
 /// Handles Rubros, TiposServicio, Proveedores, Cotizaciones, and Gastos.
 /// </summary>
-[Authorize]
+[AllowAnonymous]
 [ApiController]
 [Route("api/[controller]")]
 public class GHController : ControllerBase

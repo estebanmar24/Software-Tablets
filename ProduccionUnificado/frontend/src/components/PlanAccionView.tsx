@@ -64,6 +64,15 @@ interface PlanAccionViewProps {
     canCreate?: boolean;
 }
 
+interface AdminUsuario {
+    id: number;
+    username: string;
+    nombreMostrar: string;
+    email: string;
+    area: string;
+    rol: string;
+}
+
 export default function PlanAccionView({ onClose, userArea, userRole, canCreate = true }: PlanAccionViewProps) {
     const isAdmin = ['admin', 'master'].includes(userRole?.toLowerCase() || '');
     const canDelete = ['admin', 'master', 'calidad'].includes(userRole?.toLowerCase() || '');
@@ -76,9 +85,21 @@ export default function PlanAccionView({ onClose, userArea, userRole, canCreate 
     const [detailVisible, setDetailVisible] = useState(false);
     const [selectedPlan, setSelectedPlan] = useState<PlanAccion | null>(null);
     const [fileServer, setFileServer] = useState('');
+    const [allUsers, setAllUsers] = useState<AdminUsuario[]>([]);
+    const [selectedResponsables, setSelectedResponsables] = useState<{ nombre: string, email: string }[]>([]);
+    const [manualResponsableText, setManualResponsableText] = useState('');
 
     // canCreate=false means we came from the dashboard shortcut (Consultative/Execution mode)
     const canEditCore = canCreate || !editingId;
+
+    const addManualResponsable = () => {
+        const val = manualResponsableText.trim();
+        if (val) {
+            // Usar el nombre como email si no hay email (para evitar duplicados por nombre en manuales)
+            toggleResponsable({ id: 0, nombreMostrar: val, email: val, area: '', rol: '', username: val });
+            setManualResponsableText('');
+        }
+    };
 
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -97,6 +118,8 @@ export default function PlanAccionView({ onClose, userArea, userRole, canCreate 
     useEffect(() => { 
         loadData(); 
         getFileServerUrl().then(url => setFileServer(url));
+        // Cargar usuarios para el selector de responsables (usando el endpoint público)
+        api.get('planaccion/usuarios').then(res => setAllUsers(res.data)).catch(e => console.error(e));
     }, [loadData]);
 
     const handlePickImage = async () => {
@@ -155,15 +178,50 @@ export default function PlanAccionView({ onClose, userArea, userRole, canCreate 
                     };
                     reader.readAsDataURL(blob);
                 } else {
-                    // For mobile, you'd usually use expo-file-system to read as base64
-                    // Since the user is mostly using web for this demo, I'll prioritize web base64
+                    // Mobile
+                    // ... implementation ...
                     Alert.alert('Info', 'Carga de PDF optimizada para Web. En móvil requiere permisos adicionales.');
                 }
             }
         } catch (err) {
-            console.error('Error picking document', err);
+            console.error(err);
         }
     };
+
+    const toggleArea = (area: string) => {
+        const current = formData.proceso ? formData.proceso.split(',') : [];
+        const index = current.indexOf(area);
+        let updated;
+        if (index > -1) {
+            updated = current.filter(x => x !== area);
+        } else {
+            updated = [...current, area];
+        }
+        setField('proceso', updated.join(','));
+    };
+
+    const toggleResponsable = (user: AdminUsuario) => {
+        // Comparar tanto email como nombre para mayor seguridad
+        const isSelected = selectedResponsables.some(r => 
+            (user.email && r.email === user.email) || r.nombre === user.nombreMostrar
+        );
+        
+        if (isSelected) {
+            setSelectedResponsables(prev => prev.filter(r => 
+                (user.email && r.email !== user.email) || r.nombre !== user.nombreMostrar
+            ));
+        } else {
+            setSelectedResponsables(prev => [...prev, { nombre: user.nombreMostrar, email: user.email || user.username || '' }]);
+        }
+    };
+
+    const filteredUsers = allUsers.filter(u => {
+        if (!u.area) return false;
+        const userAreas = u.area.split(',').map(a => a.trim().toLowerCase());
+        const targetAreas = formData.proceso.split(',').map(a => a.trim().toLowerCase()).filter(a => a);
+        if (targetAreas.length === 0) return true; // Si no hay áreas seleccionadas, mostrar todos (o ninguno según lógica de negocio, aquí permito todos para facilitar selección)
+        return userAreas.some(ua => targetAreas.includes(ua));
+    });
 
     const removeNewEvidence = (index: number) => {
         setFormData(prev => ({
@@ -177,21 +235,30 @@ export default function PlanAccionView({ onClose, userArea, userRole, canCreate 
         if (!formData.proceso) errors.push('Debe seleccionar al menos un Proceso / Área.');
         if (!formData.hallazgo || formData.hallazgo.trim().length < 5) errors.push('El Hallazgo / Problema es obligatorio (mín. 5 caracteres).');
         if (!formData.accionCorrectiva || formData.accionCorrectiva.trim().length < 5) errors.push('La Acción Correctiva es obligatoria (mín. 5 caracteres).');
-        if (!formData.responsable) errors.push('El Responsable es obligatorio.');
+        
+        // Validación corregida: ahora mira la lista de etiquetas seleccionadas
+        if (selectedResponsables.length === 0) errors.push('Debe seleccionar al menos un Responsable.');
 
         const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
         if (!dateRegex.test(formData.fechaCompromiso)) errors.push('Formato de Fecha Compromiso inválido (YYYY-MM-DD).');
 
         if (errors.length > 0) {
-            Alert.alert('Validación', 'Por favor corrija los siguientes errores:\n\n- ' + errors.join('\n- '));
+            const errorMsg = 'Por favor corrija:\n\n- ' + errors.join('\n- ');
+            Platform.OS === 'web' ? alert(errorMsg) : Alert.alert('Validación', errorMsg);
             return;
         }
 
         try {
+            const payload = {
+                ...formData,
+                responsable: selectedResponsables.map(r => r.nombre).join(', '),
+                responsableEmails: selectedResponsables.map(r => r.email).join(',')
+            };
+
             if (editingId) {
-                await api.put(`planaccion/${editingId}`, formData);
+                await api.put(`planaccion/${editingId}`, payload);
             } else {
-                await api.post('planaccion', formData);
+                await api.post('planaccion', payload);
             }
             setModalVisible(false);
             loadData();
@@ -204,11 +271,23 @@ export default function PlanAccionView({ onClose, userArea, userRole, canCreate 
     const openCreate = () => {
         setEditingId(null);
         setFormData({ ...emptyForm });
+        setSelectedResponsables([]);
+        setManualResponsableText('');
         setModalVisible(true);
     };
 
     const openEdit = (plan: PlanAccion) => {
         setEditingId(plan.id);
+        setManualResponsableText('');
+        
+        // Reconstrucción de responsables seleccionados
+        const nombresArr = plan.responsable.split(',').map(s => s.trim());
+        const reconResponsables = allUsers
+            .filter(u => nombresArr.includes(u.nombreMostrar))
+            .map(u => ({ nombre: u.nombreMostrar, email: u.email }));
+        
+        setSelectedResponsables(reconResponsables);
+
         setFormData({
             proceso: plan.proceso,
             hallazgo: plan.hallazgo,
@@ -226,33 +305,31 @@ export default function PlanAccionView({ onClose, userArea, userRole, canCreate 
         setModalVisible(true);
     };
 
-    const handleDeleteExistingEvidence = async (evId: number) => {
+    const handleDeleteExistingEvidence = async (evidenceId: number) => {
         try {
-            await api.delete(`planaccion/evidencia/${evId}`);
+            await api.delete(`planaccion/evidencia/${evidenceId}`);
             setFormData(prev => ({
                 ...prev,
-                evidenciasAnteriores: prev.evidenciasAnteriores.filter(e => e.id !== evId)
+                evidenciasAnteriores: prev.evidenciasAnteriores.filter(ev => ev.id !== evidenceId)
             }));
-            // Refresh main list
             loadData();
         } catch (err) {
-            Alert.alert('Error', 'No se pudo eliminar el archivo.');
+            console.error('Error deleting evidence', err);
         }
     };
 
     const handleDelete = (id: number) => {
-        const confirmDelete = () => {
-            api.delete(`planaccion/${id}`).then(() => loadData());
-        };
+        const confirmDelete = Platform.OS === 'web' 
+            ? window.confirm('¿Está seguro de eliminar este plan de acción?') 
+            : true;
 
-        if (Platform.OS === 'web') {
-            if (window.confirm('¿Está seguro de eliminar este plan de acción?')) confirmDelete();
-        } else {
-            Alert.alert('Eliminar', '¿Está seguro de eliminar este plan de acción?', [
-                { text: 'Cancelar', style: 'cancel' },
-                { text: 'Eliminar', onPress: confirmDelete, style: 'destructive' }
-            ]);
+        if (confirmDelete) {
+            api.delete(`planaccion/${id}`).then(() => loadData()).catch(e => console.error(e));
         }
+    };
+
+    const toggleShowAll = () => {
+        setShowAll(!showAll);
     };
 
     const openDetail = (plan: PlanAccion) => {
@@ -262,18 +339,6 @@ export default function PlanAccionView({ onClose, userArea, userRole, canCreate 
 
     const setField = (name: string, value: any) => {
         setFormData(prev => ({ ...prev, [name]: value }));
-    };
-
-    const toggleArea = (area: string) => {
-        const current = formData.proceso ? formData.proceso.split(',').filter(x => x) : [];
-        const index = current.indexOf(area);
-        let updated;
-        if (index > -1) {
-            updated = current.filter(x => x !== area);
-        } else {
-            updated = [...current, area];
-        }
-        setField('proceso', updated.join(','));
     };
 
     const getSemaforoColor = (semaforo: string) => {
@@ -287,12 +352,11 @@ export default function PlanAccionView({ onClose, userArea, userRole, canCreate 
 
     return (
         <View style={styles.container}>
-            {/* Header removed as it is now in AdminDashboard */}
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 15, gap: 10 }}>
                 {isAdmin && (
                     <TouchableOpacity
                         style={[styles.btnFilter, { backgroundColor: showAll ? '#718096' : '#3182CE' }]}
-                        onPress={() => setShowAll(!showAll)}
+                        onPress={toggleShowAll}
                     >
                         <Text style={styles.btnNewText}>
                             {showAll ? 'Filtrar: Mis Planes' : 'Ver Todos los Planes'}
@@ -421,17 +485,64 @@ export default function PlanAccionView({ onClose, userArea, userRole, canCreate 
                                 editable={canEditCore}
                             />
 
-                            <View style={styles.formRow}>
-                                <View style={{ flex: 1 }}>
-                                    <Text style={styles.label}>Responsable *</Text>
-                                    <TextInput
-                                        style={[styles.input, !canEditCore && styles.disabledInput]}
-                                        value={formData.responsable}
-                                        onChangeText={v => setField('responsable', v)}
-                                        editable={canEditCore}
-                                    />
+                            <View style={{ marginBottom: 15 }}>
+                                <Text style={styles.label}>Responsables Seleccionados *</Text>
+                                <View style={styles.chipContainer}>
+                                    {selectedResponsables.map((res, idx) => (
+                                        <TouchableOpacity key={idx} style={styles.chipResponsable} onPress={() => setSelectedResponsables(prev => prev.filter((_, i) => i !== idx))}>
+                                            <Text style={styles.chipResponsableText}>{res.nombre} ✕</Text>
+                                        </TouchableOpacity>
+                                    ))}
                                 </View>
-                                <View style={{ flex: 1, marginLeft: 10 }}>
+                                
+                                <View style={{ flexDirection: 'row', gap: 8, marginTop: 5 }}>
+                                    <TextInput 
+                                        style={[styles.input, { flex: 1, marginBottom: 0, borderColor: manualResponsableText ? '#3182CE' : '#CBD5E0' }]} 
+                                        placeholder="Escribir nombre o correo manual..."
+                                        value={manualResponsableText}
+                                        onChangeText={setManualResponsableText}
+                                        onSubmitEditing={addManualResponsable}
+                                    />
+                                    <TouchableOpacity 
+                                        style={[styles.btnAddManual, { backgroundColor: manualResponsableText ? '#3182CE' : '#A0AEC0' }]}
+                                        onPress={addManualResponsable}
+                                    >
+                                        <Text style={styles.btnNewText}>Agregar</Text>
+                                    </TouchableOpacity>
+                                </View>
+                                {manualResponsableText.length > 0 && (
+                                    <Text style={{ color: '#3182CE', fontSize: 11, marginTop: 2 }}>⚠️ Toque "Agregar" para incluir a este responsable</Text>
+                                )}
+
+                                {formData.proceso.length > 0 && (
+                                    <>
+                                        <Text style={[styles.label, { marginTop: 15 }]}>Sugerencias del Área:</Text>
+                                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 5 }}>
+                                            <View style={{ flexDirection: 'row', gap: 8 }}>
+                                                {filteredUsers.length > 0 ? (
+                                                    filteredUsers.map(u => {
+                                                        const isSelected = selectedResponsables.some(r => r.email === u.email);
+                                                        return (
+                                                            <TouchableOpacity
+                                                                key={u.id}
+                                                                style={[styles.userAltChip, isSelected && styles.userAltChipSelected]}
+                                                                onPress={() => toggleResponsable(u)}
+                                                            >
+                                                                <Text style={[styles.userAltChipText, isSelected && { color: '#fff' }]}>{u.nombreMostrar}</Text>
+                                                            </TouchableOpacity>
+                                                        );
+                                                    })
+                                                ) : (
+                                                    <Text style={{ color: '#718096', fontSize: 12 }}>No hay usuarios registrados en las áreas seleccionadas</Text>
+                                                )}
+                                            </View>
+                                        </ScrollView>
+                                    </>
+                                )}
+                            </View>
+
+                            <View style={styles.formRow}>
+                                <View style={{ flex: 1, marginLeft: 0 }}>
                                     <Text style={styles.label}>Estado</Text>
                                     <View style={styles.pickerWrap}>
                                         <Picker selectedValue={formData.estado} onValueChange={v => setField('estado', v)}>
@@ -627,6 +738,7 @@ const styles = StyleSheet.create({
     btnNew: { backgroundColor: '#3182CE', paddingHorizontal: 15, paddingVertical: 10, borderRadius: 6 },
     btnFilter: { paddingHorizontal: 15, paddingVertical: 10, borderRadius: 6 },
     btnNewText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
+    btnAddManual: { paddingHorizontal: 15, height: 45, justifyContent: 'center', borderRadius: 6, elevation: 2 },
     tableHeader: { flexDirection: 'row', backgroundColor: '#2D3748', padding: 10, borderTopLeftRadius: 6, borderTopRightRadius: 6 },
     th: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
     row: { flexDirection: 'row', padding: 10, borderBottomWidth: 1, borderBottomColor: '#E2E8F0', alignItems: 'center' },
@@ -659,5 +771,10 @@ const styles = StyleSheet.create({
     chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: '#CBD5E0', backgroundColor: '#EDF2F7' },
     chipActive: { backgroundColor: '#3182CE', borderColor: '#3182CE' },
     chipText: { fontSize: 12, color: '#4A5568', fontWeight: '500' },
+    chipResponsable: { backgroundColor: '#3182CE', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 6, marginRight: 5, marginBottom: 5 },
+    chipResponsableText: { color: '#fff', fontSize: 13, fontWeight: 'bold' },
+    userAltChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 4, borderWidth: 1, borderColor: '#3182CE', backgroundColor: '#fff' },
+    userAltChipSelected: { backgroundColor: '#3182CE' },
+    userAltChipText: { fontSize: 12, color: '#3182CE' },
     disabledInput: { backgroundColor: '#F7FAFC', color: '#718096', borderColor: '#E2E8F0' },
 });

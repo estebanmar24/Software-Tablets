@@ -32,6 +32,7 @@ public class ProduccionController : ControllerBase
         _env = env;
     }
 
+    [AllowAnonymous]
     [HttpGet("maestros")]
     public async Task<ActionResult> GetMaestros()
     {
@@ -1307,8 +1308,8 @@ public class ProduccionController : ControllerBase
                 var meta100PorcientoBase = maq?.Meta100Porciento ?? maq?.MetaRendimiento ?? 7500;
                 
                 // REVERTED: Use TotalHoras to prorate Meta100 for general dashboard
-                // Meta100 = TotalHoras * (Meta100PorcientoBase / 8)
-                decimal totalHorasOp = filteredGroup.Sum(p => p.TotalHoras);
+                // Meta100 = (TotalHoras - Descansos) * (Meta100PorcientoBase / 8)
+                decimal totalHorasOp = filteredGroup.Sum(p => p.TotalHoras - p.HorasDescanso);
                 decimal metaPorHora = (decimal)meta100PorcientoBase / 8;
                 decimal meta100 = totalHorasOp * metaPorHora;
 
@@ -1387,8 +1388,8 @@ public class ProduccionController : ControllerBase
                     : (maq.Meta100Porciento > 0 ? maq.Meta100Porciento : maq.MetaRendimiento);
                 
                 // REVERTED: Use TotalHoras to prorate Meta100 for general dashboard
-                // Meta100 = TotalHoras * (Meta100PorcientoBase / 8)
-                decimal totalHorasMaq = filteredGroup.Sum(p => p.TotalHoras);
+                // Meta100 = (TotalHoras - Descansos) * (Meta100PorcientoBase / 8)
+                decimal totalHorasMaq = filteredGroup.Sum(p => p.TotalHoras - p.HorasDescanso);
                 decimal metaPorHora = (decimal)meta100PorcientoBase / 8;
                 decimal meta100 = totalHorasMaq * metaPorHora;
 
@@ -1945,8 +1946,8 @@ public class ProduccionController : ControllerBase
             string formula = "";
 
             var prodDia = produccion.Where(p => p.Fecha.Date == day).ToList();
-            // AJUSTE: Sum both normal hours and dead time for total hours as per recent fix
-            decimal horas = prodDia.Sum(p => p.TotalHoras);
+            // AJUSTE: Sum both normal hours and dead time for total hours, excluding breaks (Descansos)
+            decimal horas = prodDia.Sum(p => p.TotalHoras - p.HorasDescanso);
             
             // Equivalence Data
             int cambios = prodDia.Sum(p => p.Cambios);

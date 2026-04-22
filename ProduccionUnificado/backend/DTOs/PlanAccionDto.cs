@@ -49,6 +49,7 @@ namespace TiempoProcesos.API.DTOs
         public string CausaRaiz { get; set; } = string.Empty;
         public string AccionCorrectiva { get; set; } = string.Empty;
         public string Responsable { get; set; } = string.Empty;
+        public string? ResponsableEmails { get; set; } // Nuevo campo para notificaciones selectivas
         public DateTime FechaInicio { get; set; }
         public DateTime FechaCompromiso { get; set; }
         public string Estado { get; set; } = "Pendiente";

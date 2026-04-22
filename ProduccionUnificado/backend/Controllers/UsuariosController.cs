@@ -18,6 +18,7 @@ public class UsuariosController : ControllerBase
         _context = context;
     }
 
+    [AllowAnonymous]
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Usuario>>> GetUsuarios([FromQuery] bool includeInactive = false)
     {

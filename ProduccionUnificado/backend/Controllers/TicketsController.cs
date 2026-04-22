@@ -118,6 +118,7 @@ public class TicketsController : ControllerBase
     /// <summary>
     /// Crea un nuevo ticket
     /// </summary>
+    [AllowAnonymous]
     [HttpPost]
     public async Task<ActionResult<Ticket>> CreateTicket([FromBody] Ticket ticket)
     {

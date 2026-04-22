@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 
 namespace TiempoProcesos.API.Controllers;
 
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin,develop")]
 [ApiController]
 [Route("api/[controller]")]
 public class AdminUsuariosController : ControllerBase

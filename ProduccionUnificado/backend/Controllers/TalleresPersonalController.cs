@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace TiempoProcesos.API.Controllers
 {
-    [Authorize]
+    [AllowAnonymous]
     [Route("api/[controller]")]
     [ApiController]
     public class TalleresPersonalController : ControllerBase

@@ -36,7 +36,7 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
     const [activo, setActivo] = useState(true);
 
     const areasDisponibles = [
-        "Gerencia", "SST", "Planeacion", "Gestion Humana", "Talleres y Despachos", "Calidad", "Produccion", "Almacen", "Diseño", "Contabilidad"
+        "Gerencia", "SST", "Planeacion", "Gestion Humana", "Talleres y Despachos", "Calidad", "Produccion", "Almacen", "Diseño", "Contabilidad", "Redes", "Maquinas"
     ];
 
     const rolesDisponibles = [
@@ -54,6 +54,7 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
         { label: 'Diseño', value: 'diseno' },
         { label: 'Planeación', value: 'planeacion' },
         { label: 'Planeador de Máquinas', value: 'planeador' },
+        { label: 'Máquinas', value: 'maquinas' },
         { label: 'Desarrollador', value: 'develop' }
     ];
 

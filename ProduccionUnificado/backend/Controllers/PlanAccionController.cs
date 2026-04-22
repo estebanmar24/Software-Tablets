@@ -170,11 +170,24 @@ public class PlanAccionController : ControllerBase
             var emailSvc = scope.ServiceProvider.GetRequiredService<AlephEmailService>();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             
-            // Si el proceso tiene múltiples áreas separadas por coma, notificamos a cada una
-            var areas = plan.Proceso.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            foreach (var area in areas)
+            // Si hay correos específicos seleccionados, notificamos a esos directamente
+            if (!string.IsNullOrEmpty(dto.ResponsableEmails))
             {
-                await emailSvc.SendAreaNotificationAsync(db, area, plan.Hallazgo, plan.AccionCorrectiva, plan.Responsable, plan.FechaCompromiso.ToShortDateString(), plan.Proceso);
+                var specificEmails = dto.ResponsableEmails.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                foreach (var email in specificEmails)
+                {
+                    await emailSvc.SendEmailAsync(email, plan.Responsable, $"[Notificación Aleph] Plan de Acción Asignado: {plan.Proceso}", 
+                        emailSvc.BuildPlanAccionBody(plan.Proceso, plan.Hallazgo, plan.AccionCorrectiva, plan.Responsable, plan.FechaCompromiso.ToShortDateString(), plan.Proceso));
+                }
+            }
+            else
+            {
+                // Fallback: notificación por área (lógica anterior)
+                var areas = plan.Proceso.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                foreach (var area in areas)
+                {
+                    await emailSvc.SendAreaNotificationAsync(db, area, plan.Hallazgo, plan.AccionCorrectiva, plan.Responsable, plan.FechaCompromiso.ToShortDateString(), plan.Proceso);
+                }
             }
         });
 
@@ -276,6 +289,26 @@ public class PlanAccionController : ControllerBase
         _context.PlanAccionEvidencias.Remove(evidencia);
         await _context.SaveChangesAsync();
         return NoContent();
+    }
+
+    // Endpoint público para el selector de responsables (no requiere rol Admin)
+    [HttpGet("usuarios")]
+    public async Task<IActionResult> GetUsuariosParaResponsables()
+    {
+        var usuarios = await _context.AdminUsuarios
+            .Where(u => u.Activo)
+            .Select(u => new
+            {
+                u.Id,
+                u.Username,
+                nombreMostrar = u.NombreMostrar ?? u.Username,
+                email = u.Email ?? "",
+                area = u.Area ?? "",
+                rol = u.Role ?? ""
+            })
+            .ToListAsync();
+
+        return Ok(usuarios);
     }
 
     private string GetSemaforo(PlanAccion p)

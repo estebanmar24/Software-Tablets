@@ -1,11 +1,12 @@
 import { authFetch } from '../services/authFetch';
-import { getToken } from '../services/authStorage';
+import { getToken, removeToken } from '../services/authStorage';
 import React, { useState, useEffect, useCallback, memo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, ScrollView, TextInput, ActivityIndicator, Keyboard, Modal, Dimensions, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, ScrollView, TextInput, ActivityIndicator, Keyboard, Modal, Dimensions, RefreshControl, Image, Platform } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
+import * as ImagePicker from 'expo-image-picker';
 import { api } from '../services/productionApi';
 
-// --- Local Helpers (matching CalidadScreen.js style) ---
+// --- Local Helpers ---
 const SectionCard = memo(function SectionCard({ title, icon, children, style }: any) {
     return (
         <View style={[styles.sectionCard, style]}>
@@ -29,27 +30,69 @@ const FormField = memo(function FormField({ label, required, children, style }: 
     );
 });
 
-const ChoiceField = memo(function ChoiceField({ value, onSelect, options = ['SI', 'NO'], label }: any) {
-    return (
-        <View style={styles.choiceContainer}>
-            {options.map((opt: string) => {
-                const isSelected = (opt === 'SI' || opt === 'CUMPLE' || opt === 'si') ? value === true : value === false;
-                // Special case for true/false mapping
-                let currentIsSelected = false;
-                if (opt === 'SI' || opt === 'CUMPLE' || opt === 'si' || opt === 'Si') currentIsSelected = value === true;
-                if (opt === 'NO' || opt === 'no' || opt === 'No' || opt === 'NO CUMPLE') currentIsSelected = value === false;
+const SERVER_URL = api.defaults.baseURL ? api.defaults.baseURL.split('/api')[0] : '';
 
-                return (
-                    <TouchableOpacity 
-                        key={opt} 
-                        style={styles.choiceOption} 
-                        onPress={() => onSelect(opt === 'SI' || opt === 'CUMPLE' || opt === 'si' || opt === 'Si')}
-                    >
-                        <View style={[styles.choiceCircle, currentIsSelected && styles.choiceCircleActive]} />
-                        <Text style={[styles.choiceOptionText, currentIsSelected && styles.choiceOptionTextActive]}>{opt}</Text>
+const ChoiceField = memo(function ChoiceField({ value, onSelect, options = ['SI', 'NO'], photos = [], onTakePhoto, onRemovePhoto, onEnlargePhoto }: any) {
+    const isPositive = (opt: string) => {
+        const upper = opt.toUpperCase();
+        return upper === 'SI' || upper === 'CUMPLE';
+    };
+
+    return (
+        <View style={styles.choiceFieldContainer}>
+            {/* Row 1: Choice buttons */}
+            <View style={styles.choiceContainer}>
+                {options.map((opt: string) => {
+                    const optIsPositive = isPositive(opt);
+                    const currentIsSelected = value !== null && value !== undefined &&
+                        (optIsPositive ? value === true : value === false);
+                    return (
+                        <TouchableOpacity
+                            key={opt}
+                            style={styles.choiceOption}
+                            onPress={() => onSelect(optIsPositive)}
+                        >
+                            <View style={[styles.choiceCircle, currentIsSelected && styles.choiceCircleActive]} />
+                            <Text style={[styles.choiceOptionText, currentIsSelected && styles.choiceOptionTextActive]}>{opt}</Text>
+                        </TouchableOpacity>
+                    );
+                })}
+            </View>
+
+            {/* Row 2: Photos (full width, wrapping) */}
+            {photos.length > 0 && (
+                <View style={styles.photosRowContainer}>
+                    {photos.map((uri: string, idx: number) => (
+                        <TouchableOpacity
+                            key={idx}
+                            style={styles.photoPreviewContainer}
+                            onPress={() => onEnlargePhoto && onEnlargePhoto(uri.startsWith('data') ? uri : (SERVER_URL + uri))}
+                        >
+                            <Image
+                                source={{ uri: uri.startsWith('data') ? uri : (SERVER_URL + uri) }}
+                                style={styles.photoPreview}
+                            />
+                            <TouchableOpacity style={styles.removePhotoBtn} onPress={() => onRemovePhoto(idx)}>
+                                <Text style={styles.removePhotoText}>{String.fromCharCode(10005)}</Text>
+                            </TouchableOpacity>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+            )}
+
+            {/* Row 3: Camera + Gallery buttons */}
+            {onTakePhoto && (
+                <View style={styles.photoBtnsRow}>
+                    <TouchableOpacity style={styles.addPhotoBtnCamera} onPress={() => onTakePhoto('camera')}>
+                        <Text style={styles.addPhotoIconLarge}>{String.fromCodePoint(0x1F4F8)}</Text>
+                        <Text style={styles.addPhotoTextSmall}>Camara</Text>
                     </TouchableOpacity>
-                );
-            })}
+                    <TouchableOpacity style={styles.addPhotoBtnGallery} onPress={() => onTakePhoto('gallery')}>
+                        <Text style={styles.addPhotoIconLarge}>{String.fromCodePoint(0x1F5BC)}</Text>
+                        <Text style={styles.addPhotoTextSmall}>Galeria</Text>
+                    </TouchableOpacity>
+                </View>
+            )}
         </View>
     );
 });
@@ -73,24 +116,30 @@ interface CalidadTalleresScreenProps {
 }
 
 export default function CalidadTalleresScreen({ onLogout, username }: CalidadTalleresScreenProps) {
-const [view, setView] = useState<'history' | 'form'>('history');
+    const [view, setView] = useState<'history' | 'form'>('history');
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
-    
+    const [editingId, setEditingId] = useState<number | null>(null);
+
+    // Image enlargement modal
+    const [enlargedImage, setEnlargedImage] = useState<string | null>(null);
+    const openImage = (uri: string) => setEnlargedImage(uri);
+    const closeImage = () => setEnlargedImage(null);
+
     // Data
     const [talleres, setTalleres] = useState<Taller[]>([]);
     const [encuestas, setEncuestas] = useState<EncuestaResumen[]>([]);
-    
+
     // Form State - Identificación
     const [tallerId, setTallerId] = useState<number | 'otro' | null>(null);
     const [nombreTallerNuevo, setNombreTallerNuevo] = useState('');
-    
+
     // Form State - Tiempos
     const [horaLlegada, setHoraLlegada] = useState('');
     const [periodoLlegada, setPeriodoLlegada] = useState('AM');
     const [horaSalida, setHoraSalida] = useState('');
     const [periodoSalida, setPeriodoSalida] = useState('PM');
-    
+
     // Form State - Producción
     const [ordenProduccion, setOrdenProduccion] = useState('');
     const [numeroRemision, setNumeroRemision] = useState('');
@@ -105,30 +154,30 @@ const [view, setView] = useState<'history' | 'form'>('history');
     const [tieneRemision, setTieneRemision] = useState<boolean | null>(null);
     const [tieneInsumosCompletos, setTieneInsumosCompletos] = useState<boolean | null>(null);
 
-    // Form State - Puntos Críticos (SI / NO)
-    const [variacionTono, setVariacionTono] = useState<boolean>(false);
-    const [quebradoArrugado, setQuebradoArrugado] = useState<boolean>(false);
-    const [esquinaDefectuosa, setEsquinaDefectuosa] = useState<boolean>(false);
-    const [presenciaPestanas, setPresenciaPestanas] = useState<boolean>(false);
-    const [desgasteImpresion, setDesgasteImpresion] = useState<boolean>(false);
-    const [manchas, setManchas] = useState<boolean>(false);
-    const [reservaPega, setReservaPega] = useState<boolean>(false);
-    const [grafadoRoto, setGrafadoRoto] = useState<boolean>(false);
+    // Form State - Puntos Criticos (SI / NO)
+    const [variacionTono, setVariacionTono] = useState<boolean | null>(null);
+    const [quebradoArrugado, setQuebradoArrugado] = useState<boolean | null>(null);
+    const [esquinaDefectuosa, setEsquinaDefectuosa] = useState<boolean | null>(null);
+    const [presenciaPestanas, setPresenciaPestanas] = useState<boolean | null>(null);
+    const [desgasteImpresion, setDesgasteImpresion] = useState<boolean | null>(null);
+    const [manchas, setManchas] = useState<boolean | null>(null);
+    const [reservaPega, setReservaPega] = useState<boolean | null>(null);
+    const [grafadoRoto, setGrafadoRoto] = useState<boolean | null>(null);
 
-    // Form State - Logística
+    // Form State - Logistica
     const [novedadBPM, setNovedadBPM] = useState<boolean | null>(null);
     const [usaCofia, setUsaCofia] = useState<boolean | null>(null);
     const [insumosPendientes, setInsumosPendientes] = useState<boolean | null>(null);
     const [tipoInsumosPendientes, setTipoInsumosPendientes] = useState('Ninguno');
     const [observaciones, setObservaciones] = useState('');
 
-    // --- Helpers for validations ---
+    // Form State - Fotos
+    const [photos, setPhotos] = useState<{[key: string]: string[]}>({});
+
+    // --- Helpers ---
     const formatTimeInput = (text: string) => {
-        // Remove non-numbers
         const cleaned = text.replace(/[^0-9]/g, '');
-        // Limit to 4 digits
         const limited = cleaned.slice(0, 4);
-        
         if (limited.length > 2) {
             return `${limited.slice(0, 2)}:${limited.slice(2)}`;
         }
@@ -138,11 +187,73 @@ const [view, setView] = useState<'history' | 'form'>('history');
     const timeToMinutes = (timeStr: string, period: string) => {
         if (!timeStr || !timeStr.includes(':')) return 0;
         let [hours, minutes] = timeStr.split(':').map(Number);
-        
         if (period === 'PM' && hours < 12) hours += 12;
         if (period === 'AM' && hours === 12) hours = 0;
-        
         return hours * 60 + minutes;
+    };
+
+    const pickImage = async (key: string, useCamera: boolean) => {
+        if (Platform.OS === 'web') {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            if (useCamera) (input as any).capture = 'environment';
+            input.onchange = async (e: any) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev: any) => {
+                    const base64 = ev.target.result as string;
+                    setPhotos(prev => ({
+                        ...prev,
+                        [key]: [...(prev[key] || []), base64]
+                    }));
+                };
+                reader.readAsDataURL(file);
+            };
+            input.click();
+            return;
+        }
+
+        try {
+            const { status } = useCamera
+                ? await ImagePicker.requestCameraPermissionsAsync()
+                : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+            if (status !== 'granted') {
+                Alert.alert('Permiso denegado', 'Se necesita acceso a la ' + (useCamera ? 'camara' : 'galeria'));
+                return;
+            }
+
+            const result = useCamera
+                ? await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: false, quality: 0.5, base64: true })
+                : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: false, quality: 0.5, base64: true });
+
+            if (!result.canceled && result.assets[0].base64) {
+                const base64 = 'data:image/jpeg;base64,' + result.assets[0].base64;
+                setPhotos(prev => ({
+                    ...prev,
+                    [key]: [...(prev[key] || []), base64]
+                }));
+            }
+        } catch (error) {
+            console.error('Error picking image', error);
+        }
+    };
+
+    const handlePhotoPress = (key: string, source: string) => {
+        if (source === 'camera') {
+            pickImage(key, true);
+        } else {
+            pickImage(key, false);
+        }
+    };
+
+    const removePhoto = (key: string, index: number) => {
+        setPhotos(prev => ({
+            ...prev,
+            [key]: (prev[key] || []).filter((_, i) => i !== index)
+        }));
     };
 
     useEffect(() => {
@@ -154,7 +265,7 @@ const [view, setView] = useState<'history' | 'form'>('history');
         try {
             const [talleresRes, encuestasRes] = await Promise.all([
                 api.get('/CalidadTalleres/talleres'),
-                api.get('/CalidadTalleres/encuestas')
+                api.get('/CalidadTalleres')
             ]);
             setTalleres(talleresRes.data);
             setEncuestas(encuestasRes.data);
@@ -167,6 +278,7 @@ const [view, setView] = useState<'history' | 'form'>('history');
     };
 
     const resetForm = () => {
+        setEditingId(null);
         setTallerId(null);
         setNombreTallerNuevo('');
         setHoraLlegada('');
@@ -178,33 +290,31 @@ const [view, setView] = useState<'history' | 'form'>('history');
         setCantidadProducir('');
         setCantidadEvaluada('');
         setEstadoProceso('');
-        
-        // Reset news
         setTieneMuestra(null);
         setTipoProducto('');
         setConoceFormaEmpaque(null);
         setTieneRemision(null);
         setTieneInsumosCompletos(null);
-        setVariacionTono(false);
-        setQuebradoArrugado(false);
-        setEsquinaDefectuosa(false);
-        setPresenciaPestanas(false);
-        setDesgasteImpresion(false);
-        setManchas(false);
-        setReservaPega(false);
-        setGrafadoRoto(false);
+        setVariacionTono(null);
+        setQuebradoArrugado(null);
+        setEsquinaDefectuosa(null);
+        setPresenciaPestanas(null);
+        setDesgasteImpresion(null);
+        setManchas(null);
+        setReservaPega(null);
+        setGrafadoRoto(null);
         setNovedadBPM(null);
         setUsaCofia(null);
         setInsumosPendientes(null);
         setTipoInsumosPendientes('Ninguno');
         setObservaciones('');
+        setPhotos({});
     };
 
     const handleSave = async () => {
-        // Validation of mandatory fields from screenshots
-        if (!tallerId || !ordenProduccion || !estadoProceso || !cantidadProducir || 
-            tieneMuestra === null || conoceFormaEmpaque === null || tieneRemision === null || 
-            tieneInsumosCompletos === null || novedadBPM === null || usaCofia === null || 
+        if (!tallerId || !ordenProduccion || !estadoProceso || !cantidadProducir ||
+            tieneMuestra === null || conoceFormaEmpaque === null || tieneRemision === null ||
+            tieneInsumosCompletos === null || novedadBPM === null || usaCofia === null ||
             insumosPendientes === null) {
             Alert.alert("Campos incompletos", "Por favor completa todos los campos obligatorios (*)");
             return;
@@ -215,7 +325,6 @@ const [view, setView] = useState<'history' | 'form'>('history');
             return;
         }
 
-        // Time Validations
         const minsLlegada = timeToMinutes(horaLlegada, periodoLlegada);
         const minsSalida = timeToMinutes(horaSalida, periodoSalida);
 
@@ -241,7 +350,6 @@ const [view, setView] = useState<'history' | 'form'>('history');
                 cantidadProducir: parseFloat(cantidadProducir) || 0,
                 cantidadEvaluada: parseFloat(cantidadEvaluada) || 0,
                 estadoProceso,
-                // New fields
                 tieneMuestra,
                 tipoProducto,
                 conoceFormaEmpaque,
@@ -259,10 +367,21 @@ const [view, setView] = useState<'history' | 'form'>('history');
                 usaCofia,
                 insumosPendientes,
                 tipoInsumosPendientes,
-                observaciones
+                observaciones,
+                fotoVariacionTonoBase64: (photos['variacionTono'] || []).join('|||'),
+                fotoQuebradoArrugadoBase64: (photos['quebradoArrugado'] || []).join('|||'),
+                fotoEsquinaDefectuosaBase64: (photos['esquinaDefectuosa'] || []).join('|||'),
+                fotoPresenciaPestanasBase64: (photos['presenciaPestanas'] || []).join('|||'),
+                fotoDesgasteImpresionBase64: (photos['desgasteImpresion'] || []).join('|||'),
+                fotoManchasBase64: (photos['manchas'] || []).join('|||'),
+                fotoReservaPegaBase64: (photos['reservaPega'] || []).join('|||'),
+                fotoGrafadoRotoBase64: (photos['grafadoRoto'] || []).join('|||'),
+                fotoNovedadBPMBase64: (photos['novedadBPM'] || []).join('|||'),
+                fotoUsaCofiaBase64: (photos['usaCofia'] || []).join('|||'),
+                fotoInsumosPendientesBase64: (photos['insumosPendientes'] || []).join('|||')
             };
 
-            await api.post('/CalidadTalleres/encuestas', payload);
+            if (editingId) await api.put('/CalidadTalleres/' + editingId, payload); else await api.post('/CalidadTalleres', payload);
             Alert.alert("Éxito", "Encuesta guardada correctamente.");
             resetForm();
             setView('history');
@@ -275,25 +394,142 @@ const [view, setView] = useState<'history' | 'form'>('history');
         }
     };
 
-    const renderHistoryItem = ({ item }: { item: EncuestaResumen }) => (
+    const handleDelete = (id: number) => {
+        const performDelete = async () => {
+            try {
+                await api.delete('/CalidadTalleres/' + id);
+                Alert.alert("Éxito", "Encuesta eliminada.");
+                loadInitialData();
+            } catch(e) {
+                console.error(e);
+                Alert.alert("Error", "No se pudo eliminar.");
+            }
+        };
+
+        if (Platform.OS === 'web') {
+            if (window.confirm('¿Estás seguro de eliminar esta toma de calidad?')) performDelete();
+        } else {
+            Alert.alert("Confirmar", "¿Estás seguro de eliminar esta toma de calidad?", [
+                { text: "Cancelar", style: "cancel" },
+                { text: "Eliminar", style: "destructive", onPress: performDelete }
+            ]);
+        }
+    };
+
+    const handleEdit = async (id: number) => {
+        try {
+            setLoading(true);
+            const res = await api.get('/CalidadTalleres/' + id);
+            const data = res.data;
+            if (!data) return;
+
+            setEditingId(data.id);
+            setTallerId(data.tallerId);
+            setNombreTallerNuevo(data.nombreTallerNuevo || '');
+
+            if (data.horaLlegada) {
+                const parts = data.horaLlegada.split(' ');
+                setHoraLlegada(parts[0]);
+                setPeriodoLlegada(parts[1] || 'AM');
+            }
+            if (data.horaSalida) {
+                const parts = data.horaSalida.split(' ');
+                setHoraSalida(parts[0]);
+                setPeriodoSalida(parts[1] || 'PM');
+            }
+
+            setOrdenProduccion(data.ordenProduccion || '');
+            setNumeroRemision(data.numeroRemision || '');
+            setCantidadProducir(data.cantidadProducir?.toString() || '0');
+            setCantidadEvaluada(data.cantidadEvaluada?.toString() || '0');
+            setEstadoProceso(data.estadoProceso || '');
+
+            setTieneMuestra(data.tieneMuestra);
+            setTipoProducto(data.tipoProducto || '');
+            setConoceFormaEmpaque(data.conoceFormaEmpaque);
+            setTieneRemision(data.tieneRemision);
+            setTieneInsumosCompletos(data.tieneInsumosCompletos);
+
+            setVariacionTono(data.variacionTono);
+            setQuebradoArrugado(data.quebradoArrugado);
+            setEsquinaDefectuosa(data.esquinaDefectuosa);
+            setPresenciaPestanas(data.presenciaPestanas);
+            setDesgasteImpresion(data.desgasteImpresion);
+            setManchas(data.manchas);
+            setReservaPega(data.reservaPega);
+            setGrafadoRoto(data.grafadoRoto);
+
+            setNovedadBPM(data.novedadBPM);
+            setUsaCofia(data.usaCofia);
+            setInsumosPendientes(data.insumosPendientes);
+            setTipoInsumosPendientes(data.tipoInsumosPendientes || 'Ninguno');
+            setObservaciones(data.observaciones || '');
+
+            // Helper: split photos supporting both new '|||' and legacy ';' separator
+            const splitPhotos = (str: string | null | undefined): string[] => {
+                if (!str) return [];
+                // If contains '|||' use that, otherwise fall back to ';'
+                const sep = str.includes('|||') ? '|||' : ';';
+                return str.split(sep).map(s => s.trim()).filter(Boolean);
+            };
+
+            setPhotos({
+                variacionTono: splitPhotos(data.fotoVariacionTono),
+                quebradoArrugado: splitPhotos(data.fotoQuebradoArrugado),
+                esquinaDefectuosa: splitPhotos(data.fotoEsquinaDefectuosa),
+                presenciaPestanas: splitPhotos(data.fotoPresenciaPestanas),
+                desgasteImpresion: splitPhotos(data.fotoDesgasteImpresion),
+                manchas: splitPhotos(data.fotoManchas),
+                reservaPega: splitPhotos(data.fotoReservaPega),
+                grafadoRoto: splitPhotos(data.fotoGrafadoRoto),
+                novedadBPM: splitPhotos(data.fotoNovedadBPM),
+                usaCofia: splitPhotos(data.fotoUsaCofia),
+                insumosPendientes: splitPhotos(data.fotoInsumosPendientes),
+            });
+
+
+            setView('form');
+        } catch(e) {
+            console.error(e);
+            Alert.alert("Error", "No se pudo cargar la encuesta.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const renderHistoryItem = ({ item }: { item: any }) => (
         <View style={styles.historyCard}>
             <View style={styles.historyHeader}>
                 <View style={styles.historyOP}>
                     <Text style={styles.historyOPLabel}>OP</Text>
-                    <Text style={styles.historyOPValue}>{item.ordenProduccion}</Text>
+                    <Text style={styles.historyOPValue}>{item.ordenProduccion || 'S/N'}</Text>
                 </View>
                 <View style={[styles.estadoPill, { backgroundColor: item.estadoProceso === 'Finalizado' ? '#10B981' : '#F59E0B' }]}>
-                    <Text style={styles.estadoPillText}>{item.estadoProceso}</Text>
+                    <Text style={styles.estadoPillText}>{item.estadoProceso || 'Pendiente'}</Text>
                 </View>
             </View>
             <View style={styles.historyBody}>
-                <View style={styles.historyRow}>
-                    <Text style={styles.historyIcon}>🏭</Text>
-                    <Text style={styles.historyText}>{item.tallerNombre}</Text>
+                <View style={{flex: 1}}>
+                    <View style={styles.historyRow}>
+                        <Text style={styles.historyIcon}>🏭</Text>
+                        <Text style={styles.historyText}>{item.tallerNombre}</Text>
+                    </View>
+                    <View style={styles.historyRow}>
+                        <Text style={styles.historyIcon}>🕵️</Text>
+                        <Text style={styles.historyText}>{item.inspector}</Text>
+                    </View>
+                    <View style={styles.historyRow}>
+                        <Text style={styles.historyIcon}>🕒</Text>
+                        <Text style={styles.historyText}>{new Date(item.fechaCreacion).toLocaleString()}</Text>
+                    </View>
                 </View>
-                <View style={styles.historyRow}>
-                    <Text style={styles.historyIcon}>🕒</Text>
-                    <Text style={styles.historyText}>{new Date(item.fechaCreacion).toLocaleString()}</Text>
+                <View style={styles.historyActions}>
+                    <TouchableOpacity style={styles.actionBtnEdit} onPress={() => handleEdit(item.id)}>
+                        <Text style={styles.actionBtnIcon}>✏️</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.actionBtnDelete} onPress={() => handleDelete(item.id)}>
+                        <Text style={styles.actionBtnIcon}>🗑️</Text>
+                    </TouchableOpacity>
                 </View>
             </View>
         </View>
@@ -302,11 +538,22 @@ const [view, setView] = useState<'history' | 'form'>('history');
     if (view === 'form') {
         return (
             <View style={styles.container}>
+                {/* Fullscreen image overlay */}
+                {enlargedImage && (
+                    <TouchableOpacity
+                        style={styles.enlargedOverlay}
+                        onPress={closeImage}
+                        activeOpacity={1}
+                    >
+                        <Image source={{ uri: enlargedImage }} style={styles.enlargedImage} resizeMode="contain" />
+                        <Text style={styles.enlargedClose}>✕ Cerrar</Text>
+                    </TouchableOpacity>
+                )}
                 <View style={styles.header}>
                     <TouchableOpacity style={styles.headerBackBtn} onPress={() => setView('history')}>
                         <Text style={styles.headerBackText}>← Volver</Text>
                     </TouchableOpacity>
-                    <Text style={styles.headerTitle}>Nueva Toma de Calidad</Text>
+                    <Text style={styles.headerTitle}>{editingId ? 'Editar Toma de Calidad' : 'Nueva Toma de Calidad'}</Text>
                 </View>
 
                 <ScrollView style={styles.scrollView} contentContainerStyle={styles.formContainer}>
@@ -351,8 +598,8 @@ const [view, setView] = useState<'history' | 'form'>('history');
                                     keyboardType="numeric"
                                     maxLength={5}
                                 />
-                                <TouchableOpacity 
-                                    style={styles.periodToggle} 
+                                <TouchableOpacity
+                                    style={styles.periodToggle}
                                     onPress={() => setPeriodoLlegada(p => p === 'AM' ? 'PM' : 'AM')}
                                 >
                                     <Text style={styles.periodToggleText}>{periodoLlegada}</Text>
@@ -370,8 +617,8 @@ const [view, setView] = useState<'history' | 'form'>('history');
                                     keyboardType="numeric"
                                     maxLength={5}
                                 />
-                                <TouchableOpacity 
-                                    style={styles.periodToggle} 
+                                <TouchableOpacity
+                                    style={styles.periodToggle}
                                     onPress={() => setPeriodoSalida(p => p === 'AM' ? 'PM' : 'AM')}
                                 >
                                     <Text style={styles.periodToggleText}>{periodoSalida}</Text>
@@ -387,11 +634,7 @@ const [view, setView] = useState<'history' | 'form'>('history');
 
                         <FormField label="TIPO DE PRODUCTO ELABORADO">
                             <View style={styles.pickerWrapper}>
-                                <Picker
-                                    selectedValue={tipoProducto}
-                                    onValueChange={setTipoProducto}
-                                    style={styles.picker}
-                                >
+                                <Picker selectedValue={tipoProducto} onValueChange={setTipoProducto} style={styles.picker}>
                                     <Picker.Item label="-- Elegir --" value="" />
                                     <Picker.Item label="BOLSAS" value="BOLSAS" />
                                     <Picker.Item label="PLEGADIZA LINEAL" value="PLEGADIZA LINEAL" />
@@ -459,52 +702,47 @@ const [view, setView] = useState<'history' | 'form'>('history');
                         </View>
                     </SectionCard>
 
-                    <SectionCard title="Puntos Críticos de Calidad" icon="🔍">
-                        <FormField label="Variación de Tono">
-                            <ChoiceField value={variacionTono} onSelect={setVariacionTono} options={['Si', 'No']} />
+                    <SectionCard title="Puntos Criticos de Calidad" icon="">
+                        <FormField label="Variacion de Tono">
+                            <ChoiceField value={variacionTono} onSelect={setVariacionTono} options={['SI', 'NO']} photos={photos['variacionTono'] || []} onTakePhoto={(s: string) => handlePhotoPress('variacionTono', s)} onRemovePhoto={(idx: number) => removePhoto('variacionTono', idx)} onEnlargePhoto={openImage} />
                         </FormField>
                         <FormField label="Quebrado o arrugado">
-                            <ChoiceField value={quebradoArrugado} onSelect={setQuebradoArrugado} options={['Si', 'No']} />
+                            <ChoiceField value={quebradoArrugado} onSelect={setQuebradoArrugado} options={['SI', 'NO']} photos={photos['quebradoArrugado'] || []} onTakePhoto={(s: string) => handlePhotoPress('quebradoArrugado', s)} onRemovePhoto={(idx: number) => removePhoto('quebradoArrugado', idx)} onEnlargePhoto={openImage} />
                         </FormField>
                         <FormField label="Esquina defectuosa">
-                            <ChoiceField value={esquinaDefectuosa} onSelect={setEsquinaDefectuosa} options={['si', 'No']} />
+                            <ChoiceField value={esquinaDefectuosa} onSelect={setEsquinaDefectuosa} options={['SI', 'NO']} photos={photos['esquinaDefectuosa'] || []} onTakePhoto={(s: string) => handlePhotoPress('esquinaDefectuosa', s)} onRemovePhoto={(idx: number) => removePhoto('esquinaDefectuosa', idx)} onEnlargePhoto={openImage} />
                         </FormField>
-                        <FormField label="Presencia de PESTAÑAS">
-                            <ChoiceField value={presenciaPestanas} onSelect={setPresenciaPestanas} options={['si', 'No']} />
+                        <FormField label="Presencia de PESTANAS">
+                            <ChoiceField value={presenciaPestanas} onSelect={setPresenciaPestanas} options={['SI', 'NO']} photos={photos['presenciaPestanas'] || []} onTakePhoto={(s: string) => handlePhotoPress('presenciaPestanas', s)} onRemovePhoto={(idx: number) => removePhoto('presenciaPestanas', idx)} onEnlargePhoto={openImage} />
                         </FormField>
-                        <FormField label="Desgaste de la impresión por roce o fricción">
-                            <ChoiceField value={desgasteImpresion} onSelect={setDesgasteImpresion} options={['si', 'No']} />
+                        <FormField label="Desgaste de la impresion por roce o friccion">
+                            <ChoiceField value={desgasteImpresion} onSelect={setDesgasteImpresion} options={['SI', 'NO']} photos={photos['desgasteImpresion'] || []} onTakePhoto={(s: string) => handlePhotoPress('desgasteImpresion', s)} onRemovePhoto={(idx: number) => removePhoto('desgasteImpresion', idx)} onEnlargePhoto={openImage} />
                         </FormField>
                         <FormField label="Manchas">
-                            <ChoiceField value={manchas} onSelect={setManchas} options={['si', 'no']} />
+                            <ChoiceField value={manchas} onSelect={setManchas} options={['SI', 'NO']} photos={photos['manchas'] || []} onTakePhoto={(s: string) => handlePhotoPress('manchas', s)} onRemovePhoto={(idx: number) => removePhoto('manchas', idx)} onEnlargePhoto={openImage} />
                         </FormField>
                         <FormField label="Reserva para pega">
-                            <ChoiceField value={reservaPega} onSelect={setReservaPega} options={['si', 'No']} />
+                            <ChoiceField value={reservaPega} onSelect={setReservaPega} options={['SI', 'NO']} photos={photos['reservaPega'] || []} onTakePhoto={(s: string) => handlePhotoPress('reservaPega', s)} onRemovePhoto={(idx: number) => removePhoto('reservaPega', idx)} onEnlargePhoto={openImage} />
                         </FormField>
                         <FormField label="Grafado roto y/o falta de corte">
-                            <ChoiceField value={grafadoRoto} onSelect={setGrafadoRoto} options={['si', 'No']} />
+                            <ChoiceField value={grafadoRoto} onSelect={setGrafadoRoto} options={['SI', 'NO']} photos={photos['grafadoRoto'] || []} onTakePhoto={(s: string) => handlePhotoPress('grafadoRoto', s)} onRemovePhoto={(idx: number) => removePhoto('grafadoRoto', idx)} onEnlargePhoto={openImage} />
                         </FormField>
                     </SectionCard>
 
-                    <SectionCard title="Higiene y Logística" icon="🧼">
+                    <SectionCard title="Higiene y Logistica" icon="">
                         <FormField label="Tiene novedad en BPM ?" required>
-                            <ChoiceField value={novedadBPM} onSelect={setNovedadBPM} options={['SI', 'NO']} />
+                            <ChoiceField value={novedadBPM} onSelect={setNovedadBPM} options={['SI', 'NO']} photos={photos['novedadBPM'] || []} onTakePhoto={(s: string) => handlePhotoPress('novedadBPM', s)} onRemovePhoto={(idx: number) => removePhoto('novedadBPM', idx)} onEnlargePhoto={openImage} />
                         </FormField>
                         <FormField label="La persona usa cofia ?" required>
-                            <ChoiceField value={usaCofia} onSelect={setUsaCofia} options={['SI', 'NO']} />
+                            <ChoiceField value={usaCofia} onSelect={setUsaCofia} options={['SI', 'NO']} photos={photos['usaCofia'] || []} onTakePhoto={(s: string) => handlePhotoPress('usaCofia', s)} onRemovePhoto={(idx: number) => removePhoto('usaCofia', idx)} onEnlargePhoto={openImage} />
                         </FormField>
                         <FormField label="Insumos pendientes x recoger en taller?" required>
-                            <ChoiceField value={insumosPendientes} onSelect={setInsumosPendientes} options={['SI', 'NO']} />
+                            <ChoiceField value={insumosPendientes} onSelect={setInsumosPendientes} options={['SI', 'NO']} photos={photos['insumosPendientes'] || []} onTakePhoto={(s: string) => handlePhotoPress('insumosPendientes', s)} onRemovePhoto={(idx: number) => removePhoto('insumosPendientes', idx)} onEnlargePhoto={openImage} />
                         </FormField>
-                        
                         {insumosPendientes && (
                             <FormField label="Tipo de Insumos pendientes x recoger" required>
                                 <View style={styles.pickerWrapper}>
-                                    <Picker
-                                        selectedValue={tipoInsumosPendientes}
-                                        onValueChange={setTipoInsumosPendientes}
-                                        style={styles.picker}
-                                    >
+                                    <Picker selectedValue={tipoInsumosPendientes} onValueChange={setTipoInsumosPendientes} style={styles.picker}>
                                         <Picker.Item label="Goma" value="Goma" />
                                         <Picker.Item label="Cajas" value="Cajas" />
                                         <Picker.Item label="Strech" value="Strech" />
@@ -518,11 +756,7 @@ const [view, setView] = useState<'history' | 'form'>('history');
                     <SectionCard title="Finalización" icon="🏁">
                         <FormField label="Estado del Proceso" required>
                             <View style={styles.pickerWrapper}>
-                                <Picker
-                                    selectedValue={estadoProceso}
-                                    onValueChange={(val) => setEstadoProceso(val)}
-                                    style={styles.picker}
-                                >
+                                <Picker selectedValue={estadoProceso} onValueChange={(val) => setEstadoProceso(val)} style={styles.picker}>
                                     <Picker.Item label="-- Elegir --" value="" />
                                     <Picker.Item label="Iniciando proceso" value="Iniciando proceso" />
                                     <Picker.Item label="En proceso bolsas armadas" value="En proceso bolsas armadas" />
@@ -542,8 +776,8 @@ const [view, setView] = useState<'history' | 'form'>('history');
                         </FormField>
                     </SectionCard>
 
-                    <TouchableOpacity 
-                        style={[styles.saveBtn, saving && styles.saveBtnDisabled]} 
+                    <TouchableOpacity
+                        style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
                         onPress={handleSave}
                         disabled={saving}
                     >
@@ -567,8 +801,23 @@ const [view, setView] = useState<'history' | 'form'>('history');
         <View style={styles.container}>
             <View style={styles.header}>
                 <Text style={styles.headerTitle}>Encuestas Calidad - Talleres</Text>
-                <TouchableOpacity style={styles.logoutBtn} onPress={onLogout}>
-                    <Text style={styles.logoutBtnText}>Cerrar Sesión</Text>
+                <TouchableOpacity style={styles.logoutBtn} onPress={() => {
+                    if (Platform.OS === 'web') {
+                        const confirmed = window.confirm('Desea cerrar sesion?');
+                        if (confirmed) {
+                            removeToken().then(() => {
+                                if (onLogout) onLogout();
+                                window.location.reload();
+                            });
+                        }
+                    } else {
+                        Alert.alert('Cerrar Sesion', 'Desea cerrar sesion?', [
+                            { text: 'Cancelar', style: 'cancel' },
+                            { text: 'Salir', onPress: () => removeToken().then(() => onLogout()) }
+                        ]);
+                    }
+                }}>
+                    <Text style={styles.logoutBtnText}>Cerrar Sesion</Text>
                 </TouchableOpacity>
             </View>
 
@@ -600,7 +849,6 @@ const [view, setView] = useState<'history' | 'form'>('history');
     );
 }
 
-// Reuse styles from CalidadScreen as requested
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F3F4F6' },
     scrollView: { flex: 1 },
@@ -622,10 +870,14 @@ const styles = StyleSheet.create({
     historyOPValue: { color: '#1F2937', fontSize: 16, fontWeight: 'bold' },
     estadoPill: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 },
     estadoPillText: { color: 'white', fontSize: 12, fontWeight: 'bold' },
-    historyBody: { padding: 14 },
+    historyBody: { padding: 14, flexDirection: 'row', alignItems: 'center' },
     historyRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
     historyIcon: { fontSize: 16, marginRight: 10, width: 24 },
     historyText: { fontSize: 14, color: '#4B5563', flex: 1 },
+    historyActions: { flexDirection: 'row', justifyContent: 'flex-end', paddingLeft: 10 },
+    actionBtnEdit: { backgroundColor: '#3B82F6', padding: 8, borderRadius: 8, marginLeft: 10 },
+    actionBtnDelete: { backgroundColor: '#EF4444', padding: 8, borderRadius: 8, marginLeft: 10 },
+    actionBtnIcon: { fontSize: 16 },
     emptyState: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 60 },
     emptyIcon: { fontSize: 64, marginBottom: 16 },
     emptyText: { fontSize: 18, color: '#4B5563', fontWeight: '600', marginBottom: 6 },
@@ -650,12 +902,27 @@ const styles = StyleSheet.create({
     saveBtnDisabled: { backgroundColor: '#9CA3AF' },
     saveBtnIcon: { color: 'white', fontSize: 20, marginRight: 8 },
     saveBtnText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
-    
+
     // ChoiceField Styles
-    choiceContainer: { borderRadius: 12, borderWidth: 1.5, borderColor: '#D1D5DB', overflow: 'hidden' },
+    choiceFieldContainer: { flexDirection: 'column', width: '100%' },
+    choiceContainer: { borderRadius: 12, borderWidth: 1.5, borderColor: '#D1D5DB', overflow: 'hidden', marginBottom: 8 },
     choiceOption: { padding: 14, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#E5E7EB', backgroundColor: 'white' },
     choiceCircle: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#D1D5DB', marginRight: 12 },
     choiceCircleActive: { borderColor: '#1E3A8A', backgroundColor: '#1E3A8A' },
     choiceOptionText: { fontSize: 15, color: '#374151', textTransform: 'uppercase' },
     choiceOptionTextActive: { color: '#1E3A8A', fontWeight: 'bold' },
+    photosRowContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
+    photoBtnsRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
+    addPhotoBtnCamera: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#DBEAFE', height: 60, borderRadius: 10, borderWidth: 1.5, borderColor: '#3B82F6' },
+    addPhotoBtnGallery: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#D1FAE5', height: 60, borderRadius: 10, borderWidth: 1.5, borderColor: '#10B981' },
+    addPhotoIconLarge: { fontSize: 22 },
+    addPhotoTextSmall: { fontSize: 9, fontWeight: '700', color: '#374151', marginTop: 2 },
+    photoPreviewContainer: { position: 'relative', margin: 2 },
+    photoPreview: { width: 80, height: 80, borderRadius: 10, borderWidth: 2, borderColor: '#10B981' },
+    removePhotoBtn: { position: 'absolute', top: -6, right: -6, backgroundColor: '#EF4444', width: 22, height: 22, borderRadius: 11, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: 'white', zIndex: 10 },
+    removePhotoText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
+    // Enlarged image overlay
+    enlargedOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.92)', zIndex: 9999, justifyContent: 'center', alignItems: 'center' },
+    enlargedImage: { width: '95%', height: '80%' },
+    enlargedClose: { color: 'white', marginTop: 16, fontSize: 16, fontWeight: 'bold', backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20 },
 });

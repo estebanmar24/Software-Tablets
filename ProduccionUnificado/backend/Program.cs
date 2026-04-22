@@ -13,7 +13,12 @@ var builder = WebApplication.CreateBuilder(args);
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
 // Add services to the container.
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options => {
+        options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
+        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+    });
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -132,6 +137,12 @@ using (var scope = app.Services.CreateScope())
         } catch (Exception ex) { Console.WriteLine($"[DB FIX] Error fixing PlanesAccion: {ex.Message}"); }
         
         try { context.Database.ExecuteSqlRaw("ALTER TABLE \"Talleres_Personal\" ADD COLUMN IF NOT EXISTS \"HorarioId\" integer NULL REFERENCES \"Horarios\"(\"Id\");"); } catch {}
+
+        
+        try {
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"EncuestasCalidadTalleres\" DROP CONSTRAINT IF EXISTS \"FK_EncuestasCalidadTalleres_Usuarios_UsuarioId\";");
+            context.Database.ExecuteSqlRaw("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name='FK_EncuestasCalidadTalleres_AdminUsuarios_UsuarioId') THEN ALTER TABLE \"EncuestasCalidadTalleres\" ADD CONSTRAINT \"FK_EncuestasCalidadTalleres_AdminUsuarios_UsuarioId\" FOREIGN KEY (\"UsuarioId\") REFERENCES \"AdminUsuarios\"(\"Id\"); END IF; END $$;");
+        } catch (Exception ex) { Console.WriteLine($"[DB FIX] Error fixing EncuestasCalidadTalleres FK: {ex.Message}"); }
 
         DbInitializer.Initialize(context);
     }
