@@ -23,6 +23,7 @@ import CalidadDashboard from './CalidadDashboard';
 import PlaneacionGastosScreen from '../screens/PlaneacionGastosScreen';
 import DisenoGastosScreen from '../screens/DisenoGastosScreen';
 import TicketsScreen from '../screens/TicketsScreen';
+import MantenimientoGastosScreen from '../screens/MantenimientoGastosScreen';
 import CalidadExternaView from './CalidadExternaView';
 import PlanAccionView from './PlanAccionView';
 import UserManagementScreen from '../screens/UserManagementScreen';
@@ -100,11 +101,11 @@ function DashboardCard({ title, description, icon, onPress, color, disabled }: D
 function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: AdminDashboardProps) {
     const { colors, isDarkMode } = useTheme();
     // Mode: 'MENU' | 'CONTENT' ...
-    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS' | 'TICKETS' | 'CALIDAD_EXTERNA' | 'PLANES_ACCION' | 'USUARIOS' | 'MAQUINAS'>(() => {
+    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'MANTENIMIENTO_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS' | 'TICKETS' | 'CALIDAD_EXTERNA' | 'PLANES_ACCION' | 'USUARIOS' | 'MAQUINAS'>(() => {
 
         if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
             const savedMode = window.localStorage.getItem('adminDashboardMode');
-            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS' || savedMode === 'PRODUCCION_GASTOS' || savedMode === 'TALLERES_GASTOS' || savedMode === 'CALIDAD' || savedMode === 'PLANEACION_GASTOS' || savedMode === 'DISENO_GASTOS' || savedMode === 'TICKETS' || savedMode === 'CALIDAD_EXTERNA' || savedMode === 'PLANES_ACCION' || savedMode === 'USUARIOS' || savedMode === 'MAQUINAS') {
+            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS' || savedMode === 'PRODUCCION_GASTOS' || savedMode === 'MANTENIMIENTO_GASTOS' || savedMode === 'TALLERES_GASTOS' || savedMode === 'CALIDAD' || savedMode === 'PLANEACION_GASTOS' || savedMode === 'DISENO_GASTOS' || savedMode === 'TICKETS' || savedMode === 'CALIDAD_EXTERNA' || savedMode === 'PLANES_ACCION' || savedMode === 'USUARIOS' || savedMode === 'MAQUINAS') {
 
                 return savedMode as any;
             }
@@ -504,6 +505,32 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
         );
     }
 
+    // --- VISTA MANTENIMIENTO GASTOS ---
+    if (mode === 'MANTENIMIENTO_GASTOS') {
+        return (
+            <View style={[styles.container, { backgroundColor: colors.background }]}>
+                <View style={[styles.header, { backgroundColor: colors.headerBackground }]}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => {
+                        setMode('MENU');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                    }}>
+                        <Text style={styles.backButtonText}>← Volver al Panel</Text>
+                    </TouchableOpacity>
+                    <View style={styles.centeredTitleContainer} pointerEvents="box-none">
+                        <Text style={styles.title}>Gastos de Mantenimiento</Text>
+                    </View>
+                    <Image
+                        source={require('../../assets/logo_perla.png')}
+                        style={[styles.contentHeaderLogo, isDarkMode && { opacity: 0.95 }]}
+                        resizeMode="contain"
+                    />
+                </View>
+                {/* @ts-ignore */}
+                <MantenimientoGastosScreen />
+            </View>
+        );
+    }
+
     // --- VISTA PLANES DE ACCION ---
     if (mode === 'PLANES_ACCION') {
         return (
@@ -660,6 +687,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
     const isGHEnabled = userRoles.includes('admin') || userRoles.includes('gh');
     const isSSTEnabled = userRoles.includes('admin') || userRoles.includes('sst');
     const isEquiposEnabled = userRoles.includes('admin') || userRoles.includes('equipos');
+    const isMantenimientoEnabled = userRoles.includes('admin') || userRoles.includes('mantenimiento') || userRoles.includes('talleres');
     const isPlaneacionEnabled = userRoles.includes('admin') || userRoles.includes('planeacion');
     const isDisenoEnabled = userRoles.includes('admin') || userRoles.includes('diseno');
     const isPlaneadorEnabled = userRoles.includes('admin') || userRoles.includes('calidad') || userRoles.includes('modulo_calidad') || userRoles.includes('planeador');
@@ -770,6 +798,16 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
                             if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'PRODUCCION_GASTOS');
                         }}
                         disabled={!isProduccionEnabled}
+                    />
+                    <DashboardCard
+                        title="Gastos de Mantenimiento"
+                        description="Gestión de gastos de mantenimiento, repuestos y maquinaria"
+                        icon="⚙️"
+                        onPress={() => {
+                            setMode('MANTENIMIENTO_GASTOS');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MANTENIMIENTO_GASTOS');
+                        }}
+                        disabled={!isMantenimientoEnabled}
                     />
                     <DashboardCard
                         title="Cuadro Presupuesto Talleres y Despachos"
