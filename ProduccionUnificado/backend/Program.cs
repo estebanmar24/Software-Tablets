@@ -138,6 +138,37 @@ using (var scope = app.Services.CreateScope())
         
         try { context.Database.ExecuteSqlRaw("ALTER TABLE \"Talleres_Personal\" ADD COLUMN IF NOT EXISTS \"HorarioId\" integer NULL REFERENCES \"Horarios\"(\"Id\");"); } catch {}
 
+        // Migración Hoja de Vida Máquinas (Ficha Técnica)
+        try {
+            string sqlHV = @"
+                ALTER TABLE ""HojasVidaMaquinas"" ADD COLUMN IF NOT EXISTS ""Proceso"" TEXT;
+                ALTER TABLE ""HojasVidaMaquinas"" ADD COLUMN IF NOT EXISTS ""Ubicacion"" TEXT;
+                ALTER TABLE ""HojasVidaMaquinas"" ADD COLUMN IF NOT EXISTS ""Voltaje"" TEXT;
+                ALTER TABLE ""HojasVidaMaquinas"" ADD COLUMN IF NOT EXISTS ""Corriente"" TEXT;
+                ALTER TABLE ""HojasVidaMaquinas"" ADD COLUMN IF NOT EXISTS ""Potencia"" TEXT;
+                ALTER TABLE ""HojasVidaMaquinas"" ADD COLUMN IF NOT EXISTS ""Dimensiones"" TEXT;
+                ALTER TABLE ""HojasVidaMaquinas"" ADD COLUMN IF NOT EXISTS ""Peso"" TEXT;
+                ALTER TABLE ""HojasVidaMaquinas"" ADD COLUMN IF NOT EXISTS ""OtroTecnico"" TEXT;
+            ";
+            context.Database.ExecuteSqlRaw(sqlHV);
+        } catch (Exception ex) { Console.WriteLine($"[DB FIX] Error adding Technical Fields to HojasVidaMaquinas: {ex.Message}"); }
+
+        // Crear tabla BitacorasMaquinas
+        try {
+            string sqlBitacora = @"
+                CREATE TABLE IF NOT EXISTS ""BitacorasMaquinas"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""HojaVidaId"" INTEGER NOT NULL REFERENCES ""HojasVidaMaquinas""(""Id"") ON DELETE CASCADE,
+                    ""Fecha"" TIMESTAMP WITH TIME ZONE NOT NULL,
+                    ""Turno"" VARCHAR(50),
+                    ""Descripcion"" TEXT NOT NULL,
+                    ""EstadoMaquina"" VARCHAR(50),
+                    ""RegistradoPor"" VARCHAR(100),
+                    ""FechaRegistro"" TIMESTAMP WITH TIME ZONE NOT NULL
+                );
+            ";
+            context.Database.ExecuteSqlRaw(sqlBitacora);
+        } catch (Exception ex) { Console.WriteLine($"[DB FIX] Error creating BitacorasMaquinas table: {ex.Message}"); }
         
         try {
             context.Database.ExecuteSqlRaw("ALTER TABLE \"EncuestasCalidadTalleres\" DROP CONSTRAINT IF EXISTS \"FK_EncuestasCalidadTalleres_Usuarios_UsuarioId\";");

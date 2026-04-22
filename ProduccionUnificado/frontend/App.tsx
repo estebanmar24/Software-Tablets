@@ -35,6 +35,7 @@ import CalidadScreen from './src/screens/CalidadScreen';
 import OrdenAseoScreen from './src/screens/OrdenAseoScreen';
 import UserManagementScreen from './src/screens/UserManagementScreen';
 import CalidadTalleresScreen from './src/screens/CalidadTalleresScreen';
+import MaquinasScreen from './src/screens/MaquinasScreen';
 
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
 
@@ -115,7 +116,8 @@ function AppContent() {
   }, [isPhone]);
 
   // Estado de vista
-  const [currentView, setCurrentView] = useState<'timer' | 'login' | 'admin' | 'calidad' | 'calidad_talleres' | 'develop' | 'esst'>('timer');
+  const [currentView, setCurrentView] = useState<'timer' | 'login' | 'admin' | 'calidad' | 'calidad_talleres' | 'develop' | 'esst' | 'public_maquina'>('timer');
+  const [publicMachineId, setPublicMachineId] = useState<number | null>(null);
   const [adminRole, setAdminRole] = useState<string>('admin');
   const [adminName, setAdminName] = useState<string>('');
   const [adminArea, setAdminArea] = useState<string>('');
@@ -124,6 +126,17 @@ function AppContent() {
   useEffect(() => {
     async function loadView() {
       try {
+        // Detect public QR scan from URL params
+        if (Platform.OS === 'web') {
+            const params = new URLSearchParams(window.location.search);
+            const maqId = params.get('maqId');
+            if (maqId && !isNaN(parseInt(maqId))) {
+                setPublicMachineId(parseInt(maqId));
+                setCurrentView('public_maquina');
+                return;
+            }
+        }
+
         // FORCE RESET TO FIX CRASH LOOP
         // Ignore saved view and clear it
         await AsyncStorage.removeItem('lastView');
@@ -728,6 +741,21 @@ function AppContent() {
       ]);
     }
   };
+
+  if (currentView === 'public_maquina' && publicMachineId) {
+    return (
+        <View style={{ flex: 1, backgroundColor: '#f8fafc' }}>
+            <MaquinasScreen 
+                publicId={publicMachineId} 
+                onBack={() => {
+                    // Si el usuario vuelve, lo enviamos al inicio
+                    window.location.href = window.location.origin;
+                }} 
+                publicMode={true}
+            />
+        </View>
+    );
+  }
 
   if (currentView === 'login') {
     return (

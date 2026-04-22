@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Alert, useWindowDimensions, Image, Dimensions } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -118,8 +118,11 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
     const { width } = useWindowDimensions();
     const isMobile = width < 768;
 
-    const userRoles = (role || '').split(',').map(r => r.trim().toLowerCase());
-    const tabs = allTabs.filter(t => t.roles && t.roles.some(r => userRoles.includes(r)));
+    const { userRoles, tabs } = useMemo(() => {
+        const roles = (role || '').split(',').map(r => r.trim().toLowerCase());
+        const filteredTabs = allTabs.filter(t => t.roles && t.roles.some(r => roles.includes(r)));
+        return { userRoles: roles, tabs: filteredTabs };
+    }, [role]);
 
     useEffect(() => {
         if (tabs.length > 0 && !tabs.find(t => t.key === activeTab)) {
@@ -209,7 +212,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
             case 'historial':
                 return <HistoryScreen navigation={mockNavigation} />;
             case 'maquinas':
-                return <MachineParamsScreen navigation={mockNavigation} />;
+                return <MaquinasScreen navigation={mockNavigation} />;
             case 'operarios':
                 return <ListsScreen navigation={mockNavigation} />;
             case 'calidad':
@@ -585,7 +588,10 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
                         resizeMode="contain"
                     />
                 </View>
-                <MaquinasScreen />
+                <MaquinasScreen onBack={() => {
+                    setMode('MENU');
+                    if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                }} />
             </View>
         );
     }

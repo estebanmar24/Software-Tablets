@@ -8,13 +8,11 @@ using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
 using Microsoft.AspNetCore.Authorization;
 using TiempoProcesos.API.Services;
-using Microsoft.AspNetCore.Authorization;
-
-namespace TiempoProcesos.API.Controllers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using System.IO;
-using Microsoft.AspNetCore.Authorization;
+
+namespace TiempoProcesos.API.Controllers;
 
 [Authorize]
 [ApiController]
