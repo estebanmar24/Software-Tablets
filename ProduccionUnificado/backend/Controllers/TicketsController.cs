@@ -133,6 +133,21 @@ public class TicketsController : ControllerBase
             ticket.FechaCreacion = DateTime.UtcNow;
             ticket.FechaActualizacion = DateTime.UtcNow;
 
+            // Calcular Consecutivo Reutilizable (Gap Filling)
+            var existentes = await _context.Tickets
+                .Where(t => t.ModuloAfectado == ticket.ModuloAfectado)
+                .Select(t => t.Consecutivo)
+                .OrderBy(c => c)
+                .ToListAsync();
+
+            int nextConsecutivo = 1;
+            foreach (var c in existentes)
+            {
+                if (c == nextConsecutivo) nextConsecutivo++;
+                else if (c > nextConsecutivo) break;
+            }
+            ticket.Consecutivo = nextConsecutivo;
+
             _context.Tickets.Add(ticket);
             await _context.SaveChangesAsync();
 

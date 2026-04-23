@@ -125,6 +125,7 @@ public static class DbInitializer
                     ""Fecha"" TIMESTAMP NOT NULL,
                     ""EjecutadoPor"" TEXT,
                     ""Observacion"" TEXT,
+                    ""Consecutivo"" INTEGER NOT NULL DEFAULT 0,
                     ""FechaRegistro"" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
 
@@ -134,9 +135,42 @@ public static class DbInitializer
                     ""Url"" TEXT NOT NULL,
                     ""FechaRegistro"" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
+
+                CREATE TABLE IF NOT EXISTS ""Cronogramas_Actividades"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""Operacion"" TEXT NOT NULL,
+                    ""Categoria"" TEXT DEFAULT 'General',
+                    ""Activo"" BOOLEAN NOT NULL DEFAULT TRUE
+                );
+
+                CREATE TABLE IF NOT EXISTS ""Cronogramas_Registros"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""HojaVidaId"" INTEGER NOT NULL REFERENCES ""HojasVidaMaquinas""(""Id"") ON DELETE CASCADE,
+                    ""ActividadId"" INTEGER NOT NULL REFERENCES ""Cronogramas_Actividades""(""Id"") ON DELETE CASCADE,
+                    ""Anio"" INTEGER NOT NULL,
+                    ""Mes"" INTEGER NOT NULL,
+                    ""Estado"" INTEGER NOT NULL DEFAULT 0,
+                    ""Nota"" TEXT
+                );
             ");
-            Console.WriteLine("[DB INIT] Hoja de Vida tables checked/created.");
+            Console.WriteLine("[DB INIT] Hoja de Vida and Cronograma tables checked/created.");
+
+            // Asegurar columnas consecutivas
+            context.Database.ExecuteSqlRaw(@"
+                DO $$ 
+                BEGIN 
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='MantenimientosHojaVida' AND column_name='Consecutivo') THEN
+                        ALTER TABLE ""MantenimientosHojaVida"" ADD COLUMN ""Consecutivo"" INTEGER NOT NULL DEFAULT 0;
+                    END IF;
+                    -- Si existe tabla Tickets
+                    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='Tickets') THEN
+                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='Tickets' AND column_name='Consecutivo') THEN
+                            ALTER TABLE ""Tickets"" ADD COLUMN ""Consecutivo"" INTEGER NOT NULL DEFAULT 0;
+                        END IF;
+                    END IF;
+                END $$;
+            ");
         }
-        catch (Exception ex) { Console.WriteLine($"[DB ERROR] HojaVidaMaquinas: {ex.Message}"); }
+        catch (Exception ex) { Console.WriteLine($"[DB ERROR] Tables Init: {ex.Message}"); }
     }
 }

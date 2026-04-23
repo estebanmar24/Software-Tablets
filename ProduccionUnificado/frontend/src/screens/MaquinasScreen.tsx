@@ -27,9 +27,12 @@ interface BitacoraEntry {
 interface MantenimientoEntry {
     id?: number;
     hojaVidaId: number;
+    consecutivo?: number;
     fecha: string;
     tipo: string;
     ejecutadoPor: string;
+    tipoPersonal: string; // Interno o Externo
+    ticketId?: number;
     observacion: string;
     fotos?: { id?: number; url: string }[];
 }
@@ -102,6 +105,14 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
     const [generatingPdf, setGeneratingPdf] = useState(false);
     const [pdfReadyUrl, setPdfReadyUrl] = useState<string | null>(null);
     const [isEditingBitacora, setIsEditingBitacora] = useState(false);
+    
+    // Cronograma States
+    const [cronogramaActividades, setCronogramaActividades] = useState<any[]>([]);
+    const [cronogramaRegistros, setCronogramaRegistros] = useState<any[]>([]);
+    const [selectedCronogramaMaq, setSelectedCronogramaMaq] = useState<HojaVida | null>(null);
+    const [selectedAnio, setSelectedAnio] = useState(new Date().getFullYear());
+    const [newActividadNombre, setNewActividadNombre] = useState('');
+    const [loadingCronograma, setLoadingCronograma] = useState(false);
     const [mantenimientoModalVisible, setMantenimientoModalVisible] = useState(false);
     const [isEditingMantenimiento, setIsEditingMantenimiento] = useState(false);
     const [mantenimientoForm, setMantenimientoForm] = useState<MantenimientoEntry>({
@@ -109,6 +120,8 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
         fecha: new Date().toISOString(),
         tipo: 'Preventivo',
         ejecutadoPor: '',
+        tipoPersonal: 'Interno',
+        ticketId: undefined,
         observacion: '',
         fotos: []
     });
@@ -202,9 +215,13 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
         try {
             // Preparamos el objeto para que coincida con el modelo de C#
             const payload = {
+                id: mantenimientoForm.id || 0,
                 hojaVidaId: mantenimientoForm.hojaVidaId,
+                consecutivo: mantenimientoForm.consecutivo || 0,
+                ticketId: mantenimientoForm.ticketId || null,
+                tipoPersonal: mantenimientoForm.tipoPersonal || 'Interno',
                 fecha: new Date().toISOString(),
-                tipoMantenimiento: mantenimientoForm.tipo, // Campo corregido
+                tipoMantenimiento: mantenimientoForm.tipo,
                 ejecutadoPor: mantenimientoForm.ejecutadoPor,
                 observacion: mantenimientoForm.observacion,
                 fotos: mantenimientoForm.fotos?.map(f => ({ url: f.url })) || []
@@ -308,11 +325,94 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
     useEffect(() => {
         if (activeTab === 'HOJA_VIDA') {
             loadHojasVida();
-        } else if (activeTab === 'TICKETS_DANOS') {
-            loadBitacoras();
-            loadHojasVida(); // Necesitamos las máquinas para el selector
+        } else if (activeTab === 'CRONOGRAMA') {
+            loadHojasVida();
+            if (hojasVida.length > 0 && !selectedCronogramaMaq) {
+                setSelectedCronogramaMaq(hojasVida[0]);
+            }
         }
     }, [activeTab]);
+
+    useEffect(() => {
+        if (activeTab === 'CRONOGRAMA' && selectedCronogramaMaq) {
+            loadCronogramaData(selectedCronogramaMaq.id, selectedAnio);
+        }
+    }, [selectedCronogramaMaq, selectedAnio, activeTab]);
+
+    const loadCronogramaData = async (maquinaId: number, anio: number) => {
+        setLoadingCronograma(true);
+        try {
+            const resp = await api.get(`Cronogramas/FullData`, { params: { maquinaId, anio } });
+            setCronogramaActividades(resp.data.actividades);
+            setCronogramaRegistros(resp.data.registros);
+        } catch (error) {
+            console.error("Error cargando cronograma:", error);
+        } finally {
+            setLoadingCronograma(false);
+        }
+    };
+
+    const toggleCronogramaStatus = async (actividadId: number, mes: number) => {
+        if (!selectedCronogramaMaq) return;
+        try {
+            await api.post('Cronogramas/ToggleStatus', {
+                hojaVidaId: Number(selectedCronogramaMaq.id),
+                actividadId: Number(actividadId),
+                anio: Number(selectedAnio),
+                mes: Number(mes)
+            });
+            loadCronogramaData(selectedCronogramaMaq.id, selectedAnio);
+        } catch (error) {
+            console.error("Error al cambiar estado:", error);
+        }
+    };
+
+    const handleAddActividad = async () => {
+        if (!newActividadNombre.trim()) return;
+        try {
+            const payload = { 
+                operacion: newActividadNombre.trim(),
+                categoria: "General",
+                activo: true
+            };
+            await api.post('Cronogramas/Actividad', payload);
+            setNewActividadNombre('');
+            
+            // Forzar recarga inmediata
+            if (selectedCronogramaMaq) {
+                await loadCronogramaData(selectedCronogramaMaq.id, selectedAnio);
+            }
+        } catch (error: any) {
+            console.error("Error añadiendo actividad:", error);
+            Alert.alert("Error", "No se pudo guardar la actividad. Revisa la conexión al servidor.");
+        }
+    };
+
+    const handleDeleteActividad = (id: number) => {
+        const confirmar = window.confirm("¿Estás seguro de que deseas eliminar esta actividad del cronograma?");
+        if (confirmar) {
+            (async () => {
+                try {
+                    await api.delete(`Cronogramas/Actividad/${id}`);
+                    if (selectedCronogramaMaq) loadCronogramaData(selectedCronogramaMaq.id, selectedAnio);
+                } catch (error) {
+                    console.error("Error borrando:", error);
+                }
+            })();
+        }
+    };
+
+    const handleEditActividad = async (act: any) => {
+        const nuevoNombre = window.prompt("Ingresa el nuevo nombre de la operación:", act.operacion);
+        if (nuevoNombre !== null && nuevoNombre.trim() !== "") {
+            try {
+                await api.put(`Cronogramas/Actividad/${act.id}`, { ...act, operacion: nuevoNombre.trim() });
+                if (selectedCronogramaMaq) loadCronogramaData(selectedCronogramaMaq.id, selectedAnio);
+            } catch (error) {
+                console.error("Error editando:", error);
+            }
+        }
+    };
 
     const loadHojasVida = async () => {
         if (publicMode) return;
@@ -612,6 +712,14 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
             const pageHeight = doc.internal.pageSize.height;
             let currentY = 15;
 
+            // Cargar Logo de la Empresa desde el servidor
+            let logoBase64 = '';
+            try {
+                logoBase64 = await urlToBase64(SERVER_URL + "/empresa-logo.jpeg");
+            } catch (e) {
+                console.warn("No se pudo cargar el logo desde el servidor");
+            }
+
             // Función para dibujar la cabecera exacta
             const drawFormatHeader = (pageNum: number) => {
                 doc.setDrawColor(0);
@@ -620,6 +728,11 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                 
                 // Cuadro exterior
                 doc.rect(margin, currentY, tableWidth, 30);
+
+                // Insertar Logo si existe
+                if (logoBase64) {
+                    doc.addImage(logoBase64, 'JPEG', margin + 2, currentY + 2, 46, 26);
+                }
                 
                 // Líneas verticales
                 doc.line(margin + 50, currentY, margin + 50, currentY + 30);
@@ -842,6 +955,7 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                 currentY += 7;
 
                 const bitacoraData = listTickets.map(b => [
+                    b.consecutivo || '-',
                     new Date(b.fecha).toLocaleDateString(),
                     b.turno,
                     b.descripcion,
@@ -851,7 +965,7 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
 
                 autoTable(doc, {
                     startY: currentY,
-                    head: [['Fecha', 'Turno', 'Descripción', 'Estado', 'Autor']],
+                    head: [['#', 'Fecha', 'Turno', 'Descripción', 'Estado', 'Autor']],
                     body: bitacoraData,
                     margin: { left: margin },
                     tableWidth: tableWidth,
@@ -880,8 +994,9 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                     // Pequeña tabla/fila para el resumen del mantenimiento
                     autoTable(doc, {
                         startY: currentY,
-                        head: [['Fecha', 'Tipo', 'Ejecutado Por', 'Observación']],
+                        head: [['#', 'Fecha', 'Tipo', 'Ejecutado Por', 'Observación']],
                         body: [[
+                            m.consecutivo || '-',
                             new Date(m.fecha).toLocaleDateString(),
                             m.tipoMantenimiento || m.tipo,
                             m.ejecutadoPor,
@@ -896,39 +1011,69 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
 
                     currentY = (doc as any).lastAutoTable.finalY + 5;
 
-                    // Dibujar fotos de ESTE mantenimiento
-                    if (m.fotos && m.fotos.length > 0) {
-                        checkNewPage(45);
-                        let photoX = margin + 5;
-                        const photoSize = 40;
+                    currentY += 5; // Espacio entre mantenimientos
+                }
+            }
 
-                        for (const foto of m.fotos) {
-                            try {
-                                const fullUrl = (foto.url.startsWith('http') || foto.url.startsWith('data')) 
-                                                ? foto.url : SERVER_URL + foto.url;
-                                const b64 = await urlToBase64(fullUrl);
-                                if (b64) {
-                                    doc.addImage(b64, 'JPEG', photoX, currentY, photoSize, photoSize);
-                                    photoX += photoSize + 5;
-                                    
-                                    // Si no cabe en la fila, saltar a la siguiente
-                                    if (photoX + photoSize > margin + tableWidth) {
-                                        photoX = margin + 5;
-                                        currentY += photoSize + 5;
-                                        if (checkNewPage(photoSize + 10)) {
-                                            photoX = margin + 5;
-                                        }
-                                    }
+            // --- 5. RESUMEN DE CRONOGRAMA ANUAL ---
+            try {
+                const year = new Date().getFullYear();
+                const respC = await api.get(`Cronogramas/FullData`, { params: { maquinaId: hoja.id, anio: year } });
+                const cActs = respC.data.actividades;
+                const cRegs = respC.data.registros;
+
+                if (cActs && cActs.length > 0) {
+                    checkNewPage(40);
+                    doc.setFillColor(230, 230, 230);
+                    doc.rect(margin, currentY, tableWidth, 7, 'F');
+                    doc.rect(margin, currentY, tableWidth, 7, 'D');
+                    doc.setFont("helvetica", "bold");
+                    doc.text(`RESUMEN CRONOGRAMA DE MANTENIMIENTO - ${year}`, margin + (tableWidth/2), currentY + 5, { align: 'center' });
+                    currentY += 10;
+
+                    const mesesH = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
+                    const bodyCron = cActs.map((a: any) => {
+                        const row = [a.operacion];
+                        for (let m = 1; m <= 12; m++) {
+                            const found = cRegs.find((r: any) => r.actividadId === a.id && r.mes === m);
+                            row.push(found ? (found.estado === 1 ? 'E' : 'A') : '');
+                        }
+                        return row;
+                    });
+
+                    autoTable(doc, {
+                        startY: currentY,
+                        head: [['ACTIVIDAD / MES', ...mesesH]],
+                        body: bodyCron,
+                        margin: { left: margin },
+                        tableWidth: tableWidth,
+                        theme: 'grid',
+                        headStyles: { fillColor: [80, 80, 80], fontSize: 7, halign: 'center' },
+                        styles: { fontSize: 6, cellPadding: 1, halign: 'center' },
+                        columnStyles: { 0: { halign: 'left', cellWidth: 50 } },
+                        didDrawCell: (data) => {
+                            // Pintar celdas según contenido
+                            if (data.section === 'body' && data.column.index > 0) {
+                                const val = data.cell.text[0];
+                                if (val === 'E') {
+                                    doc.setFillColor(16, 185, 129); // Verde
+                                    doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+                                    doc.setTextColor(255, 255, 255);
+                                    doc.text('E', data.cell.x + (data.cell.width/2), data.cell.y + (data.cell.height/2) + 1, { align: 'center' });
+                                } else if (val === 'A') {
+                                    doc.setFillColor(245, 158, 11); // Naranja/Amarillo
+                                    doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+                                    doc.setTextColor(255, 255, 255);
+                                    doc.text('A', data.cell.x + (data.cell.width/2), data.cell.y + (data.cell.height/2) + 1, { align: 'center' });
                                 }
-                            } catch(e) {
-                                console.warn("Falla al cargar foto de mantenimiento");
                             }
                         }
-                        currentY += photoSize + 10;
-                    } else {
-                        currentY += 5; // Espacio si no hay fotos
-                    }
+                    });
+
+                    currentY = (doc as any).lastAutoTable.finalY + 10;
                 }
+            } catch (e) {
+                console.warn("Error agregando cronograma al PDF", e);
             }
 
             // --- FINALIZACIÓN: LOGO Y TOTAL PÁGINAS ---
@@ -964,6 +1109,166 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
             Alert.alert("Error", "No se pudo generar el formato.");
             return null;
         }
+    };
+
+    const renderCronograma = () => {
+        const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+        
+        // Calcular Estadísticas recorriendo la MATRIZ que ve el usuario
+        const counts = { E: 0, A: 0, NE: 0, P: 0, I: 0 };
+        
+        cronogramaActividades.forEach(act => {
+            for (let m = 1; m <= 12; m++) {
+                const reg = cronogramaRegistros.find(r => 
+                    (Number(r.actividadId || r.ActividadId) === Number(act.id)) && 
+                    Number(r.mes) === m
+                );
+                
+                if (reg) {
+                    if (reg.estado === 1) counts.E++;
+                    else if (reg.estado === 2) counts.A++;
+                    else if (reg.estado === 3) counts.NE++;
+                    else if (reg.estado === 4) counts.P++;
+                    else if (reg.estado === 5) counts.I++;
+                }
+            }
+        });
+
+        const totalCeldasYear = cronogramaActividades.length * 12;
+        const cumplimiento = totalCeldasYear > 0 ? Math.round((counts.E / totalCeldasYear) * 100) : 0;
+
+        const getStatusStyles = (estado: number) => {
+            switch(estado) {
+                case 1: return { color: '#84cc16', text: 'E' }; // Verde (Ejecutado)
+                case 2: return { color: '#eab308', text: 'A' }; // Amarillo (Aplazado)
+                case 3: return { color: '#ef4444', text: 'NE' }; // Rojo (No Ejecutado)
+                case 4: return { color: '#f97316', text: 'P' }; // Naranja (Programado)
+                case 5: return { color: '#06b6d4', text: 'I' }; // Azul (Incompleto)
+                default: return { color: 'transparent', text: '•' };
+            }
+        };
+
+        return (
+            <View style={{ flex: 1, backgroundColor: '#f4f7f6' }}>
+                {/* Header Premium (Máquinas y Año) */}
+                <View style={{ padding: 12, backgroundColor: '#1a202c', flexDirection: 'row', alignItems: 'center', gap: 15 }}>
+                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
+                        {hojasVida.map(maq => (
+                            <TouchableOpacity 
+                                key={maq.id}
+                                onPress={() => setSelectedCronogramaMaq(maq)}
+                                style={[
+                                    { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, marginRight: 8, borderWidth: 1, borderColor: '#4a5568' },
+                                    selectedCronogramaMaq?.id === maq.id && { backgroundColor: '#3182ce', borderColor: '#3182ce' }
+                                ]}
+                            >
+                                <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 13 }}>{maq.nombre}</Text>
+                            </TouchableOpacity>
+                        ))}
+                     </ScrollView>
+                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#2d3748', padding: 6, borderRadius: 10 }}>
+                        <TouchableOpacity onPress={() => setSelectedAnio(v => v - 1)}><MaterialCommunityIcons name="chevron-left" size={24} color="white" /></TouchableOpacity>
+                        <Text style={{ fontWeight: 'bold', fontSize: 16, color: 'white' }}>{selectedAnio}</Text>
+                        <TouchableOpacity onPress={() => setSelectedAnio(v => v + 1)}><MaterialCommunityIcons name="chevron-right" size={24} color="white" /></TouchableOpacity>
+                     </View>
+                </View>
+
+                {/* Contenido Principal: Matriz + Resumen */}
+                <View style={{ flex: 1, flexDirection: 'row', padding: 15, gap: 15 }}>
+                    
+                    {/* COLUMNA IZQUIERDA: MATRIZ CRONOGRAMA */}
+                    <View style={{ flex: 3.5, backgroundColor: 'white', borderRadius: 12, overflow: 'hidden', elevation: 2 }}>
+                        <ScrollView style={{ flex: 1 }}>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+                                <View>
+                                    <View style={{ flexDirection: 'row', backgroundColor: '#f8fafc', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
+                                        <View style={{ width: 300, padding: 15 }}><Text style={{ fontWeight: 'bold', color: '#4a5568', fontSize: 12 }}>OPERACIÓN / ACTIVIDAD</Text></View>
+                                        {meses.map((mes, idx) => (
+                                            <View key={idx} style={{ width: 50, padding: 15, alignItems: 'center', borderLeftWidth: 1, borderLeftColor: '#e2e8f0' }}>
+                                                <Text style={{ fontWeight: 'bold', fontSize: 10, color: '#4a5568' }}>{mes}</Text>
+                                            </View>
+                                        ))}
+                                    </View>
+                                    {cronogramaActividades.map((act, index) => (
+                                        <View key={act.id} style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#f1f5f9', backgroundColor: index % 2 === 0 ? 'white' : '#f8fafc' }}>
+                                            <View style={{ width: 300, padding: 10, flexDirection: 'row', alignItems: 'center' }}>
+                                                <Text style={{ flex: 1, fontSize: 12, color: '#2d3748' }}>{act.operacion}</Text>
+                                                <TouchableOpacity onPress={() => handleEditActividad(act)} style={{ padding: 4 }}><MaterialCommunityIcons name="pencil" size={16} color="#3182ce" /></TouchableOpacity>
+                                                <TouchableOpacity onPress={() => handleDeleteActividad(act.id)} style={{ padding: 4 }}><MaterialCommunityIcons name="trash-can" size={16} color="#e53e3e" /></TouchableOpacity>
+                                            </View>
+                                            {meses.map((_, mesIdx) => {
+                                                const mesNum = mesIdx + 1;
+                                                // Buscar siendo robustos con el nombre de la propiedad
+                                                const reg = cronogramaRegistros.find(r => 
+                                                    (r.actividadId === act.id || r.ActividadId === act.id) && 
+                                                    r.mes === mesNum
+                                                );
+                                                const s = getStatusStyles(reg?.estado || 0);
+                                                return (
+                                                    <TouchableOpacity 
+                                                        key={mesIdx}
+                                                        onPress={() => toggleCronogramaStatus(act.id, mesNum)}
+                                                        style={{ width: 50, height: 50, borderLeftWidth: 1, borderLeftColor: '#f1f5f9', backgroundColor: s.color, alignItems: 'center', justifyContent: 'center' }}
+                                                    >
+                                                        <Text style={{ color: (reg?.estado || 0) > 0 ? 'white' : '#cbd5e0', fontWeight: 'bold' }}>{s.text}</Text>
+                                                    </TouchableOpacity>
+                                                );
+                                            })}
+                                        </View>
+                                    ))}
+                                    {/* Footer Añadir */}
+                                    <View style={{ flexDirection: 'row', padding: 12, backgroundColor: '#f8fafc', alignItems: 'center', gap: 10 }}>
+                                        <TextInput 
+                                            style={{ flex: 1, height: 35, backgroundColor: 'white', borderRadius: 5, borderWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 10, color: '#2d3748' }}
+                                            placeholder="Nueva actividad..."
+                                            value={newActividadNombre}
+                                            onChangeText={setNewActividadNombre}
+                                        />
+                                        <TouchableOpacity onPress={handleAddActividad} style={{ backgroundColor: '#3182ce', padding: 8, borderRadius: 5 }}><MaterialCommunityIcons name="check" size={20} color="white" /></TouchableOpacity>
+                                    </View>
+                                </View>
+                            </ScrollView>
+                        </ScrollView>
+                    </View>
+
+                    {/* COLUMNA DERECHA: PANEL DE RESUMEN (Estilo tu Imagen) */}
+                    <View style={{ flex: 1, backgroundColor: 'white', borderRadius: 12, padding: 0, overflow: 'hidden', elevation: 3 }}>
+                        <View style={{ backgroundColor: '#2d3748', padding: 12 }}><Text style={{ color: 'white', fontWeight: 'bold', textAlign: 'center' }}>RESUMEN DE ESTADOS</Text></View>
+                        
+                        <View style={{ flex: 1, padding: 10, gap: 8 }}>
+                            {[
+                                { label: 'EJECUTADO', key: 'E', color: '#84cc16', sigla: 'E' },
+                                { label: 'APLAZADO', key: 'A', color: '#eab308', sigla: 'A' },
+                                { label: 'NO EJECUTADO', key: 'NE', color: '#ef4444', sigla: 'NE' },
+                                { label: 'PROGRAMADO', key: 'P', color: '#f97316', sigla: 'P' },
+                                { label: 'INCOMPLETO', key: 'I', color: '#06b6d4', sigla: 'I' }
+                            ].map(item => (
+                                <View key={item.key} style={{ flexDirection: 'row', height: 50, borderRadius: 8, overflow: 'hidden', borderBottomWidth: 1, borderBottomColor: '#f1f5f9' }}>
+                                    <View style={{ width: 50, backgroundColor: item.color, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: 'white', fontWeight: 'bold' }}>{item.sigla}</Text></View>
+                                    <View style={{ flex: 1, paddingHorizontal: 10, justifyContent: 'center' }}><Text style={{ fontSize: 11, fontWeight: 'bold', color: '#4a5568' }}>{item.label}</Text></View>
+                                    <View style={{ width: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc' }}><Text style={{ fontWeight: 'bold', color: item.color }}>{counts[item.key as keyof typeof counts]}</Text></View>
+                                </View>
+                            ))}
+
+                            <View style={{ marginTop: 'auto', padding: 10, borderTopWidth: 2, borderTopColor: '#f1f5f9' }}>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
+                                    <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#718096' }}>TOTAL ACTIVIDADES</Text>
+                                    <Text style={{ fontSize: 11, fontWeight: 'bold' }}>{cronogramaActividades.length}</Text>
+                                </View>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
+                                    <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#718096' }}>CUMPLIMIENTO</Text>
+                                    <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#3182ce' }}>{cumplimiento}%</Text>
+                                </View>
+                                <View style={{ height: 10, backgroundColor: '#edf2f7', borderRadius: 5, overflow: 'hidden' }}>
+                                    <View style={{ width: `${cumplimiento}%`, height: '100%', backgroundColor: '#84cc16' }} />
+                                </View>
+                            </View>
+                        </View>
+                    </View>
+
+                </View>
+            </View>
+        );
     };
 
     const renderHeader = () => (
@@ -1155,12 +1460,7 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                 ) : (
                     <>
                         {activeTab === 'HOJA_VIDA' && renderHojaVidaList()}
-                        {activeTab === 'CRONOGRAMA' && (
-                            <View style={styles.emptyView}>
-                                <MaterialCommunityIcons name="calendar-multiselect" size={80} color={colors.subText} opacity={0.3} />
-                                <Text style={[styles.emptySubtitle, { color: colors.subText }]}>Cronogramas de mantenimiento en desarrollo.</Text>
-                            </View>
-                        )}
+                        {activeTab === 'CRONOGRAMA' && renderCronograma()}
                         {activeTab === 'TICKETS_DANOS' && (
                             <View style={styles.listContainer}>
                                 <FlatList
@@ -1178,7 +1478,7 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                         return (
                                             <View style={[styles.bitacoraCard, { backgroundColor: isDarkMode ? '#1e293b' : 'white', borderLeftColor: item.estadoMaquina === 'Operativa' ? '#10B981' : '#EF4444' }]}>
                                                 <View style={{ flex: 1 }}>
-                                                    <Text style={[styles.bitacoraTitle, { color: colors.text }]}>{maq?.nombre || 'Máquina desconocida'}</Text>
+                                                    <Text style={[styles.bitacoraTitle, { color: colors.text }]}>{maq?.nombre || 'Máquina'} - Ticket #{item.consecutivo ?? item.Consecutivo ?? 0}</Text>
                                                     <View style={styles.bitacoraRow}>
                                                         <MaterialCommunityIcons name="clock-outline" size={14} color={colors.subText} />
                                                         <Text style={[styles.bitacoraDate, { color: colors.subText }]}> {new Date(item.fecha).toLocaleString()} - {item.turno}</Text>
@@ -1229,7 +1529,7 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                             <View style={[styles.bitacoraCard, { backgroundColor: isDarkMode ? '#1e293b' : 'white', borderLeftColor: '#3B82F6' }]}>
                                                 <View style={{ flex: 1 }}>
                                                     <View style={styles.rowBetween}>
-                                                        <Text style={[styles.bitacoraTitle, { color: colors.text }]}>{maq?.nombre || 'Máquina'}</Text>
+                                                        <Text style={[styles.bitacoraTitle, { color: colors.text }]}>{maq?.nombre || 'Máquina'} - #{item.consecutivo ?? item.Consecutivo ?? 0}</Text>
                                                         <View style={[styles.badge, { backgroundColor: colors.primary + '20' }]}>
                                                             <Text style={[styles.badgeText, { color: colors.primary, fontSize: 10, fontWeight: 'bold' }]}>{item.tipoMantenimiento || item.tipo}</Text>
                                                         </View>
@@ -1240,6 +1540,17 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                                     </View>
                                                     <Text style={[styles.bitacoraDesc, { color: colors.text, marginVertical: 5, fontSize: 14 }]}>{item.observacion}</Text>
                                                     
+                                                    <View style={{ flexDirection: 'row', gap: 10, marginVertical: 5 }}>
+                                                        <View style={{ backgroundColor: (item.tipoPersonal || item.TipoPersonal) === 'Externo' ? '#F59E0B20' : '#10B98120', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 5 }}>
+                                                            <Text style={{ fontSize: 10, fontWeight: 'bold', color: (item.tipoPersonal || item.TipoPersonal) === 'Externo' ? '#D97706' : '#059669' }}>{(item.tipoPersonal || item.TipoPersonal || 'Interno').toUpperCase()}</Text>
+                                                        </View>
+                                                        {(item.ticketId || item.TicketId) && (
+                                                            <View style={{ backgroundColor: '#EF444420', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 5 }}>
+                                                                <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#DC2626' }}>TICKET #{item.ticketId || item.TicketId}</Text>
+                                                            </View>
+                                                        )}
+                                                    </View>
+
                                                     {item.fotos && item.fotos.length > 0 && (
                                                         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 10 }}>
                                                             {item.fotos.map((f, i) => (
@@ -1259,7 +1570,9 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                                     <TouchableOpacity onPress={() => {
                                                         setMantenimientoForm({
                                                             ...item,
-                                                            tipo: item.tipoMantenimiento || item.tipo || 'Preventivo'
+                                                            tipo: item.tipoMantenimiento || item.tipo || 'Preventivo',
+                                                            tipoPersonal: item.tipoPersonal || 'Interno',
+                                                            ticketId: item.ticketId
                                                         });
                                                         setIsEditingMantenimiento(true);
                                                         setMantenimientoModalVisible(true);
@@ -1282,6 +1595,8 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                             fecha: new Date().toISOString(),
                                             tipo: 'Preventivo',
                                             ejecutadoPor: '',
+                                            tipoPersonal: 'Interno',
+                                            ticketId: undefined,
                                             observacion: '',
                                             fotos: []
                                         });
@@ -1434,6 +1749,59 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                     </TouchableOpacity>
                                 ))}
                             </View>
+
+                            <Text style={[styles.label, { color: colors.text }]}>Tipo de Personal *</Text>
+                            <View style={styles.turnosContainer}>
+                                {['Interno', 'Externo'].map(tp => (
+                                    <TouchableOpacity 
+                                        key={tp} 
+                                        onPress={() => setMantenimientoForm({...mantenimientoForm, tipoPersonal: tp})}
+                                        style={[styles.turnoBtn, { borderColor: colors.border }, mantenimientoForm.tipoPersonal === tp && { backgroundColor: '#3B82F6', borderColor: '#3B82F6' }]}
+                                    >
+                                        <Text style={[styles.turnoText, { color: mantenimientoForm.tipoPersonal === tp ? 'white' : colors.text }]}>{tp}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
+                            {mantenimientoForm.tipo === 'Correctivo' && (
+                                <>
+                                    <Text style={[styles.label, { color: colors.text }]}>Vincular con Ticket de Daño *</Text>
+                                    <View style={[styles.pickerContainer, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', borderColor: colors.border, height: 150 }]}>
+                                        <ScrollView style={{ paddingVertical: 5 }}>
+                                            {bitacoras.filter(b => b.hojaVidaId === mantenimientoForm.hojaVidaId).length === 0 ? (
+                                                <Text style={{ padding: 15, color: colors.subText, textAlign: 'center', fontSize: 12 }}>No hay tickets para esta máquina.</Text>
+                                            ) : (
+                                                bitacoras.filter(b => b.hojaVidaId === mantenimientoForm.hojaVidaId).map(b => {
+                                                    const isSelected = mantenimientoForm.ticketId === b.id;
+                                                    return (
+                                                        <TouchableOpacity 
+                                                            key={b.id} 
+                                                            onPress={() => setMantenimientoForm(prev => ({
+                                                                ...prev,
+                                                                ticketId: isSelected ? undefined : b.id
+                                                            }))}
+                                                            style={[
+                                                                styles.maqListOption, 
+                                                                isSelected && { backgroundColor: '#3B82F6', borderColor: '#3B82F6' }
+                                                            ]}
+                                                        >
+                                                            <MaterialCommunityIcons 
+                                                                name={isSelected ? "checkbox-marked-circle" : "circle-outline"} 
+                                                                size={20} 
+                                                                color={isSelected ? "white" : colors.subText} 
+                                                            />
+                                                            <View style={{ marginLeft: 10, flex: 1 }}>
+                                                                <Text style={[styles.maqOptionText, { fontSize: 11, color: isSelected ? 'white' : colors.text }]}>#{b.id} - {new Date(b.fecha).toLocaleDateString()}</Text>
+                                                                <Text style={{ fontSize: 10, color: isSelected ? '#e2e8f0' : colors.subText }} numberOfLines={1}>{b.descripcion}</Text>
+                                                            </View>
+                                                        </TouchableOpacity>
+                                                    );
+                                                })
+                                            )}
+                                        </ScrollView>
+                                    </View>
+                                </>
+                            )}
 
                             <FormInput label="Ejecutado por *" value={mantenimientoForm.ejecutadoPor} onChangeText={(t: string) => setMantenimientoForm({...mantenimientoForm, ejecutadoPor: t})} placeholder="Nombre del técnico" colors={colors} isDarkMode={isDarkMode} />
                             <FormInput label="Observaciones / Detalles" value={mantenimientoForm.observacion} onChangeText={(t: string) => setMantenimientoForm({...mantenimientoForm, observacion: t})} placeholder="Detalle lo realizado..." multiline colors={colors} isDarkMode={isDarkMode} />
@@ -1844,5 +2212,7 @@ const styles = StyleSheet.create({
     
     turnosContainer: { flexDirection: 'row', gap: 8, marginBottom: 15 },
     turnoBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, borderWidth: 1, alignItems: 'center' },
-    turnoText: { fontSize: 12, fontWeight: 'bold' }
+    turnoText: { fontSize: 12, fontWeight: 'bold' },
+    cronogramaCell: { width: 50, height: 50, borderRightWidth: 1, alignItems: 'center', justifyContent: 'center' },
+    cronogramaHeaderCell: { width: 50, padding: 10, borderRightWidth: 1, alignItems: 'center' }
 });

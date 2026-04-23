@@ -115,6 +115,8 @@ public class AppDbContext : DbContext
     public DbSet<HojaVidaMaquina> HojasVidaMaquinas { get; set; }
     public DbSet<MantenimientoHojaVida> MantenimientosHojaVida { get; set; }
     public DbSet<MantenimientoFoto> MantenimientoFotos { get; set; }
+    public DbSet<CronogramaActividad> CronogramaActividades { get; set; }
+    public DbSet<CronogramaRegistro> CronogramaRegistros { get; set; }
     public DbSet<HojaVidaFoto> HojaVidaFotos { get; set; }
     public DbSet<BitacoraMaquina> BitacorasMaquinas { get; set; }
 
@@ -594,5 +596,8 @@ public class AppDbContext : DbContext
             .WithMany()
             .HasForeignKey(b => b.HojaVidaId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<CronogramaActividad>().ToTable("Cronogramas_Actividades");
+        modelBuilder.Entity<CronogramaRegistro>().ToTable("Cronogramas_Registros");
     }
 }

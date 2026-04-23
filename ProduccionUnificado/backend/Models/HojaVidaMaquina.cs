@@ -105,6 +105,10 @@ public class MantenimientoHojaVida
     
     public DateTime FechaRegistro { get; set; } = DateTime.UtcNow;
 
+    public int Consecutivo { get; set; } // Número secuencial por máquina
+    public int? TicketId { get; set; }
+    public string TipoPersonal { get; set; } = "Interno"; // Interno o Externo
+
     // Navegación
     public List<MantenimientoFoto> Fotos { get; set; } = new();
 

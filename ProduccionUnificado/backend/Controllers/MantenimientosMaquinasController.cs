@@ -34,6 +34,21 @@ namespace TiempoProcesos.API.Controllers
         public async Task<ActionResult<MantenimientoHojaVida>> PostMantenimiento(MantenimientoHojaVida mant)
         {
             mant.FechaRegistro = DateTime.UtcNow;
+
+            // Calcular Consecutivo Reutilizable (Gap Filling) por Máquina
+            var existentes = await _context.MantenimientosHojaVida
+                .Where(m => m.HojaVidaId == mant.HojaVidaId)
+                .Select(m => m.Consecutivo)
+                .OrderBy(c => c)
+                .ToListAsync();
+
+            int nextConsecutivo = 1;
+            foreach (var c in existentes)
+            {
+                if (c == nextConsecutivo) nextConsecutivo++;
+                else if (c > nextConsecutivo) break;
+            }
+            mant.Consecutivo = nextConsecutivo;
             
             // Asegurar que las IDs de fotos nuevas sean 0
             if (mant.Fotos != null)

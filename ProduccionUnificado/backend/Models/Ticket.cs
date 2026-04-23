@@ -41,6 +41,8 @@ public class Ticket
     public string? Comentarios { get; set; }
 
     public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;
+    
+    public int Consecutivo { get; set; } // Número secuencial por módulo (ej: Ticket #1, #2...)
 
     public DateTime? FechaActualizacion { get; set; }
 
