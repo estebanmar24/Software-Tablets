@@ -105,8 +105,25 @@ public class MantenimientoHojaVida
     
     public DateTime FechaRegistro { get; set; } = DateTime.UtcNow;
 
+    // Navegación
+    public List<MantenimientoFoto> Fotos { get; set; } = new();
+
     [ForeignKey("HojaVidaId")]
     public HojaVidaMaquina? HojaVida { get; set; }
+}
+
+public class MantenimientoFoto
+{
+    public int Id { get; set; }
+    public int MantenimientoId { get; set; }
+    
+    [MaxLength(500)]
+    public string Url { get; set; } = string.Empty;
+    
+    public DateTime FechaRegistro { get; set; } = DateTime.UtcNow;
+
+    [ForeignKey("MantenimientoId")]
+    public MantenimientoHojaVida? Mantenimiento { get; set; }
 }
 
 public class BitacoraMaquina

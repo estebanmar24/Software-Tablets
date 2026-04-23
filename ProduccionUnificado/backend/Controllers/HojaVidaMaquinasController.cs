@@ -43,6 +43,7 @@ namespace TiempoProcesos.API.Controllers
         {
             var hoja = await _context.HojasVidaMaquinas
                 .Include(h => h.Mantenimientos)
+                    .ThenInclude(m => m.Fotos)
                 .Include(h => h.Fotos)
                 .FirstOrDefaultAsync(h => h.Id == id);
 

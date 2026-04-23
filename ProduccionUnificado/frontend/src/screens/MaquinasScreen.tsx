@@ -11,7 +11,7 @@ import * as ImagePicker from 'expo-image-picker';
 const { width } = Dimensions.get('window');
 // Eliminamos el SERVER_URL estático y usaremos un estado para cargarlo dinámicamente
 
-type SubModule = 'HOJA_VIDA' | 'CRONOGRAMA' | 'TICKETS_DANOS';
+type SubModule = 'HOJA_VIDA' | 'CRONOGRAMA' | 'TICKETS_DANOS' | 'MANTENIMIENTOS';
 
 interface BitacoraEntry {
     id?: number;
@@ -22,6 +22,16 @@ interface BitacoraEntry {
     estadoMaquina: string;
     registradoPor: string;
     fechaRegistro?: string;
+}
+
+interface MantenimientoEntry {
+    id?: number;
+    hojaVidaId: number;
+    fecha: string;
+    tipo: string;
+    ejecutadoPor: string;
+    observacion: string;
+    fotos?: { id?: number; url: string }[];
 }
 
 interface HojaVida {
@@ -70,22 +80,38 @@ const FormInput = ({ label, value, onChangeText, placeholder, multiline = false,
     </View>
 );
 
+const SERVER_URL = (api.defaults.baseURL && api.defaults.baseURL.includes('http')) 
+    ? api.defaults.baseURL.split('/api')[0] 
+    : (typeof window !== 'undefined' ? window.location.origin : '');
+
 export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBack?: () => void; publicId?: number; publicMode?: boolean }) {
     const { colors, isDarkMode } = useTheme();
     const [activeTab, setActiveTab] = useState<SubModule>(publicMode ? 'HOJA_VIDA' : 'HOJA_VIDA');
     const [hojasVida, setHojasVida] = useState<HojaVida[]>([]);
     const [bitacoras, setBitacoras] = useState<BitacoraEntry[]>([]);
+    const [mantenimientos, setMantenimientos] = useState<MantenimientoEntry[]>([]);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [uploadingImage, setUploadingImage] = useState(false);
-    const [fileServerUrl, setFileServerUrl] = useState('');
     const [qrModalVisible, setQrModalVisible] = useState(false);
     const [selectedMaqName, setSelectedMaqName] = useState('');
     const [selectedMaqId, setSelectedMaqId] = useState<number | null>(null);
     const [bitacoraModalVisible, setBitacoraModalVisible] = useState(false);
+    const [generatingPdf, setGeneratingPdf] = useState(false);
+    const [pdfReadyUrl, setPdfReadyUrl] = useState<string | null>(null);
     const [isEditingBitacora, setIsEditingBitacora] = useState(false);
+    const [mantenimientoModalVisible, setMantenimientoModalVisible] = useState(false);
+    const [isEditingMantenimiento, setIsEditingMantenimiento] = useState(false);
+    const [mantenimientoForm, setMantenimientoForm] = useState<MantenimientoEntry>({
+        hojaVidaId: 0,
+        fecha: new Date().toISOString(),
+        tipo: 'Preventivo',
+        ejecutadoPor: '',
+        observacion: '',
+        fotos: []
+    });
     const [bitacoraForm, setBitacoraForm] = useState<BitacoraEntry>({
         hojaVidaId: 0,
         fecha: new Date().toISOString(),
@@ -95,30 +121,165 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
         registradoPor: ''
     });
 
+    const [selectedImage, setSelectedImage] = useState<string | null>(null);
+    const [imageModalVisible, setImageModalVisible] = useState(false);
+
+    const openImage = (url: string) => {
+        const fullUrl = url.startsWith('http') ? url : (SERVER_URL + url);
+        setSelectedImage(fullUrl);
+        setImageModalVisible(true);
+    };
+
+    const loadMantenimientos = async () => {
+        if (publicMode) return;
+        try {
+            const resp = await api.get('MantenimientosMaquinas');
+            setMantenimientos(resp.data);
+        } catch (error) {
+            console.error("Error cargando mantenimientos:", error);
+        }
+    };
+
+    useEffect(() => {
+        // Bloqueamos la carga de datos privados si estamos en el modo QR público
+        if (!publicMode) {
+            loadHojasVida();
+            loadBitacoras();
+            loadMantenimientos();
+        }
+    }, [publicMode]);
+
     useEffect(() => {
         if (publicMode && publicId) {
             handlePublicDownload(publicId);
         }
     }, [publicMode, publicId]);
 
+    const pickMantenimientoImage = async (useCamera: boolean = false) => {
+        try {
+            const { status } = useCamera 
+                ? await ImagePicker.requestCameraPermissionsAsync()
+                : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+            if (status !== 'granted') {
+                Alert.alert("Permiso denegado", "Se requieren permisos para añadir fotos.");
+                return;
+            }
+
+            const result = useCamera
+                ? await ImagePicker.launchCameraAsync({ quality: 0.7 })
+                : await ImagePicker.launchImageLibraryAsync({ quality: 0.7 });
+
+            if (!result.canceled && result.assets && result.assets[0].uri) {
+                setUploadingImage(true);
+                const uri = result.assets[0].uri;
+                const fileName = uri.split('/').pop() || 'upload.jpg';
+                
+                const url = await uploadFoto(uri, fileName);
+
+                if (url) {
+                    const newFoto = { url: url };
+                    setMantenimientoForm(prev => ({
+                        ...prev,
+                        fotos: [...(prev.fotos || []), newFoto]
+                    }));
+                }
+            }
+        } catch (error) {
+            console.error("Upload Error", error);
+        } finally {
+            setUploadingImage(false);
+        }
+    };
+
+    const handleSaveMantenimiento = async () => {
+        if (mantenimientoForm.hojaVidaId === 0 || !mantenimientoForm.ejecutadoPor) {
+            Alert.alert("Error", "Debe seleccionar una máquina y el responsable.");
+            return;
+        }
+
+        setSaving(true);
+        try {
+            // Preparamos el objeto para que coincida con el modelo de C#
+            const payload = {
+                hojaVidaId: mantenimientoForm.hojaVidaId,
+                fecha: new Date().toISOString(),
+                tipoMantenimiento: mantenimientoForm.tipo, // Campo corregido
+                ejecutadoPor: mantenimientoForm.ejecutadoPor,
+                observacion: mantenimientoForm.observacion,
+                fotos: mantenimientoForm.fotos?.map(f => ({ url: f.url })) || []
+            };
+
+            if (isEditingMantenimiento && mantenimientoForm.id) {
+                await api.put(`MantenimientosMaquinas/${mantenimientoForm.id}`, payload);
+            } else {
+                await api.post('MantenimientosMaquinas', payload);
+            }
+
+            Alert.alert("Éxito", "Mantenimiento guardado correctamente.");
+            setMantenimientoModalVisible(false);
+            loadMantenimientos(); // Recargar la lista
+            
+            // Reset form
+            setMantenimientoForm({
+                hojaVidaId: 0,
+                fecha: new Date().toISOString(),
+                tipo: 'Preventivo',
+                ejecutadoPor: '',
+                observacion: '',
+                fotos: []
+            });
+        } catch (error) {
+            console.error("Error guardando mantenimiento:", error);
+            Alert.alert("Error", "No se pudo guardar el registro en el servidor.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleDeleteMantenimiento = (id: number) => {
+        Alert.alert(
+            "Eliminar Mantenimiento",
+            "¿Estás seguro de borrar este registro?",
+            [
+                { text: "Cancelar", style: "cancel" },
+                { 
+                    text: "Eliminar", 
+                    style: "destructive",
+                    onPress: async () => {
+                        try {
+                            await api.delete(`MantenimientosMaquinas/${id}`);
+                            loadMantenimientos();
+                        } catch (error) {
+                            Alert.alert("Error", "No se pudo eliminar.");
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
     const [publicData, setPublicData] = useState<{ hoja: HojaVida, bitacoras: BitacoraEntry[] } | null>(null);
 
     const handlePublicDownload = async (id: number) => {
         setLoading(true);
         try {
-            const resp = await api.get(`PublicMaquinas/HojaVida/${id}`);
+            const endpoint = `PublicMaquinas/HojaVida/${id}`;
+            const resp = await api.get(endpoint, {
+                headers: { 
+                    Authorization: '',
+                    'Cache-Control': 'no-cache' 
+                }
+            });
+            
             const hoja = resp.data.hojaVida || resp.data.HojaVida;
             const bitacoras = resp.data.bitacoras || resp.data.Bitacoras || [];
 
             if (!hoja) throw new Error("Máquina no encontrada");
 
             setPublicData({ hoja, bitacoras });
-            
-            // Configurar URL del servidor para fotos (usar la raíz, no /api)
-            const url = await getFileServerUrl();
-            setFileServerUrl(url);
-        } catch (e: any) {
-            console.error("Error carga pública:", e);
+        } catch (error: any) {
+            console.error("Public Download Error", error);
             Alert.alert("Error", "No se pudo cargar la información de la máquina.");
         } finally {
             setLoading(false);
@@ -154,28 +315,32 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
     }, [activeTab]);
 
     const loadHojasVida = async () => {
-        setLoading(true);
+        if (publicMode) return;
         try {
-            const res = await api.get('HojaVidaMaquinas');
-            setHojasVida(res.data);
+            const resp = await api.get('HojaVidaMaquinas');
+            setHojasVida(resp.data);
         } catch (error) {
-            console.error(error);
-            Alert.alert("Error", "No se pudieron cargar las hojas de vida.");
-        } finally {
-            setLoading(false);
+            console.error("Error cargando hojas de vida:", error);
         }
     };
 
     const loadBitacoras = async () => {
-        setLoading(true);
+        if (publicMode) return;
         try {
-            const res = await api.get('BitacorasMaquinas');
-            setBitacoras(res.data);
+            const resp = await api.get('BitacorasMaquinas');
+            setBitacoras(resp.data);
         } catch (error) {
-            console.error(error);
-            Alert.alert("Error", "No se pudieron cargar las bitácoras.");
-        } finally {
-            setLoading(false);
+            console.error("Error cargando bitácoras:", error);
+        }
+    };
+
+    const loadUsuarios = async () => {
+        if (publicMode) return;
+        try {
+            const resp = await api.get('usuarios');
+            setUsuarios(resp.data);
+        } catch (error) {
+            console.error("Error cargando usuarios:", error);
         }
     };
 
@@ -268,32 +433,45 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
         }
     };
 
+    const uploadFoto = async (uri: string, fileName: string) => {
+        try {
+            const formData = new FormData();
+            
+            if (Platform.OS === 'web') {
+                // En web, convertimos la URI (blob o base64) a un Blob real
+                const response = await fetch(uri);
+                const blob = await response.blob();
+                formData.append('Archivo', blob, fileName);
+            } else {
+                // En nativo (celular)
+                // @ts-ignore
+                formData.append('Archivo', {
+                    uri,
+                    name: fileName,
+                    type: 'image/jpeg'
+                });
+            }
+
+            // IMPORTANTE: En Web no enviamos Content-Type manual para que el navegador ponga el boundary correcto
+            const res = await api.post('HojaVidaMaquinas/upload-foto', formData);
+            return res.data.url;
+        } catch (error) {
+            console.error("Error subiendo foto:", error);
+            throw error;
+        }
+    };
+
     const uploadFile = async (uri: string) => {
         setUploadingImage(true);
         try {
-            const formData = new FormData();
             let filename = uri.split('/').pop() || 'photo.jpg';
-            // Si el nombre extraído no tiene extensión (común en blobs de navegador), forzar .jpg
             if (!filename.includes('.') || filename.length < 5) {
                 filename = `foto_${Date.now()}.jpg`;
             }
 
-            const match = /\.(\w+)$/.exec(filename);
-            const type = match ? `image/${match[1]}` : `image/jpeg`;
+            const url = await uploadFoto(uri, filename);
 
-            if (Platform.OS === 'web') {
-                const response = await fetch(uri);
-                const blob = await response.blob();
-                formData.append('Archivo', blob, filename);
-            } else {
-                formData.append('Archivo', { uri, name: filename, type } as any);
-            }
-
-            const res = await api.post('HojaVidaMaquinas/upload-foto', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
-
-            const newFoto = { url: res.data.url };
+            const newFoto = { url: url };
             setForm(prev => ({
                 ...prev,
                 fotos: [...(prev.fotos || []), newFoto]
@@ -384,29 +562,49 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
     };
 
     const urlToBase64 = async (url: string): Promise<string> => {
-        try {
-            const response = await fetch(url);
-            const blob = await response.blob();
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result as string);
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
-            });
-        } catch (error) {
-            console.error("Scale to B64 error", error);
-            return "";
-        }
+        return new Promise((resolve) => {
+            const img = new (window as any).Image();
+            img.crossOrigin = 'Anonymous';
+            img.onload = () => {
+                try {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    ctx?.drawImage(img, 0, 0);
+                    resolve(canvas.toDataURL('image/jpeg', 0.8));
+                } catch (e) {
+                    resolve("");
+                }
+            };
+            img.onerror = () => {
+                // Si el método de imagen falla, intentamos fetch como último recurso
+                fetch(url, { mode: 'cors' })
+                    .then(r => r.blob())
+                    .then(blob => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result as string);
+                        reader.onerror = () => resolve("");
+                        reader.readAsDataURL(blob);
+                    })
+                    .catch(() => resolve(""));
+            };
+            img.src = url;
+        });
     };
 
-    const handleExportPdf = async (item: HojaVida, dataBitacoras?: BitacoraEntry[]) => {
+    const handleExportPdf = async (item: HojaVidaMaquina, dataBitacoras?: BitacoraMaquina[]) => {
         try {
-            // Si no se pasaron las bitácoras, las cargamos
+            // Cargar Tickets (Bitácoras)
             let listTickets = dataBitacoras;
             if (!listTickets) {
-                const resp = await api.get(`BitacorasMaquinas/PorMaquina/${item.id}`);
+                const resp = await api.get('BitacorasMaquinas', { params: { hojaVidaId: item.id } });
                 listTickets = resp.data;
             }
+
+            // Cargar Mantenimientos
+            const mantenResp = await api.get('MantenimientosMaquinas', { params: { hojaVidaId: item.id } });
+            const listMantenimientos = mantenResp.data;
 
             const doc = new jsPDF();
             const margin = 15;
@@ -509,10 +707,12 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
             if (item.fotos && item.fotos.length > 0) {
                 try {
                     const fullUrl = (item.fotos[0].url.startsWith('http') || item.fotos[0].url.startsWith('data')) 
-                        ? item.fotos[0].url : fileServerUrl + item.fotos[0].url;
+                        ? item.fotos[0].url : SERVER_URL + item.fotos[0].url;
                     const b64 = await urlToBase64(fullUrl);
                     if (b64) doc.addImage(b64, 'JPEG', margin + 97, currentY + 10, 80, 48);
-                } catch(e) {}
+                } catch(e) {
+                    console.warn("No se pudo cargar la foto de la máquina, se generará sin ella.");
+                }
             }
             currentY += mainTableH + 5;
 
@@ -618,7 +818,7 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
 
                     try {
                         const fullUrl = (foto.url.startsWith('http') || foto.url.startsWith('data')) 
-                                        ? foto.url : fileServerUrl + foto.url;
+                                        ? foto.url : SERVER_URL + foto.url;
                         const b64 = await urlToBase64(fullUrl);
                         if (b64) {
                             doc.addImage(b64, 'JPEG', photoX, currentY, photoSize, photoSize);
@@ -663,6 +863,74 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                 currentY = (doc as any).lastAutoTable.finalY + 10;
             }
 
+            // --- 4. HISTORIAL DE MANTENIMIENTOS CON FOTOS (NUEVO) ---
+            if (listMantenimientos && listMantenimientos.length > 0) {
+                checkNewPage(40);
+                doc.setFillColor(230, 230, 230);
+                doc.rect(margin, currentY, tableWidth, 7, 'F');
+                doc.rect(margin, currentY, tableWidth, 7, 'D');
+                doc.setFont("helvetica", "bold");
+                doc.text("HISTORIAL DE MANTENIMIENTOS Y EVIDENCIAS", margin + (tableWidth/2), currentY + 5, { align: 'center' });
+                currentY += 10;
+
+                for (const m of listMantenimientos) {
+                    // Verificar espacio para el encabezado del mantenimiento
+                    checkNewPage(25);
+
+                    // Pequeña tabla/fila para el resumen del mantenimiento
+                    autoTable(doc, {
+                        startY: currentY,
+                        head: [['Fecha', 'Tipo', 'Ejecutado Por', 'Observación']],
+                        body: [[
+                            new Date(m.fecha).toLocaleDateString(),
+                            m.tipoMantenimiento || m.tipo,
+                            m.ejecutadoPor,
+                            m.observacion
+                        ]],
+                        margin: { left: margin },
+                        tableWidth: tableWidth,
+                        theme: 'grid',
+                        headStyles: { fillColor: [80, 80, 80] },
+                        styles: { fontSize: 8 }
+                    });
+
+                    currentY = (doc as any).lastAutoTable.finalY + 5;
+
+                    // Dibujar fotos de ESTE mantenimiento
+                    if (m.fotos && m.fotos.length > 0) {
+                        checkNewPage(45);
+                        let photoX = margin + 5;
+                        const photoSize = 40;
+
+                        for (const foto of m.fotos) {
+                            try {
+                                const fullUrl = (foto.url.startsWith('http') || foto.url.startsWith('data')) 
+                                                ? foto.url : SERVER_URL + foto.url;
+                                const b64 = await urlToBase64(fullUrl);
+                                if (b64) {
+                                    doc.addImage(b64, 'JPEG', photoX, currentY, photoSize, photoSize);
+                                    photoX += photoSize + 5;
+                                    
+                                    // Si no cabe en la fila, saltar a la siguiente
+                                    if (photoX + photoSize > margin + tableWidth) {
+                                        photoX = margin + 5;
+                                        currentY += photoSize + 5;
+                                        if (checkNewPage(photoSize + 10)) {
+                                            photoX = margin + 5;
+                                        }
+                                    }
+                                }
+                            } catch(e) {
+                                console.warn("Falla al cargar foto de mantenimiento");
+                            }
+                        }
+                        currentY += photoSize + 10;
+                    } else {
+                        currentY += 5; // Espacio si no hay fotos
+                    }
+                }
+            }
+
             // --- FINALIZACIÓN: LOGO Y TOTAL PÁGINAS ---
             const totalPages = doc.internal.pages.length - 1;
             for (let i = 1; i <= totalPages; i++) {
@@ -674,30 +942,27 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                 // o simplemente lo posicionamos bien.
                 doc.text(`${totalPages}`, margin + 158, 15 + 27);
 
-                // Insertar logo - Intentamos con URL absoluta y cache breaker
+                // Insertar logo - Intentamos pero no bloqueamos si falla
                 try {
                     const cacheBreaker = `?v=${new Date().getTime()}`;
                     const logoUrl = window.location.origin + '/empresa-logo.jpeg' + cacheBreaker;
                     const logo64 = await urlToBase64(logoUrl);
                     if (logo64) {
                         doc.addImage(logo64, 'JPEG', margin + 2, 17, 46, 26);
-                    } else {
-                        throw new Error("Logo base64 empty");
                     }
                 } catch(e) {
-                     // Si falla, intentamos con la ruta de assets (haciendo fallback)
-                     try {
-                        const fallbackUrl = window.location.origin + '/assets/assets/logo_perla.c3c0eba23d358a42b2ce52660c5ffef5.png';
-                        const backup64 = await urlToBase64(fallbackUrl);
-                        if (backup64) doc.addImage(backup64, 'PNG', margin + 2, 17, 46, 26);
-                     } catch(err) {}
+                     console.warn("Logo load failed, continuing without logo");
                 }
             }
 
-            doc.save(`HojaVida_${item.nombre.replace(/ /g, '_')}.pdf`);
+            // --- GENERAR PDF ---
+            const filename = `HojaVida_${item.nombre.replace(/ /g, '_')}.pdf`;
+            doc.save(filename);
+            return "ok";
         } catch (error) {
             console.error("PDF Error", error);
-            Alert.alert("Error", "No se pudo generar el formato dinámico.");
+            Alert.alert("Error", "No se pudo generar el formato.");
+            return null;
         }
     };
 
@@ -726,6 +991,13 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                     <MaterialCommunityIcons name="alert-octagon-outline" size={20} color={activeTab === 'TICKETS_DANOS' ? colors.primary : colors.subText} />
                     <Text style={[styles.tabText, { color: activeTab === 'TICKETS_DANOS' ? colors.primary : colors.subText }]}>Tickets de daños</Text>
                 </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.tabButton, activeTab === 'MANTENIMIENTOS' && [styles.activeTabButton, { borderBottomColor: colors.primary }]]}
+                    onPress={() => setActiveTab('MANTENIMIENTOS')}
+                >
+                    <MaterialCommunityIcons name="wrench-outline" size={20} color={activeTab === 'MANTENIMIENTOS' ? colors.primary : colors.subText} />
+                    <Text style={[styles.tabText, { color: activeTab === 'MANTENIMIENTOS' ? colors.primary : colors.subText }]}>Mantenimientos</Text>
+                </TouchableOpacity>
             </ScrollView>
         </View>
     );
@@ -750,7 +1022,7 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                             
                             {item.fotos && item.fotos.length > 0 && (
                                 <View style={styles.thumbnailContainer}>
-                                    <Image source={{ uri: (item.fotos[0].url.startsWith('http') || item.fotos[0].url.startsWith('data') || item.fotos[0].url.startsWith('blob')) ? item.fotos[0].url : fileServerUrl + item.fotos[0].url }} style={styles.thumbnail} />
+                                    <Image source={{ uri: (item.fotos[0].url.startsWith('http') || item.fotos[0].url.startsWith('data') || item.fotos[0].url.startsWith('blob')) ? item.fotos[0].url : SERVER_URL + item.fotos[0].url }} style={styles.thumbnail} />
                                     {item.fotos.length > 1 && (
                                         <View style={styles.photoCount}>
                                             <Text style={styles.photoCountText}>+{item.fotos.length - 1}</Text>
@@ -830,16 +1102,46 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                     <Text style={{ fontSize: 14, color: '#718096', marginBottom: 25 }}>Inventario: {publicData.hoja.numeroInventario || 'N/A'}</Text>
                                     
                                     <TouchableOpacity 
-                                        style={{ backgroundColor: '#10B981', paddingVertical: 18, paddingHorizontal: 30, borderRadius: 12, width: '100%', flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }}
-                                        onPress={() => handleExportPdf(publicData.hoja, publicData.bitacoras)}
+                                        style={{ 
+                                            backgroundColor: '#3B82F6', 
+                                            paddingVertical: 18, 
+                                            paddingHorizontal: 30, 
+                                            borderRadius: 12, 
+                                            width: '100%', 
+                                            flexDirection: 'row', 
+                                            justifyContent: 'center', 
+                                            alignItems: 'center', 
+                                            opacity: generatingPdf ? 0.7 : 1, 
+                                            elevation: 4 
+                                        }}
+                                        onPress={async () => {
+                                            if (generatingPdf) return;
+                                            setGeneratingPdf(true);
+                                            try {
+                                                await handleExportPdf(publicData.hoja, publicData.bitacoras);
+                                            } finally {
+                                                setGeneratingPdf(false);
+                                            }
+                                        }}
                                     >
-                                        <MaterialCommunityIcons name="download" size={24} color="white" style={{ marginRight: 10 }} />
-                                        <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold' }}>DESCARGAR PDF</Text>
+                                        {generatingPdf ? (
+                                            <ActivityIndicator color="white" style={{ marginRight: 10 }} />
+                                        ) : (
+                                            <MaterialCommunityIcons 
+                                                name="file-pdf-box" 
+                                                size={24} 
+                                                color="white" 
+                                                style={{ marginRight: 10 }} 
+                                            />
+                                        )}
+                                        <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold' }}>
+                                            {generatingPdf ? 'GENERANDO REPORTE...' : 'DESCARGAR PDF OFICIAL'}
+                                        </Text>
                                     </TouchableOpacity>
                                 </View>
                                 
                                 <Text style={{ color: '#718096', fontSize: 13, marginTop: 40, textAlign: 'center', paddingHorizontal: 40 }}>
-                                    Toca el botón verde para generar y descargar la Hoja de Vida oficial de este equipo.
+                                    Pulsa el botón azul para generar y descargar la Hoja de Vida oficial de este equipo.
                                 </Text>
                             </View>
                         ) : (
@@ -909,6 +1211,88 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                 </TouchableOpacity>
                             </View>
                         )}
+                        {activeTab === 'MANTENIMIENTOS' && (
+                            <View style={styles.listContainer}>
+                                <FlatList
+                                    data={mantenimientos}
+                                    keyExtractor={(item) => item.id?.toString() || Math.random().toString()}
+                                    contentContainerStyle={{ padding: 15 }}
+                                    ListEmptyComponent={() => (
+                                        <View style={styles.emptyView}>
+                                            <MaterialCommunityIcons name="wrench-clock" size={80} color={colors.subText} opacity={0.3} />
+                                            <Text style={[styles.emptySubtitle, { color: colors.subText }]}>No hay mantenimientos registrados.</Text>
+                                        </View>
+                                    )}
+                                    renderItem={({ item }) => {
+                                        const maq = hojasVida.find(h => h.id === item.hojaVidaId);
+                                        return (
+                                            <View style={[styles.bitacoraCard, { backgroundColor: isDarkMode ? '#1e293b' : 'white', borderLeftColor: '#3B82F6' }]}>
+                                                <View style={{ flex: 1 }}>
+                                                    <View style={styles.rowBetween}>
+                                                        <Text style={[styles.bitacoraTitle, { color: colors.text }]}>{maq?.nombre || 'Máquina'}</Text>
+                                                        <View style={[styles.badge, { backgroundColor: colors.primary + '20' }]}>
+                                                            <Text style={[styles.badgeText, { color: colors.primary, fontSize: 10, fontWeight: 'bold' }]}>{item.tipoMantenimiento || item.tipo}</Text>
+                                                        </View>
+                                                    </View>
+                                                    <View style={styles.bitacoraRow}>
+                                                        <MaterialCommunityIcons name="calendar-range" size={14} color={colors.subText} />
+                                                        <Text style={[styles.bitacoraDate, { color: colors.subText }]}> {new Date(item.fecha).toLocaleDateString()}</Text>
+                                                    </View>
+                                                    <Text style={[styles.bitacoraDesc, { color: colors.text, marginVertical: 5, fontSize: 14 }]}>{item.observacion}</Text>
+                                                    
+                                                    {item.fotos && item.fotos.length > 0 && (
+                                                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 10 }}>
+                                                            {item.fotos.map((f, i) => (
+                                                                <TouchableOpacity key={i} onPress={() => openImage(f.url)}>
+                                                                    <Image 
+                                                                        source={{ uri: f.url.startsWith('http') ? f.url : (SERVER_URL + f.url) }} 
+                                                                        style={{ width: 85, height: 85, borderRadius: 10, marginRight: 10, borderWidth: 1, borderColor: colors.border }} 
+                                                                    />
+                                                                </TouchableOpacity>
+                                                            ))}
+                                                        </ScrollView>
+                                                    )}
+                                                    
+                                                    <Text style={[styles.bitacoraUser, { color: colors.primary }]}>Por: {item.ejecutadoPor}</Text>
+                                                </View>
+                                                <View style={{ justifyContent: 'space-around', marginLeft: 15 }}>
+                                                    <TouchableOpacity onPress={() => {
+                                                        setMantenimientoForm({
+                                                            ...item,
+                                                            tipo: item.tipoMantenimiento || item.tipo || 'Preventivo'
+                                                        });
+                                                        setIsEditingMantenimiento(true);
+                                                        setMantenimientoModalVisible(true);
+                                                    }}>
+                                                        <MaterialCommunityIcons name="pencil-outline" size={24} color={colors.subText} />
+                                                    </TouchableOpacity>
+                                                    <TouchableOpacity onPress={() => handleDeleteMantenimiento(item.id!)}>
+                                                        <MaterialCommunityIcons name="delete-outline" size={24} color="#EF4444" />
+                                                    </TouchableOpacity>
+                                                </View>
+                                            </View>
+                                        );
+                                    }}
+                                />
+                                <TouchableOpacity 
+                                    style={[styles.fab, { backgroundColor: colors.primary }]} 
+                                    onPress={() => {
+                                        setMantenimientoForm({
+                                            hojaVidaId: 0,
+                                            fecha: new Date().toISOString(),
+                                            tipo: 'Preventivo',
+                                            ejecutadoPor: '',
+                                            observacion: '',
+                                            fotos: []
+                                        });
+                                        setIsEditingMantenimiento(false);
+                                        setMantenimientoModalVisible(true);
+                                    }}
+                                >
+                                    <MaterialCommunityIcons name="wrench" size={30} color="white" />
+                                </TouchableOpacity>
+                            </View>
+                        )}
                     </>
                 )}
             </View>
@@ -935,7 +1319,7 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                         const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${encodeURIComponent('https://perla.work/?maqId=' + selectedMaqId)}`;
                                         const b64 = await urlToBase64(qrUrl);
                                         if (b64) {
-                                            const doc = new jsPDF({ unit: 'mm', format: [100, 100] }); // Formato pequeño p/etiqueta
+                                            const doc = new jsPDF({ unit: 'mm', format: [100, 100] });
                                             doc.setFontSize(10);
                                             doc.text("HOJA DE VIDA - EQUIPO", 50, 10, { align: 'center' });
                                             doc.setFont("helvetica", "bold");
@@ -945,7 +1329,29 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                             doc.setFontSize(8);
                                             doc.setFont("helvetica", "normal");
                                             doc.text("Escanee para descargar ficha técnica", 50, 95, { align: 'center' });
-                                            doc.save(`QR_${selectedMaqName.replace(/ /g, '_')}.pdf`);
+                                            
+                                            const filename = `QR_${selectedMaqName.replace(/ /g, '_')}.pdf`;
+                                            
+                                            if (Platform.OS === 'web') {
+                                                const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+                                                if (isMobile) {
+                                                    doc.output('dataurlnewwindow');
+                                                } else {
+                                                    const blob = doc.output('blob');
+                                                    const url = URL.createObjectURL(blob);
+                                                    const a = document.createElement('a');
+                                                    a.href = url;
+                                                    a.download = filename;
+                                                    document.body.appendChild(a);
+                                                    a.click();
+                                                    setTimeout(() => {
+                                                        document.body.removeChild(a);
+                                                        URL.revokeObjectURL(url);
+                                                    }, 100);
+                                                }
+                                            } else {
+                                                doc.save(filename);
+                                            }
                                         }
                                     }}
                                 >
@@ -969,7 +1375,128 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                 </View>
             </Modal>
 
-            {/* Modal de Tickets */}
+            {/* Modal de Mantenimientos */}
+            <Modal visible={mantenimientoModalVisible} animationType="fade" transparent>
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { backgroundColor: colors.background, maxWidth: 500 }]}>
+                        <View style={styles.modalHeader}>
+                            <Text style={[styles.modalTitle, { color: colors.text }]}>
+                                {isEditingMantenimiento ? 'Editar Mantenimiento' : 'Agregar Mantenimiento'}
+                            </Text>
+                            <TouchableOpacity onPress={() => setMantenimientoModalVisible(false)}>
+                                <MaterialCommunityIcons name="close" size={24} color={colors.text} />
+                            </TouchableOpacity>
+                        </View>
+                        <ScrollView style={{ padding: 20 }}>
+                            <Text style={[styles.label, { color: colors.text }]}>Máquina Atendida *</Text>
+                            <View style={[styles.pickerContainer, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', borderColor: colors.border, height: 180 }]}>
+                                <ScrollView style={{ paddingVertical: 5 }}>
+                                    {hojasVida.map(maq => {
+                                        const isSelected = mantenimientoForm.hojaVidaId === maq.id;
+                                        return (
+                                            <TouchableOpacity 
+                                                key={maq.id} 
+                                                onPress={() => setMantenimientoForm(prev => ({
+                                                    ...prev,
+                                                    hojaVidaId: isSelected ? 0 : maq.id!
+                                                }))}
+                                                style={[
+                                                    styles.maqListOption, 
+                                                    isSelected && { backgroundColor: '#3B82F6', borderColor: '#3B82F6' }
+                                                ]}
+                                            >
+                                                <MaterialCommunityIcons 
+                                                    name={isSelected ? "checkbox-marked-circle" : "circle-outline"} 
+                                                    size={22} 
+                                                    color={isSelected ? "white" : colors.subText} 
+                                                />
+                                                <Text style={[
+                                                    styles.maqOptionText, 
+                                                    { marginLeft: 12, color: isSelected ? 'white' : (isDarkMode ? '#e2e8f0' : '#4a5568') }
+                                                ]}>
+                                                    {maq.nombre}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                                </ScrollView>
+                            </View>
+
+                            <Text style={[styles.label, { color: colors.text, marginTop: 15 }]}>Tipo de Mantenimiento</Text>
+                            <View style={[styles.turnosContainer, { flexWrap: 'wrap' }]}>
+                                {['Correctivo', 'Preventivo', 'Limpieza', 'Ajuste', 'Calibración'].map(t => (
+                                    <TouchableOpacity 
+                                        key={t} 
+                                        onPress={() => setMantenimientoForm({...mantenimientoForm, tipo: t})}
+                                        style={[styles.turnoBtn, { borderColor: colors.border, paddingHorizontal: 12, marginBottom: 8 }, mantenimientoForm.tipo === t && { backgroundColor: '#3B82F6', borderColor: '#3B82F6' }]}
+                                    >
+                                        <Text style={[styles.turnoText, { fontSize: 11, color: mantenimientoForm.tipo === t ? 'white' : colors.text }]}>{t}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
+                            <FormInput label="Ejecutado por *" value={mantenimientoForm.ejecutadoPor} onChangeText={(t: string) => setMantenimientoForm({...mantenimientoForm, ejecutadoPor: t})} placeholder="Nombre del técnico" colors={colors} isDarkMode={isDarkMode} />
+                            <FormInput label="Observaciones / Detalles" value={mantenimientoForm.observacion} onChangeText={(t: string) => setMantenimientoForm({...mantenimientoForm, observacion: t})} placeholder="Detalle lo realizado..." multiline colors={colors} isDarkMode={isDarkMode} />
+
+                            <View style={styles.photoUploadSection}>
+                                <Text style={[styles.label, { color: colors.text }]}>Fotos del Mantenimiento</Text>
+                                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
+                                    <TouchableOpacity 
+                                        style={[styles.actionBtn, { backgroundColor: colors.primary + '20', flex: 1, height: 45, borderRadius: 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }]} 
+                                        onPress={() => pickMantenimientoImage(true)}
+                                    >
+                                        <MaterialCommunityIcons name="camera" size={20} color={colors.primary} />
+                                        <Text style={{ color: colors.primary, marginLeft: 8, fontWeight: 'bold' }}>Cámara</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity 
+                                        style={[styles.actionBtn, { backgroundColor: '#10B98120', flex: 1, height: 45, borderRadius: 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }]} 
+                                        onPress={() => pickMantenimientoImage(false)}
+                                    >
+                                        <MaterialCommunityIcons name="image-multiple" size={20} color="#10B981" />
+                                        <Text style={{ color: '#10B981', marginLeft: 8, fontWeight: 'bold' }}>Galería</Text>
+                                    </TouchableOpacity>
+                                </View>
+
+                                {uploadingImage && <ActivityIndicator color={colors.primary} style={{ marginBottom: 10 }} />}
+
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                    {mantenimientoForm.fotos?.map((foto, index) => (
+                                        <View key={index} style={styles.photoWrapper}>
+                                            <Image 
+                                                source={{ uri: foto.url.startsWith('http') ? foto.url : SERVER_URL + foto.url }} 
+                                                style={styles.photoItem} 
+                                            />
+                                            <TouchableOpacity 
+                                                style={styles.removePhotoBadge} 
+                                                onPress={() => {
+                                                    const newFotos = [...(mantenimientoForm.fotos || [])];
+                                                    newFotos.splice(index, 1);
+                                                    setMantenimientoForm({...mantenimientoForm, fotos: newFotos});
+                                                }}
+                                            >
+                                                <MaterialCommunityIcons name="close-circle" size={22} color="#EF4444" />
+                                            </TouchableOpacity>
+                                        </View>
+                                    ))}
+                                </ScrollView>
+                            </View>
+
+                            <TouchableOpacity 
+                                style={[styles.btnSave, { backgroundColor: colors.primary, marginTop: 25, marginBottom: 30 }]} 
+                                onPress={handleSaveMantenimiento}
+                                disabled={saving}
+                            >
+                                {saving ? <ActivityIndicator color="white" /> : (
+                                    <>
+                                        <MaterialCommunityIcons name="content-save-check" size={22} color="white" style={{ marginRight: 8 }} />
+                                        <Text style={styles.btnSaveText}>{isEditingMantenimiento ? 'Actualizar' : 'Guardar'} Registro</Text>
+                                    </>
+                                )}
+                            </TouchableOpacity>
+                        </ScrollView>
+                    </View>
+                </View>
+            </Modal>
             <Modal visible={bitacoraModalVisible} animationType="fade" transparent>
                 <View style={styles.modalOverlay}>
                     <View style={[styles.modalContent, { backgroundColor: colors.background, maxWidth: 500 }]}>
@@ -981,20 +1508,36 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                         </View>
                         <ScrollView style={{ padding: 20 }}>
                             <Text style={[styles.label, { color: colors.text }]}>Máquina Afectada</Text>
-                            <View style={[styles.pickerContainer, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', borderColor: colors.border }]}>
-                                <ScrollView horizontal style={{ paddingVertical: 10 }}>
-                                    {hojasVida.map(maq => (
-                                        <TouchableOpacity 
-                                            key={maq.id} 
-                                            onPress={() => setBitacoraForm({...bitacoraForm, hojaVidaId: maq.id!})}
-                                            style={[
-                                                styles.maqOption, 
-                                                bitacoraForm.hojaVidaId === maq.id && { backgroundColor: colors.primary, borderColor: colors.primary }
-                                            ]}
-                                        >
-                                            <Text style={[styles.maqOptionText, bitacoraForm.hojaVidaId === maq.id && { color: 'white' }]}>{maq.nombre}</Text>
-                                        </TouchableOpacity>
-                                    ))}
+                            <View style={[styles.pickerContainer, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', borderColor: colors.border, height: 180 }]}>
+                                <ScrollView style={{ paddingVertical: 5 }}>
+                                    {hojasVida.map(maq => {
+                                        const isSelected = bitacoraForm.hojaVidaId === maq.id;
+                                        return (
+                                            <TouchableOpacity 
+                                                key={maq.id} 
+                                                onPress={() => setBitacoraForm(prev => ({
+                                                    ...prev,
+                                                    hojaVidaId: isSelected ? 0 : maq.id!
+                                                }))}
+                                                style={[
+                                                    styles.maqListOption, 
+                                                    isSelected && { backgroundColor: colors.primary, borderColor: colors.primary }
+                                                ]}
+                                            >
+                                                <MaterialCommunityIcons 
+                                                    name={isSelected ? "checkbox-marked-circle" : "circle-outline"} 
+                                                    size={22} 
+                                                    color={isSelected ? "white" : colors.subText} 
+                                                />
+                                                <Text style={[
+                                                    styles.maqOptionText, 
+                                                    { marginLeft: 12, color: isSelected ? 'white' : (isDarkMode ? '#e2e8f0' : '#4a5568') }
+                                                ]}>
+                                                    {maq.nombre}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        );
+                                    })}
                                 </ScrollView>
                             </View>
 
@@ -1081,7 +1624,7 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                     {form.fotos?.map((foto, index) => (
                                         <View key={index} style={styles.photoWrapper}>
                                             <Image 
-                                                source={{ uri: (foto.url.startsWith('http') || foto.url.startsWith('data') || foto.url.startsWith('blob')) ? foto.url : fileServerUrl + foto.url }} 
+                                                source={{ uri: (foto.url.startsWith('http') || foto.url.startsWith('data') || foto.url.startsWith('blob')) ? foto.url : SERVER_URL + foto.url }} 
                                                 style={styles.photoItem} 
                                             />
                                             <TouchableOpacity 
@@ -1184,12 +1727,43 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                     </View>
                 </View>
             </Modal>
+            {/* Visor de Imagen en Pantalla Completa */}
+            <Modal
+                visible={imageModalVisible}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setImageModalVisible(false)}
+            >
+                <TouchableOpacity 
+                    style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center' }}
+                    activeOpacity={1}
+                    onPress={() => setImageModalVisible(false)}
+                >
+                    {selectedImage && (
+                        <Image 
+                            source={{ uri: selectedImage }} 
+                            style={{ width: '95%', height: '85%', borderRadius: 10 }}
+                            resizeMode="contain"
+                        />
+                    )}
+                    <TouchableOpacity 
+                        style={{ position: 'absolute', top: 40, right: 20, backgroundColor: 'rgba(255,255,255,0.2)', padding: 10, borderRadius: 25 }}
+                        onPress={() => setImageModalVisible(false)}
+                    >
+                        <MaterialCommunityIcons name="close" size={30} color="white" />
+                    </TouchableOpacity>
+                    <Text style={{ color: 'white', position: 'absolute', bottom: 40, fontWeight: 'bold' }}>Toca en cualquier lugar para cerrar</Text>
+                </TouchableOpacity>
+            </Modal>
         </View>
     );
 }
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
+    rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+    badgeText: { fontSize: 11, fontWeight: 'bold' },
     headerContainer: { backgroundColor: 'transparent', borderBottomWidth: 1 },
     tabsScroll: { paddingHorizontal: 10, paddingVertical: 10 },
     tabButton: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 10, borderBottomWidth: 3, borderBottomColor: 'transparent', marginRight: 10 },
@@ -1254,7 +1828,18 @@ const styles = StyleSheet.create({
     bitacoraUser: { fontSize: 12, fontWeight: 'bold', marginTop: 8 },
     
     pickerContainer: { borderWidth: 1, borderRadius: 8, padding: 5, marginBottom: 15 },
-    maqOption: { paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#ccc', marginRight: 10 },
+    maqOption: { paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, borderWidth: 1, marginRight: 10, backgroundColor: 'transparent' },
+    maqListOption: { 
+        paddingHorizontal: 15, 
+        paddingVertical: 12, 
+        borderRadius: 8, 
+        borderWidth: 1, 
+        marginBottom: 5, 
+        backgroundColor: 'transparent',
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderColor: '#e2e8f0'
+    },
     maqOptionText: { fontSize: 13, fontWeight: 'bold' },
     
     turnosContainer: { flexDirection: 'row', gap: 8, marginBottom: 15 },

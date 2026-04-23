@@ -114,6 +114,7 @@ public class AppDbContext : DbContext
     // Hoja de Vida Maquinas
     public DbSet<HojaVidaMaquina> HojasVidaMaquinas { get; set; }
     public DbSet<MantenimientoHojaVida> MantenimientosHojaVida { get; set; }
+    public DbSet<MantenimientoFoto> MantenimientoFotos { get; set; }
     public DbSet<HojaVidaFoto> HojaVidaFotos { get; set; }
     public DbSet<BitacoraMaquina> BitacorasMaquinas { get; set; }
 
@@ -578,6 +579,13 @@ public class AppDbContext : DbContext
             .HasOne(f => f.HojaVida)
             .WithMany(h => h.Fotos)
             .HasForeignKey(f => f.HojaVidaId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<MantenimientoFoto>().ToTable("MantenimientoFotos");
+        modelBuilder.Entity<MantenimientoFoto>()
+            .HasOne(f => f.Mantenimiento)
+            .WithMany(m => m.Fotos)
+            .HasForeignKey(f => f.MantenimientoId)
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<BitacoraMaquina>().ToTable("BitacorasMaquinas");

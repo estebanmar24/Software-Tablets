@@ -19,9 +19,11 @@ apiClient.interceptors.request.use(async (config) => {
     const baseUrl = await getApiBaseUrl();
     config.baseURL = baseUrl;
 
-    // 2. Inyectar Token de Autenticación
+    // 2. Inyectar Token de Autenticación (excepto para rutas públicas)
     const token = await getToken();
-    if (token) {
+    const isPublicRoute = config.url?.includes('PublicMaquinas');
+
+    if (token && !isPublicRoute) {
         config.headers.Authorization = `Bearer ${token}`;
     }
 
