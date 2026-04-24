@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Alert, useWindowDimensions, Image, Dimensions } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 // Import screens from the Production System
 import CaptureGridScreen from '../screens/CaptureGridScreen';
@@ -28,6 +29,7 @@ import CalidadExternaView from './CalidadExternaView';
 import PlanAccionView from './PlanAccionView';
 import UserManagementScreen from '../screens/UserManagementScreen';
 import MaquinasScreen from '../screens/MaquinasScreen';
+import InventarioMantenimientoScreen from '../screens/InventarioMantenimientoScreen';
 import { api } from '../services/productionApi';
 
 
@@ -99,14 +101,14 @@ function DashboardCard({ title, description, icon, onPress, color, disabled }: D
 }
 
 /**
- * COMPONENTE DE TARJETA DUAL PARA MANTENIMIENTO
+ * COMPONENTE DE TARJETA PARA MANTENIMIENTO (Sencillo)
  */
-function MaintenanceDualCard({ disabled, onMaquinas, onGastos }: { disabled?: boolean, onMaquinas: () => void, onGastos: () => void }) {
+function MaintenanceCard({ disabled, onPress }: { disabled?: boolean, onPress: () => void }) {
     const { colors, isDarkMode } = useTheme();
 
     const cardBg = disabled
         ? (isDarkMode ? '#1F2937' : '#E0E0E0')
-        : (isDarkMode ? '#111827' : '#f0f9ff'); // Un tono azulado muy suave
+        : (isDarkMode ? '#111827' : '#E6FFFA');
 
     const iconContainerBg = isDarkMode ? '#020617' : '#FFFFFF';
 
@@ -120,25 +122,15 @@ function MaintenanceDualCard({ disabled, onMaquinas, onGastos }: { disabled?: bo
                 <Text style={[styles.cardIcon, disabled && { opacity: 0.5 }]}>🔧</Text>
             </View>
             <Text style={[styles.cardTitle, { color: colors.text }]}>Mantenimiento</Text>
-            <Text style={[styles.cardDescription, { color: colors.subText }]}>Gestión técnica e integral de maquinaria y costos</Text>
+            <Text style={[styles.cardDescription, { color: colors.subText }]}>Gestión técnica e integral de maquinaria, costos e inventario</Text>
             
-            <View style={{ width: '100%', gap: 10, alignItems: 'center', marginBottom: 10 }}>
-                <TouchableOpacity
-                    style={[styles.cardButton, { backgroundColor: '#2C5282', marginBottom: 0, width: '90%' }, disabled && { backgroundColor: '#BDBDBD' }]}
-                    onPress={onMaquinas}
-                    disabled={disabled}
-                >
-                    <Text style={[styles.cardButtonText, { fontSize: 13 }]}>Hojas de Vida / Maquinaria</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                    style={[styles.cardButton, { backgroundColor: '#2B6CB0', marginBottom: 0, width: '90%' }, disabled && { backgroundColor: '#BDBDBD' }]}
-                    onPress={onGastos}
-                    disabled={disabled}
-                >
-                    <Text style={[styles.cardButtonText, { fontSize: 13 }]}>Gastos de Mantenimiento</Text>
-                </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+                style={[styles.cardButton, { backgroundColor: isDarkMode ? colors.primary : '#3182CE' }, disabled && { backgroundColor: isDarkMode ? '#374151' : '#BDBDBD' }]}
+                onPress={onPress}
+                disabled={disabled}
+            >
+                <Text style={styles.cardButtonText}>{disabled ? 'Bloqueado' : 'Abrir'}</Text>
+            </TouchableOpacity>
         </View>
     );
 }
@@ -146,11 +138,11 @@ function MaintenanceDualCard({ disabled, onMaquinas, onGastos }: { disabled?: bo
 function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: AdminDashboardProps) {
     const { colors, isDarkMode } = useTheme();
     // Mode: 'MENU' | 'CONTENT' ...
-    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'MANTENIMIENTO_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS' | 'TICKETS' | 'CALIDAD_EXTERNA' | 'PLANES_ACCION' | 'USUARIOS' | 'MAQUINAS'>(() => {
+    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'MANTENIMIENTO_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS' | 'TICKETS' | 'CALIDAD_EXTERNA' | 'PLANES_ACCION' | 'USUARIOS' | 'MAQUINAS' | 'MANTENIMIENTO_SELECTOR' | 'INVENTARIO_MANTENIMIENTO'>(() => {
 
         if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
             const savedMode = window.localStorage.getItem('adminDashboardMode');
-            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS' || savedMode === 'PRODUCCION_GASTOS' || savedMode === 'MANTENIMIENTO_GASTOS' || savedMode === 'TALLERES_GASTOS' || savedMode === 'CALIDAD' || savedMode === 'PLANEACION_GASTOS' || savedMode === 'DISENO_GASTOS' || savedMode === 'TICKETS' || savedMode === 'CALIDAD_EXTERNA' || savedMode === 'PLANES_ACCION' || savedMode === 'USUARIOS' || savedMode === 'MAQUINAS') {
+            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS' || savedMode === 'PRODUCCION_GASTOS' || savedMode === 'MANTENIMIENTO_GASTOS' || savedMode === 'TALLERES_GASTOS' || savedMode === 'CALIDAD' || savedMode === 'PLANEACION_GASTOS' || savedMode === 'DISENO_GASTOS' || savedMode === 'TICKETS' || savedMode === 'CALIDAD_EXTERNA' || savedMode === 'PLANES_ACCION' || savedMode === 'USUARIOS' || savedMode === 'MAQUINAS' || savedMode === 'MANTENIMIENTO_SELECTOR' || savedMode === 'INVENTARIO_MANTENIMIENTO') {
 
                 return savedMode as any;
             }
@@ -553,16 +545,16 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
         );
     }
 
-    // --- VISTA MANTENIMIENTO GASTOS ---
+    // Update back button for MANTENIMIENTO_GASTOS to go to selector
     if (mode === 'MANTENIMIENTO_GASTOS') {
         return (
             <View style={[styles.container, { backgroundColor: colors.background }]}>
                 <View style={[styles.header, { backgroundColor: colors.headerBackground }]}>
                     <TouchableOpacity style={styles.backButton} onPress={() => {
-                        setMode('MENU');
-                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                        setMode('MANTENIMIENTO_SELECTOR');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MANTENIMIENTO_SELECTOR');
                     }}>
-                        <Text style={styles.backButtonText}>← Volver al Panel</Text>
+                        <Text style={styles.backButtonText}>← Volver</Text>
                     </TouchableOpacity>
                     <View style={styles.centeredTitleContainer} pointerEvents="box-none">
                         <Text style={styles.title}>Gastos de Mantenimiento</Text>
@@ -639,17 +631,16 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
             </View>
         );
     }
-
     // --- VISTA MAQUINAS ---
     if (mode === 'MAQUINAS') {
         return (
             <View style={[styles.container, { backgroundColor: colors.background }]}>
                 <View style={[styles.header, { backgroundColor: colors.headerBackground }]}>
                     <TouchableOpacity style={styles.backButton} onPress={() => {
-                        setMode('MENU');
-                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                        setMode('MANTENIMIENTO_SELECTOR');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MANTENIMIENTO_SELECTOR');
                     }}>
-                        <Text style={styles.backButtonText}>← Volver al Panel</Text>
+                        <Text style={styles.backButtonText}>← Volver</Text>
                     </TouchableOpacity>
                     <View style={styles.centeredTitleContainer} pointerEvents="box-none">
                         <Text style={styles.title}>Módulo de Máquinas</Text>
@@ -661,8 +652,172 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
                     />
                 </View>
                 <MaquinasScreen onBack={() => {
-                    setMode('MENU');
-                    if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                    setMode('MANTENIMIENTO_SELECTOR');
+                    if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MANTENIMIENTO_SELECTOR');
+                }} />
+            </View>
+        );
+    }
+    // --- VISTA MANTENIMIENTO SELECTOR (Bento Grid) ---
+    if (mode === 'MANTENIMIENTO_SELECTOR') {
+        return (
+            <View style={[styles.menuContainer, { backgroundColor: isDarkMode ? colors.background : '#F3F4F6' }]}>
+                <View style={[styles.panelContainer, { backgroundColor: isDarkMode ? '#05070A' : '#FFFFFF', padding: isMobile ? 15 : 40 }]}>
+                    <View style={{ marginBottom: 15 }}>
+                        <TouchableOpacity 
+                            style={styles.bentoBackButton} 
+                            onPress={() => {
+                                setMode('MENU');
+                                if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                            }}
+                        >
+                            <MaterialCommunityIcons name="chevron-left" size={20} color={isDarkMode ? '#9CA3AF' : '#4B5563'} />
+                            <Text style={[styles.bentoBackButtonText, { color: isDarkMode ? '#9CA3AF' : '#4B5563' }]}>Volver al Panel</Text>
+                        </TouchableOpacity>
+
+                        <Text style={[styles.bentoMainTitle, { color: colors.text }]}>Elige un módulo para continuar</Text>
+                        <Text style={[styles.bentoMainSubtitle, { color: colors.subText }]}>4 módulos disponibles</Text>
+                    </View>
+
+                    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+                        <View style={styles.bentoGridContainer}>
+                            {/* Columna Izquierda: Grande */}
+                            <View style={styles.bentoLeftColumn}>
+                                <TouchableOpacity 
+                                    style={[styles.bentoCard, styles.bentoCardLarge, { backgroundColor: isDarkMode ? '#1E1B4B' : '#E0E7FF' }]}
+                                    onPress={() => {
+                                        setMode('MAQUINAS');
+                                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MAQUINAS');
+                                    }}
+                                >
+                                    <View style={[styles.bentoTag, { backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.2)' : 'rgba(99, 102, 241, 0.15)' }]}>
+                                        <Text style={[styles.bentoTagText, { color: '#6366F1' }]}>MAQUINARIA</Text>
+                                    </View>
+                                    <View style={{ flex: 1, justifyContent: 'center' }}>
+                                        <View style={[styles.bentoIconBox, { backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.2)' : 'rgba(99, 102, 241, 0.1)', marginBottom: 0 }]}>
+                                            <MaterialCommunityIcons name="cog-outline" size={32} color="#6366F1" />
+                                        </View>
+                                    </View>
+                                    
+                                    <View style={{ paddingBottom: 15 }}>
+                                        <Text style={[styles.bentoCardTitle, { fontSize: 28, lineHeight: 32, marginBottom: 8, color: isDarkMode ? '#EEF2FF' : '#312E81' }]}>Hojas de Vida / Maquinaria</Text>
+                                        <Text style={[styles.bentoCardDesc, { fontSize: 15, color: isDarkMode ? '#A5B4FC' : '#4338CA' }]}>Gestión de equipos, bitácoras y mantenimientos preventivos.</Text>
+                                    </View>
+                                    
+                                    <View style={{ alignItems: 'flex-end' }}>
+                                        <View style={[styles.bentoArrowCircle, { backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.2)' : 'rgba(99, 102, 241, 0.1)' }]}>
+                                            <MaterialCommunityIcons name="chevron-right" size={20} color="#6366F1" />
+                                        </View>
+                                    </View>
+                                </TouchableOpacity>
+                            </View>
+
+                            {/* Columna Derecha: Dos pequeñas */}
+                            <View style={styles.bentoRightColumn}>
+                                <TouchableOpacity 
+                                    style={[styles.bentoCard, styles.bentoCardSmall, { backgroundColor: isDarkMode ? '#064E3B' : '#DCFCE7' }]}
+                                    onPress={() => {
+                                        setMode('MANTENIMIENTO_GASTOS');
+                                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MANTENIMIENTO_GASTOS');
+                                    }}
+                                >
+                                    <View style={[styles.bentoTag, { backgroundColor: isDarkMode ? 'rgba(16, 185, 129, 0.2)' : 'rgba(16, 185, 129, 0.15)' }]}>
+                                        <Text style={[styles.bentoTagText, { color: '#10B981' }]}>COSTOS</Text>
+                                    </View>
+                                    <View style={[styles.bentoIconBox, { backgroundColor: isDarkMode ? 'rgba(16, 185, 129, 0.2)' : 'rgba(16, 185, 129, 0.1)' }]}>
+                                        <MaterialCommunityIcons name="cash-multiple" size={24} color="#10B981" />
+                                    </View>
+                                    <View style={styles.bentoCardFooter}>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={[styles.bentoCardTitle, { color: isDarkMode ? '#ECFDF5' : '#064E3B' }]}>Gastos de Mantenimiento</Text>
+                                            <Text style={[styles.bentoCardDesc, { color: isDarkMode ? '#6EE7B7' : '#047857' }]}>Control de costos.</Text>
+                                        </View>
+                                        <View style={[styles.bentoArrowCircle, { backgroundColor: isDarkMode ? 'rgba(16, 185, 129, 0.2)' : 'rgba(16, 185, 129, 0.1)' }]}>
+                                            <MaterialCommunityIcons name="chevron-right" size={18} color="#10B981" />
+                                        </View>
+                                    </View>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity 
+                                    style={[styles.bentoCard, styles.bentoCardSmall, { backgroundColor: isDarkMode ? '#4C1D95' : '#F3E8FF' }]}
+                                    onPress={() => {
+                                        setMode('INVENTARIO_MANTENIMIENTO');
+                                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'INVENTARIO_MANTENIMIENTO');
+                                    }}
+                                >
+                                    <View style={[styles.bentoTag, { backgroundColor: isDarkMode ? 'rgba(139, 92, 246, 0.2)' : 'rgba(139, 92, 246, 0.15)' }]}>
+                                        <Text style={[styles.bentoTagText, { color: '#8B5CF6' }]}>INVENTARIO</Text>
+                                    </View>
+                                    <View style={[styles.bentoIconBox, { backgroundColor: isDarkMode ? 'rgba(139, 92, 246, 0.2)' : 'rgba(139, 92, 246, 0.1)' }]}>
+                                        <MaterialCommunityIcons name="package-variant-closed" size={24} color="#8B5CF6" />
+                                    </View>
+                                    <View style={styles.bentoCardFooter}>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={[styles.bentoCardTitle, { color: isDarkMode ? '#F5F3FF' : '#4C1D95' }]}>Inventario Mantenimiento</Text>
+                                            <Text style={[styles.bentoCardDesc, { color: isDarkMode ? '#C4B5FD' : '#6D28D9' }]}>Repuestos y herramientas.</Text>
+                                        </View>
+                                        <View style={[styles.bentoArrowCircle, { backgroundColor: isDarkMode ? 'rgba(139, 92, 246, 0.2)' : 'rgba(139, 92, 246, 0.1)' }]}>
+                                            <MaterialCommunityIcons name="chevron-right" size={18} color="#8B5CF6" />
+                                        </View>
+                                    </View>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity 
+                                    style={[styles.bentoCard, styles.bentoCardSmall, { backgroundColor: isDarkMode ? '#1E3A8A' : '#DBEAFE' }]}
+                                    onPress={() => {
+                                        setMode('MANTENIMIENTO_GASTOS');
+                                        // We will pass initialTab via a temporary hack or state if possible
+                                        // Since MantenimientoGastosScreen now accepts initialTab, we need to handle it.
+                                        // For now, let's just go there.
+                                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MANTENIMIENTO_GASTOS');
+                                    }}
+                                >
+                                    <View style={[styles.bentoTag, { backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.15)' }]}>
+                                        <Text style={[styles.bentoTagText, { color: '#3B82F6' }]}>CATÁLOGO</Text>
+                                    </View>
+                                    <View style={[styles.bentoIconBox, { backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)' }]}>
+                                        <MaterialCommunityIcons name="package-variant" size={24} color="#3B82F6" />
+                                    </View>
+                                    <View style={styles.bentoCardFooter}>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={[styles.bentoCardTitle, { color: isDarkMode ? '#EFF6FF' : '#1E3A8A' }]}>Productos</Text>
+                                            <Text style={[styles.bentoCardDesc, { color: isDarkMode ? '#93C5FD' : '#2563EB' }]}>Maestro de repuestos y servicios.</Text>
+                                        </View>
+                                        <View style={[styles.bentoArrowCircle, { backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)' }]}>
+                                            <MaterialCommunityIcons name="chevron-right" size={18} color="#3B82F6" />
+                                        </View>
+                                    </View>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    </ScrollView>
+                </View>
+            </View>
+        );
+    }
+    // --- VISTA INVENTARIO MANTENIMIENTO ---
+    if (mode === 'INVENTARIO_MANTENIMIENTO') {
+        return (
+            <View style={[styles.container, { backgroundColor: colors.background }]}>
+                <View style={[styles.header, { backgroundColor: colors.headerBackground }]}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => {
+                        setMode('MANTENIMIENTO_SELECTOR');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MANTENIMIENTO_SELECTOR');
+                    }}>
+                        <Text style={styles.backButtonText}>← Volver</Text>
+                    </TouchableOpacity>
+                    <View style={styles.centeredTitleContainer} pointerEvents="box-none">
+                        <Text style={styles.title}>Inventario de Mantenimiento</Text>
+                    </View>
+                    <Image
+                        source={require('../../assets/logo_perla.png')}
+                        style={[styles.contentHeaderLogo, isDarkMode && { opacity: 0.95 }]}
+                        resizeMode="contain"
+                    />
+                </View>
+                <InventarioMantenimientoScreen onBack={() => {
+                    setMode('MANTENIMIENTO_SELECTOR');
+                    if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MANTENIMIENTO_SELECTOR');
                 }} />
             </View>
         );
@@ -850,15 +1005,11 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
                         }}
                         disabled={!isProduccionEnabled}
                     />
-                    <MaintenanceDualCard 
+                    <MaintenanceCard 
                         disabled={!isMantenimientoEnabled && !isMaquinasEnabled}
-                        onMaquinas={() => {
-                            setMode('MAQUINAS');
-                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MAQUINAS');
-                        }}
-                        onGastos={() => {
-                            setMode('MANTENIMIENTO_GASTOS');
-                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MANTENIMIENTO_GASTOS');
+                        onPress={() => {
+                            setMode('MANTENIMIENTO_SELECTOR');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MANTENIMIENTO_SELECTOR');
                         }}
                     />
                     <DashboardCard
@@ -1203,5 +1354,104 @@ const styles = StyleSheet.create({
     ticketHeaderBtnText: {
         fontSize: 13,
         fontWeight: '700',
+    },
+
+    // --- BENTO GRID STYLES ---
+    bentoBackButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.05)',
+        alignSelf: 'flex-start',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 8,
+        marginBottom: 15,
+    },
+    bentoBackButtonText: {
+        fontSize: 14,
+        fontWeight: '600',
+        marginLeft: 4,
+    },
+    bentoMainTitle: {
+        fontSize: 26,
+        fontWeight: '900',
+        letterSpacing: -0.5,
+        marginBottom: 4,
+    },
+    bentoMainSubtitle: {
+        fontSize: 14,
+        fontWeight: '500',
+        opacity: 0.6,
+    },
+    bentoGridContainer: {
+        flexDirection: Platform.OS === 'web' && Dimensions.get('window').width >= 768 ? 'row' : 'column',
+        gap: 20,
+        marginTop: 5,
+    },
+    bentoLeftColumn: {
+        flex: 1.5,
+    },
+    bentoRightColumn: {
+        flex: 1,
+        gap: 20,
+    },
+    bentoCard: {
+        borderRadius: 24,
+        padding: 20,
+        justifyContent: 'space-between',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 12,
+        elevation: 5,
+        overflow: 'hidden',
+    },
+    bentoCardLarge: {
+        height: Platform.OS === 'web' && Dimensions.get('window').width >= 768 ? 340 : 280,
+    },
+    bentoCardSmall: {
+        height: 160,
+    },
+    bentoTag: {
+        alignSelf: 'flex-start',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 10,
+        marginBottom: 10,
+    },
+    bentoTagText: {
+        fontSize: 11,
+        fontWeight: '800',
+        letterSpacing: 0.5,
+    },
+    bentoIconBox: {
+        width: 40,
+        height: 40,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 10,
+    },
+    bentoCardFooter: {
+        flexDirection: 'row',
+        alignItems: 'flex-end',
+        gap: 15,
+    },
+    bentoCardTitle: {
+        fontSize: 18,
+        fontWeight: '800',
+        marginBottom: 4,
+    },
+    bentoCardDesc: {
+        fontSize: 13,
+        fontWeight: '500',
+        lineHeight: 18,
+    },
+    bentoArrowCircle: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 });

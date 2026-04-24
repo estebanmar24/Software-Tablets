@@ -44,6 +44,21 @@ export const produccionApi = {
         await api.delete(`${BASE_URL}/rubros/${id}`);
     },
 
+    // ==================== PRODUCTOS CRUD ====================
+    createProducto: async (producto) => {
+        const response = await api.post(`${BASE_URL}/productos`, producto);
+        return response.data;
+    },
+
+    updateProducto: async (id, producto) => {
+        const response = await api.put(`${BASE_URL}/productos/${id}`, producto);
+        return response.data;
+    },
+
+    deleteProducto: async (id) => {
+        await api.delete(`${BASE_URL}/productos/${id}`);
+    },
+
     // ==================== PROVEEDORES CRUD ====================
     createProveedor: async (proveedor) => {
         const response = await api.post(`${BASE_URL}/proveedores`, proveedor);

@@ -35,6 +35,14 @@ public class Produccion_Cotizacion
     [MaxLength(500)]
     public string? Descripcion { get; set; }
 
+    public int? ProductoId { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? Cantidad { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? ValorUnitario { get; set; }
+
     public bool Activo { get; set; } = true;
 
     // Navigation properties
@@ -43,4 +51,7 @@ public class Produccion_Cotizacion
 
     [ForeignKey("RubroId")]
     public virtual Produccion_Rubro? Rubro { get; set; }
+
+    [ForeignKey("ProductoId")]
+    public virtual Produccion_Producto? Producto { get; set; }
 }

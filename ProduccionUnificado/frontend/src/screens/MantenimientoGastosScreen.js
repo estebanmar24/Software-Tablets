@@ -21,6 +21,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { Asset } from 'expo-asset';
 import { Picker } from '@react-native-picker/picker';
+import * as DocumentPicker from 'expo-document-picker';
 import { mantenimientoApi } from '../services/mantenimientoApi';
 import { ExpenseHistoryModal } from '../components/ExpenseHistoryModal';
 import { useTheme } from '../contexts/ThemeContext';
@@ -31,6 +32,7 @@ const TABS = [
     { key: 'gastos', label: 'Captura de Gastos', icon: '💰' },
     { key: 'graficas', label: 'Gráficas', icon: '📊' },
     { key: 'rubros', label: 'Rubros', icon: '📁' },
+    { key: 'productos', label: 'Productos', icon: '📦' },
     { key: 'cotizaciones', label: 'Cotizaciones', icon: '📝' },
     { key: 'proveedores', label: 'Proveedores', icon: '🏢' },
 ];
@@ -66,32 +68,39 @@ const getBase64FromUrl = async (url) => {
 // Festivos Colombia 2025-2026 (mismos que Talleres)
 
 
-export default function MantenimientoGastosScreen() {
+export default function MantenimientoGastosScreen({ initialTab = 'gastos' }) {
     const { colors } = useTheme();
-    const [activeTab, setActiveTab] = useState('gastos');
+    const [activeTab, setActiveTab] = useState(initialTab);
+
+    useEffect(() => {
+        console.log('MANTENIMIENTO GASTOS SCREEN: activeTab is', activeTab);
+    }, [activeTab]);
 
     return (
         <View style={styles.container}>
             {/* Tabs - EXACT SST STYLE */}
             <View style={styles.tabsContainer}>
-                {TABS.map(tab => (
-                    <TouchableOpacity
-                        key={tab.key}
-                        style={[styles.tab, activeTab === tab.key && styles.activeTab]}
-                        onPress={() => setActiveTab(tab.key)}
-                    >
-                        <Text style={styles.tabIcon}>{tab.icon}</Text>
-                        <Text style={[styles.tabText, activeTab === tab.key && styles.activeTabText]}>
-                            {tab.label}
-                        </Text>
-                    </TouchableOpacity>
-                ))}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 10 }}>
+                    {TABS.map(tab => (
+                        <TouchableOpacity
+                            key={tab.key}
+                            style={[styles.tab, activeTab === tab.key && styles.activeTab]}
+                            onPress={() => setActiveTab(tab.key)}
+                        >
+                            <Text style={styles.tabIcon}>{tab.icon}</Text>
+                            <Text style={[styles.tabText, activeTab === tab.key && styles.activeTabText]}>
+                                {tab.label}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </ScrollView>
             </View>
 
             {/* Content based on active tab */}
             {activeTab === 'gastos' && <GastosTab />}
             {activeTab === 'graficas' && <GraficasTab />}
             {activeTab === 'rubros' && <RubrosTab />}
+            {activeTab === 'productos' && <ProductosTab />}
             {activeTab === 'cotizaciones' && <CotizacionesTab />}
             {activeTab === 'proveedores' && <ProveedoresTab />}
         </View>
@@ -133,6 +142,9 @@ function GastosTab() {
     const [filterPending, setFilterPending] = useState(false);
     const [filterCredit, setFilterCredit] = useState(false);
 
+    // Filtered data for cascading dropdowns
+    const [filteredProveedores, setFilteredProveedores] = useState([]);
+
     // History Modal State
     const [showHistoryModal, setShowHistoryModal] = useState(false);
     const [selectedHistoryGasto, setSelectedHistoryGasto] = useState(null);
@@ -143,8 +155,8 @@ function GastosTab() {
     const isLegalizingRef = useRef(false); // Ref for robust state tracking
     const [formData, setFormData] = useState({
         rubroId: '', proveedorId: '', maquinaId: '',
-        precio: '', fecha: new Date().toISOString().split('T')[0], nota: '',
-        numeroFactura: '', facturaPdfUrl: '', numeroOP: '', esPendiente: false, esSolicitudCredito: false
+        precio: '', precioDisplay: '', fecha: new Date().toISOString().split('T')[0], nota: '',
+        numeroFactura: '', facturaPdfUrl: '', archivoFactura: null, archivoNombre: '', numeroOP: '', esPendiente: false, esSolicitudCredito: false
     });
     const [saving, setSaving] = useState(false);
 
@@ -191,6 +203,91 @@ function GastosTab() {
 
 
 
+    // Format currency with thousands separator
+    const formatCurrencyInput = (value) => {
+        if (!value) return '';
+        const numericValue = value.toString().replace(/[^0-9]/g, '');
+        if (!numericValue) return '';
+        return new Intl.NumberFormat('es-CO').format(parseInt(numericValue));
+    };
+
+    const handlePriceChange = (value) => {
+        const numericValue = value.replace(/[^0-9]/g, '');
+        const formatted = formatCurrencyInput(value);
+        setFormData(prev => ({ ...prev, precio: numericValue, precioDisplay: formatted }));
+    };
+
+    // Pick PDF file
+    const handlePickFile = async () => {
+        try {
+            const result = await DocumentPicker.getDocumentAsync({
+                type: 'application/pdf',
+                copyToCacheDirectory: true
+            });
+
+            if (result.canceled) return;
+
+            const file = result.assets[0];
+
+            if (file.size && file.size > 5 * 1024 * 1024) {
+                Alert.alert('⚠️ Error', 'El archivo es muy grande. Máximo 5MB.');
+                return;
+            }
+
+            if (Platform.OS === 'web') {
+                const response = await fetch(file.uri);
+                const blob = await response.blob();
+                try {
+                    const webFile = new File([blob], file.name, { type: 'application/pdf' });
+                    const uploadResult = await mantenimientoApi.uploadFactura(webFile);
+                    setFormData(p => ({ ...p, facturaPdfUrl: uploadResult.url, archivoNombre: file.name }));
+                    Alert.alert('✅ Éxito', `Archivo "${file.name}" cargado correctamente.`);
+                } catch (err) {
+                    Alert.alert('❌ Error', 'No se pudo subir el PDF al servidor.');
+                }
+            } else {
+                setFormData(prev => ({
+                    ...prev,
+                    archivoFactura: file.uri,
+                    archivoNombre: file.name
+                }));
+                Alert.alert('✅ Éxito', `Archivo "${file.name}" seleccionado. Recuerde guardar el gasto.`);
+            }
+        } catch (error) {
+            console.error('Error picking file:', error);
+            Alert.alert('❌ Error', 'No se pudo seleccionar el archivo: ' + error.message);
+        }
+    };
+
+    // Cascading filter: Rubro -> Proveedor
+    useEffect(() => {
+        if (formData.rubroId) {
+            const filtered = proveedores.filter(p => !p.rubroId || p.rubroId.toString() === formData.rubroId.toString());
+            setFilteredProveedores(filtered);
+            if (formData.proveedorId && !filtered.find(p => p.id.toString() === formData.proveedorId.toString())) {
+                setFormData(prev => ({ ...prev, proveedorId: '' }));
+            }
+        } else {
+            setFilteredProveedores(proveedores);
+        }
+    }, [formData.rubroId, proveedores]);
+
+    // Autofill Price from Cotizaciones when Proveedor is selected
+    useEffect(() => {
+        if (formData.proveedorId && !isLegalizingRef.current && !editItem) {
+            const cotizacion = cotizaciones.find(c => c.proveedorId.toString() === formData.proveedorId.toString() && (!formData.rubroId || c.rubroId.toString() === formData.rubroId.toString()));
+            if (cotizacion && cotizacion.precioCotizado) {
+                const numericValue = cotizacion.precioCotizado.toString();
+                const formatted = formatCurrencyInput(numericValue);
+                setFormData(prev => ({
+                    ...prev,
+                    precio: numericValue,
+                    precioDisplay: formatted
+                }));
+            }
+        }
+    }, [formData.proveedorId, cotizaciones, formData.rubroId, editItem]);
+
     // Load presupuestoInfo for ANY selected rubro - SST style
     useEffect(() => {
         const loadPresupuestoInfo = async () => {
@@ -234,19 +331,22 @@ function GastosTab() {
         isLegalizingRef.current = false;
         setFormData({
             rubroId: '', proveedorId: '', maquinaId: '',
-            precio: '', fecha: new Date().toISOString().split('T')[0], nota: '',
-            numeroFactura: '', facturaPdfUrl: '', numeroOP: '', esPendiente: false, esSolicitudCredito: false
+            precio: '', precioDisplay: '', fecha: new Date().toISOString().split('T')[0], nota: '',
+            numeroFactura: '', facturaPdfUrl: '', archivoFactura: null, archivoNombre: '', numeroOP: '', esPendiente: false, esSolicitudCredito: false
         });
     };
 
 
 
     const handleSelectQuote = (quote) => {
+        const numericValue = quote.precioCotizado.toString();
+        const formatted = formatCurrencyInput(numericValue);
         setFormData(prev => ({
             ...prev,
             rubroId: quote.rubroId.toString(),
             proveedorId: quote.proveedorId.toString(),
-            precio: quote.precioCotizado.toString(),
+            precio: numericValue,
+            precioDisplay: formatted,
             nota: quote.descripcion || prev.nota
         }));
         setShowQuoteSelector(false);
@@ -266,10 +366,13 @@ function GastosTab() {
             proveedorId: gasto.proveedorId?.toString() || '',
             maquinaId: gasto.maquinaId?.toString() || '',
             precio: gasto.precio?.toString() || '',
+            precioDisplay: formatCurrencyInput(gasto.precio?.toString() || ''),
             fecha: gasto.fecha?.split('T')[0] || new Date().toISOString().split('T')[0],
             nota: gasto.nota || '',
             numeroFactura: gasto.numeroFactura || '',
             facturaPdfUrl: gasto.facturaPdfUrl || '',
+            archivoFactura: gasto.archivoFactura || null,
+            archivoNombre: gasto.facturaPdfUrl ? 'Archivo adjunto' : '',
             numeroOP: gasto.numeroOP || '',
             esPendiente: false,
             esSolicitudCredito: gasto.esSolicitudCredito || false
@@ -286,10 +389,13 @@ function GastosTab() {
             proveedorId: gasto.proveedorId?.toString() || '',
             maquinaId: gasto.maquinaId?.toString() || '',
             precio: gasto.precio?.toString() || '',
+            precioDisplay: formatCurrencyInput(gasto.precio?.toString() || ''),
             fecha: gasto.fecha?.split('T')[0] || new Date().toISOString().split('T')[0],
             nota: gasto.nota || '',
             numeroFactura: gasto.numeroFactura || '',
             facturaPdfUrl: gasto.facturaPdfUrl || '',
+            archivoFactura: gasto.archivoFactura || null,
+            archivoNombre: gasto.facturaPdfUrl ? 'Archivo adjunto' : '',
             numeroOP: gasto.numeroOP || '',
             esPendiente: gasto.esPendiente || false,
             esSolicitudCredito: gasto.esSolicitudCredito || false
@@ -328,6 +434,23 @@ function GastosTab() {
         try {
             setSaving(true);
 
+            // Si hay un archivoFactura (móvil) que no se ha subido aún
+            let finalFacturaPdfUrl = formData.facturaPdfUrl;
+            if (Platform.OS !== 'web' && formData.archivoFactura && !formData.facturaPdfUrl) {
+                try {
+                    const uploadResult = await mantenimientoApi.uploadFactura({
+                        uri: formData.archivoFactura,
+                        name: formData.archivoNombre || 'factura.pdf',
+                        type: 'application/pdf'
+                    });
+                    finalFacturaPdfUrl = uploadResult.url;
+                } catch (err) {
+                    Alert.alert('Error', 'No se pudo subir el PDF desde móvil.');
+                    setSaving(false);
+                    return;
+                }
+            }
+
             // Lógica estándar de un solo registro
             const gastoData = {
                 rubroId: parseInt(formData.rubroId),
@@ -340,7 +463,7 @@ function GastosTab() {
                 anio: parseInt(formData.fecha.split('-')[0]),
                 mes: parseInt(formData.fecha.split('-')[1]),
                 numeroFactura: formData.numeroFactura,
-                facturaPdfUrl: formData.facturaPdfUrl,
+                facturaPdfUrl: finalFacturaPdfUrl,
                 numeroOP: isInsumos ? formData.numeroOP : null,
                 esPendiente: formData.esPendiente || false,
                 esSolicitudCredito: formData.esSolicitudCredito || false
@@ -851,15 +974,22 @@ function GastosTab() {
 
                                     <View style={{ marginBottom: 15 }}>
                                         <Text style={styles.label}>Proveedor {formData.esPendiente && !isLegalizing ? '(Opcional por ahora)' : ''}</Text>
-                                        <View style={styles.pickerContainer}>
-                                            <Picker selectedValue={formData.proveedorId} onValueChange={(v) => {
-                                                setFormData(p => ({ ...p, proveedorId: v }));
-                                            }}>
-                                                <Picker.Item label="Seleccione..." value="" />
-                                                {proveedores
-                                                    .filter(p => !formData.rubroId || p.rubroId?.toString() === formData.rubroId)
-                                                    .map(p => <Picker.Item key={p.id} label={`${p.nombre}${p.precioCotizado ? ` - ${formatCurrency(p.precioCotizado)}` : ''}`} value={p.id.toString()} />)
-                                                }
+                                        <View style={[styles.pickerContainer, (!formData.rubroId || filteredProveedores.length === 0) && { backgroundColor: '#F3F4F6' }]}>
+                                            <Picker 
+                                                selectedValue={formData.proveedorId} 
+                                                onValueChange={(v) => setFormData(p => ({ ...p, proveedorId: v }))}
+                                                enabled={!!formData.rubroId && filteredProveedores.length > 0}
+                                            >
+                                                {!formData.rubroId ? (
+                                                    <Picker.Item label="Seleccione un rubro primero..." value="" />
+                                                ) : filteredProveedores.length === 0 ? (
+                                                    <Picker.Item label="(No hay proveedores para este rubro)" value="" />
+                                                ) : (
+                                                    <Picker.Item label="Seleccione..." value="" />
+                                                )}
+                                                {filteredProveedores.map(p => (
+                                                    <Picker.Item key={p.id} label={`${p.nombre}${p.precioCotizado ? ` - ${formatCurrency(p.precioCotizado)}` : ''}`} value={p.id.toString()} />
+                                                ))}
                                             </Picker>
                                         </View>
                                     </View>
@@ -915,47 +1045,38 @@ function GastosTab() {
                                             />
 
                                             <Text style={styles.label}>PDF Factura (opcional)</Text>
-                                            {Platform.OS === 'web' ? (
-                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                                                    <input
-                                                        type="file"
-                                                        accept=".pdf"
-                                                        onChange={async (e) => {
-                                                            const file = e.target.files[0];
-                                                            if (file) {
-                                                                try {
-                                                                    const result = await mantenimientoApi.uploadFactura(file);
-                                                                    setFormData(p => ({ ...p, facturaPdfUrl: result.url }));
-                                                                    Alert.alert('Éxito', 'PDF subido correctamente');
-                                                                } catch (err) {
-                                                                    Alert.alert('Error', 'No se pudo subir el PDF');
-                                                                }
-                                                            }
-                                                        }}
-                                                        style={{ padding: 8 }}
-                                                    />
-                                                    {!!formData.facturaPdfUrl && (
-                                                        <a href={`${serverUrl}${formData.facturaPdfUrl}`} target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB' }}>
-                                                            📄 Ver PDF
-                                                        </a>
-                                                    )}
-                                                </View>
-                                            ) : (
-                                                <Text style={styles.input}>Función de PDF solo disponible en Web</Text>
-                                            )}
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                                                <TouchableOpacity
+                                                    style={{ backgroundColor: '#E5E7EB', padding: 10, borderRadius: 8, flex: 1, alignItems: 'center' }}
+                                                    onPress={handlePickFile}
+                                                >
+                                                    <Text style={{ color: '#374151', fontWeight: 'bold' }}>
+                                                        {formData.archivoNombre ? `📎 ${formData.archivoNombre}` : '📎 Adjuntar PDF'}
+                                                    </Text>
+                                                </TouchableOpacity>
+
+                                                {!!formData.facturaPdfUrl && (
+                                                    <a href={`${serverUrl}${formData.facturaPdfUrl}`} target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB', padding: 10 }}>
+                                                        📄 Ver PDF
+                                                    </a>
+                                                )}
+                                            </View>
                                         </View>
                                     )}
 
                                     <View style={{ marginBottom: 15 }}>
                                         <Text style={styles.label}>Precio * {(!formData.esPendiente && !formData.numeroFactura.trim()) ? '(ingrese factura primero)' : ''}</Text>
-                                        <TextInput
-                                            style={[styles.input, (!formData.esPendiente && !formData.numeroFactura.trim()) && styles.inputDisabled]}
-                                            value={formData.precio}
-                                            onChangeText={(t) => setFormData(p => ({ ...p, precio: t }))}
-                                            keyboardType="numeric"
-                                            placeholder="$ 0"
-                                            editable={(formData.esPendiente || !!formData.numeroFactura.trim())}
-                                        />
+                                        <View style={[styles.input, (!formData.esPendiente && !formData.numeroFactura.trim()) && styles.inputDisabled, { flexDirection: 'row', alignItems: 'center', padding: 0 }]}>
+                                            <Text style={{ paddingLeft: 12, color: '#6B7280', fontSize: 16 }}>$ </Text>
+                                            <TextInput
+                                                style={{ flex: 1, padding: 12, fontSize: 16 }}
+                                                value={formData.precioDisplay}
+                                                onChangeText={handlePriceChange}
+                                                keyboardType="numeric"
+                                                placeholder="0"
+                                                editable={(formData.esPendiente || !!formData.numeroFactura.trim())}
+                                            />
+                                        </View>
                                     </View>
 
                                     {/* Cuadro de presupuesto estilo SST - DEBAJO DEL PRECIO */}
@@ -2788,11 +2909,146 @@ const grafStyles = StyleSheet.create({
 
 // ===================== COTIZACIONES TAB =====================
 // Adapted from TalleresGastosScreen
+// ===================== PRODUCTOS TAB =====================
+function ProductosTab() {
+    const { colors, isDarkMode } = useTheme();
+    const [loading, setLoading] = useState(true);
+    const [items, setItems] = useState([]);
+    const [rubros, setRubros] = useState([]);
+    const [showModal, setShowModal] = useState(false);
+    const [editItem, setEditItem] = useState(null);
+    const [nombre, setNombre] = useState('');
+    const [referencia, setReferencia] = useState('');
+    const [descripcion, setDescripcion] = useState('');
+    const [medida, setMedida] = useState('');
+    const [rubroId, setRubroId] = useState('');
+    const [saving, setSaving] = useState(false);
+
+    const loadData = async () => {
+        try {
+            setLoading(true);
+            const data = await mantenimientoApi.getMaestros();
+            setItems(data.productos || []);
+            setRubros(data.rubros || []);
+        } catch (error) { console.error('Error:', error); }
+        finally { setLoading(false); }
+    };
+
+    useEffect(() => { loadData(); }, []);
+
+    const handleAdd = () => { setEditItem(null); setNombre(''); setReferencia(''); setDescripcion(''); setMedida(''); setRubroId(''); setShowModal(true); };
+    const handleEdit = (item) => { setEditItem(item); setNombre(item.nombre); setReferencia(item.referencia || ''); setDescripcion(item.descripcion || ''); setMedida(item.medida || ''); setRubroId(item.rubroId?.toString() || ''); setShowModal(true); };
+
+    const handleSave = async () => {
+        if (!nombre.trim() || !rubroId) { Alert.alert('Error', 'Complete campos obligatorios'); return; }
+        try {
+            setSaving(true);
+            const prodData = { nombre, referencia, descripcion, medida, rubroId: parseInt(rubroId), activo: true };
+            if (editItem) {
+                await mantenimientoApi.updateProducto(editItem.id, { ...prodData, id: editItem.id });
+                Alert.alert('Éxito', 'Producto actualizado');
+            } else {
+                await mantenimientoApi.createProducto(prodData);
+                Alert.alert('Éxito', 'Producto creado');
+            }
+            setShowModal(false);
+            loadData();
+        } catch (error) {
+            Alert.alert('Error', 'No se pudo guardar');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleDelete = async (id) => {
+        const doDelete = async () => {
+            try {
+                await mantenimientoApi.deleteProducto(id);
+                Alert.alert('Éxito', 'Producto eliminado');
+                loadData();
+            } catch (error) {
+                Alert.alert('Error', 'No se pudo eliminar');
+            }
+        };
+        if (Platform.OS === 'web') {
+            if (window.confirm('¿Eliminar este producto?')) doDelete();
+        } else {
+            Alert.alert('Confirmar', '¿Eliminar este producto?', [
+                { text: 'Cancelar' },
+                { text: 'Eliminar', onPress: doDelete, style: 'destructive' }
+            ]);
+        }
+    };
+
+    if (loading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#2563EB" /></View>;
+
+    return (
+        <View style={styles.contentContainer}>
+            <View style={styles.header}>
+                <Text style={styles.title}>📦 Productos</Text>
+                <TouchableOpacity style={styles.addButtonSmall} onPress={handleAdd}>
+                    <Text style={styles.addButtonText}>+ Agregar</Text>
+                </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.listContainer}>
+                {items.length === 0 ? <Text style={styles.emptyText}>No hay productos registrados.</Text> : items.map(item => (
+                    <View key={item.id} style={styles.itemCard}>
+                        <View style={styles.itemInfo}>
+                            <Text style={styles.itemName}>{item.nombre} {item.referencia ? `(${item.referencia})` : ''}</Text>
+                            <Text style={styles.itemSubDetail}>Rubro: {item.rubroNombre || rubros.find(r => r.id === item.rubroId)?.nombre || 'Desconocido'}</Text>
+                            <Text style={styles.itemSubDetail}>Medida: {item.medida || 'N/A'}</Text>
+                            {item.descripcion ? <Text style={{fontSize: 12, color: '#666', fontStyle: 'italic'}}>{item.descripcion}</Text> : null}
+                        </View>
+                        <View style={styles.itemActions}>
+                            <TouchableOpacity onPress={() => handleEdit(item)}><Text style={styles.editButton}>✏️</Text></TouchableOpacity>
+                            <TouchableOpacity onPress={() => handleDelete(item.id)}><Text style={styles.deleteButtonIcon}>🗑️</Text></TouchableOpacity>
+                        </View>
+                    </View>
+                ))}
+            </ScrollView>
+            <Modal visible={showModal} transparent animationType="slide" onRequestClose={() => setShowModal(false)}>
+                <View style={styles.modalOverlay}><View style={styles.modalContentSmall}>
+                    <Text style={styles.modalTitle}>{editItem ? 'Editar' : 'Agregar'} Producto</Text>
+                    <Text style={styles.label}>Nombre *</Text>
+                    <TextInput style={styles.input} value={nombre} onChangeText={setNombre} placeholder="Nombre del producto" />
+                    <Text style={styles.label}>Referencia</Text>
+                    <TextInput style={styles.input} value={referencia} onChangeText={setReferencia} placeholder="Ref. única (opcional)" />
+                    <Text style={styles.label}>Descripción</Text>
+                    <TextInput style={[styles.input, styles.textArea]} value={descripcion} onChangeText={setDescripcion} placeholder="Detalles del producto..." multiline numberOfLines={3} />
+                    <Text style={styles.label}>Medida *</Text>
+                    <View style={styles.pickerContainer}>
+                        <Picker selectedValue={medida} onValueChange={setMedida}>
+                            <Picker.Item label="Seleccione..." value="" />
+                            {['Cc', 'Grs', 'Gal', 'Uni', 'Kg', 'Mts', 'ml'].map(m => <Picker.Item key={m} label={m} value={m} />)}
+                        </Picker>
+                    </View>
+                    <Text style={styles.label}>Rubro *</Text>
+                    <View style={styles.pickerContainer}>
+                        <Picker selectedValue={rubroId} onValueChange={setRubroId}>
+                            <Picker.Item label="Seleccione Rubro..." value="" />
+                            {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
+                        </Picker>
+                    </View>
+                    <View style={styles.modalActions}>
+                        <TouchableOpacity style={styles.cancelButton} onPress={() => setShowModal(false)}><Text style={styles.cancelButtonText}>Cancelar</Text></TouchableOpacity>
+                        <TouchableOpacity style={[styles.submitButton, saving && styles.submitButtonDisabled]} onPress={handleSave} disabled={saving}>
+                            {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>Guardar</Text>}
+                        </TouchableOpacity>
+                    </View>
+                </View></View>
+            </Modal>
+        </View>
+    );
+}
+
+// ===================== COTIZACIONES TAB =====================
 function CotizacionesTab() {
+    const { colors } = useTheme();
     const [loading, setLoading] = useState(true);
     const [items, setItems] = useState([]);
     const [rubros, setRubros] = useState([]);
     const [proveedores, setProveedores] = useState([]);
+    const [productos, setProductos] = useState([]);
 
     // Period Filters
     const [anio, setAnio] = useState(new Date().getFullYear());
@@ -2800,7 +3056,15 @@ function CotizacionesTab() {
 
     const [showModal, setShowModal] = useState(false);
     const [editItem, setEditItem] = useState(null);
-    const [formData, setFormData] = useState({ rubroId: '', proveedorId: '', precio: '', descripcion: '' });
+    const [formData, setFormData] = useState({
+        rubroId: '',
+        productoId: '',
+        proveedorId: '',
+        cantidad: '',
+        valorUnitario: '',
+        precio: '',
+        descripcion: ''
+    });
     const [saving, setSaving] = useState(false);
 
     const anios = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
@@ -2811,17 +3075,19 @@ function CotizacionesTab() {
         { value: 10, label: 'Octubre' }, { value: 11, label: 'Noviembre' }, { value: 12, label: 'Diciembre' }
     ];
 
+    const MEDIDAS = ['Cc', 'Grs', 'Gal', 'Uni', 'Kg', 'Mts', 'ml'];
+
     const loadData = useCallback(async () => {
         setLoading(true);
         try {
-            const [itemsData, rubrosData, proveedoresData] = await Promise.all([
+            const [itemsData, maestros] = await Promise.all([
                 mantenimientoApi.getCotizaciones(anio, mes),
-                mantenimientoApi.getMaestros().then(d => d.rubros || []),
-                mantenimientoApi.getMaestros().then(d => d.proveedores || [])
+                mantenimientoApi.getMaestros()
             ]);
             setItems(itemsData);
-            setRubros(rubrosData);
-            setProveedores(proveedoresData);
+            setRubros(maestros.rubros || []);
+            setProveedores(maestros.proveedores || []);
+            setProductos(maestros.productos || []);
         } catch (error) {
             console.error(error);
         } finally {
@@ -2831,17 +3097,43 @@ function CotizacionesTab() {
 
     useEffect(() => { loadData(); }, [loadData]);
 
-    const handleAdd = () => { setEditItem(null); setFormData({ rubroId: '', proveedorId: '', precio: '', descripcion: '' }); setShowModal(true); };
+    const handleAdd = () => {
+        setEditItem(null);
+        setFormData({
+            rubroId: '',
+            productoId: '',
+            proveedorId: '',
+            cantidad: '',
+            valorUnitario: '',
+            precio: '',
+            descripcion: ''
+        });
+        setShowModal(true);
+    };
+
     const handleEdit = (item) => {
         setEditItem(item);
         setFormData({
             rubroId: item.rubroId?.toString() || '',
+            productoId: item.productoId?.toString() || '',
             proveedorId: item.proveedorId?.toString() || '',
+            cantidad: item.cantidad?.toString() || '',
+            valorUnitario: item.valorUnitario?.toString() || '',
             precio: item.precioCotizado?.toString() || '',
             descripcion: item.descripcion || ''
         });
         setShowModal(true);
     };
+
+    // Auto-calculate total
+    useEffect(() => {
+        const cant = parseFloat(formData.cantidad) || 0;
+        const valU = parseFloat(formData.valorUnitario) || 0;
+        if (cant && valU) {
+            const total = cant * valU;
+            setFormData(prev => ({ ...prev, precio: total.toString() }));
+        }
+    }, [formData.cantidad, formData.valorUnitario]);
 
     const handleSave = async () => {
         if (!formData.rubroId || !formData.proveedorId || !formData.precio) { Alert.alert('Error', 'Complete campos obligatorios'); return; }
@@ -2849,7 +3141,10 @@ function CotizacionesTab() {
             setSaving(true);
             const data = {
                 rubroId: parseInt(formData.rubroId),
+                productoId: formData.productoId ? parseInt(formData.productoId) : null,
                 proveedorId: parseInt(formData.proveedorId),
+                cantidad: formData.cantidad ? parseFloat(formData.cantidad) : null,
+                valorUnitario: formData.valorUnitario ? parseFloat(formData.valorUnitario) : null,
                 precioCotizado: parseFloat(formData.precio),
                 descripcion: formData.descripcion,
                 anio, mes
@@ -2868,6 +3163,8 @@ function CotizacionesTab() {
     };
 
     const formatCurrency = (val) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(val);
+
+    const filteredProductos = productos.filter(p => p.rubroId.toString() === formData.rubroId);
 
     return (
         <View style={styles.contentContainer}>
@@ -2889,7 +3186,11 @@ function CotizacionesTab() {
                     {items.length === 0 ? <Text style={styles.emptyText}>No hay cotizaciones para este periodo. Agregue una.</Text> : items.map(item => (
                         <View key={item.id} style={styles.itemCard}>
                             <View style={styles.itemInfo}>
-                                <Text style={styles.itemName}>{item.rubroNombre} - {item.proveedorNombre}</Text>
+                                <Text style={styles.itemName}>{item.rubroNombre} {item.productoNombre ? `> ${item.productoNombre}` : ''}</Text>
+                                <Text style={styles.itemSubDetail}>{item.proveedorNombre}</Text>
+                                {item.cantidad && item.valorUnitario && (
+                                    <Text style={styles.itemSubDetail}>{item.cantidad} {item.productoMedida || item.medida} x {formatCurrency(item.valorUnitario)}</Text>
+                                )}
                                 <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#059669' }}>{formatCurrency(item.precioCotizado)}</Text>
                                 {item.descripcion && <Text style={{ fontSize: 12, color: '#666' }}>{item.descripcion}</Text>}
                             </View>
@@ -2908,20 +3209,57 @@ function CotizacionesTab() {
                     <ScrollView style={styles.formContainer}>
                         <Text style={styles.label}>Rubro *</Text>
                         <View style={styles.pickerContainer}>
-                            <Picker selectedValue={formData.rubroId} onValueChange={v => setFormData(p => ({ ...p, rubroId: v }))}>
-                                <Picker.Item label="Seleccione..." value="" />
+                            <Picker selectedValue={formData.rubroId} onValueChange={v => setFormData(p => ({ ...p, rubroId: v, productoId: '' }))}>
+                                <Picker.Item label="Seleccione Rubro..." value="" />
                                 {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
                             </Picker>
                         </View>
+
+                        <Text style={styles.label}>Producto</Text>
+                        <View style={styles.pickerContainer}>
+                            <Picker selectedValue={formData.productoId} onValueChange={v => setFormData(p => ({ ...p, productoId: v }))}>
+                                <Picker.Item label="Seleccione Producto..." value="" />
+                                {filteredProductos.map(p => <Picker.Item key={p.id} label={p.nombre} value={p.id.toString()} />)}
+                            </Picker>
+                        </View>
+
+                        {formData.productoId ? (
+                            <View style={{ backgroundColor: isDarkMode ? '#111827' : '#f9fafb', padding: 10, borderRadius: 8, marginBottom: 15, borderWidth: 1, borderColor: isDarkMode ? '#374151' : '#e5e7eb' }}>
+                                <Text style={{ fontSize: 13, color: isDarkMode ? '#9ca3af' : '#6b7280', fontWeight: 'bold' }}>Detalles del Producto:</Text>
+                                <Text style={{ fontSize: 14, color: isDarkMode ? '#e5e7eb' : '#374151' }}>
+                                    <Text style={{ fontWeight: 'bold' }}>Ref:</Text> {productos.find(p => p.id.toString() === formData.productoId)?.referencia || 'N/A'}
+                                </Text>
+                                <Text style={{ fontSize: 14, color: isDarkMode ? '#e5e7eb' : '#374151', marginTop: 4 }}>
+                                    <Text style={{ fontWeight: 'bold' }}>Desc:</Text> {productos.find(p => p.id.toString() === formData.productoId)?.descripcion || 'Sin descripción'}
+                                </Text>
+                            </View>
+                        ) : null}
+
                         <Text style={styles.label}>Proveedor *</Text>
                         <View style={styles.pickerContainer}>
                             <Picker selectedValue={formData.proveedorId} onValueChange={v => setFormData(p => ({ ...p, proveedorId: v }))}>
-                                <Picker.Item label="Seleccione..." value="" />
+                                <Picker.Item label="Seleccione Proveedor..." value="" />
                                 {proveedores.map(p => <Picker.Item key={p.id} label={p.nombre} value={p.id.toString()} />)}
                             </Picker>
                         </View>
-                        <Text style={styles.label}>Precio Cotizado *</Text>
-                        <TextInput style={styles.input} value={formData.precio} onChangeText={t => setFormData(p => ({ ...p, precio: t }))} keyboardType="numeric" placeholder="$ 0" />
+
+                        <View style={{ flexDirection: 'row', gap: 10 }}>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.label}>Medida</Text>
+                                <TextInput style={[styles.input, { backgroundColor: '#f3f4f6' }]} value={productos.find(p => p.id.toString() === formData.productoId)?.medida || 'N/A'} editable={false} />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.label}>Cantidad</Text>
+                                <TextInput style={styles.input} value={formData.cantidad} onChangeText={t => setFormData(p => ({ ...p, cantidad: t }))} keyboardType="numeric" placeholder="0" />
+                            </View>
+                        </View>
+
+                        <Text style={styles.label}>Valor Unitario</Text>
+                        <TextInput style={styles.input} value={formData.valorUnitario} onChangeText={t => setFormData(p => ({ ...p, valorUnitario: t }))} keyboardType="numeric" placeholder="$ 0" />
+
+                        <Text style={styles.label}>Precio Total (Auto) *</Text>
+                        <TextInput style={[styles.input, { backgroundColor: '#f3f4f6' }]} value={formData.precio} editable={false} placeholder="$ 0" />
+
                         <Text style={styles.label}>Descripción</Text>
                         <TextInput style={styles.input} value={formData.descripcion} onChangeText={t => setFormData(p => ({ ...p, descripcion: t }))} placeholder="Opcional..." />
 

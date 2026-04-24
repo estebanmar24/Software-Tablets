@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -10,27 +10,11 @@ namespace TiempoProcesos.API.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<string>(
-                name: "Email",
-                table: "Usuarios",
-                type: "text",
-                nullable: false,
-                defaultValue: "");
-
-            migrationBuilder.AddColumn<string>(
-                name: "TipoTrabajo",
-                table: "PlanesAccion",
-                type: "character varying(50)",
-                maxLength: 50,
-                nullable: false,
-                defaultValue: "");
-
-            migrationBuilder.AddColumn<string>(
-                name: "Email",
-                table: "AdminUsuarios",
-                type: "text",
-                nullable: false,
-                defaultValue: "");
+            // Email ya existe en Usuarios
+            
+            // TipoTrabajo ya existe en PlanesAccion
+            
+            // Email ya existe en AdminUsuarios
         }
 
         /// <inheritdoc />

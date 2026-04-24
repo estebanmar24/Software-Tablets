@@ -31,6 +31,7 @@ const TABS = [
     { key: 'gastos', label: 'Captura de Gastos', icon: '💰' },
     { key: 'graficas', label: 'Gráficas', icon: '📊' },
     { key: 'rubros', label: 'Rubros', icon: '📁' },
+    { key: 'productos', label: 'Productos', icon: '📦' },
     { key: 'cotizaciones', label: 'Cotizaciones', icon: '📝' },
     { key: 'proveedores', label: 'Proveedores', icon: '🏢' },
     { key: 'tiposHora', label: 'H. Extras', icon: '⏱️' },
@@ -86,24 +87,27 @@ export default function ProduccionGastosScreen() {
         <View style={styles.container}>
             {/* Tabs - EXACT SST STYLE */}
             <View style={styles.tabsContainer}>
-                {TABS.map(tab => (
-                    <TouchableOpacity
-                        key={tab.key}
-                        style={[styles.tab, activeTab === tab.key && styles.activeTab]}
-                        onPress={() => setActiveTab(tab.key)}
-                    >
-                        <Text style={styles.tabIcon}>{tab.icon}</Text>
-                        <Text style={[styles.tabText, activeTab === tab.key && styles.activeTabText]}>
-                            {tab.label}
-                        </Text>
-                    </TouchableOpacity>
-                ))}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 10 }}>
+                    {TABS.map(tab => (
+                        <TouchableOpacity
+                            key={tab.key}
+                            style={[styles.tab, activeTab === tab.key && styles.activeTab]}
+                            onPress={() => setActiveTab(tab.key)}
+                        >
+                            <Text style={styles.tabIcon}>{tab.icon}</Text>
+                            <Text style={[styles.tabText, activeTab === tab.key && styles.activeTabText]}>
+                                {tab.label}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </ScrollView>
             </View>
 
             {/* Content based on active tab */}
             {activeTab === 'gastos' && <GastosTab />}
             {activeTab === 'graficas' && <GraficasTab />}
             {activeTab === 'rubros' && <RubrosTab />}
+            {activeTab === 'productos' && <ProductosTab />}
             {activeTab === 'cotizaciones' && <CotizacionesTab />}
             {activeTab === 'proveedores' && <ProveedoresTab />}
             {activeTab === 'tiposHora' && <TiposHoraTab />}
@@ -4008,13 +4012,146 @@ const grafStyles = StyleSheet.create({
     },
 });
 
+// ===================== PRODUCTOS TAB =====================
+function ProductosTab() {
+    const { colors, isDarkMode } = useTheme();
+    const [loading, setLoading] = useState(true);
+    const [items, setItems] = useState([]);
+    const [rubros, setRubros] = useState([]);
+    const [showModal, setShowModal] = useState(false);
+    const [editItem, setEditItem] = useState(null);
+    const [nombre, setNombre] = useState('');
+    const [referencia, setReferencia] = useState('');
+    const [descripcion, setDescripcion] = useState('');
+    const [medida, setMedida] = useState('');
+    const [rubroId, setRubroId] = useState('');
+    const [saving, setSaving] = useState(false);
+
+    const loadData = async () => {
+        try {
+            setLoading(true);
+            const data = await produccionApi.getMaestros();
+            setItems(data.productos || []);
+            setRubros(data.rubros || []);
+        } catch (error) { console.error('Error:', error); }
+        finally { setLoading(false); }
+    };
+
+    useEffect(() => { loadData(); }, []);
+
+    const handleAdd = () => { setEditItem(null); setNombre(''); setReferencia(''); setDescripcion(''); setMedida(''); setRubroId(''); setShowModal(true); };
+    const handleEdit = (item) => { setEditItem(item); setNombre(item.nombre); setReferencia(item.referencia || ''); setDescripcion(item.descripcion || ''); setMedida(item.medida || ''); setRubroId(item.rubroId?.toString() || ''); setShowModal(true); };
+
+    const handleSave = async () => {
+        if (!nombre.trim() || !rubroId) { Alert.alert('Error', 'Complete campos obligatorios'); return; }
+        try {
+            setSaving(true);
+            const prodData = { nombre, referencia, descripcion, medida, rubroId: parseInt(rubroId), activo: true };
+            if (editItem) {
+                await produccionApi.updateProducto(editItem.id, { ...prodData, id: editItem.id });
+                Alert.alert('Éxito', 'Producto actualizado');
+            } else {
+                await produccionApi.createProducto(prodData);
+                Alert.alert('Éxito', 'Producto creado');
+            }
+            setShowModal(false);
+            loadData();
+        } catch (error) {
+            Alert.alert('Error', 'No se pudo guardar');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleDelete = async (id) => {
+        const doDelete = async () => {
+            try {
+                await produccionApi.deleteProducto(id);
+                Alert.alert('Éxito', 'Producto eliminado');
+                loadData();
+            } catch (error) {
+                Alert.alert('Error', 'No se pudo eliminar');
+            }
+        };
+        if (Platform.OS === 'web') {
+            if (window.confirm('¿Eliminar este producto?')) doDelete();
+        } else {
+            Alert.alert('Confirmar', '¿Eliminar este producto?', [
+                { text: 'Cancelar' },
+                { text: 'Eliminar', onPress: doDelete, style: 'destructive' }
+            ]);
+        }
+    };
+
+    if (loading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#2563EB" /></View>;
+
+    return (
+        <View style={styles.contentContainer}>
+            <View style={styles.header}>
+                <Text style={styles.title}>📦 Productos</Text>
+                <TouchableOpacity style={styles.addButtonSmall} onPress={handleAdd}>
+                    <Text style={styles.addButtonText}>+ Agregar</Text>
+                </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.listContainer}>
+                {items.length === 0 ? <Text style={styles.emptyText}>No hay productos registrados.</Text> : items.map(item => (
+                    <View key={item.id} style={styles.itemCard}>
+                        <View style={styles.itemInfo}>
+                            <Text style={styles.itemName}>{item.nombre} {item.referencia ? `(${item.referencia})` : ''}</Text>
+                            <Text style={styles.itemSubDetail}>Rubro: {item.rubroNombre || rubros.find(r => r.id === item.rubroId)?.nombre || 'Desconocido'}</Text>
+                            <Text style={styles.itemSubDetail}>Medida: {item.medida || 'N/A'}</Text>
+                            {item.descripcion ? <Text style={{fontSize: 12, color: '#666', fontStyle: 'italic'}}>{item.descripcion}</Text> : null}
+                        </View>
+                        <View style={styles.itemActions}>
+                            <TouchableOpacity onPress={() => handleEdit(item)}><Text style={styles.editButton}>✏️</Text></TouchableOpacity>
+                            <TouchableOpacity onPress={() => handleDelete(item.id)}><Text style={styles.deleteButtonIcon}>🗑️</Text></TouchableOpacity>
+                        </View>
+                    </View>
+                ))}
+            </ScrollView>
+            <Modal visible={showModal} transparent animationType="slide" onRequestClose={() => setShowModal(false)}>
+                <View style={styles.modalOverlay}><View style={styles.modalContentSmall}>
+                    <Text style={styles.modalTitle}>{editItem ? 'Editar' : 'Agregar'} Producto</Text>
+                    <Text style={styles.label}>Nombre *</Text>
+                    <TextInput style={styles.input} value={nombre} onChangeText={setNombre} placeholder="Nombre del producto" />
+                    <Text style={styles.label}>Referencia</Text>
+                    <TextInput style={styles.input} value={referencia} onChangeText={setReferencia} placeholder="Ref. única (opcional)" />
+                    <Text style={styles.label}>Descripción</Text>
+                    <TextInput style={[styles.input, styles.textArea]} value={descripcion} onChangeText={setDescripcion} placeholder="Detalles del producto..." multiline numberOfLines={3} />
+                    <Text style={styles.label}>Medida *</Text>
+                    <View style={styles.pickerContainer}>
+                        <Picker selectedValue={medida} onValueChange={setMedida}>
+                            <Picker.Item label="Seleccione..." value="" />
+                            {['Cc', 'Grs', 'Gal', 'Uni', 'Kg', 'Mts', 'ml'].map(m => <Picker.Item key={m} label={m} value={m} />)}
+                        </Picker>
+                    </View>
+                    <Text style={styles.label}>Rubro *</Text>
+                    <View style={styles.pickerContainer}>
+                        <Picker selectedValue={rubroId} onValueChange={setRubroId}>
+                            <Picker.Item label="Seleccione Rubro..." value="" />
+                            {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
+                        </Picker>
+                    </View>
+                    <View style={styles.modalActions}>
+                        <TouchableOpacity style={styles.cancelButton} onPress={() => setShowModal(false)}><Text style={styles.cancelButtonText}>Cancelar</Text></TouchableOpacity>
+                        <TouchableOpacity style={[styles.submitButton, saving && styles.submitButtonDisabled]} onPress={handleSave} disabled={saving}>
+                            {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>Guardar</Text>}
+                        </TouchableOpacity>
+                    </View>
+                </View></View>
+            </Modal>
+        </View>
+    );
+}
+
 // ===================== COTIZACIONES TAB =====================
-// Adapted from TalleresGastosScreen
+// ... (rest of the file remains same, keeping CotizacionesTab)
 function CotizacionesTab() {
     const [loading, setLoading] = useState(true);
     const [items, setItems] = useState([]);
     const [rubros, setRubros] = useState([]);
     const [proveedores, setProveedores] = useState([]);
+    const [productos, setProductos] = useState([]);
 
     // Period Filters
     const [anio, setAnio] = useState(new Date().getFullYear());
@@ -4022,7 +4159,7 @@ function CotizacionesTab() {
 
     const [showModal, setShowModal] = useState(false);
     const [editItem, setEditItem] = useState(null);
-    const [formData, setFormData] = useState({ rubroId: '', proveedorId: '', precio: '', descripcion: '' });
+    const [formData, setFormData] = useState({ rubroId: '', proveedorId: '', productoId: '', precio: '', descripcion: '', cantidad: '', valorUnitario: '' });
     const [saving, setSaving] = useState(false);
 
     const anios = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
@@ -4036,14 +4173,14 @@ function CotizacionesTab() {
     const loadData = useCallback(async () => {
         setLoading(true);
         try {
-            const [itemsData, rubrosData, proveedoresData] = await Promise.all([
+            const [itemsData, maestros] = await Promise.all([
                 produccionApi.getCotizaciones(anio, mes),
-                produccionApi.getMaestros().then(d => d.rubros || []),
-                produccionApi.getMaestros().then(d => d.proveedores || [])
+                produccionApi.getMaestros()
             ]);
             setItems(itemsData);
-            setRubros(rubrosData);
-            setProveedores(proveedoresData);
+            setRubros(maestros.rubros || []);
+            setProveedores(maestros.proveedores || []);
+            setProductos(maestros.productos || []);
         } catch (error) {
             console.error(error);
         } finally {
@@ -4053,14 +4190,17 @@ function CotizacionesTab() {
 
     useEffect(() => { loadData(); }, [loadData]);
 
-    const handleAdd = () => { setEditItem(null); setFormData({ rubroId: '', proveedorId: '', precio: '', descripcion: '' }); setShowModal(true); };
+    const handleAdd = () => { setEditItem(null); setFormData({ rubroId: '', proveedorId: '', productoId: '', precio: '', descripcion: '', cantidad: '', valorUnitario: '' }); setShowModal(true); };
     const handleEdit = (item) => {
         setEditItem(item);
         setFormData({
             rubroId: item.rubroId?.toString() || '',
             proveedorId: item.proveedorId?.toString() || '',
+            productoId: item.productoId?.toString() || '',
             precio: item.precioCotizado?.toString() || '',
-            descripcion: item.descripcion || ''
+            descripcion: item.descripcion || '',
+            cantidad: item.cantidad?.toString() || '',
+            valorUnitario: item.valorUnitario?.toString() || ''
         });
         setShowModal(true);
     };
@@ -4072,7 +4212,10 @@ function CotizacionesTab() {
             const data = {
                 rubroId: parseInt(formData.rubroId),
                 proveedorId: parseInt(formData.proveedorId),
+                productoId: formData.productoId ? parseInt(formData.productoId) : null,
                 precioCotizado: parseFloat(formData.precio),
+                cantidad: formData.cantidad ? parseFloat(formData.cantidad) : null,
+                valorUnitario: formData.valorUnitario ? parseFloat(formData.valorUnitario) : null,
                 descripcion: formData.descripcion,
                 anio, mes
             };
@@ -4111,7 +4254,11 @@ function CotizacionesTab() {
                     {items.length === 0 ? <Text style={styles.emptyText}>No hay cotizaciones para este periodo. Agregue una.</Text> : items.map(item => (
                         <View key={item.id} style={styles.itemCard}>
                             <View style={styles.itemInfo}>
-                                <Text style={styles.itemName}>{item.rubroNombre} - {item.proveedorNombre}</Text>
+                                <Text style={styles.itemName}>{item.rubroNombre} {item.productoNombre ? `> ${item.productoNombre}` : ''}</Text>
+                                <Text style={styles.itemSubDetail}>{item.proveedorNombre}</Text>
+                                {item.cantidad && item.valorUnitario && (
+                                    <Text style={styles.itemSubDetail}>{item.cantidad} {item.productoMedida || item.medida} x {formatCurrency(item.valorUnitario)}</Text>
+                                )}
                                 <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#059669' }}>{formatCurrency(item.precioCotizado)}</Text>
                                 {item.descripcion && <Text style={{ fontSize: 12, color: '#666' }}>{item.descripcion}</Text>}
                             </View>
@@ -4130,11 +4277,32 @@ function CotizacionesTab() {
                     <ScrollView style={styles.formContainer}>
                         <Text style={styles.label}>Rubro *</Text>
                         <View style={styles.pickerContainer}>
-                            <Picker selectedValue={formData.rubroId} onValueChange={v => setFormData(p => ({ ...p, rubroId: v }))}>
+                            <Picker selectedValue={formData.rubroId} onValueChange={v => setFormData(p => ({ ...p, rubroId: v, productoId: '' }))}>
                                 <Picker.Item label="Seleccione..." value="" />
                                 {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
                             </Picker>
                         </View>
+
+                        <Text style={styles.label}>Producto</Text>
+                        <View style={styles.pickerContainer}>
+                            <Picker selectedValue={formData.productoId} onValueChange={v => setFormData(p => ({ ...p, productoId: v }))}>
+                                <Picker.Item label="Seleccione Producto..." value="" />
+                                {productos.filter(p => p.rubroId.toString() === formData.rubroId).map(p => <Picker.Item key={p.id} label={p.nombre} value={p.id.toString()} />)}
+                            </Picker>
+                        </View>
+
+                        {formData.productoId ? (
+                            <View style={{ backgroundColor: isDarkMode ? '#111827' : '#f9fafb', padding: 10, borderRadius: 8, marginBottom: 15, borderWidth: 1, borderColor: isDarkMode ? '#374151' : '#e5e7eb' }}>
+                                <Text style={{ fontSize: 13, color: isDarkMode ? '#9ca3af' : '#6b7280', fontWeight: 'bold' }}>Detalles del Producto:</Text>
+                                <Text style={{ fontSize: 14, color: isDarkMode ? '#e5e7eb' : '#374151' }}>
+                                    <Text style={{ fontWeight: 'bold' }}>Ref:</Text> {productos.find(p => p.id.toString() === formData.productoId)?.referencia || 'N/A'}
+                                </Text>
+                                <Text style={{ fontSize: 14, color: isDarkMode ? '#e5e7eb' : '#374151', marginTop: 4 }}>
+                                    <Text style={{ fontWeight: 'bold' }}>Desc:</Text> {productos.find(p => p.id.toString() === formData.productoId)?.descripcion || 'Sin descripción'}
+                                </Text>
+                            </View>
+                        ) : null}
+
                         <Text style={styles.label}>Proveedor *</Text>
                         <View style={styles.pickerContainer}>
                             <Picker selectedValue={formData.proveedorId} onValueChange={v => setFormData(p => ({ ...p, proveedorId: v }))}>
@@ -4142,8 +4310,24 @@ function CotizacionesTab() {
                                 {proveedores.map(p => <Picker.Item key={p.id} label={p.nombre} value={p.id.toString()} />)}
                             </Picker>
                         </View>
-                        <Text style={styles.label}>Precio Cotizado *</Text>
-                        <TextInput style={styles.input} value={formData.precio} onChangeText={t => setFormData(p => ({ ...p, precio: t }))} keyboardType="numeric" placeholder="$ 0" />
+
+                        <View style={{ flexDirection: 'row', gap: 10 }}>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.label}>Medida</Text>
+                                <TextInput style={[styles.input, { backgroundColor: '#f3f4f6' }]} value={productos.find(p => p.id.toString() === formData.productoId)?.medida || 'N/A'} editable={false} />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.label}>Cantidad</Text>
+                                <TextInput style={styles.input} value={formData.cantidad} onChangeText={t => setFormData(p => ({ ...p, cantidad: t }))} keyboardType="numeric" placeholder="0" />
+                            </View>
+                        </View>
+
+                        <Text style={styles.label}>Valor Unitario</Text>
+                        <TextInput style={styles.input} value={formData.valorUnitario} onChangeText={t => setFormData(p => ({ ...p, valorUnitario: t }))} keyboardType="numeric" placeholder="$ 0" />
+
+                        <Text style={styles.label}>Precio Total (Auto) *</Text>
+                        <TextInput style={[styles.input, { backgroundColor: '#f3f4f6' }]} value={formData.precio} editable={false} placeholder="$ 0" />
+
                         <Text style={styles.label}>Descripción</Text>
                         <TextInput style={styles.input} value={formData.descripcion} onChangeText={t => setFormData(p => ({ ...p, descripcion: t }))} placeholder="Opcional..." />
 
