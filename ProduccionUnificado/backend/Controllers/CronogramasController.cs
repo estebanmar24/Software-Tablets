@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
 using Microsoft.AspNetCore.Authorization;
+using TiempoProcesos.API.DTOs;
 
 namespace TiempoProcesos.API.Controllers
 {
@@ -32,19 +33,19 @@ namespace TiempoProcesos.API.Controllers
             {
                 var baseActs = new List<CronogramaActividad>
                 {
-                    new CronogramaActividad { Operacion = "Verificar lubricación automática" },
-                    new CronogramaActividad { Operacion = "Limpiar filtros de aire" },
-                    new CronogramaActividad { Operacion = "Purgar compresor" },
-                    new CronogramaActividad { Operacion = "Limpiar alimentador" },
-                    new CronogramaActividad { Operacion = "Grasa a bielas" },
-                    new CronogramaActividad { Operacion = "Limpiar aceite" },
-                    new CronogramaActividad { Operacion = "Limpiar paredes máquina" },
-                    new CronogramaActividad { Operacion = "Limpiar cremallera y guias" },
-                    new CronogramaActividad { Operacion = "Lubricar guias y cremallera" },
-                    new CronogramaActividad { Operacion = "Lubricar orificios de fabrica" },
-                    new CronogramaActividad { Operacion = "Limpiar plancha troquel" },
-                    new CronogramaActividad { Operacion = "Limpiar moretones" },
-                    new CronogramaActividad { Operacion = "Limpiar y lubricar puentes" }
+                    new CronogramaActividad { Operacion = "Verificar lubricación automática", TipoMantenimiento = "preventivo" },
+                    new CronogramaActividad { Operacion = "Limpiar filtros de aire", TipoMantenimiento = "limpieza" },
+                    new CronogramaActividad { Operacion = "Purgar compresor", TipoMantenimiento = "preventivo" },
+                    new CronogramaActividad { Operacion = "Limpiar alimentador", TipoMantenimiento = "limpieza" },
+                    new CronogramaActividad { Operacion = "Grasa a bielas", TipoMantenimiento = "preventivo" },
+                    new CronogramaActividad { Operacion = "Limpiar aceite", TipoMantenimiento = "limpieza" },
+                    new CronogramaActividad { Operacion = "Limpiar paredes máquina", TipoMantenimiento = "limpieza" },
+                    new CronogramaActividad { Operacion = "Limpiar cremallera y guias", TipoMantenimiento = "limpieza" },
+                    new CronogramaActividad { Operacion = "Lubricar guias y cremallera", TipoMantenimiento = "preventivo" },
+                    new CronogramaActividad { Operacion = "Lubricar orificios de fabrica", TipoMantenimiento = "preventivo" },
+                    new CronogramaActividad { Operacion = "Limpiar plancha troquel", TipoMantenimiento = "limpieza" },
+                    new CronogramaActividad { Operacion = "Limpiar moretones", TipoMantenimiento = "limpieza" },
+                    new CronogramaActividad { Operacion = "Limpiar y lubricar puentes", TipoMantenimiento = "preventivo" }
                 };
                 _context.CronogramaActividades.AddRange(baseActs);
                 await _context.SaveChangesAsync();
@@ -60,25 +61,31 @@ namespace TiempoProcesos.API.Controllers
         }
 
         [HttpPost("ToggleStatus")]
-        public async Task<IActionResult> ToggleStatus([FromBody] CronogramaRegistro req)
+        public async Task<IActionResult> ToggleStatus([FromBody] CronogramaToggleDto req)
         {
             var registro = await _context.CronogramaRegistros
                 .FirstOrDefaultAsync(r => r.HojaVidaId == req.HojaVidaId && 
                                           r.ActividadId == req.ActividadId && 
                                           r.Anio == req.Anio && 
-                                          r.Mes == req.Mes);
+                                          r.Mes == req.Mes &&
+                                          r.Dia == req.Dia);
 
             if (registro == null)
             {
-                // Crear nuevo registro (Estado inicial: 1 = Ejecutado)
-                req.Estado = 1;
-                _context.CronogramaRegistros.Add(req);
+                var nuevo = new CronogramaRegistro
+                {
+                    HojaVidaId = req.HojaVidaId,
+                    ActividadId = req.ActividadId,
+                    Anio = req.Anio,
+                    Mes = req.Mes,
+                    Dia = req.Dia,
+                    Estado = req.Estado ?? 0
+                };
+                _context.CronogramaRegistros.Add(nuevo);
             }
             else
             {
-                // Rotar entre 5 estados (1-5) y volver a 0 (Pendiente)
-                // 1=E, 2=A, 3=NE, 4=P, 5=I, 0=Pendiente
-                registro.Estado = (registro.Estado + 1) % 6;
+                registro.Estado = req.Estado ?? 0;
             }
 
             await _context.SaveChangesAsync();
@@ -101,6 +108,7 @@ namespace TiempoProcesos.API.Controllers
 
             existing.Operacion = act.Operacion;
             existing.Categoria = act.Categoria;
+            existing.TipoMantenimiento = act.TipoMantenimiento;
             existing.Activo = act.Activo;
 
             await _context.SaveChangesAsync();

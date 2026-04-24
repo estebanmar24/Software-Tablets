@@ -14,8 +14,8 @@ namespace TiempoProcesos.API.Models
         public int Anio { get; set; }
         
         public int Mes { get; set; } // 1 a 12
-
-        // 0 = Pendiente (Gris), 1 = Ejecutado (Verde), 2 = Aplazado (Amarillo)
+        
+        public int Dia { get; set; } = 0; // 0 = Registro mensual (por defecto), 1-31 = Registro diario
         public int Estado { get; set; } = 0; 
         
         public string? Nota { get; set; }

@@ -376,7 +376,7 @@ function GastosTab({ fileServerUrl }) {
             precio: gasto.precio?.toString() || '',
             precioDisplay: formatCurrencyInput(gasto.precio?.toString() || ''),
             fechaCompra: gasto.fechaCompra?.split('T')[0] || new Date().toISOString().split('T')[0],
-            nota: gasto.nota || '',
+            nota: (gasto.nota || gasto.Nota) || '',
             archivoFactura: gasto.archivoFactura || null,
             archivoNombre: gasto.archivoFactura ? 'Archivo adjunto' : '',
             esPendiente: gasto.esPendiente || false,
@@ -396,7 +396,7 @@ function GastosTab({ fileServerUrl }) {
             precio: '',
             precioDisplay: '',
             fechaCompra: gasto.fechaCompra?.split('T')[0] || new Date().toISOString().split('T')[0],
-            nota: gasto.nota || '',
+            nota: (gasto.nota || gasto.Nota) || '',
             archivoFactura: null,
             archivoNombre: '',
             esPendiente: false, // Al legalizar, deja de ser pendiente
@@ -821,14 +821,14 @@ function GastosTab({ fileServerUrl }) {
                                             <Text style={styles.gastoPrecio}>{formatCurrency(gasto.precio)}</Text>
                                         </View>
                                         <Text style={styles.gastoRubro}>{gasto.rubroNombre}</Text>
+                                        {(gasto.nota || gasto.Nota) ? (
+                                            <Text style={styles.gastoNota}>💬 {gasto.nota || gasto.Nota}</Text>
+                                        ) : null}
                                         <View style={styles.gastoDetails}>
                                             <Text style={styles.gastoDetail}>🏢 {gasto.proveedorNombre}</Text>
                                             <Text style={styles.gastoDetail}>📅 {formatDate(gasto.fechaCompra)}</Text>
                                             <Text style={styles.gastoDetail}>📄 Factura: {gasto.numeroFactura}</Text>
                                         </View>
-                                        {gasto.nota && (
-                                            <Text style={styles.gastoNota}>💬 {gasto.nota}</Text>
-                                        )}
                                         {/* Budget Info */}
                                         {(() => {
                                             const budget = getBudgetInfo(gasto.tipoServicioId);
@@ -1126,8 +1126,8 @@ function GastosTab({ fileServerUrl }) {
                                     <Text style={styles.label}>Observaciones</Text>
                                     <TextInput
                                         style={[styles.input, styles.textArea]}
-                                        value={formData.observaciones}
-                                        onChangeText={(t) => setFormData(p => ({ ...p, observaciones: t }))}
+                                        value={formData.nota}
+                                        onChangeText={(t) => setFormData(p => ({ ...p, nota: t }))}
                                         multiline
                                         placeholder="Opcional..."
                                     />

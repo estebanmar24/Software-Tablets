@@ -11,7 +11,9 @@ namespace TiempoProcesos.API.Models
         
         // Permite agrupar o filtrar si en el futuro hay muchas
         public string Categoria { get; set; } = "General"; 
-        
+
+        public string TipoMantenimiento { get; set; } = "preventivo";
+
         public bool Activo { get; set; } = true;
     }
 }

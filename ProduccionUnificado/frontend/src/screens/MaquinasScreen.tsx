@@ -112,7 +112,14 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
     const [selectedCronogramaMaq, setSelectedCronogramaMaq] = useState<HojaVida | null>(null);
     const [selectedAnio, setSelectedAnio] = useState(new Date().getFullYear());
     const [newActividadNombre, setNewActividadNombre] = useState('');
+    const [newActividadTipo, setNewActividadTipo] = useState('preventivo');
     const [loadingCronograma, setLoadingCronograma] = useState(false);
+    const [selectedMesCronograma, setSelectedMesCronograma] = useState<number | null>(null); // 1-12
+    const [cronogramaSemanaOffset, setCronogramaSemanaOffset] = useState(0); 
+    const [statusPicker, setStatusPicker] = useState<{ actId: number, mes: number, dia: number } | null>(null);
+    const [selectedActsForMantenimiento, setSelectedActsForMantenimiento] = useState<number[]>([]);
+    const [actModalVisible, setActModalVisible] = useState(false);
+    const [editingAct, setEditingAct] = useState<any>(null);
     const [mantenimientoModalVisible, setMantenimientoModalVisible] = useState(false);
     const [isEditingMantenimiento, setIsEditingMantenimiento] = useState(false);
     const [mantenimientoForm, setMantenimientoForm] = useState<MantenimientoEntry>({
@@ -223,7 +230,7 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                 fecha: new Date().toISOString(),
                 tipoMantenimiento: mantenimientoForm.tipo,
                 ejecutadoPor: mantenimientoForm.ejecutadoPor,
-                observacion: mantenimientoForm.observacion,
+                observacion: `${mantenimientoForm.observacion}\n\nActividades realizadas:\n${cronogramaActividades.filter(a => selectedActsForMantenimiento.includes(a.id)).map(a => `- ${a.operacion}`).join('\n')}`.trim(),
                 fotos: mantenimientoForm.fotos?.map(f => ({ url: f.url })) || []
             };
 
@@ -255,6 +262,20 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
     };
 
     const handleDeleteMantenimiento = (id: number) => {
+        if (Platform.OS === 'web') {
+            if (window.confirm("¿Estás seguro de borrar este registro?")) {
+                (async () => {
+                    try {
+                        await api.delete(`MantenimientosMaquinas/${id}`);
+                        loadMantenimientos();
+                    } catch (error) {
+                        alert("No se pudo eliminar el mantenimiento.");
+                    }
+                })();
+            }
+            return;
+        }
+
         Alert.alert(
             "Eliminar Mantenimiento",
             "¿Estás seguro de borrar este registro?",
@@ -352,14 +373,29 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
         }
     };
 
-    const toggleCronogramaStatus = async (actividadId: number, mes: number) => {
+    const toggleCronogramaStatus = async (actividadId: number, mes: number, dia: number = 0, forcedStatus?: number) => {
         if (!selectedCronogramaMaq) return;
         try {
+            const reg = cronogramaRegistros.find(r => 
+                (Number(r.actividadId || r.ActividadId) === actividadId) && 
+                Number(r.mes) === mes && Number(r.dia || r.Dia) === dia && 
+                (r.anio === selectedAnio || r.Anio === selectedAnio)
+            );
+
+            let newEstado = 1;
+            if (forcedStatus !== undefined) {
+                newEstado = forcedStatus;
+            } else if (reg) {
+                newEstado = (reg.estado % 5) + 1;
+            }
+
             await api.post('Cronogramas/ToggleStatus', {
                 hojaVidaId: Number(selectedCronogramaMaq.id),
                 actividadId: Number(actividadId),
                 anio: Number(selectedAnio),
-                mes: Number(mes)
+                mes: Number(mes),
+                dia: Number(dia),
+                estado: newEstado
             });
             loadCronogramaData(selectedCronogramaMaq.id, selectedAnio);
         } catch (error) {
@@ -373,6 +409,7 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
             const payload = { 
                 operacion: newActividadNombre.trim(),
                 categoria: "General",
+                tipoMantenimiento: newActividadTipo,
                 activo: true
             };
             await api.post('Cronogramas/Actividad', payload);
@@ -402,15 +439,20 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
         }
     };
 
-    const handleEditActividad = async (act: any) => {
-        const nuevoNombre = window.prompt("Ingresa el nuevo nombre de la operación:", act.operacion);
-        if (nuevoNombre !== null && nuevoNombre.trim() !== "") {
-            try {
-                await api.put(`Cronogramas/Actividad/${act.id}`, { ...act, operacion: nuevoNombre.trim() });
-                if (selectedCronogramaMaq) loadCronogramaData(selectedCronogramaMaq.id, selectedAnio);
-            } catch (error) {
-                console.error("Error editando:", error);
-            }
+    const handleEditActividad = (act: any) => {
+        setEditingAct({ ...act, tipoMantenimiento: act.tipoMantenimiento || 'preventivo' });
+        setActModalVisible(true);
+    };
+
+    const handleSaveEditActividad = async () => {
+        if (!editingAct || !editingAct.operacion.trim()) return;
+        try {
+            await api.put(`Cronogramas/Actividad/${editingAct.id}`, editingAct);
+            setActModalVisible(false);
+            if (selectedCronogramaMaq) loadCronogramaData(selectedCronogramaMaq.id, selectedAnio);
+        } catch (error) {
+            console.error("Error editando:", error);
+            Alert.alert("Error", "No se pudo actualizar la actividad.");
         }
     };
 
@@ -490,6 +532,20 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
     };
 
     const handleDeleteBitacora = (item: BitacoraEntry) => {
+        if (Platform.OS === 'web') {
+            if (window.confirm("¿Estás seguro de eliminar esta entrada de la bitácora?")) {
+                (async () => {
+                    try {
+                        await api.delete(`BitacorasMaquinas/${item.id}`);
+                        loadBitacoras();
+                    } catch (error) {
+                        alert("No se pudo eliminar el registro.");
+                    }
+                })();
+            }
+            return;
+        }
+
         Alert.alert(
             "Eliminar Registro",
             "¿Estás seguro de eliminar esta entrada de la bitácora?",
@@ -955,7 +1011,7 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                 currentY += 7;
 
                 const bitacoraData = listTickets.map(b => [
-                    b.consecutivo || '-',
+                    b.consecutivo ?? b.Consecutivo ?? '-',
                     new Date(b.fecha).toLocaleDateString(),
                     b.turno,
                     b.descripcion,
@@ -984,7 +1040,7 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                 doc.rect(margin, currentY, tableWidth, 7, 'F');
                 doc.rect(margin, currentY, tableWidth, 7, 'D');
                 doc.setFont("helvetica", "bold");
-                doc.text("HISTORIAL DE MANTENIMIENTOS Y EVIDENCIAS", margin + (tableWidth/2), currentY + 5, { align: 'center' });
+                doc.text("HISTORIAL DE MANTENIMIENTOS", margin + (tableWidth/2), currentY + 5, { align: 'center' });
                 currentY += 10;
 
                 for (const m of listMantenimientos) {
@@ -994,12 +1050,13 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                     // Pequeña tabla/fila para el resumen del mantenimiento
                     autoTable(doc, {
                         startY: currentY,
-                        head: [['#', 'Fecha', 'Tipo', 'Ejecutado Por', 'Observación']],
+                        head: [['#', 'Fecha', 'Tipo', 'Ejecutado Por', 'Ticket', 'Observación']],
                         body: [[
                             m.consecutivo || '-',
                             new Date(m.fecha).toLocaleDateString(),
                             m.tipoMantenimiento || m.tipo,
                             m.ejecutadoPor,
+                            (m.ticketId || m.TicketId) ? `#${m.ticketId || m.TicketId}` : '-',
                             m.observacion
                         ]],
                         margin: { left: margin },
@@ -1112,161 +1169,315 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
     };
 
     const renderCronograma = () => {
-        const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-        
-        // Calcular Estadísticas recorriendo la MATRIZ que ve el usuario
-        const counts = { E: 0, A: 0, NE: 0, P: 0, I: 0 };
-        
-        cronogramaActividades.forEach(act => {
-            for (let m = 1; m <= 12; m++) {
-                const reg = cronogramaRegistros.find(r => 
-                    (Number(r.actividadId || r.ActividadId) === Number(act.id)) && 
-                    Number(r.mes) === m
-                );
-                
-                if (reg) {
-                    if (reg.estado === 1) counts.E++;
-                    else if (reg.estado === 2) counts.A++;
-                    else if (reg.estado === 3) counts.NE++;
-                    else if (reg.estado === 4) counts.P++;
-                    else if (reg.estado === 5) counts.I++;
-                }
-            }
-        });
-
-        const totalCeldasYear = cronogramaActividades.length * 12;
-        const cumplimiento = totalCeldasYear > 0 ? Math.round((counts.E / totalCeldasYear) * 100) : 0;
+        const mesesNombres = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+        const mesesSiglas = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+        const diasSemanaNombres = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
 
         const getStatusStyles = (estado: number) => {
-            switch(estado) {
-                case 1: return { color: '#84cc16', text: 'E' }; // Verde (Ejecutado)
-                case 2: return { color: '#eab308', text: 'A' }; // Amarillo (Aplazado)
-                case 3: return { color: '#ef4444', text: 'NE' }; // Rojo (No Ejecutado)
-                case 4: return { color: '#f97316', text: 'P' }; // Naranja (Programado)
-                case 5: return { color: '#06b6d4', text: 'I' }; // Azul (Incompleto)
-                default: return { color: 'transparent', text: '•' };
+            switch(Number(estado)) {
+                case 1: return { color: '#84cc16', text: 'E', icon: 'check-bold', label: 'EJECUTADO' }; 
+                case 2: return { color: '#eab308', text: 'A', icon: 'clock-fast', label: 'APLAZADO' }; 
+                case 3: return { color: '#ef4444', text: 'NE', icon: 'close-thick', label: 'NO EJECUTADO' }; 
+                case 4: return { color: '#f97316', text: 'P', icon: 'calendar-edit', label: 'PROGRAMADO' }; 
+                case 5: return { color: '#06b6d4', text: 'I', icon: 'progress-alert', label: 'INCOMPLETO' }; 
+                default: return { color: (isDarkMode ? '#334155' : '#f1f5f9'), text: '•', icon: null, label: 'PENDIENTE' };
             }
         };
 
-        return (
-            <View style={{ flex: 1, backgroundColor: '#f4f7f6' }}>
-                {/* Header Premium (Máquinas y Año) */}
-                <View style={{ padding: 12, backgroundColor: '#1a202c', flexDirection: 'row', alignItems: 'center', gap: 15 }}>
-                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
-                        {hojasVida.map(maq => (
-                            <TouchableOpacity 
-                                key={maq.id}
-                                onPress={() => setSelectedCronogramaMaq(maq)}
-                                style={[
-                                    { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, marginRight: 8, borderWidth: 1, borderColor: '#4a5568' },
-                                    selectedCronogramaMaq?.id === maq.id && { backgroundColor: '#3182ce', borderColor: '#3182ce' }
-                                ]}
-                            >
-                                <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 13 }}>{maq.nombre}</Text>
-                            </TouchableOpacity>
-                        ))}
-                     </ScrollView>
-                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#2d3748', padding: 6, borderRadius: 10 }}>
-                        <TouchableOpacity onPress={() => setSelectedAnio(v => v - 1)}><MaterialCommunityIcons name="chevron-left" size={24} color="white" /></TouchableOpacity>
-                        <Text style={{ fontWeight: 'bold', fontSize: 16, color: 'white' }}>{selectedAnio}</Text>
-                        <TouchableOpacity onPress={() => setSelectedAnio(v => v + 1)}><MaterialCommunityIcons name="chevron-right" size={24} color="white" /></TouchableOpacity>
-                     </View>
+        const getMonthCalculatedStatus = (actId: number, mesNum: number) => {
+            const list = Array.isArray(cronogramaRegistros) ? cronogramaRegistros : [];
+            const daily = list.filter(r => {
+                const rid = r.actividadId !== undefined ? r.actividadId : r.ActividadId;
+                const rmes = r.mes !== undefined ? r.mes : r.Mes;
+                const rdia = r.dia !== undefined ? r.dia : r.Dia;
+                const ranio = r.anio !== undefined ? r.anio : r.Anio;
+                const restado = r.estado !== undefined ? r.estado : r.Estado;
+
+                return Number(rid) === Number(actId) && 
+                       Number(rmes) === Number(mesNum) && 
+                       Number(ranio) === Number(selectedAnio) &&
+                       Number(rdia || 0) > 0 &&
+                       Number(restado || 0) > 0;
+            });
+            
+            if (daily.length > 0) {
+                if (daily.some(r => Number(r.estado ?? r.Estado) === 1)) return 1;
+                if (daily.some(r => Number(r.estado ?? r.Estado) === 2)) return 2;
+                if (daily.some(r => Number(r.estado ?? r.Estado) === 5)) return 5;
+                if (daily.some(r => Number(r.estado ?? r.Estado) === 3)) return 3;
+                return 4;
+            }
+            return 0;
+        };
+
+        const getGlobalStats = () => {
+            const global = { E: 0, A: 0, NE: 0, P: 0, I: 0 };
+            const mStats = mesesNombres.map((_, idx) => {
+                const mesNum = idx + 1;
+                const stats = { E: 0, A: 0, NE: 0, P: 0, I: 0, total: 0, mesNum };
+                cronogramaActividades.forEach(act => {
+                    const s = getMonthCalculatedStatus(act.id, mesNum);
+                    if (s === 1) { stats.E++; global.E++; }
+                    else if (s === 2) { stats.A++; global.A++; }
+                    else if (s === 3) { stats.NE++; global.NE++; }
+                    else if (s === 4) { stats.P++; global.P++; }
+                    else if (s === 5) { stats.I++; global.I++; }
+                    stats.total++;
+                });
+                const comp = stats.total > 0 ? Math.round((stats.E / stats.total) * 100) : 0;
+                return { ...stats, comp };
+            });
+            return { global, mStats };
+        };
+
+        const { global, mStats } = getGlobalStats();
+        const totalYearCells = (cronogramaActividades.length * 12) || 1;
+        const totalComp = Math.round((global.E / totalYearCells) * 100);
+
+        const renderDashboard = () => (
+            <View style={{ flex: 1, padding: 20 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 }}>
+                    <View>
+                        <Text style={{ fontSize: 28, fontWeight: 'bold', color: isDarkMode ? 'white' : '#1e293b' }}>Cronograma de Mantenimiento</Text>
+                        <Text style={{ fontSize: 16, color: '#64748b' }}>Selecciona un mes para registrar actividades</Text>
+                    </View>
+                    <View style={{ backgroundColor: isDarkMode ? '#1e293b' : 'white', padding: 15, borderRadius: 15, elevation: 5, alignItems: 'center', minWidth: 150 }}>
+                        <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#64748b', marginBottom: 5 }}>CUMPLIMIENTO ANUAL</Text>
+                        <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#84cc16' }}>{totalComp}%</Text>
+                    </View>
                 </View>
 
-                {/* Contenido Principal: Matriz + Resumen */}
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 20, justifyContent: 'center' }}>
+                    {mStats.map((ms, idx) => (
+                        <TouchableOpacity 
+                            key={idx}
+                            onPress={() => { setSelectedMesCronograma(ms.mesNum); setCronogramaSemanaOffset(0); }}
+                            style={{ 
+                                width: '23%', minHeight: 160, backgroundColor: isDarkMode ? '#1e293b' : 'white',
+                                borderRadius: 20, padding: 20, elevation: 4, borderLeftWidth: 8,
+                                borderLeftColor: ms.comp > 80 ? '#84cc16' : ms.comp > 40 ? '#eab308' : '#64748b'
+                            }}
+                        >
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+                                <Text style={{ fontSize: 22, fontWeight: 'bold', color: isDarkMode ? 'white' : '#1e293b' }}>{mesesNombres[idx]}</Text>
+                                <View style={{ backgroundColor: '#ebf8ff', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 12 }}>
+                                    <Text style={{ color: '#3182ce', fontWeight: 'bold', fontSize: 14 }}>{ms.comp}%</Text>
+                                </View>
+                            </View>
+                            <View style={{ height: 8, backgroundColor: isDarkMode ? '#334155' : '#f1f5f9', borderRadius: 4, overflow: 'hidden', marginBottom: 15 }}>
+                                <View style={{ width: `${ms.comp}%`, height: '100%', backgroundColor: '#84cc16' }} />
+                            </View>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                                {[
+                                    { k: 'E', c: '#84cc16', v: ms.E },
+                                    { k: 'A', c: '#eab308', v: ms.A },
+                                    { k: 'NE', c: '#ef4444', v: ms.NE },
+                                    { k: 'P', c: '#f97316', v: ms.P },
+                                    { k: 'I', c: '#06b6d4', v: ms.I },
+                                ].map(s => (
+                                    <View key={s.k} style={{ alignItems: 'center' }}>
+                                        <Text style={{ fontSize: 14, fontWeight: 'bold', color: s.c }}>{s.v}</Text>
+                                        <Text style={{ fontSize: 10, color: '#64748b' }}>{s.k}</Text>
+                                    </View>
+                                ))}
+                            </View>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+            </View>
+        );
+
+        const renderMonthDetail = () => {
+            const getVisibleDays = () => {
+                if (!selectedMesCronograma) return [];
+                const firstOfMonth = new Date(selectedAnio, selectedMesCronograma - 1, 1);
+                const dayIdx = firstOfMonth.getDay(); 
+                const diffToMonday = dayIdx === 0 ? -6 : 1 - dayIdx;
+                const startPoint = new Date(firstOfMonth);
+                startPoint.setDate(firstOfMonth.getDate() + diffToMonday + (cronogramaSemanaOffset * 7));
+                return Array.from({ length: 7 }, (_, i) => {
+                    const d = new Date(startPoint);
+                    d.setDate(startPoint.getDate() + i);
+                    return d;
+                });
+            };
+            const visibleDays = getVisibleDays();
+            const currentMStats = mStats[selectedMesCronograma! - 1];
+
+            return (
                 <View style={{ flex: 1, flexDirection: 'row', padding: 15, gap: 15 }}>
-                    
-                    {/* COLUMNA IZQUIERDA: MATRIZ CRONOGRAMA */}
                     <View style={{ flex: 3.5, backgroundColor: 'white', borderRadius: 12, overflow: 'hidden', elevation: 2 }}>
                         <ScrollView style={{ flex: 1 }}>
-                            <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+                            <ScrollView horizontal>
                                 <View>
                                     <View style={{ flexDirection: 'row', backgroundColor: '#f8fafc', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
-                                        <View style={{ width: 300, padding: 15 }}><Text style={{ fontWeight: 'bold', color: '#4a5568', fontSize: 12 }}>OPERACIÓN / ACTIVIDAD</Text></View>
-                                        {meses.map((mes, idx) => (
-                                            <View key={idx} style={{ width: 50, padding: 15, alignItems: 'center', borderLeftWidth: 1, borderLeftColor: '#e2e8f0' }}>
-                                                <Text style={{ fontWeight: 'bold', fontSize: 10, color: '#4a5568' }}>{mes}</Text>
-                                            </View>
-                                        ))}
+                                        <View style={{ width: 300, padding: 15, flexDirection: 'row', alignItems: 'center' }}>
+                                            <TouchableOpacity onPress={() => setSelectedMesCronograma(null)} style={{ marginRight: 15, padding: 8, backgroundColor: '#3182ce', borderRadius: 8 }}>
+                                                <MaterialCommunityIcons name="view-dashboard" size={16} color="white" />
+                                            </TouchableOpacity>
+                                            <Text style={{ fontWeight: 'bold', color: '#1e293b', fontSize: 13 }}>{mesesNombres[selectedMesCronograma! - 1].toUpperCase()}</Text>
+                                        </View>
+                                        <View style={{ flexDirection: 'row' }}>
+                                            <TouchableOpacity onPress={() => setCronogramaSemanaOffset(v => v - 1)} style={{ width: 45, justifyContent: 'center', alignItems: 'center' }}><MaterialCommunityIcons name="chevron-left" size={30} color="#3182ce" /></TouchableOpacity>
+                                            {visibleDays.map((date, idx) => (
+                                                <View key={idx} style={{ width: 80, paddingVertical: 10, alignItems: 'center', borderLeftWidth: 1, borderLeftColor: '#e2e8f0' }}>
+                                                    <Text style={{ fontWeight: 'bold', fontSize: 11, color: '#3182ce' }}>{diasSemanaNombres[idx]}</Text>
+                                                    <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#1e293b' }}>{date.getDate()}</Text>
+                                                </View>
+                                            ))}
+                                            <TouchableOpacity onPress={() => setCronogramaSemanaOffset(v => v + 1)} style={{ width: 45, justifyContent: 'center', alignItems: 'center', borderLeftWidth: 1, borderLeftColor: '#e2e8f0' }}>
+                                                <MaterialCommunityIcons name="chevron-right" size={30} color="#3182ce" />
+                                            </TouchableOpacity>
+                                        </View>
                                     </View>
+
                                     {cronogramaActividades.map((act, index) => (
                                         <View key={act.id} style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#f1f5f9', backgroundColor: index % 2 === 0 ? 'white' : '#f8fafc' }}>
-                                            <View style={{ width: 300, padding: 10, flexDirection: 'row', alignItems: 'center' }}>
-                                                <Text style={{ flex: 1, fontSize: 12, color: '#2d3748' }}>{act.operacion}</Text>
-                                                <TouchableOpacity onPress={() => handleEditActividad(act)} style={{ padding: 4 }}><MaterialCommunityIcons name="pencil" size={16} color="#3182ce" /></TouchableOpacity>
-                                                <TouchableOpacity onPress={() => handleDeleteActividad(act.id)} style={{ padding: 4 }}><MaterialCommunityIcons name="trash-can" size={16} color="#e53e3e" /></TouchableOpacity>
+                                            <View style={{ width: 300, padding: 12, flexDirection: 'row', alignItems: 'center', borderRightWidth: 1, borderRightColor: '#e2e8f0' }}>
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={{ fontSize: 12, color: '#2d3748', fontWeight: 'bold' }}>{act.operacion}</Text>
+                                                    <View style={{ backgroundColor: (act.tipoMantenimiento || 'preventivo') === 'correctivo' ? '#ef444420' : (act.tipoMantenimiento || 'preventivo') === 'preventivo' ? '#3B82F620' : '#84cc1620', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, alignSelf: 'flex-start', marginTop: 4 }}>
+                                                        <Text style={{ fontSize: 9, fontWeight: 'bold', color: (act.tipoMantenimiento || 'preventivo') === 'correctivo' ? '#ef4444' : (act.tipoMantenimiento || 'preventivo') === 'preventivo' ? '#3B82F6' : '#84cc16' }}>{(act.tipoMantenimiento || 'preventivo').toUpperCase()}</Text>
+                                                    </View>
+                                                </View>
+                                                <TouchableOpacity onPress={() => handleEditActividad(act)} style={{ padding: 6 }}><MaterialCommunityIcons name="pencil-outline" size={18} color="#3182ce" /></TouchableOpacity>
+                                                <TouchableOpacity onPress={() => handleDeleteActividad(act.id)} style={{ padding: 6 }}><MaterialCommunityIcons name="trash-can-outline" size={18} color="#e53e3e" /></TouchableOpacity>
                                             </View>
-                                            {meses.map((_, mesIdx) => {
-                                                const mesNum = mesIdx + 1;
-                                                // Buscar siendo robustos con el nombre de la propiedad
-                                                const reg = cronogramaRegistros.find(r => 
-                                                    (r.actividadId === act.id || r.ActividadId === act.id) && 
-                                                    r.mes === mesNum
+
+                                            <View style={{ width: 45, backgroundColor: '#f8fafc', borderLeftWidth: 1, borderLeftColor: '#e2e8f0' }} />
+                                            {visibleDays.map((date, idx) => {
+                                                const m = date.getMonth() + 1;
+                                                const d = date.getDate();
+                                                const isCurrentMonth = m === selectedMesCronograma;
+                                                
+                                                if (!isCurrentMonth) {
+                                                    return <View key={idx} style={{ width: 80, height: 60, borderLeftWidth: 1, borderLeftColor: '#f1f5f9', backgroundColor: '#f8fafc' }} />;
+                                                }
+
+                                                const list = Array.isArray(cronogramaRegistros) ? cronogramaRegistros : [];
+                                                const reg = list.find(r => 
+                                                    Number(r.actividadId || r.ActividadId) === Number(act.id) && 
+                                                    Number(r.mes || r.Mes) === Number(m) && 
+                                                    Number(r.dia || r.Dia) === Number(d) && 
+                                                    Number(r.anio || r.Anio) === Number(selectedAnio)
                                                 );
                                                 const s = getStatusStyles(reg?.estado || 0);
+                                                const isPickerActive = statusPicker?.actId === act.id && statusPicker?.mes === m && statusPicker?.dia === d;
+
                                                 return (
-                                                    <TouchableOpacity 
-                                                        key={mesIdx}
-                                                        onPress={() => toggleCronogramaStatus(act.id, mesNum)}
-                                                        style={{ width: 50, height: 50, borderLeftWidth: 1, borderLeftColor: '#f1f5f9', backgroundColor: s.color, alignItems: 'center', justifyContent: 'center' }}
-                                                    >
-                                                        <Text style={{ color: (reg?.estado || 0) > 0 ? 'white' : '#cbd5e0', fontWeight: 'bold' }}>{s.text}</Text>
-                                                    </TouchableOpacity>
+                                                    <View key={idx} style={{ position: 'relative', zIndex: isPickerActive ? 10000 : 1 }}>
+                                                        <TouchableOpacity 
+                                                            onPress={() => setStatusPicker({ actId: act.id, mes: m, dia: d })}
+                                                            style={{ width: 80, height: 60, borderLeftWidth: 1, borderLeftColor: '#f1f5f9', backgroundColor: s.color, alignItems: 'center', justifyContent: 'center' }}
+                                                        >
+                                                            {s.icon ? (
+                                                                <MaterialCommunityIcons name={s.icon as any} size={24} color="white" />
+                                                            ) : (
+                                                                <Text style={{ color: '#cbd5e0', fontWeight: 'bold', fontSize: 14 }}>{s.text}</Text>
+                                                            )}
+                                                        </TouchableOpacity>
+
+                                                        {isPickerActive && (
+                                                            <View style={{ 
+                                                                position: 'absolute', top: -55, left: -40, width: 220, height: 50, 
+                                                                backgroundColor: '#1e293b', borderRadius: 25, flexDirection: 'row', 
+                                                                alignItems: 'center', justifyContent: 'space-around', zIndex: 10001,
+                                                                paddingHorizontal: 15, elevation: 20
+                                                            }}>
+                                                                {[1, 2, 3, 4, 5, 0].map(st => {
+                                                                    const pickStyle = getStatusStyles(st);
+                                                                    return (
+                                                                        <TouchableOpacity 
+                                                                            key={st} 
+                                                                            onPress={async () => { 
+                                                                                try {
+                                                                                    await toggleCronogramaStatus(act.id, m, d, st); 
+                                                                                    setStatusPicker(null); 
+                                                                                } catch (err) {
+                                                                                    Alert.alert("Error", "No se pudo actualizar el estado.");
+                                                                                }
+                                                                            }} 
+                                                                            style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: st === 0 ? '#4b5563' : pickStyle.color, alignItems: 'center', justifyContent: 'center' }}
+                                                                        >
+                                                                            <MaterialCommunityIcons name={(st === 0 ? 'close' : pickStyle.icon) as any} size={14} color="white" />
+                                                                        </TouchableOpacity>
+                                                                    );
+                                                                })}
+                                                            </View>
+                                                        )}
+                                                    </View>
                                                 );
                                             })}
+                                            <View style={{ width: 45, backgroundColor: '#f8fafc', borderLeftWidth: 1, borderLeftColor: '#e2e8f0' }} />
                                         </View>
                                     ))}
-                                    {/* Footer Añadir */}
-                                    <View style={{ flexDirection: 'row', padding: 12, backgroundColor: '#f8fafc', alignItems: 'center', gap: 10 }}>
-                                        <TextInput 
-                                            style={{ flex: 1, height: 35, backgroundColor: 'white', borderRadius: 5, borderWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 10, color: '#2d3748' }}
-                                            placeholder="Nueva actividad..."
-                                            value={newActividadNombre}
-                                            onChangeText={setNewActividadNombre}
-                                        />
-                                        <TouchableOpacity onPress={handleAddActividad} style={{ backgroundColor: '#3182ce', padding: 8, borderRadius: 5 }}><MaterialCommunityIcons name="check" size={20} color="white" /></TouchableOpacity>
+                                    <View style={{ padding: 15, backgroundColor: '#f8fafc', borderTopWidth: 1, borderTopColor: '#e2e8f0' }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                                            <TextInput 
+                                                style={{ flex: 1, height: 45, backgroundColor: 'white', borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 15, color: '#4a5568' }}
+                                                placeholder="Nombre de la nueva operación..."
+                                                value={newActividadNombre}
+                                                onChangeText={setNewActividadNombre}
+                                            />
+                                            <TouchableOpacity onPress={handleAddActividad} style={{ backgroundColor: '#3182ce', padding: 12, borderRadius: 10 }}><MaterialCommunityIcons name="plus" size={24} color="white" /></TouchableOpacity>
+                                        </View>
+                                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                                            {['correctivo', 'preventivo', 'limpieza', 'ajuste', 'calibracion'].map(t => (
+                                                <TouchableOpacity 
+                                                    key={t} 
+                                                    onPress={() => setNewActividadTipo(t)}
+                                                    style={[{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: '#e2e8f0' }, newActividadTipo === t && { backgroundColor: '#3182ce', borderColor: '#3182ce' }]}
+                                                >
+                                                    <Text style={{ fontSize: 10, fontWeight: 'bold', color: newActividadTipo === t ? 'white' : '#64748b' }}>{t.toUpperCase()}</Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </View>
                                     </View>
                                 </View>
                             </ScrollView>
                         </ScrollView>
                     </View>
-
-                    {/* COLUMNA DERECHA: PANEL DE RESUMEN (Estilo tu Imagen) */}
-                    <View style={{ flex: 1, backgroundColor: 'white', borderRadius: 12, padding: 0, overflow: 'hidden', elevation: 3 }}>
-                        <View style={{ backgroundColor: '#2d3748', padding: 12 }}><Text style={{ color: 'white', fontWeight: 'bold', textAlign: 'center' }}>RESUMEN DE ESTADOS</Text></View>
-                        
-                        <View style={{ flex: 1, padding: 10, gap: 8 }}>
-                            {[
-                                { label: 'EJECUTADO', key: 'E', color: '#84cc16', sigla: 'E' },
-                                { label: 'APLAZADO', key: 'A', color: '#eab308', sigla: 'A' },
-                                { label: 'NO EJECUTADO', key: 'NE', color: '#ef4444', sigla: 'NE' },
-                                { label: 'PROGRAMADO', key: 'P', color: '#f97316', sigla: 'P' },
-                                { label: 'INCOMPLETO', key: 'I', color: '#06b6d4', sigla: 'I' }
-                            ].map(item => (
-                                <View key={item.key} style={{ flexDirection: 'row', height: 50, borderRadius: 8, overflow: 'hidden', borderBottomWidth: 1, borderBottomColor: '#f1f5f9' }}>
-                                    <View style={{ width: 50, backgroundColor: item.color, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: 'white', fontWeight: 'bold' }}>{item.sigla}</Text></View>
-                                    <View style={{ flex: 1, paddingHorizontal: 10, justifyContent: 'center' }}><Text style={{ fontSize: 11, fontWeight: 'bold', color: '#4a5568' }}>{item.label}</Text></View>
-                                    <View style={{ width: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc' }}><Text style={{ fontWeight: 'bold', color: item.color }}>{counts[item.key as keyof typeof counts]}</Text></View>
-                                </View>
-                            ))}
-
-                            <View style={{ marginTop: 'auto', padding: 10, borderTopWidth: 2, borderTopColor: '#f1f5f9' }}>
-                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
-                                    <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#718096' }}>TOTAL ACTIVIDADES</Text>
-                                    <Text style={{ fontSize: 11, fontWeight: 'bold' }}>{cronogramaActividades.length}</Text>
-                                </View>
-                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
-                                    <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#718096' }}>CUMPLIMIENTO</Text>
-                                    <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#3182ce' }}>{cumplimiento}%</Text>
-                                </View>
-                                <View style={{ height: 10, backgroundColor: '#edf2f7', borderRadius: 5, overflow: 'hidden' }}>
-                                    <View style={{ width: `${cumplimiento}%`, height: '100%', backgroundColor: '#84cc16' }} />
-                                </View>
-                            </View>
+                    <View style={{ flex: 1, backgroundColor: 'white', borderRadius: 20, overflow: 'hidden', elevation: 4 }}>
+                        <View style={{ backgroundColor: '#1e293b', padding: 15 }}><Text style={{ color: 'white', fontWeight: 'bold', textAlign: 'center' }}>RESUMEN: {mesesSiglas[selectedMesCronograma! - 1]}</Text></View>
+                        <View style={{ flex: 1, padding: 15, gap: 10 }}>
+                            <View style={{ backgroundColor: '#ebf8ff', padding: 15, borderRadius: 15, alignItems: 'center' }}><Text style={{ fontSize: 24, fontWeight: 'bold', color: '#3182ce' }}>{currentMStats.comp}%</Text></View>
+                            {[1, 2, 3, 4, 5].map(st => {
+                                const stStyle = getStatusStyles(st);
+                                const count = currentMStats[stStyle.text as keyof typeof global] || 0;
+                                return (
+                                    <View key={st} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', borderRadius: 12, borderLeftWidth: 5, borderLeftColor: stStyle.color, height: 50 }}>
+                                        <View style={{ flex: 1, paddingHorizontal: 12 }}><Text style={{ fontSize: 11, fontWeight: 'bold', color: '#4b5563' }}>{stStyle.label}</Text></View>
+                                        <View style={{ paddingHorizontal: 15 }}><Text style={{ color: stStyle.color, fontWeight: 'bold', fontSize: 16 }}>{count}</Text></View>
+                                    </View>
+                                );
+                            })}
                         </View>
                     </View>
-
                 </View>
+            );
+        };
+
+        return (
+            <View style={{ flex: 1, backgroundColor: isDarkMode ? '#0f172a' : '#f8fafc' }}>
+                <View style={{ padding: 15, backgroundColor: isDarkMode ? '#1e293b' : '#1a202c', flexDirection: 'row', alignItems: 'center', gap: 15, elevation: 8 }}>
+                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
+                        {hojasVida.map(maq => (
+                            <TouchableOpacity key={maq.id} onPress={() => { setSelectedCronogramaMaq(maq); setSelectedMesCronograma(null); }} style={[{ paddingHorizontal: 18, paddingVertical: 10, borderRadius: 30, marginRight: 12, borderWidth: 1, borderColor: '#4b5563' }, selectedCronogramaMaq?.id === maq.id && { backgroundColor: '#3182ce', borderColor: '#3182ce' }]}>
+                                <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 15 }}>{maq.nombre}</Text>
+                            </TouchableOpacity>
+                        ))}
+                     </ScrollView>
+                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15, backgroundColor: '#2d3748', padding: 10, borderRadius: 15 }}>
+                        <TouchableOpacity onPress={() => setSelectedAnio(v => v - 1)}><MaterialCommunityIcons name="chevron-left" size={32} color="white" /></TouchableOpacity>
+                        <Text style={{ fontWeight: 'bold', fontSize: 20, color: 'white' }}>{selectedAnio}</Text>
+                        <TouchableOpacity onPress={() => setSelectedAnio(v => v + 1)}><MaterialCommunityIcons name="chevron-right" size={32} color="white" /></TouchableOpacity>
+                     </View>
+                </View>
+                {loadingCronograma ? (
+                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator size="large" color="#3182ce" /><Text style={{ marginTop: 15, color: '#64748b', fontSize: 16 }}>Actualizando cronograma...</Text></View>
+                ) : (
+                    <ScrollView style={{ flex: 1 }}>{!selectedMesCronograma ? renderDashboard() : renderMonthDetail()}</ScrollView>
+                )}
             </View>
         );
     };
@@ -1711,10 +1922,17 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                         return (
                                             <TouchableOpacity 
                                                 key={maq.id} 
-                                                onPress={() => setMantenimientoForm(prev => ({
-                                                    ...prev,
-                                                    hojaVidaId: isSelected ? 0 : maq.id!
-                                                }))}
+                                                onPress={() => {
+                                                    const newId = isSelected ? 0 : maq.id!;
+                                                    setMantenimientoForm(prev => ({
+                                                        ...prev,
+                                                        hojaVidaId: newId
+                                                    }));
+                                                    if (newId !== 0) {
+                                                        loadCronogramaData(newId, selectedAnio);
+                                                    }
+                                                    setSelectedActsForMantenimiento([]);
+                                                }}
                                                 style={[
                                                     styles.maqListOption, 
                                                     isSelected && { backgroundColor: '#3B82F6', borderColor: '#3B82F6' }
@@ -1742,12 +1960,44 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                 {['Correctivo', 'Preventivo', 'Limpieza', 'Ajuste', 'Calibración'].map(t => (
                                     <TouchableOpacity 
                                         key={t} 
-                                        onPress={() => setMantenimientoForm({...mantenimientoForm, tipo: t})}
+                                        onPress={() => {
+                                            setMantenimientoForm({...mantenimientoForm, tipo: t});
+                                            setSelectedActsForMantenimiento([]); // Reset al cambiar tipo
+                                        }}
                                         style={[styles.turnoBtn, { borderColor: colors.border, paddingHorizontal: 12, marginBottom: 8 }, mantenimientoForm.tipo === t && { backgroundColor: '#3B82F6', borderColor: '#3B82F6' }]}
                                     >
                                         <Text style={[styles.turnoText, { fontSize: 11, color: mantenimientoForm.tipo === t ? 'white' : colors.text }]}>{t}</Text>
                                     </TouchableOpacity>
                                 ))}
+                            </View>
+
+                            {/* Mostrar Actividades según el tipo seleccionado */}
+                            <Text style={[styles.label, { color: colors.text, marginTop: 15 }]}>Actividades de {mantenimientoForm.tipo} Programadas</Text>
+                            <View style={{ backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9', borderRadius: 10, padding: 10, marginBottom: 15 }}>
+                                {cronogramaActividades.filter(a => (a.tipoMantenimiento || 'preventivo').toLowerCase() === mantenimientoForm.tipo.toLowerCase()).length === 0 ? (
+                                    <Text style={{ fontSize: 11, color: colors.subText, fontStyle: 'italic' }}>No hay actividades de tipo {mantenimientoForm.tipo.toLowerCase()} definidas para esta máquina.</Text>
+                                ) : (
+                                    cronogramaActividades.filter(a => (a.tipoMantenimiento || 'preventivo').toLowerCase() === mantenimientoForm.tipo.toLowerCase()).map(act => {
+                                        const isChecked = selectedActsForMantenimiento.includes(act.id);
+                                        return (
+                                            <TouchableOpacity 
+                                                key={act.id} 
+                                                onPress={() => {
+                                                    if (isChecked) setSelectedActsForMantenimiento(prev => prev.filter(id => id !== act.id));
+                                                    else setSelectedActsForMantenimiento(prev => [...prev, act.id]);
+                                                }}
+                                                style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}
+                                            >
+                                                <MaterialCommunityIcons 
+                                                    name={isChecked ? "checkbox-marked" : "checkbox-blank-outline"} 
+                                                    size={22} 
+                                                    color={isChecked ? "#3B82F6" : colors.subText} 
+                                                />
+                                                <Text style={{ marginLeft: 10, fontSize: 12, color: colors.text, flex: 1 }}>{act.operacion}</Text>
+                                            </TouchableOpacity>
+                                        );
+                                    })
+                                )}
                             </View>
 
                             <Text style={[styles.label, { color: colors.text }]}>Tipo de Personal *</Text>
@@ -2122,6 +2372,54 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                     </TouchableOpacity>
                     <Text style={{ color: 'white', position: 'absolute', bottom: 40, fontWeight: 'bold' }}>Toca en cualquier lugar para cerrar</Text>
                 </TouchableOpacity>
+            </Modal>
+            
+            {/* Modal para Editar Actividades del Cronograma */}
+            <Modal visible={actModalVisible} animationType="fade" transparent>
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { backgroundColor: colors.background, maxWidth: 450 }]}>
+                        <View style={styles.modalHeader}>
+                            <Text style={[styles.modalTitle, { color: colors.text }]}>Editar Actividad</Text>
+                            <TouchableOpacity onPress={() => setActModalVisible(false)}>
+                                <MaterialCommunityIcons name="close" size={24} color={colors.text} />
+                            </TouchableOpacity>
+                        </View>
+                        <View style={{ padding: 20 }}>
+                            <Text style={[styles.label, { color: colors.text }]}>Nombre de la Operación / Actividad</Text>
+                            <TextInput 
+                                style={[styles.input, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', color: colors.text, borderColor: colors.border, marginBottom: 20 }]}
+                                value={editingAct?.operacion}
+                                onChangeText={(t) => setEditingAct({ ...editingAct, operacion: t })}
+                                placeholder="Ej: Limpiar rodillos"
+                                placeholderTextColor={colors.subText}
+                            />
+
+                            <Text style={[styles.label, { color: colors.text, marginBottom: 10 }]}>Tipo de Mantenimiento</Text>
+                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                                {['correctivo', 'preventivo', 'limpieza', 'ajuste', 'calibracion'].map(t => (
+                                    <TouchableOpacity 
+                                        key={t} 
+                                        onPress={() => setEditingAct({ ...editingAct, tipoMantenimiento: t })}
+                                        style={[
+                                            { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: colors.border }, 
+                                            editingAct?.tipoMantenimiento === t && { backgroundColor: (colors.primary || '#3B82F6'), borderColor: (colors.primary || '#3B82F6') }
+                                        ]}
+                                    >
+                                        <Text style={{ fontSize: 11, fontWeight: 'bold', color: editingAct?.tipoMantenimiento === t ? 'white' : colors.text }}>{t.toUpperCase()}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
+                            <TouchableOpacity 
+                                style={[styles.btnSave, { backgroundColor: (colors.primary || '#3B82F6'), marginTop: 30 }]} 
+                                onPress={handleSaveEditActividad}
+                            >
+                                <MaterialCommunityIcons name="check-circle-outline" size={20} color="white" style={{ marginRight: 8 }} />
+                                <Text style={styles.btnSaveText}>Actualizar Actividad</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
             </Modal>
         </View>
     );
