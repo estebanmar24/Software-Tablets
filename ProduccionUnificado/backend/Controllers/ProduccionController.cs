@@ -57,15 +57,54 @@ public class ProduccionController : ControllerBase
             .Select(u => new { u.Id, u.Nombre, u.Salario, u.Documento }) // Include Salario and Documento
             .ToListAsync();
 
+        var productos = await _context.Produccion_Productos.Where(p => p.Activo).ToListAsync();
+
         return Ok(new
         {
             rubros,
+            productos,
             proveedores,
             tiposHora,
             tiposRecargo,
             maquinas,
             usuarios
         });
+    }
+
+    // --- PRODUCTOS ---
+
+    [HttpGet("productos")]
+    public async Task<ActionResult> GetProductos()
+    {
+        return Ok(await _context.Produccion_Productos.Include(p => p.Rubro).OrderBy(p => p.Nombre).ToListAsync());
+    }
+
+    [HttpPost("productos")]
+    public async Task<ActionResult> CreateProducto(Produccion_Producto producto)
+    {
+        _context.Produccion_Productos.Add(producto);
+        await _context.SaveChangesAsync();
+        return Ok(producto);
+    }
+
+    [HttpPut("productos/{id}")]
+    public async Task<ActionResult> UpdateProducto(int id, Produccion_Producto producto)
+    {
+        if (id != producto.Id) return BadRequest();
+        _context.Entry(producto).State = EntityState.Modified;
+        await _context.SaveChangesAsync();
+        return Ok(producto);
+    }
+
+    [HttpDelete("productos/{id}")]
+    public async Task<ActionResult> DeleteProducto(int id)
+    {
+        var producto = await _context.Produccion_Productos.FindAsync(id);
+        if (producto == null) return NotFound();
+        
+        producto.Activo = false;
+        await _context.SaveChangesAsync();
+        return Ok();
     }
 
 

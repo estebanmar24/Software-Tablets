@@ -61,6 +61,7 @@ public class AppDbContext : DbContext
     public DbSet<Produccion_Cotizacion> Produccion_Cotizaciones { get; set; }
     public DbSet<Produccion_PresupuestoMensual> Produccion_PresupuestosMensuales { get; set; }
     public DbSet<Produccion_TipoRecargo> Produccion_TiposRecargo { get; set; }
+    public DbSet<Produccion_Producto> Produccion_Productos { get; set; }
 
     // Talleres y Despachos
     public DbSet<Talleres_Rubro> Talleres_Rubros { get; set; }
@@ -322,6 +323,13 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Produccion_TipoRecargo>().ToTable("Produccion_TiposRecargo");
         modelBuilder.Entity<Produccion_Gasto>().ToTable("Produccion_Gastos");
         modelBuilder.Entity<Produccion_PresupuestoMensual>().ToTable("Produccion_PresupuestosMensuales");
+        modelBuilder.Entity<Produccion_Producto>().ToTable("Produccion_Productos");
+        
+        modelBuilder.Entity<Produccion_Cotizacion>()
+            .HasOne(c => c.Producto)
+            .WithMany()
+            .HasForeignKey(c => c.ProductoId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<Produccion_PresupuestoMensual>()
             .HasOne(p => p.Rubro)
