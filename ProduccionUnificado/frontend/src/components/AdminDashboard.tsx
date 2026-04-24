@@ -98,6 +98,51 @@ function DashboardCard({ title, description, icon, onPress, color, disabled }: D
     );
 }
 
+/**
+ * COMPONENTE DE TARJETA DUAL PARA MANTENIMIENTO
+ */
+function MaintenanceDualCard({ disabled, onMaquinas, onGastos }: { disabled?: boolean, onMaquinas: () => void, onGastos: () => void }) {
+    const { colors, isDarkMode } = useTheme();
+
+    const cardBg = disabled
+        ? (isDarkMode ? '#1F2937' : '#E0E0E0')
+        : (isDarkMode ? '#111827' : '#f0f9ff'); // Un tono azulado muy suave
+
+    const iconContainerBg = isDarkMode ? '#020617' : '#FFFFFF';
+
+    return (
+        <View style={[
+            styles.cardContainer,
+            { backgroundColor: cardBg, borderColor: isDarkMode ? '#1F2937' : colors.border, borderWidth: isDarkMode ? 1 : 0 },
+            disabled && { opacity: 0.6 }
+        ]}>
+            <View style={[styles.cardIconContainer, { backgroundColor: iconContainerBg }]}>
+                <Text style={[styles.cardIcon, disabled && { opacity: 0.5 }]}>🔧</Text>
+            </View>
+            <Text style={[styles.cardTitle, { color: colors.text }]}>Mantenimiento</Text>
+            <Text style={[styles.cardDescription, { color: colors.subText }]}>Gestión técnica e integral de maquinaria y costos</Text>
+            
+            <View style={{ width: '100%', gap: 10, alignItems: 'center', marginBottom: 10 }}>
+                <TouchableOpacity
+                    style={[styles.cardButton, { backgroundColor: '#2C5282', marginBottom: 0, width: '90%' }, disabled && { backgroundColor: '#BDBDBD' }]}
+                    onPress={onMaquinas}
+                    disabled={disabled}
+                >
+                    <Text style={[styles.cardButtonText, { fontSize: 13 }]}>Hojas de Vida / Maquinaria</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                    style={[styles.cardButton, { backgroundColor: '#2B6CB0', marginBottom: 0, width: '90%' }, disabled && { backgroundColor: '#BDBDBD' }]}
+                    onPress={onGastos}
+                    disabled={disabled}
+                >
+                    <Text style={[styles.cardButtonText, { fontSize: 13 }]}>Gastos de Mantenimiento</Text>
+                </TouchableOpacity>
+            </View>
+        </View>
+    );
+}
+
 function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: AdminDashboardProps) {
     const { colors, isDarkMode } = useTheme();
     // Mode: 'MENU' | 'CONTENT' ...
@@ -805,15 +850,16 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
                         }}
                         disabled={!isProduccionEnabled}
                     />
-                    <DashboardCard
-                        title="Gastos de Mantenimiento"
-                        description="Gestión de gastos de mantenimiento, repuestos y maquinaria"
-                        icon="⚙️"
-                        onPress={() => {
+                    <MaintenanceDualCard 
+                        disabled={!isMantenimientoEnabled && !isMaquinasEnabled}
+                        onMaquinas={() => {
+                            setMode('MAQUINAS');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MAQUINAS');
+                        }}
+                        onGastos={() => {
                             setMode('MANTENIMIENTO_GASTOS');
                             if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MANTENIMIENTO_GASTOS');
                         }}
-                        disabled={!isMantenimientoEnabled}
                     />
                     <DashboardCard
                         title="Cuadro Presupuesto Talleres y Despachos"
@@ -909,16 +955,6 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
                         disabled={!isPlaneadorEnabled}
                     />
 
-                    <DashboardCard
-                        title="Máquinas"
-                        description="Gestión integral y Estado de Máquinas"
-                        icon="🤖"
-                        onPress={() => {
-                            setMode('MAQUINAS');
-                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MAQUINAS');
-                        }}
-                        disabled={!isMaquinasEnabled}
-                    />
                 </ScrollView>
 
             </View>
