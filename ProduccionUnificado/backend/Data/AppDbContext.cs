@@ -121,6 +121,20 @@ public class AppDbContext : DbContext
     public DbSet<HojaVidaFoto> HojaVidaFotos { get; set; }
     public DbSet<BitacoraMaquina> BitacorasMaquinas { get; set; }
 
+    // Mantenimiento Gastos
+    public DbSet<Mantenimiento_Rubro> Mantenimiento_Rubros { get; set; }
+    public DbSet<Mantenimiento_Proveedor> Mantenimiento_Proveedores { get; set; }
+    public DbSet<Mantenimiento_Cotizacion> Mantenimiento_Cotizaciones { get; set; }
+    public DbSet<Mantenimiento_Gasto> Mantenimiento_Gastos { get; set; }
+    public DbSet<Mantenimiento_PresupuestoMensual> Mantenimiento_PresupuestosMensuales { get; set; }
+    public DbSet<Mantenimiento_Producto> Mantenimiento_Productos { get; set; }
+    public DbSet<Mantenimiento_TipoHora> Mantenimiento_TiposHora { get; set; }
+    public DbSet<Mantenimiento_TipoRecargo> Mantenimiento_TiposRecargo { get; set; }
+
+    // Actas de Destrucción
+    public DbSet<ActaDestruccion> ActasDestruccion { get; set; }
+    public DbSet<ActaDestruccionProceso> ActaDestruccionProcesos { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -607,5 +621,59 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<CronogramaActividad>().ToTable("Cronogramas_Actividades");
         modelBuilder.Entity<CronogramaRegistro>().ToTable("Cronogramas_Registros");
+
+        // Mantenimiento Gastos
+        modelBuilder.Entity<Mantenimiento_Rubro>().ToTable("Mantenimiento_Rubros");
+        modelBuilder.Entity<Mantenimiento_Proveedor>().ToTable("Mantenimiento_Proveedores");
+        modelBuilder.Entity<Mantenimiento_Cotizacion>().ToTable("Mantenimiento_Cotizaciones");
+        modelBuilder.Entity<Mantenimiento_Gasto>().ToTable("Mantenimiento_Gastos");
+        modelBuilder.Entity<Mantenimiento_PresupuestoMensual>().ToTable("Mantenimiento_PresupuestosMensuales");
+        modelBuilder.Entity<Mantenimiento_Producto>().ToTable("Mantenimiento_Productos");
+        modelBuilder.Entity<Mantenimiento_TipoHora>().ToTable("Mantenimiento_TiposHora");
+        modelBuilder.Entity<Mantenimiento_TipoRecargo>().ToTable("Mantenimiento_TiposRecargo");
+
+        modelBuilder.Entity<Mantenimiento_Proveedor>()
+            .HasOne(p => p.Rubro)
+            .WithMany()
+            .HasForeignKey(p => p.RubroId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Mantenimiento_Cotizacion>()
+            .HasOne(c => c.Proveedor)
+            .WithMany(p => p.Cotizaciones)
+            .HasForeignKey(c => c.ProveedorId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Mantenimiento_Gasto>()
+            .HasOne(g => g.Rubro)
+            .WithMany()
+            .HasForeignKey(g => g.RubroId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Mantenimiento_Gasto>()
+            .HasOne(g => g.Proveedor)
+            .WithMany()
+            .HasForeignKey(g => g.ProveedorId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Mantenimiento_Gasto>()
+            .HasOne(g => g.Maquina)
+            .WithMany()
+            .HasForeignKey(g => g.MaquinaId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Mantenimiento_PresupuestoMensual>()
+            .HasIndex(p => new { p.RubroId, p.Anio, p.Mes })
+            .IsUnique();
+
+        // Actas de Destrucción
+        modelBuilder.Entity<ActaDestruccion>().ToTable("ActasDestruccion");
+        modelBuilder.Entity<ActaDestruccionProceso>().ToTable("ActaDestruccionProcesos");
+
+        modelBuilder.Entity<ActaDestruccionProceso>()
+            .HasOne(p => p.ActaDestruccion)
+            .WithMany(a => a.Procesos)
+            .HasForeignKey(p => p.ActaDestruccionId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

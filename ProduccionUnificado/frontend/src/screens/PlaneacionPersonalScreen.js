@@ -154,10 +154,10 @@ export default function PlaneacionPersonalScreen() {
             // Generate Excel using xlsx
             const XLSX = await import('xlsx');
 
-            // Calculate Valor Hora: Salario / 240
+            // Calculate Valor Hora: Salario / 220 (horas laborales mensuales legales Colombia)
             const excelData = horasExtras.map(item => {
                 const salario = item.personalSalario || 0;
-                const valorHora = salario > 0 ? salario / 240 : 0;
+                const valorHora = salario > 0 ? salario / 220 : 0;
                 const factor = item.tipoHoraFactor || item.tipoRecargoFactor || 1;
                 return {
                     'Fecha': new Date(item.fecha).toLocaleDateString('es-CO'),

@@ -61,6 +61,17 @@ namespace TiempoProcesos.API.Controllers
             }
 
             _context.MantenimientosHojaVida.Add(mant);
+            
+            // Si el mantenimiento resuelve un ticket, marcarlo como resuelto
+            if (mant.TicketId.HasValue && mant.TicketId > 0)
+            {
+                var ticket = await _context.BitacorasMaquinas.FindAsync(mant.TicketId.Value);
+                if (ticket != null)
+                {
+                    ticket.Resuelto = true;
+                }
+            }
+
             await _context.SaveChangesAsync();
             return Ok(mant);
         }
@@ -90,6 +101,18 @@ namespace TiempoProcesos.API.Controllers
             }
 
             await _context.SaveChangesAsync();
+
+            // Si al editar se asoció un ticket, marcarlo como resuelto
+            if (mant.TicketId.HasValue && mant.TicketId > 0)
+            {
+                var ticket = await _context.BitacorasMaquinas.FindAsync(mant.TicketId.Value);
+                if (ticket != null)
+                {
+                    ticket.Resuelto = true;
+                    await _context.SaveChangesAsync();
+                }
+            }
+
             return NoContent();
         }
 

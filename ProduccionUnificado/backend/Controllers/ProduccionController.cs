@@ -988,7 +988,7 @@ public class ProduccionController : ControllerBase
                 if (gasto.UsuarioId == null) return BadRequest("Usuario es requerido");
                 if (!isRecargo && gasto.TipoHoraId == null) return BadRequest("Tipo de Hora es requerido");
                 if (isRecargo && gasto.TipoRecargoId == null) return BadRequest("Tipo de Recargo es requerido");
-                if (gasto.CantidadHoras == null || gasto.CantidadHoras <= 0) return BadRequest("Cantidad de Horas invalidas");
+                if (gasto.CantidadHoras == null) return BadRequest("Cantidad de Horas invalidas");
 
                 // Server-side calculation to ensure integrity
                 var usuario = await _context.Usuarios.FindAsync(gasto.UsuarioId);
@@ -1005,7 +1005,7 @@ public class ProduccionController : ControllerBase
                     factor = tipoHora?.Factor ?? 0;
                 }
 
-                if (usuario == null || factor <= 0) return BadRequest("Referencia no encontrada o factor inválido");
+                if (usuario == null) return BadRequest("Usuario no encontrado");
 
                 // Formula: (Salario / 220) * Factor * Horas
                 decimal hourlyRate = usuario.Salario / 220m;
@@ -1346,7 +1346,10 @@ public class ProduccionController : ControllerBase
                 
                 // REVERTED: Use TotalHoras to prorate Meta100 for general dashboard
                 // Meta100 = (TotalHoras - Descansos) * (Meta100PorcientoBase / 8)
-                decimal totalHorasOp = filteredGroup.Sum(p => p.TotalHoras - p.HorasDescanso);
+                // EXCLUDE DAYS WITH NO PRODUCTION (Repairs, etc.)
+                decimal totalHorasOp = filteredGroup
+                    .Where(p => (p.Cambios * tirosReferencia) + (int)Math.Round(p.RendimientoFinal) > 0)
+                    .Sum(p => p.TotalHoras - p.HorasDescanso);
                 decimal metaPorHora = (decimal)meta100PorcientoBase / 8;
                 decimal meta100 = totalHorasOp * metaPorHora;
 
@@ -1426,7 +1429,10 @@ public class ProduccionController : ControllerBase
                 
                 // REVERTED: Use TotalHoras to prorate Meta100 for general dashboard
                 // Meta100 = (TotalHoras - Descansos) * (Meta100PorcientoBase / 8)
-                decimal totalHorasMaq = filteredGroup.Sum(p => p.TotalHoras - p.HorasDescanso);
+                // EXCLUDE DAYS WITH NO PRODUCTION (Repairs, etc.)
+                decimal totalHorasMaq = filteredGroup
+                    .Where(p => (p.Cambios * tirosReferencia) + (int)Math.Round(p.RendimientoFinal) > 0)
+                    .Sum(p => p.TotalHoras - p.HorasDescanso);
                 decimal metaPorHora = (decimal)meta100PorcientoBase / 8;
                 decimal meta100 = totalHorasMaq * metaPorHora;
 
@@ -1983,15 +1989,18 @@ public class ProduccionController : ControllerBase
             string formula = "";
 
             var prodDia = produccion.Where(p => p.Fecha.Date == day).ToList();
-            // AJUSTE: Sum both normal hours and dead time for total hours, excluding breaks (Descansos)
-            decimal horas = prodDia.Sum(p => p.TotalHoras - p.HorasDescanso);
-            
             // Equivalence Data
             int cambios = prodDia.Sum(p => p.Cambios);
             // FIX: Use RendimientoFinal (decimal) to avoid truncation issues (same as GetResumen)
             decimal tirosDiariosDecimal = prodDia.Sum(p => p.RendimientoFinal);
             int tirosDiarios = (int)Math.Round(tirosDiariosDecimal);
             int tirosCambios = cambios * maquina.TirosReferencia;
+
+            // AJUSTE: Sum both normal hours and dead time for total hours, excluding breaks (Descansos)
+            // EXCLUDE DAYS WITH NO PRODUCTION (Repairs, etc.)
+            decimal horas = ((cambios * maquina.TirosReferencia) + (int)Math.Round(tirosDiariosDecimal) > 0)
+                ? prodDia.Sum(p => p.TotalHoras - p.HorasDescanso)
+                : 0;
 
             // Hourly Prorated Meta Logic
             // Meta = TotalHoras * (MetaBase / 8)

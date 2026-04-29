@@ -140,23 +140,38 @@ export default function DesperdicioScreen({ navigation }) {
 
         try {
             if (newRegistro.id) {
-                // EDIT MODE: update the single record (legacy flow)
-                const item = validItems[0];
+                // MODO EDICIÓN:
+                // 1. Actualizar el registro original con el primer ítem válido
+                const firstItem = validItems[0];
                 const body = {
                     id: newRegistro.id,
                     maquinaId: newRegistro.esTallerExterno ? null : parseInt(newRegistro.maquinaId),
                     usuarioId: newRegistro.esTallerExterno ? null : parseInt(newRegistro.usuarioId),
                     esTallerExterno: newRegistro.esTallerExterno,
-                    ordenProduccion: item.ordenProduccion,
-                    codigoDesperdicioId: item.codigoDesperdicioId ? parseInt(item.codigoDesperdicioId) : null,
-                    cantidad: parseFloat(item.cantidad),
+                    ordenProduccion: firstItem.ordenProduccion,
+                    codigoDesperdicioId: firstItem.codigoDesperdicioId ? parseInt(firstItem.codigoDesperdicioId) : null,
+                    cantidad: parseFloat(firstItem.cantidad),
                     fecha: newRegistro.fecha.toISOString(),
-                    nota: item.nota
+                    nota: firstItem.nota
                 };
-                const res = await api.put(`desperdicio/${newRegistro.id}`, body);
-                if (res.status !== 200 && res.status !== 204) {
-                    Alert.alert('Error', `No se pudo actualizar`);
-                    return;
+                await api.put(`desperdicio/${newRegistro.id}`, body);
+
+                // 2. Si hay más ítems, crearlos como registros nuevos
+                if (validItems.length > 1) {
+                    for (let i = 1; i < validItems.length; i++) {
+                        const item = validItems[i];
+                        const newBody = {
+                            maquinaId: newRegistro.esTallerExterno ? null : parseInt(newRegistro.maquinaId),
+                            usuarioId: newRegistro.esTallerExterno ? null : parseInt(newRegistro.usuarioId),
+                            esTallerExterno: newRegistro.esTallerExterno,
+                            ordenProduccion: item.ordenProduccion,
+                            codigoDesperdicioId: item.codigoDesperdicioId ? parseInt(item.codigoDesperdicioId) : null,
+                            cantidad: parseFloat(item.cantidad),
+                            fecha: newRegistro.fecha.toISOString(),
+                            nota: item.nota
+                        };
+                        await api.post(`desperdicio`, newBody);
+                    }
                 }
             } else {
                 // CREATE MODE: post each valid item as a separate record
@@ -990,18 +1005,16 @@ export default function DesperdicioScreen({ navigation }) {
                                 </View>
                             ))}
 
-                            {/* Botón Agregar nuevo código (solo en modo creación) */}
-                            {!newRegistro.id && (
-                                <TouchableOpacity
-                                    style={{
-                                        borderWidth: 2, borderColor: '#2ecc71', borderStyle: 'dashed',
-                                        borderRadius: 8, padding: 10, alignItems: 'center', marginBottom: 4
-                                    }}
-                                    onPress={() => setCodigoItems(prev => [...prev, { ...emptyCodigoItem }])}
-                                >
-                                    <Text style={{ color: '#27ae60', fontWeight: 'bold', fontSize: 14 }}>＋ Agregar nuevo código</Text>
-                                </TouchableOpacity>
-                            )}
+                            {/* Botón Agregar nuevo código */}
+                            <TouchableOpacity
+                                style={{
+                                    borderWidth: 2, borderColor: '#2ecc71', borderStyle: 'dashed',
+                                    borderRadius: 8, padding: 10, alignItems: 'center', marginBottom: 4
+                                }}
+                                onPress={() => setCodigoItems(prev => [...prev, { ...emptyCodigoItem }])}
+                            >
+                                <Text style={{ color: '#27ae60', fontWeight: 'bold', fontSize: 14 }}>＋ Agregar nuevo código</Text>
+                            </TouchableOpacity>
                         </ScrollView>
 
                         {/* ── FOOTER FIJO ── */}

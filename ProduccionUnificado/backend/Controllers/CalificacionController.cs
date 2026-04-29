@@ -82,7 +82,10 @@ public class CalificacionController : ControllerBase
                     
                     // REVERTED: Use TotalHoras to prorate Meta100 (Global Logic)
                     // EXCLUDE RESTS: (TotalHoras - HorasDescanso)
-                    decimal totalHorasMaq = grupoMaquina.Sum(p => p.TotalHoras - p.HorasDescanso);
+                    // EXCLUDE DAYS WITH NO PRODUCTION (Repairs, etc.)
+                    decimal totalHorasMaq = grupoMaquina
+                        .Where(p => (p.Cambios * tirosReferencia) + (int)Math.Round(p.RendimientoFinal) > 0)
+                        .Sum(p => p.TotalHoras - p.HorasDescanso);
                     decimal metaPorHora = (decimal)meta100PorcientoBase / 8;
                     decimal meta100 = totalHorasMaq * metaPorHora;
                     
@@ -233,7 +236,10 @@ public class CalificacionController : ControllerBase
                     
                      // REVERTED: Use TotalHoras to prorate Meta100 (Global Logic)
                      // EXCLUDE RESTS: (TotalHoras - HorasDescanso)
-                    decimal totalHorasMaq = grupoMaquina.Sum(p => p.TotalHoras - p.HorasDescanso);
+                     // EXCLUDE DAYS WITH NO PRODUCTION (Repairs, etc.)
+                    decimal totalHorasMaq = grupoMaquina
+                        .Where(p => (p.Cambios * tirosReferencia) + (int)Math.Round(p.RendimientoFinal) > 0)
+                        .Sum(p => p.TotalHoras - p.HorasDescanso);
                     decimal metaPorHora = (decimal)meta100PorcientoBase / 8;
                     decimal meta100 = totalHorasMaq * metaPorHora;
                     
@@ -361,7 +367,10 @@ public class CalificacionController : ControllerBase
                         
                         // REVERTED: Use TotalHoras to prorate Meta100 (Global Logic)
                         // EXCLUDE RESTS: (TotalHoras - HorasDescanso)
-                        decimal totalHorasMaq = grupoMaquina.Sum(p => p.TotalHoras - p.HorasDescanso);
+                        // EXCLUDE DAYS WITH NO PRODUCTION (Repairs, etc.)
+                        decimal totalHorasMaq = grupoMaquina
+                            .Where(p => (p.Cambios * tirosReferencia) + (int)Math.Round(p.RendimientoFinal) > 0)
+                            .Sum(p => p.TotalHoras - p.HorasDescanso);
                         decimal metaPorHora = (decimal)meta100PorcientoBase / 8;
                         decimal meta100 = totalHorasMaq * metaPorHora;
                         

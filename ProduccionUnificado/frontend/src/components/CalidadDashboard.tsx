@@ -5,8 +5,9 @@ import EncuestaCalidadProduccionView from './EncuestaCalidadProduccionView';
 import PlanAccionView from './PlanAccionView';
 import ConsolidadoNCView from './ConsolidadoNCView';
 import CalidadExternaView from './CalidadExternaView';
+import ActasDestruccionView from './ActasDestruccionView';
 
-type CalidadTab = 'encuestas' | 'produccion' | 'consolidadoNC' | 'planesAccion' | 'calidadExterna';
+type CalidadTab = 'encuestas' | 'produccion' | 'consolidadoNC' | 'planesAccion' | 'calidadExterna' | 'actasDestruccion';
 
 interface TabDef {
     key: CalidadTab;
@@ -20,6 +21,7 @@ const tabs: TabDef[] = [
     { key: 'consolidadoNC', label: 'Consolidado de NC', icon: '📋' },
     { key: 'planesAccion', label: 'Planes de Acción', icon: '🚀' },
     { key: 'calidadExterna', label: 'Calidad Externa', icon: '🏭' },
+    { key: 'actasDestruccion', label: 'Actas de Destrucción', icon: '📜' },
 ];
 
 interface CalidadDashboardProps {
@@ -51,6 +53,8 @@ export default function CalidadDashboard({ onTabChange, navigation, userArea, us
                 return <ConsolidadoNCView />;
             case 'calidadExterna':
                 return <CalidadExternaView />;
+            case 'actasDestruccion':
+                return <ActasDestruccionView />;
             default:
                 return null;
         }

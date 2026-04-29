@@ -59,7 +59,12 @@ public class RendimientoOperarioController : ControllerBase
                     var maquina = g.First().Maquina;
                     var tirosTotales = g.Sum(x => x.TirosDiarios);
                     var meta100 = maquina?.Meta100Porciento ?? maquina?.MetaRendimiento ?? 1;
-                    var diasTrabajados = g.Select(x => x.Fecha.Date).Distinct().Count();
+                    // EXCLUDE DAYS WITH NO PRODUCTION (Repairs, etc.)
+                    var diasTrabajados = g
+                        .Where(x => x.TirosDiarios > 0 || x.Cambios > 0 || Math.Round(x.RendimientoFinal) > 0)
+                        .Select(x => x.Fecha.Date)
+                        .Distinct()
+                        .Count();
                     var metaTotal = meta100 * diasTrabajados;
                     var porcentaje = metaTotal > 0 ? (decimal)tirosTotales / metaTotal * 100 : 0;
                     return new { tiros = tirosTotales, porcentaje };

@@ -24,7 +24,7 @@ import { Picker } from '@react-native-picker/picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { mantenimientoApi } from '../services/mantenimientoApi';
 import { ExpenseHistoryModal } from '../components/ExpenseHistoryModal';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme, lightColors } from '../contexts/ThemeContext';
 import { getFileServerUrl, getApiBaseUrl } from '../services/apiConfig';
 
 // TABS - Same structure as SST
@@ -66,10 +66,21 @@ const getBase64FromUrl = async (url) => {
 };
 
 // Festivos Colombia 2025-2026 (mismos que Talleres)
+const COLOMBIAN_HOLIDAYS = [
+    // 2025
+    '2025-01-01', '2025-01-06', '2025-03-24', '2025-04-17', '2025-04-18', '2025-05-01',
+    '2025-06-02', '2025-06-23', '2025-06-30', '2025-07-20', '2025-08-07', '2025-08-18',
+    '2025-10-13', '2025-11-03', '2025-11-17', '2025-12-08', '2025-12-25',
+    // 2026
+    '2026-01-01', '2026-01-12', '2026-03-23', '2026-04-02', '2026-04-03', '2026-05-01',
+    '2026-05-18', '2026-06-08', '2026-06-15', '2026-06-29', '2026-07-20', '2026-08-07',
+    '2026-08-17', '2026-10-12', '2026-11-02', '2026-11-16', '2026-12-08', '2026-12-25'
+];
 
 
 export default function MantenimientoGastosScreen({ initialTab = 'gastos' }) {
-    const { colors } = useTheme();
+    const { colors: _c, isDarkMode: _d } = useTheme(); const colors = lightColors; const isDarkMode = false;
+    const styles = getStyles(isDarkMode, colors);
     const [activeTab, setActiveTab] = useState(initialTab);
 
     useEffect(() => {
@@ -102,13 +113,15 @@ export default function MantenimientoGastosScreen({ initialTab = 'gastos' }) {
             {activeTab === 'rubros' && <RubrosTab />}
             {activeTab === 'productos' && <ProductosTab />}
             {activeTab === 'cotizaciones' && <CotizacionesTab />}
-            {activeTab === 'proveedores' && <ProveedoresTab />}
+            { activeTab === 'proveedores' && <ProveedoresTab />}
         </View>
     );
 }
 
 // ===================== GASTOS TAB =====================
 function GastosTab() {
+    const { colors: _c, isDarkMode: _d } = useTheme(); const colors = lightColors; const isDarkMode = false;
+    const styles = getStyles(isDarkMode, colors);
     const [loading, setLoading] = useState(true);
     const [serverUrl, setServerUrl] = useState('');
     const [apiBaseUrl, setApiBaseUrl] = useState('');
@@ -128,6 +141,9 @@ function GastosTab() {
     const [rubros, setRubros] = useState([]);
     const [proveedores, setProveedores] = useState([]);
     const [maquinas, setMaquinas] = useState([]);
+    const [usuarios, setUsuarios] = useState([]);
+    const [tiposHora, setTiposHora] = useState([]);
+    const [tiposRecargo, setTiposRecargo] = useState([]);
 
     const [gastos, setGastos] = useState([]);
     const [resumen, setResumen] = useState(null);
@@ -141,6 +157,7 @@ function GastosTab() {
     const [filterNumeroFactura, setFilterNumeroFactura] = useState('');
     const [filterPending, setFilterPending] = useState(false);
     const [filterCredit, setFilterCredit] = useState(false);
+    const [filterUsuarioId, setFilterUsuarioId] = useState('');
 
     // Filtered data for cascading dropdowns
     const [filteredProveedores, setFilteredProveedores] = useState([]);
@@ -155,6 +172,8 @@ function GastosTab() {
     const isLegalizingRef = useRef(false); // Ref for robust state tracking
     const [formData, setFormData] = useState({
         rubroId: '', proveedorId: '', maquinaId: '',
+        usuarioId: '', tipoHoraId: '', tipoRecargoId: '',
+        horaInicio: '', horaFin: '', cantidadHoras: '',
         precio: '', precioDisplay: '', fecha: new Date().toISOString().split('T')[0], nota: '',
         numeroFactura: '', facturaPdfUrl: '', archivoFactura: null, archivoNombre: '', numeroOP: '', esPendiente: false, esSolicitudCredito: false
     });
@@ -173,6 +192,9 @@ function GastosTab() {
             setRubros(data.rubros || []);
             setProveedores(data.proveedores || []);
             setMaquinas(data.maquinas || []);
+            setUsuarios(data.usuarios || []);
+            setTiposHora(data.tiposHora || []);
+            setTiposRecargo(data.tiposRecargo || []);
         } catch (error) {
             console.error('Error loading master data:', error);
         }
@@ -217,7 +239,128 @@ function GastosTab() {
         setFormData(prev => ({ ...prev, precio: numericValue, precioDisplay: formatted }));
     };
 
-    // Pick PDF file
+    // ========== SMART BREAKDOWN (Turno base desde horaInicio) ==========
+    const [breakdown, setBreakdown] = useState([]);
+
+    const calculateSmartBreakdown = useCallback(() => {
+        if (!formData.usuarioId || !formData.horaInicio || !formData.horaFin || !formData.fecha) {
+            setBreakdown([]);
+            return;
+        }
+        const worker = usuarios.find(u => u.id == formData.usuarioId);
+        if (!worker) { setBreakdown([]); return; }
+
+        const parseDate = (d) => {
+            if (!d) return new Date();
+            const cleanDate = d.trim();
+            if (cleanDate.includes('/')) {
+                const [day, month, year] = cleanDate.split('/');
+                return new Date(`${year}-${month}-${day}T12:00:00`);
+            }
+            return new Date(cleanDate + 'T12:00:00');
+        };
+
+        const formatISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const toMin = (t) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0); };
+
+        const startFull = toMin(formData.horaInicio);
+        let endFull = toMin(formData.horaFin);
+        if (endFull <= startFull) endFull += 24 * 60;
+
+        const startDate = parseDate(formData.fecha);
+        const breakdownItems = [];
+        const NIGHT_START = 19 * 60, NIGHT_END = 6 * 60;
+
+        const isSundayStart = startDate.getDay() === 0;
+        const isHolidayStart = COLOMBIAN_HOLIDAYS.includes(formatISO(startDate));
+        const isSpecialDayStart = isSundayStart || isHolidayStart;
+        const isSaturdayStart = startDate.getDay() === 6;
+
+        const baseShiftMinutes = isSpecialDayStart ? 0 : (isSaturdayStart ? 4 * 60 : 8 * 60);
+        const shiftEndMin = startFull + baseShiftMinutes;
+
+        const addBreakdown = (s, e, typeNameMatch, isHe, isSpecialDay) => {
+            if (e <= s) return;
+            const duration = (e - s) / 60;
+            const list = isHe ? tiposHora : tiposRecargo;
+            const search = typeNameMatch.toLowerCase();
+            const timeOfDay = search.includes('nocturn') ? 'nocturn' : 'diurn';
+            let tipo = list.find(t => {
+                const name = (t.nombre || '').toLowerCase();
+                const isSpecialType = name.includes('dominical') || name.includes('festivo');
+                return isSpecialDay ? (isSpecialType && name.includes(timeOfDay)) : (!isSpecialType && name.includes(timeOfDay));
+            });
+            if (!tipo && isSpecialDay) tipo = list.find(t => { const n = (t.nombre || '').toLowerCase(); return n.includes('dominical') || n.includes('festivo'); });
+            if (!tipo) tipo = list.find(t => (t.nombre || '').toLowerCase().includes(search));
+            if (tipo) {
+                const existing = breakdownItems.find(item => item.typeId === tipo.id && item.isHe === isHe);
+                if (existing) existing.hours += duration;
+                else breakdownItems.push({ type: tipo.nombre, typeId: tipo.id, hours: duration, isHe });
+            }
+        };
+
+        const cutPoints = new Set([startFull, endFull]);
+        if (shiftEndMin > startFull && shiftEndMin < endFull) cutPoints.add(shiftEndMin);
+        [NIGHT_END, NIGHT_START, 1440, NIGHT_END + 1440, NIGHT_START + 1440].forEach(boundary => {
+            if (boundary > startFull && boundary < endFull) cutPoints.add(boundary);
+        });
+        const sortedCuts = [...cutPoints].sort((a, b) => a - b);
+
+        for (let i = 0; i < sortedCuts.length - 1; i++) {
+            const s = sortedCuts[i];
+            const e = sortedCuts[i + 1];
+            const mid = (s + e) / 2;
+            const actualDate = new Date(startDate);
+            if (mid >= 1440) actualDate.setDate(actualDate.getDate() + 1);
+            const actualDateISO = formatISO(actualDate);
+            const isSpecialDay = actualDate.getDay() === 0 || COLOMBIAN_HOLIDAYS.includes(actualDateISO);
+            const isWithinShift = s < shiftEndMin;
+            const timeInDay = mid % 1440;
+            const isNight = timeInDay >= NIGHT_START || timeInDay < NIGHT_END;
+
+            if (isSpecialDay) {
+                addBreakdown(s, e, isNight ? 'Dominical Nocturna' : 'Dominical Diurna', true, true);
+            } else if (isWithinShift) {
+                if (isNight) addBreakdown(s, e, 'Recargo Nocturno', false, false);
+            } else {
+                if (isNight) addBreakdown(s, e, 'Extra Nocturna', true, false);
+                else addBreakdown(s, e, 'Extra Diurna', true, false);
+            }
+        }
+
+        const formatHours = (h) => {
+            const totalMin = Math.round(Math.abs(h) * 60);
+            const hh = Math.floor(totalMin / 60);
+            const mm = totalMin % 60;
+            return `${h < 0 ? '-' : ''}${hh}:${mm.toString().padStart(2, '0')}`;
+        };
+
+        const totalDurationMin = endFull - startFull;
+        if (totalDurationMin >= 6 * 60) {
+            const extraItem = breakdownItems.find(item => item.isHe);
+            if (extraItem && extraItem.hours > 1) extraItem.hours -= 1.0;
+            else {
+                const recargoItem = breakdownItems.find(item => !item.isHe);
+                if (recargoItem) recargoItem.hours = Math.max(0, recargoItem.hours - 1.0);
+            }
+            breakdownItems.push({ type: '- COMIDA (Descuento)', typeId: 0, hours: -1.0, isHe: false, isLunch: true });
+        }
+
+        setBreakdown(breakdownItems.map(item => ({ ...item, formattedHours: formatHours(item.hours) })));
+
+        let totalCost = 0;
+        const valorHoraBase = (parseFloat(worker.salario) || 0) / 220;
+        breakdownItems.filter(item => !item.isLunch).forEach(item => {
+            const tipo = (item.isHe ? tiposHora : tiposRecargo).find(t => t.id == item.typeId);
+            if (tipo) totalCost += valorHoraBase * (parseFloat(tipo.factor) || 1.0) * item.hours;
+        });
+        setFormData(prev => ({ ...prev, precio: Math.round(totalCost).toString() }));
+
+    }, [formData.usuarioId, formData.horaInicio, formData.horaFin, formData.fecha, usuarios, tiposHora, tiposRecargo]);
+
+    useEffect(() => {
+        calculateSmartBreakdown();
+    }, [formData.horaInicio, formData.horaFin, formData.usuarioId, formData.fecha]);
     const handlePickFile = async () => {
         try {
             const result = await DocumentPicker.getDocumentAsync({
@@ -332,7 +475,8 @@ function GastosTab() {
         setFormData({
             rubroId: '', proveedorId: '', maquinaId: '',
             precio: '', precioDisplay: '', fecha: new Date().toISOString().split('T')[0], nota: '',
-            numeroFactura: '', facturaPdfUrl: '', archivoFactura: null, archivoNombre: '', numeroOP: '', esPendiente: false, esSolicitudCredito: false
+            numeroFactura: '', facturaPdfUrl: '', archivoFactura: null, archivoNombre: '', numeroOP: '', esPendiente: false, esSolicitudCredito: false,
+            esOtraMaquina: false, otraMaquinaNombre: ''
         });
     };
 
@@ -374,8 +518,14 @@ function GastosTab() {
             archivoFactura: gasto.archivoFactura || null,
             archivoNombre: gasto.facturaPdfUrl ? 'Archivo adjunto' : '',
             numeroOP: gasto.numeroOP || '',
+            usuarioId: gasto.usuarioId?.toString() || '',
+            horaInicio: gasto.horaInicio || '',
+            horaFin: gasto.horaFin || '',
+            cantidadHoras: gasto.cantidadHoras?.toString() || '',
             esPendiente: false,
-            esSolicitudCredito: gasto.esSolicitudCredito || false
+            esSolicitudCredito: gasto.esSolicitudCredito || false,
+            esOtraMaquina: !!gasto.otraMaquinaNombre,
+            otraMaquinaNombre: gasto.otraMaquinaNombre || ''
         });
         setShowModal(true);
     };
@@ -397,8 +547,14 @@ function GastosTab() {
             archivoFactura: gasto.archivoFactura || null,
             archivoNombre: gasto.facturaPdfUrl ? 'Archivo adjunto' : '',
             numeroOP: gasto.numeroOP || '',
+            usuarioId: gasto.usuarioId?.toString() || '',
+            horaInicio: gasto.horaInicio || '',
+            horaFin: gasto.horaFin || '',
+            cantidadHoras: gasto.cantidadHoras?.toString() || '',
             esPendiente: gasto.esPendiente || false,
-            esSolicitudCredito: gasto.esSolicitudCredito || false
+            esSolicitudCredito: gasto.esSolicitudCredito || false,
+            esOtraMaquina: !!gasto.otraMaquinaNombre,
+            otraMaquinaNombre: gasto.otraMaquinaNombre || ''
         });
         setShowModal(true);
     };
@@ -408,26 +564,45 @@ function GastosTab() {
         const selectedRubro = rubros.find(r => r.id == formData.rubroId);
         const rubroName = selectedRubro?.nombre?.toLowerCase() || '';
         const isInsumos = rubroName.includes('insumo');
+        const isHorasExtras = rubroName.includes('horas extras') || rubroName.includes('hora extra');
+        const isRecargo = rubroName.includes('recargo');
         const isMaintenance = rubroName.includes('mantenimiento') || rubroName.includes('repuesto');
 
-        // Validation for OP number (required for Insumos)
-        if (isInsumos && !formData.numeroOP.trim()) {
-            Alert.alert('Error', 'Para Insumos, el Número de OP es obligatorio'); return;
+        // Validation for Horas Extras / Recargos
+        if ((isHorasExtras || isRecargo) && !formData.usuarioId) {
+            Alert.alert('Error', 'Seleccione un Operario'); return;
+        }
+        if ((isHorasExtras || isRecargo) && (!formData.horaInicio || !formData.horaFin)) {
+            Alert.alert('Error', 'Ingrese Hora Inicio y Hora Fin'); return;
+        }
+        if ((isHorasExtras || isRecargo) && breakdown.length === 0) {
+            Alert.alert('Error', 'No se detectaron horas extras/recargos en el intervalo ingresado'); return;
         }
 
-        // Validation for Maintenance/Spares: Machine is Mandatory
-        if (isMaintenance && !formData.maquinaId) {
-            Alert.alert('Error', 'Seleccione la Máquina (Obligatorio para Mantenimiento/Repuesto)'); return;
+        // Validation for OP number (required for Horas Extras, Recargos, and Insumos)
+        if ((isHorasExtras || isRecargo || isInsumos) && !formData.numeroOP.trim()) {
+            Alert.alert('Error', isHorasExtras || isRecargo ? 'Ingrese el Número de OP (Orden de Producción)' : 'Para Insumos, el Número de OP es obligatorio'); return;
         }
 
-        // Validación de factura y precio (Opcional si es pendiente)
-        if (!formData.esPendiente) {
-            // Validamos precio (debe ser mayor a 0 y no estar vacío)
-            if (!formData.precio || parseFloat(formData.precio) <= 0) {
-                Alert.alert('Error', 'Ingrese el precio'); return;
+        // Validation for Maintenance/Spares: Machine is Mandatory (either from list or 'Other')
+        if (isMaintenance) {
+            if (formData.esOtraMaquina && !formData.otraMaquinaNombre?.trim()) {
+                Alert.alert('Error', 'Ingrese el nombre de la otra máquina'); return;
             }
-            if (!formData.numeroFactura || !formData.numeroFactura.trim()) {
-                Alert.alert('Error', 'Número de Factura es obligatorio'); return;
+            if (!formData.esOtraMaquina && !formData.maquinaId) {
+                Alert.alert('Error', 'Seleccione la Máquina (Obligatorio para Mantenimiento/Repuesto)'); return;
+            }
+        }
+
+        // Validación de factura y precio (Opcional si es pendiente) para NO Horas extras
+        if (!isHorasExtras && !isRecargo) {
+            if (!formData.esPendiente) {
+                if (!formData.precio || parseFloat(formData.precio) <= 0) {
+                    Alert.alert('Error', 'Ingrese el precio'); return;
+                }
+                if (!formData.numeroFactura || !formData.numeroFactura.trim()) {
+                    Alert.alert('Error', 'Número de Factura es obligatorio'); return;
+                }
             }
         }
 
@@ -451,22 +626,20 @@ function GastosTab() {
                 }
             }
 
-            // Lógica estándar de un solo registro
             const gastoData = {
+                ...formData,
+                id: editItem ? editItem.id : 0,
                 rubroId: parseInt(formData.rubroId),
                 proveedorId: formData.proveedorId ? parseInt(formData.proveedorId) : null,
                 usuarioId: formData.usuarioId ? parseInt(formData.usuarioId) : null,
-                maquinaId: formData.maquinaId ? parseInt(formData.maquinaId) : null,
+                maquinaId: (!formData.esOtraMaquina && formData.maquinaId) ? parseInt(formData.maquinaId) : null,
+                otraMaquinaNombre: formData.esOtraMaquina ? formData.otraMaquinaNombre : null,
+                tipoHoraId: formData.tipoHoraId ? parseInt(formData.tipoHoraId) : null,
+                tipoRecargoId: formData.tipoRecargoId ? parseInt(formData.tipoRecargoId) : null,
                 precio: parseFloat(formData.precio || 0),
-                fecha: formData.fecha,
-                nota: formData.nota,
-                anio: parseInt(formData.fecha.split('-')[0]),
-                mes: parseInt(formData.fecha.split('-')[1]),
-                numeroFactura: formData.numeroFactura,
                 facturaPdfUrl: finalFacturaPdfUrl,
-                numeroOP: isInsumos ? formData.numeroOP : null,
-                esPendiente: formData.esPendiente || false,
-                esSolicitudCredito: formData.esSolicitudCredito || false
+                anio: parseInt(formData.fecha.split('-')[0]),
+                mes: parseInt(formData.fecha.split('-')[1])
             };
 
             // Quote Update Prompt Logic
@@ -488,16 +661,52 @@ function GastosTab() {
                 }
             }
 
-            if (editItem) {
-                await mantenimientoApi.updateGasto(editItem.id, { ...gastoData, id: editItem.id });
+            // Si hay breakdown (Horas Extras/Recargos con Hora Inicio/Fin), crear múltiples registros
+            if ((isHorasExtras || isRecargo) && breakdown.length > 0 && !editItem) {
+                const worker = usuarios.find(u => u.id == formData.usuarioId);
+                const valorHoraBase = (parseFloat(worker?.salario) || 0) / 220;
+
+                const rubroHE = rubros.find(r => r.nombre.toLowerCase().includes('horas extras') || r.nombre.toLowerCase().includes('hora extra'))?.id;
+                const rubroRecargo = rubros.find(r => r.nombre.toLowerCase().includes('recargo'))?.id;
+
+                const promises = breakdown.filter(item => !item.isLunch).map(item => {
+                    const list = item.isHe ? tiposHora : tiposRecargo;
+                    const tipo = list.find(t => t.id == item.typeId);
+                    const factor = parseFloat(tipo?.factor) || 1.0;
+                    const itemPrecio = Math.round(valorHoraBase * factor * item.hours);
+
+                    const record = {
+                        rubroId: item.isHe ? (rubroHE || parseInt(formData.rubroId)) : (rubroRecargo || parseInt(formData.rubroId)),
+                        proveedorId: null,
+                        usuarioId: parseInt(formData.usuarioId),
+                        maquinaId: formData.maquinaId ? parseInt(formData.maquinaId) : null,
+                        tipoHoraId: item.isHe ? parseInt(item.typeId) : null,
+                        tipoRecargoId: !item.isHe ? parseInt(item.typeId) : null,
+                        precio: itemPrecio,
+                        fecha: formData.fecha,
+                        nota: `Auto-generado (${item.type}): ${formData.nota || ''}`,
+                        cantidadHoras: parseFloat(item.hours.toFixed(2)),
+                        anio: parseInt(formData.fecha.split('-')[0]),
+                        mes: parseInt(formData.fecha.split('-')[1]),
+                        numeroFactura: null,
+                        facturaPdfUrl: null,
+                        numeroOP: formData.numeroOP || null,
+                        esPendiente: false
+                    };
+                    return mantenimientoApi.createGasto(record);
+                });
+                await Promise.all(promises);
             } else {
-                await mantenimientoApi.createGasto(gastoData);
+                if (editItem) await mantenimientoApi.updateGasto(editItem.id, gastoData);
+                else await mantenimientoApi.createGasto(gastoData);
             }
 
             Alert.alert('Éxito', editItem ? 'Gasto actualizado' : 'Gasto registrado');
             setShowModal(false); resetForm(); loadGastos();
-        } catch (error) { Alert.alert('Error', 'No se pudo guardar'); }
-        finally { setSaving(false); }
+        } catch (error) { 
+            console.error('Error saving gasto:', error);
+            Alert.alert('Error', 'No se pudo guardar'); 
+        } finally { setSaving(false); }
     };
 
     const handleDelete = async (id) => {
@@ -506,8 +715,11 @@ function GastosTab() {
         else { Alert.alert('Confirmar', '¿Eliminar este gasto?', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Eliminar', style: 'destructive', onPress: doDelete }]); }
     };
 
-    const selectedRubroName = rubros.find(r => r.id == formData.rubroId)?.nombre?.toLowerCase() || '';
+    const selectedRubro = rubros.find(r => r.id == formData.rubroId);
+    const selectedRubroName = (selectedRubro?.nombre || '').toLowerCase().trim();
     const isInsumos = selectedRubroName.includes('insumo');
+    const isHorasExtras = selectedRubroName.includes('horas extras') || selectedRubroName.includes('hora extra');
+    const isRecargo = selectedRubroName.includes('recargo');
     const isMaintenance = selectedRubroName.includes('mantenimiento') || selectedRubroName.includes('repuesto');
 
     console.log('DEBUG: rubroId:', formData.rubroId, 'foundRubro:', rubros.find(r => r.id == formData.rubroId));
@@ -528,7 +740,8 @@ function GastosTab() {
 
     // 2. Determinar qué filtros secundarios mostrar según el Rubro seleccionado
     const selectedFilterRubro = rubros.find(r => r.id.toString() === filterRubroId);
-    const showMachineFilter = selectedFilterRubro && ['mantenimiento', 'repuesto'].includes(selectedFilterRubro.nombre.toLowerCase());
+    const filterRubroName = (selectedFilterRubro?.nombre || '').toLowerCase().trim();
+    const showMachineFilter = filterRubroName.includes('mantenimiento') || filterRubroName.includes('repuesto');
 
     // 3. Obtener opciones para filtros secundarios (solo los que tienen datos)
 
@@ -819,6 +1032,7 @@ function GastosTab() {
                                     <View style={styles.gastoDetails}>
                                         {gasto.usuario && <Text style={styles.gastoDetail}>🏢 {gasto.usuario.nombre}</Text>}
                                         {gasto.maquina && <Text style={styles.gastoDetail}>⚙️ {gasto.maquina.nombre}</Text>}
+                                        {gasto.otraMaquinaNombre && <Text style={styles.gastoDetail}>⚙️ {gasto.otraMaquinaNombre} (Otra)</Text>}
                                         {gasto.proveedor && <Text style={styles.gastoDetail}>🏢 {gasto.proveedor.nombre}</Text>}
                                         <Text style={styles.gastoDetail}>📅 {formatDate(gasto.fecha)}</Text>
                                         {gasto.cantidadHoras ? (
@@ -957,45 +1171,118 @@ function GastosTab() {
 
                                     {isMaintenance && (
                                         <View style={{ marginBottom: 15 }}>
-                                            <Text style={styles.label}>Máquina *</Text>
-                                            <View style={styles.pickerContainer}>
-                                                <Picker
-                                                    selectedValue={formData.maquinaId}
-                                                    onValueChange={(v) => setFormData(p => ({ ...p, maquinaId: v }))}
+                                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                                                <Text style={styles.label}>{formData.esOtraMaquina ? 'Nombre de la Máquina *' : 'Máquina *'}</Text>
+                                                
+                                                <TouchableOpacity 
+                                                    style={{ flexDirection: 'row', alignItems: 'center' }}
+                                                    onPress={() => setFormData(p => ({ ...p, esOtraMaquina: !p.esOtraMaquina, maquinaId: !p.esOtraMaquina ? '' : p.maquinaId }))}
                                                 >
-                                                    <Picker.Item label="Seleccione una máquina..." value="" />
-                                                    {maquinas.map(m => (
-                                                        <Picker.Item key={m.id} label={m.nombre || m.Nombre} value={m.id?.toString()} />
+                                                    <View style={[styles.checkbox, { width: 16, height: 16, marginRight: 5 }, formData.esOtraMaquina && { backgroundColor: '#2563EB', borderColor: '#2563EB' }]}>
+                                                        {formData.esOtraMaquina && <Text style={[styles.checkboxCheck, { fontSize: 10 }]}>✓</Text>}
+                                                    </View>
+                                                    <Text style={{ fontSize: 12, color: '#4B5563' }}>¿Otra máquina?</Text>
+                                                </TouchableOpacity>
+                                            </View>
+
+                                            {formData.esOtraMaquina ? (
+                                                <TextInput
+                                                    style={styles.input}
+                                                    value={formData.otraMaquinaNombre}
+                                                    onChangeText={(t) => setFormData(p => ({ ...p, otraMaquinaNombre: t }))}
+                                                    placeholder="Escriba el nombre de la máquina..."
+                                                />
+                                            ) : (
+                                                <View style={styles.pickerContainer}>
+                                                    <Picker
+                                                        selectedValue={formData.maquinaId}
+                                                        onValueChange={(v) => setFormData(p => ({ ...p, maquinaId: v }))}
+                                                    >
+                                                        <Picker.Item label="Seleccione una máquina..." value="" />
+                                                        {maquinas.map(m => (
+                                                            <Picker.Item key={m.id} label={m.nombre || m.Nombre} value={m.id?.toString()} />
+                                                        ))}
+                                                    </Picker>
+                                                </View>
+                                            )}
+                                        </View>
+                                    )}
+
+                                    {(isHorasExtras || isRecargo) ? (
+                                        <View style={{ marginBottom: 15 }}>
+                                            <Text style={styles.label}>Personal de Planta *</Text>
+                                            <View style={styles.pickerContainer}>
+                                                <Picker selectedValue={formData.usuarioId} onValueChange={(v) => {
+                                                    setFormData(p => ({ ...p, usuarioId: v }));
+                                                }}>
+                                                    <Picker.Item label="Seleccione..." value="" />
+                                                    {usuarios.map(u => <Picker.Item key={u.id} label={`${u.nombre} (${u.documento || u.cedula || 'S/D'})`} value={u.id.toString()} />)}
+                                                </Picker>
+                                            </View>
+                                        </View>
+                                    ) : (
+                                        <View style={{ marginBottom: 15 }}>
+                                            <Text style={styles.label}>Proveedor {formData.esPendiente && !isLegalizing ? '(Opcional por ahora)' : ''}</Text>
+                                            <View style={[styles.pickerContainer, (!formData.rubroId || filteredProveedores.length === 0) && { backgroundColor: '#F3F4F6' }]}>
+                                                <Picker
+                                                    selectedValue={formData.proveedorId}
+                                                    onValueChange={(v) => setFormData(p => ({ ...p, proveedorId: v }))}
+                                                    enabled={!!formData.rubroId && filteredProveedores.length > 0}
+                                                >
+                                                    {!formData.rubroId ? (
+                                                        <Picker.Item label="Seleccione un rubro primero..." value="" />
+                                                    ) : filteredProveedores.length === 0 ? (
+                                                        <Picker.Item label="(No hay proveedores para este rubro)" value="" />
+                                                    ) : (
+                                                        <Picker.Item label="Seleccione..." value="" />
+                                                    )}
+                                                    {filteredProveedores.map(p => (
+                                                        <Picker.Item key={p.id} label={`${p.nombre}${p.precioCotizado ? ` - ${formatCurrency(p.precioCotizado)}` : ''}`} value={p.id.toString()} />
                                                     ))}
                                                 </Picker>
                                             </View>
                                         </View>
                                     )}
 
-                                    <View style={{ marginBottom: 15 }}>
-                                        <Text style={styles.label}>Proveedor {formData.esPendiente && !isLegalizing ? '(Opcional por ahora)' : ''}</Text>
-                                        <View style={[styles.pickerContainer, (!formData.rubroId || filteredProveedores.length === 0) && { backgroundColor: '#F3F4F6' }]}>
-                                            <Picker 
-                                                selectedValue={formData.proveedorId} 
-                                                onValueChange={(v) => setFormData(p => ({ ...p, proveedorId: v }))}
-                                                enabled={!!formData.rubroId && filteredProveedores.length > 0}
-                                            >
-                                                {!formData.rubroId ? (
-                                                    <Picker.Item label="Seleccione un rubro primero..." value="" />
-                                                ) : filteredProveedores.length === 0 ? (
-                                                    <Picker.Item label="(No hay proveedores para este rubro)" value="" />
-                                                ) : (
-                                                    <Picker.Item label="Seleccione..." value="" />
-                                                )}
-                                                {filteredProveedores.map(p => (
-                                                    <Picker.Item key={p.id} label={`${p.nombre}${p.precioCotizado ? ` - ${formatCurrency(p.precioCotizado)}` : ''}`} value={p.id.toString()} />
-                                                ))}
-                                            </Picker>
-                                        </View>
-                                    </View>
+                                    {/* Overtime Time Selection UI */}
+                                    {(isHorasExtras || isRecargo) && (
+                                        <>
+                                            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={styles.label}>Hora Inicio *</Text>
+                                                    <TextInput
+                                                        style={styles.input}
+                                                        value={formData.horaInicio}
+                                                        onChangeText={(t) => setFormData(p => ({ ...p, horaInicio: t }))}
+                                                        placeholder="HH:MM"
+                                                    />
+                                                </View>
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={styles.label}>Hora Fin *</Text>
+                                                    <TextInput
+                                                        style={styles.input}
+                                                        value={formData.horaFin}
+                                                        onChangeText={(t) => setFormData(p => ({ ...p, horaFin: t }))}
+                                                        placeholder="HH:MM"
+                                                    />
+                                                </View>
+                                            </View>
+
+                                            {breakdown.length > 0 && (
+                                                <View style={{ backgroundColor: '#F3F4F6', padding: 10, borderRadius: 8, marginBottom: 15 }}>
+                                                    <Text style={{ fontWeight: 'bold', marginBottom: 5, fontSize: 13 }}>Desglose de Horas:</Text>
+                                                    {breakdown.map((item, idx) => (
+                                                        <Text key={idx} style={{ fontSize: 13, color: '#4B5563', fontWeight: 'bold' }}>
+                                                            • {item.type}: {item.formattedHours || item.hours.toFixed(2)}
+                                                        </Text>
+                                                    ))}
+                                                </View>
+                                            )}
+                                        </>
+                                    )}
 
                                     {/* Checkbox de Pendiente - Hide when Legalizing */}
-                                    {!isLegalizing && (
+                                    {!isLegalizing && !isHorasExtras && !isRecargo && (
                                         <TouchableOpacity
                                             style={styles.checkboxContainer}
                                             onPress={() => setFormData(p => ({ ...p, esPendiente: !p.esPendiente }))}
@@ -1021,9 +1308,7 @@ function GastosTab() {
                                         </View>
                                     )}
 
-
-
-                                    {isInsumos && (
+                                    {(isHorasExtras || isRecargo || isInsumos) && (
                                         <View style={{ marginBottom: 10 }}>
                                             <Text style={styles.label}>Número de OP (Orden de Producción) *</Text>
                                             <TextInput
@@ -1035,7 +1320,8 @@ function GastosTab() {
                                         </View>
                                     )}
 
-                                    <View style={{ marginBottom: 10 }}>
+                                    {!isHorasExtras && !isRecargo && (
+                                        <View style={{ marginBottom: 10 }}>
                                             <Text style={styles.label}>Número de Factura *</Text>
                                             <TextInput
                                                 style={styles.input}
@@ -1226,7 +1512,9 @@ function GastosTab() {
 
 // ===================== PRESUPUESTO TAB =====================
 function GraficasTab() {
-    const { colors } = useTheme();
+    const { colors: _c, isDarkMode: _d } = useTheme(); const colors = lightColors; const isDarkMode = false;
+    const styles = getStyles(isDarkMode, colors);
+    const grafStyles = getGrafStyles(isDarkMode, colors);
     const [loading, setLoading] = useState(true);
     const [anio, setAnio] = useState(new Date().getFullYear());
     const [mesSeleccionado, setMesSeleccionado] = useState(''); // '' = anual
@@ -1633,13 +1921,13 @@ function GraficasTab() {
                             </View>
 
                             {/* FILTROS DE FECHA */}
-                            <View style={{ flexDirection: 'row', gap: 10, padding: 8, backgroundColor: '#F3F4F6', borderRadius: 8, marginBottom: 10 }}>
+                            <View style={{ flexDirection: 'row', gap: 10, padding: 8, backgroundColor: isDarkMode ? '#1e293b' : '#F3F4F6', borderRadius: 8, marginBottom: 10 }}>
                                 <View style={{ flex: 1 }}>
-                                    <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#666' }}>Desde:</Text>
+                                    <Text style={{ fontSize: 10, fontWeight: 'bold', color: isDarkMode ? '#94a3b8' : '#666' }}>Desde:</Text>
                                     <TextInput
-                                        style={{ backgroundColor: 'white', borderRadius: 4, paddingHorizontal: 5, height: 35, fontSize: 12, borderWidth: 1, borderColor: '#DDD' }}
+                                        style={{ backgroundColor: isDarkMode ? '#334155' : 'white', color: isDarkMode ? '#e2e8f0' : 'black', borderRadius: 4, paddingHorizontal: 5, height: 35, fontSize: 12, borderWidth: 1, borderColor: isDarkMode ? '#475569' : '#DDD' }}
                                         placeholder="DD/MM/AAAA"
-                                        placeholderTextColor="#999"
+                                        placeholderTextColor={isDarkMode ? '#94a3b8' : '#999'}
                                         value={filterStart}
                                         onChangeText={(t) => {
                                             if (t.length === 2 && filterStart.length === 1) t += '/';
@@ -1650,11 +1938,11 @@ function GraficasTab() {
                                     />
                                 </View>
                                 <View style={{ flex: 1 }}>
-                                    <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#666' }}>Hasta:</Text>
+                                    <Text style={{ fontSize: 10, fontWeight: 'bold', color: isDarkMode ? '#94a3b8' : '#666' }}>Hasta:</Text>
                                     <TextInput
-                                        style={{ backgroundColor: 'white', borderRadius: 4, paddingHorizontal: 5, height: 35, fontSize: 12, borderWidth: 1, borderColor: '#DDD' }}
+                                        style={{ backgroundColor: isDarkMode ? '#334155' : 'white', color: isDarkMode ? '#e2e8f0' : 'black', borderRadius: 4, paddingHorizontal: 5, height: 35, fontSize: 12, borderWidth: 1, borderColor: isDarkMode ? '#475569' : '#DDD' }}
                                         placeholder="DD/MM/AAAA"
-                                        placeholderTextColor="#999"
+                                        placeholderTextColor={isDarkMode ? '#94a3b8' : '#999'}
                                         value={filterEnd}
                                         onChangeText={(t) => {
                                             if (t.length === 2 && filterEnd.length === 1) t += '/';
@@ -1672,7 +1960,7 @@ function GraficasTab() {
                                 <ScrollView style={{ maxHeight: 400 }}>
                                     {displayedGastos.map(g => (
                                         <View key={g.id} style={{
-                                            backgroundColor: '#F9FAFB',
+                                            backgroundColor: isDarkMode ? '#1e293b' : '#F9FAFB',
                                             padding: 12,
                                             marginBottom: 8,
                                             borderRadius: 8,
@@ -1680,11 +1968,11 @@ function GraficasTab() {
                                             borderLeftColor: '#2563EB'
                                         }}>
                                             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                                                <Text style={{ fontWeight: 'bold', color: '#374151' }}>{new Date(g.fecha).toLocaleDateString()}</Text>
-                                                <Text style={{ fontWeight: 'bold', color: '#059669' }}>{new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(g.precio)}</Text>
+                                                <Text style={{ fontWeight: 'bold', color: isDarkMode ? '#e2e8f0' : '#374151' }}>{new Date(g.fecha).toLocaleDateString()}</Text>
+                                                <Text style={{ fontWeight: 'bold', color: isDarkMode ? '#34d399' : '#059669' }}>{new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(g.precio)}</Text>
                                             </View>
 
-                                            <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>
+                                            <Text style={{ fontSize: 13, color: isDarkMode ? '#94a3b8' : '#6B7280', marginTop: 4 }}>
                                                 {g.tipoHora?.nombre || g.tipoRecargo?.nombre || g.rubro?.nombre || 'Gasto General'}
                                             </Text>
 
@@ -1692,23 +1980,23 @@ function GraficasTab() {
                                             {g.usuario?.nombre && (
                                                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
                                                     <Text style={{ fontSize: 12 }}>👤 </Text>
-                                                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#4B5563' }}>{g.usuario.nombre}</Text>
+                                                    <Text style={{ fontSize: 12, fontWeight: '600', color: isDarkMode ? '#94a3b8' : '#4B5563' }}>{g.usuario.nombre}</Text>
                                                 </View>
                                             )}
                                             {g.proveedor?.nombre && (
                                                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
                                                     <Text style={{ fontSize: 12 }}>🏢 </Text>
-                                                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#4B5563' }}>{g.proveedor.nombre}</Text>
+                                                    <Text style={{ fontSize: 12, fontWeight: '600', color: isDarkMode ? '#94a3b8' : '#4B5563' }}>{g.proveedor.nombre}</Text>
                                                 </View>
                                             )}
                                             {g.maquina?.nombre && (
                                                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
                                                     <Text style={{ fontSize: 12 }}>⚙️ </Text>
-                                                    <Text style={{ fontSize: 12, color: '#4B5563' }}>{g.maquina.nombre}</Text>
+                                                    <Text style={{ fontSize: 12, color: isDarkMode ? '#94a3b8' : '#4B5563' }}>{g.maquina.nombre}</Text>
                                                 </View>
                                             )}
 
-                                            {g.nota && <Text style={{ fontSize: 12, fontStyle: 'italic', marginTop: 4, color: '#666' }}>"{g.nota}"</Text>}
+                                            {g.nota && <Text style={{ fontSize: 12, fontStyle: 'italic', marginTop: 4, color: isDarkMode ? '#64748b' : '#666' }}>"{g.nota}"</Text>}
 
                                             <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
                                                 {g.facturaPdfUrl && <Text style={{ fontSize: 11, color: '#2563EB', fontWeight: 'bold' }}>📄 Factura PDF</Text>}
@@ -1866,6 +2154,8 @@ function GraficasTab() {
 
 // ===================== RUBROS TAB =====================
 function RubrosTab() {
+    const { colors: _c, isDarkMode: _d } = useTheme(); const colors = lightColors; const isDarkMode = false;
+    const styles = getStyles(isDarkMode, colors);
     const [loading, setLoading] = useState(true);
     const [items, setItems] = useState([]);
     const [showModal, setShowModal] = useState(false);
@@ -1969,6 +2259,8 @@ function RubrosTab() {
 
 // ===================== PROVEEDORES TAB =====================
 function ProveedoresTab() {
+    const { colors: _c, isDarkMode: _d } = useTheme(); const colors = lightColors; const isDarkMode = false;
+    const styles = getStyles(isDarkMode, colors);
     const [loading, setLoading] = useState(true);
     const [items, setItems] = useState([]);
     const [rubros, setRubros] = useState([]);
@@ -2131,24 +2423,23 @@ function ProveedoresTab() {
 
 
 // ===================== STYLES - EXACT COPY FROM SST =====================
-const styles = StyleSheet.create({
+const getStyles = (isDarkMode, colors) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#F3F4F6',
+        backgroundColor: colors.background,
     },
     loadingContainer: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
     },
-    // TABS - EXACT SST STYLE with dark blue background
     tabsContainer: {
         flexDirection: 'row',
-        backgroundColor: '#1E3A5F', // Dark blue like SST/GH
+        backgroundColor: isDarkMode ? '#0f172a' : '#1E3A5F', 
         paddingHorizontal: 10,
         paddingVertical: 10,
         borderBottomWidth: 1,
-        borderBottomColor: '#152A45',
+        borderBottomColor: isDarkMode ? '#1e293b' : '#152A45',
     },
     tab: {
         flexDirection: 'row',
@@ -2157,10 +2448,10 @@ const styles = StyleSheet.create({
         paddingHorizontal: 12,
         marginRight: 8,
         borderRadius: 20,
-        backgroundColor: 'transparent', // Transparent by default
+        backgroundColor: 'transparent',
     },
     activeTab: {
-        backgroundColor: 'rgba(255,255,255,0.15)', // Slight white overlay when active
+        backgroundColor: 'rgba(255,255,255,0.15)',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.3)',
     },
@@ -2169,14 +2460,13 @@ const styles = StyleSheet.create({
         fontSize: 14,
     },
     tabText: {
-        color: 'rgba(255,255,255,0.7)', // Light text
+        color: 'rgba(255,255,255,0.7)',
         fontWeight: '500',
         fontSize: 13,
     },
     activeTabText: {
-        color: '#FFF', // Pure white when active
+        color: '#FFF',
     },
-    // CONTENT
     contentContainer: {
         flex: 1,
     },
@@ -2185,21 +2475,14 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         padding: 16,
-        backgroundColor: '#FFF',
+        backgroundColor: colors.card,
         borderBottomWidth: 1,
-        borderBottomColor: '#E5E7EB',
-    },
-    headerLogo: {
-        width: 140,
-        height: 70,
-        position: 'absolute',
-        top: 0,
-        right: 15,
+        borderBottomColor: colors.border,
     },
     title: {
         fontSize: 18,
         fontWeight: 'bold',
-        color: '#1F2937',
+        color: colors.text,
     },
     filters: {
         flexDirection: 'row',
@@ -2207,8 +2490,9 @@ const styles = StyleSheet.create({
     picker: {
         width: 110,
         height: 40,
+        color: colors.text,
+        backgroundColor: isDarkMode ? '#1e293b' : '#fff',
     },
-    // Nuevos estilos para filtros avanzados
     advancedFilters: {
         flexDirection: 'row',
         flexWrap: 'wrap',
@@ -2216,44 +2500,37 @@ const styles = StyleSheet.create({
         marginTop: 15,
         paddingTop: 10,
         borderTopWidth: 1,
-        borderTopColor: '#E5E7EB',
+        borderTopColor: colors.border,
         alignItems: 'center',
     },
     filterLabel: {
         fontWeight: 'bold',
-        color: '#4B5563',
+        color: colors.subText,
         marginRight: 5,
     },
     filterItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#fff',
+        backgroundColor: isDarkMode ? '#1e293b' : '#fff',
         borderRadius: 5,
         borderWidth: 1,
-        borderColor: '#D1D5DB',
+        borderColor: colors.border,
         overflow: 'hidden',
     },
     filterPicker: {
         height: 40,
         width: 180,
         borderWidth: 0,
-        backgroundColor: 'transparent',
+        backgroundColor: isDarkMode ? '#1e293b' : 'transparent',
+        color: colors.text,
     },
     filterInput: {
         height: 40,
         paddingHorizontal: 10,
         minWidth: 120,
-        backgroundColor: '#fff',
+        backgroundColor: isDarkMode ? '#1e293b' : '#fff',
+        color: colors.text,
     },
-    clearFilterBtn: {
-        padding: 5,
-        marginRight: 5,
-    },
-    clearFilterText: {
-        color: '#9CA3AF',
-        fontWeight: 'bold',
-    },
-    // SUMMARY - EXACT SST COLORS
     summaryContainer: {
         flexDirection: 'row',
         padding: 16,
@@ -2266,30 +2543,26 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     presupuestoCard: {
-        backgroundColor: '#DBEAFE', // Light blue - same as SST
+        backgroundColor: isDarkMode ? '#1e3a8a' : '#DBEAFE',
     },
     gastadoCard: {
-        backgroundColor: '#FEE2E2', // Light pink - same as SST
+        backgroundColor: isDarkMode ? '#7f1d1d' : '#FEE2E2',
     },
     restanteCard: {
-        backgroundColor: '#D1FAE5', // Light green - same as SST
-    },
-    excesoCard: {
-        backgroundColor: '#FEE2E2',
+        backgroundColor: isDarkMode ? '#064e3b' : '#D1FAE5',
     },
     summaryLabel: {
         fontSize: 12,
-        color: '#4B5563',
+        color: isDarkMode ? '#cbd5e1' : '#4B5563',
     },
     summaryValue: {
         fontSize: 16,
         fontWeight: 'bold',
-        color: '#1F2937',
+        color: isDarkMode ? '#f8fafc' : '#1F2937',
         marginTop: 4,
     },
-    // BUTTONS
     addButton: {
-        backgroundColor: '#2563EB',
+        backgroundColor: colors.primary,
         marginHorizontal: 16,
         marginBottom: 16,
         padding: 14,
@@ -2297,7 +2570,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     addButtonSmall: {
-        backgroundColor: '#2563EB',
+        backgroundColor: colors.primary,
         paddingHorizontal: 16,
         paddingVertical: 8,
         borderRadius: 6,
@@ -2306,383 +2579,172 @@ const styles = StyleSheet.create({
         color: '#FFF',
         fontWeight: 'bold',
     },
-    loading: {
-        marginTop: 40,
-    },
-    // LIST
     listContainer: {
         flex: 1,
         paddingHorizontal: 16,
     },
-    emptyState: {
-        padding: 40,
-        alignItems: 'center',
-    },
     emptyText: {
-        color: '#9CA3AF',
+        color: colors.subText,
         fontSize: 16,
+        textAlign: 'center',
+        marginTop: 20,
     },
-    // GASTO CARD - EXACT SST
     gastoCard: {
-        backgroundColor: '#FFF',
+        backgroundColor: colors.card,
         padding: 16,
         borderRadius: 8,
         marginBottom: 12,
         borderLeftWidth: 4,
-        borderLeftColor: '#2563EB',
-    },
-    gastoHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 8,
+        borderLeftColor: colors.primary,
+        elevation: 2,
     },
     gastoTipo: {
         fontSize: 16,
         fontWeight: 'bold',
-        color: '#1F2937',
+        color: colors.text,
         flex: 1,
     },
     gastoPrecio: {
         fontSize: 20,
         fontWeight: 'bold',
-        color: '#059669',
+        color: isDarkMode ? '#10b981' : '#059669',
     },
     gastoRubro: {
         fontSize: 14,
-        color: '#6B7280',
+        color: colors.subText,
         marginBottom: 10,
-    },
-    gastoDetails: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 16,
     },
     gastoDetail: {
         fontSize: 14,
-        color: '#4B5563',
+        color: colors.text,
     },
     gastoNota: {
         fontSize: 14,
-        color: '#6B7280',
+        color: colors.subText,
         fontStyle: 'italic',
         marginTop: 10,
-    },
-    cardActions: {
-        flexDirection: 'row',
-        justifyContent: 'flex-end',
-        alignItems: 'center',
-        marginTop: 14,
-        gap: 12,
     },
     editCardButton: {
         paddingHorizontal: 14,
         paddingVertical: 8,
-        backgroundColor: '#EBF5FF',
+        backgroundColor: isDarkMode ? '#1e293b' : '#EBF5FF',
         borderRadius: 6,
     },
     editCardButtonText: {
-        color: '#2563EB',
+        color: colors.primary,
         fontSize: 13,
         fontWeight: '500',
     },
-    historyButton: {
-        paddingHorizontal: 14,
-        paddingVertical: 8,
-        backgroundColor: '#F3F4F6',
-        borderRadius: 6,
-    },
-    historyButtonText: {
-        color: '#4B5563',
-        fontSize: 13,
-        fontWeight: '500',
-    },
-    deleteButton: {
-        paddingHorizontal: 14,
-        paddingVertical: 8,
-    },
-    deleteButtonText: {
-        color: '#DC2626',
-        fontSize: 13,
-    },
-    // ITEM CARD
     itemCard: {
-        backgroundColor: '#FFF',
+        backgroundColor: colors.card,
         padding: 16,
         borderRadius: 8,
         marginBottom: 8,
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-    },
-    itemInfo: {
-        flex: 1,
+        elevation: 1,
     },
     itemName: {
         fontSize: 14,
         fontWeight: '500',
-        color: '#1F2937',
+        color: colors.text,
     },
-    itemParent: {
-        fontSize: 12,
-        color: '#6B7280',
-        marginTop: 2,
-    },
-    itemActions: {
-        flexDirection: 'row',
-        gap: 12,
-    },
-    editButton: {
-        fontSize: 18,
-    },
-    deleteButtonIcon: {
-        fontSize: 18,
-    },
-    // MODAL
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.5)',
+        backgroundColor: 'rgba(0,0,0,0.7)',
         justifyContent: 'center',
         alignItems: 'center',
     },
     modalContent: {
-        backgroundColor: '#FFF',
+        backgroundColor: colors.card,
         borderRadius: 12,
         padding: 20,
-        width: '90%',
-        maxWidth: 500,
+        width: '95%',
+        maxWidth: 600,
         maxHeight: '90%',
+        borderWidth: 1,
+        borderColor: colors.border,
     },
     modalContentSmall: {
-        backgroundColor: '#FFF',
+        backgroundColor: colors.card,
         borderRadius: 12,
         padding: 20,
         width: '90%',
         maxWidth: 400,
+        borderWidth: 1,
+        borderColor: colors.border,
     },
     modalTitle: {
         fontSize: 20,
         fontWeight: 'bold',
-        color: '#1F2937',
+        color: colors.text,
         marginBottom: 16,
-    },
-    formContainer: {
-        maxHeight: 400,
     },
     label: {
         fontSize: 14,
         fontWeight: '500',
-        color: '#374151',
+        color: colors.text,
         marginBottom: 4,
         marginTop: 12,
     },
     pickerContainer: {
         borderWidth: 1,
-        borderColor: '#D1D5DB',
+        borderColor: colors.border,
         borderRadius: 8,
-        backgroundColor: '#F9FAFB',
+        backgroundColor: isDarkMode ? '#1e293b' : '#F9FAFB',
+        overflow: 'hidden',
     },
     input: {
         borderWidth: 1,
-        borderColor: '#D1D5DB',
+        borderColor: colors.border,
         borderRadius: 8,
         padding: 12,
-        backgroundColor: '#F9FAFB',
+        backgroundColor: isDarkMode ? '#1e293b' : '#F9FAFB',
+        color: colors.text,
     },
     inputDisabled: {
-        backgroundColor: '#E5E7EB',
-        color: '#9CA3AF',
-    },
-    textArea: {
-        height: 80,
-        textAlignVertical: 'top',
-    },
-    modalActions: {
-        flexDirection: 'row',
-        justifyContent: 'flex-end',
-        gap: 12,
-        marginTop: 20,
+        backgroundColor: isDarkMode ? '#0f172a' : '#E5E7EB',
+        color: colors.subText,
     },
     cancelButton: {
         paddingHorizontal: 20,
         paddingVertical: 12,
         borderRadius: 8,
         borderWidth: 1,
-        borderColor: '#D1D5DB',
+        borderColor: colors.border,
     },
     cancelButtonText: {
-        color: '#4B5563',
+        color: colors.subText,
     },
     submitButton: {
-        backgroundColor: '#2563EB',
+        backgroundColor: colors.primary,
         paddingHorizontal: 20,
         paddingVertical: 12,
         borderRadius: 8,
     },
-    submitButtonDisabled: {
-        backgroundColor: '#9CA3AF',
-    },
-    submitButtonText: {
-        color: '#FFF',
-        fontWeight: 'bold',
-    },
-    // PRESUPUESTO TAB STYLES
-    presupuestoNote: {
-        backgroundColor: '#EBF5FF',
-        padding: 12,
-        borderRadius: 8,
-        marginBottom: 16,
-    },
-    noteText: {
-        color: '#1E40AF',
-        fontSize: 13,
-    },
-    presupuestoRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        backgroundColor: '#FFF',
-        padding: 16,
-        borderRadius: 8,
-        marginBottom: 8,
-    },
-    presupuestoLabel: {
-        fontSize: 14,
-        fontWeight: '500',
-        color: '#1F2937',
-        flex: 1,
-    },
-    presupuestoInputContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: '#D1D5DB',
-        borderRadius: 8,
-        backgroundColor: '#F9FAFB',
-        paddingHorizontal: 12,
-    },
-    currencyPrefix: {
-        fontSize: 14,
-        color: '#6B7280',
-        marginRight: 4,
-    },
-    presupuestoInput: {
-        width: 120,
-        padding: 10,
-        fontSize: 14,
-        textAlign: 'right',
-    },
-    // Budget info box styles
-    budgetInfoBox: {
-        padding: 12,
-        borderRadius: 8,
-        marginBottom: 16,
-        borderWidth: 1,
-    },
-    budgetInfoBoxOk: {
-        backgroundColor: '#D1FAE5',
-        borderColor: '#10B981',
-    },
-    budgetInfoBoxWarning: {
-        backgroundColor: '#FEF3C7',
-        borderColor: '#F59E0B',
-    },
-    budgetInfoBoxNegative: {
-        backgroundColor: '#FEE2E2',
-        borderColor: '#EF4444',
-    },
-    budgetInfoTitle: {
-        fontSize: 14,
-        fontWeight: 'bold',
-        marginBottom: 8,
-        color: '#1F2937',
-    },
-    budgetInfoRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 4,
-    },
-    budgetInfoTotal: {
-        marginTop: 4,
-        paddingTop: 8,
-        borderTopWidth: 1,
-        borderTopColor: '#D1D5DB',
-    },
-    budgetInfoLabel: {
-        fontSize: 11,
-        color: '#6B7280',
-        textAlign: 'center',
-    },
-    budgetInfoValue: {
-        fontSize: 14,
-        fontWeight: 'bold',
-        color: '#1F2937',
-        textAlign: 'center',
-    },
-    budgetInfoLabelBold: {
-        fontSize: 14,
-        fontWeight: 'bold',
-        color: '#1F2937',
-    },
-    budgetInfoValueBold: {
-        fontSize: 14,
-        fontWeight: 'bold',
-        color: '#10B981',
-    },
-    budgetInfoNegative: {
-        color: '#EF4444',
-    },
-    // Budget container styles - SST style
     budgetContainer: {
-        backgroundColor: '#F0F9FF',
+        backgroundColor: isDarkMode ? '#1e293b' : '#F0F9FF',
         borderRadius: 8,
         padding: 12,
         marginBottom: 16,
         borderWidth: 1,
-        borderColor: '#BAE6FD',
-    },
-    budgetHeader: {
-        marginBottom: 12,
+        borderColor: isDarkMode ? '#334155' : '#BAE6FD',
     },
     budgetTitle: {
         fontSize: 14,
         fontWeight: 'bold',
-        color: '#0369A1',
+        color: isDarkMode ? '#38bdf8' : '#0369A1',
     },
-    budgetInfoItem: {
-        flex: 1,
-        padding: 10,
-        borderRadius: 8,
-        alignItems: 'center',
-        marginHorizontal: 4,
-    },
-    budgetWarning: {
-        marginTop: 8,
-        padding: 8,
-        backgroundColor: '#FEF3C7',
-        borderRadius: 4,
-        color: '#92400E',
-        fontSize: 12,
-        textAlign: 'center',
-    },
-    budgetNoData: {
-        marginTop: 8,
-        padding: 8,
-        backgroundColor: '#E0E7FF',
-        borderRadius: 4,
-        color: '#3730A3',
-        fontSize: 12,
-        textAlign: 'center',
-    },
-    // New Styles for Pending Expenses
     checkboxContainer: {
         flexDirection: 'row',
         alignItems: 'center',
         marginBottom: 15,
-        backgroundColor: '#FFF7ED',
+        backgroundColor: isDarkMode ? '#332101' : '#FFF7ED',
         padding: 10,
         borderRadius: 8,
         borderWidth: 1,
-        borderColor: '#FDBA74'
+        borderColor: isDarkMode ? '#92400e' : '#FDBA74'
     },
     checkbox: {
         width: 24,
@@ -2693,18 +2755,11 @@ const styles = StyleSheet.create({
         marginRight: 10,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'white'
-    },
-    checkboxChecked: {
-        backgroundColor: '#F97316',
-    },
-    checkboxCheck: {
-        color: 'white',
-        fontWeight: 'bold',
+        backgroundColor: isDarkMode ? '#1e293b' : 'white'
     },
     checkboxLabel: {
         fontSize: 14,
-        color: '#9A3412',
+        color: isDarkMode ? '#fdba74' : '#9A3412',
         fontWeight: 'bold',
     },
     pendingBadge: {
@@ -2727,7 +2782,7 @@ const styles = StyleSheet.create({
     gastoCardOverdue: {
         borderColor: '#EF4444',
         borderWidth: 1.5,
-        backgroundColor: '#FEF2F2',
+        backgroundColor: isDarkMode ? '#451a1a' : '#FEF2F2',
     },
     deadlineText: {
         fontSize: 11,
@@ -2742,52 +2797,142 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#E5E7EB',
+        backgroundColor: isDarkMode ? '#1e293b' : '#E5E7EB',
         paddingHorizontal: 12,
         borderRadius: 6,
         height: 40,
         borderWidth: 1,
-        borderColor: '#D1D5DB'
+        borderColor: isDarkMode ? '#334155' : '#D1D5DB'
     },
     checkboxFilterActive: {
         backgroundColor: '#F59E0B',
         borderColor: '#D97706'
-    }
+    },
+    excesoCard: {
+        backgroundColor: isDarkMode ? '#7f1d1d' : '#FEE2E2',
+    },
+    clearFilterBtn: {
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+    },
+    clearFilterText: {
+        color: isDarkMode ? '#94a3b8' : '#6B7280',
+        fontSize: 16,
+        fontWeight: 'bold',
+    },
+    gastoHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        marginBottom: 8,
+    },
+    gastoDetails: {
+        marginTop: 4,
+    },
+    cardActions: {
+        flexDirection: 'row',
+        gap: 8,
+        marginTop: 12,
+        borderTopWidth: 1,
+        borderTopColor: isDarkMode ? '#334155' : '#E5E7EB',
+        paddingTop: 10,
+    },
+    deleteButton: {
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        backgroundColor: isDarkMode ? '#3b1111' : '#FEF2F2',
+        borderRadius: 6,
+    },
+    deleteButtonText: {
+        color: '#EF4444',
+        fontSize: 13,
+        fontWeight: '500',
+    },
+    itemInfo: {
+        flex: 1,
+    },
+    itemSubDetail: {
+        fontSize: 12,
+        color: colors.subText,
+        marginTop: 2,
+    },
+    itemActions: {
+        flexDirection: 'row',
+        gap: 12,
+        alignItems: 'center',
+    },
+    editButton: {
+        fontSize: 18,
+    },
+    deleteButtonIcon: {
+        fontSize: 18,
+    },
+    checkboxChecked: {
+        backgroundColor: '#F97316',
+        borderColor: '#F97316',
+    },
+    checkboxCheck: {
+        color: '#FFF',
+        fontSize: 14,
+        fontWeight: 'bold',
+    },
+    budgetHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    textArea: {
+        height: 80,
+        textAlignVertical: 'top',
+    },
+    submitButtonDisabled: {
+        opacity: 0.6,
+    },
+    submitButtonText: {
+        color: '#FFF',
+        fontWeight: 'bold',
+    },
+    modalActions: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        gap: 10,
+        marginTop: 20,
+    },
 });
 
-// Graficas Styles (SST style)
-const grafStyles = StyleSheet.create({
+const getGrafStyles = (isDarkMode, colors) => StyleSheet.create({
     summaryCard: {
-        backgroundColor: '#F0F9FF',
+        backgroundColor: isDarkMode ? '#1e293b' : '#F0F9FF',
         borderRadius: 12,
         padding: 16,
         marginBottom: 16,
         borderWidth: 1,
-        borderColor: '#BAE6FD',
+        borderColor: isDarkMode ? '#334155' : '#BAE6FD',
         alignItems: 'center',
     },
     summaryTitle: {
         fontSize: 18,
         fontWeight: 'bold',
-        color: '#0369A1',
+        color: isDarkMode ? '#38bdf8' : '#0369A1',
     },
     summarySubtitle: {
         fontSize: 14,
-        color: '#6B7280',
+        color: colors.subText,
         marginTop: 4,
     },
     chartSection: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.card,
         borderRadius: 12,
         padding: 16,
         marginBottom: 16,
         borderWidth: 1,
-        borderColor: '#E5E7EB',
+        borderColor: colors.border,
     },
     sectionTitle: {
         fontSize: 16,
         fontWeight: 'bold',
-        color: '#1F2937',
+        color: colors.text,
         marginBottom: 12,
     },
     barRow: {
@@ -2798,12 +2943,12 @@ const grafStyles = StyleSheet.create({
     barLabel: {
         width: 100,
         fontSize: 12,
-        color: '#4B5563',
+        color: isDarkMode ? '#94a3b8' : '#4B5563',
     },
     barContainer: {
         flex: 1,
         height: 20,
-        backgroundColor: '#E5E7EB',
+        backgroundColor: isDarkMode ? '#334155' : '#E5E7EB',
         borderRadius: 4,
         marginHorizontal: 8,
         overflow: 'hidden',
@@ -2816,12 +2961,12 @@ const grafStyles = StyleSheet.create({
         width: 80,
         fontSize: 12,
         fontWeight: 'bold',
-        color: '#1F2937',
+        color: isDarkMode ? '#e2e8f0' : '#1F2937',
         textAlign: 'right',
     },
     tableHeader: {
         flexDirection: 'row',
-        backgroundColor: '#1E3A5F',
+        backgroundColor: isDarkMode ? '#1e3a5f' : '#1E3A5F',
         borderRadius: 4,
         paddingVertical: 8,
         marginBottom: 4,
@@ -2830,16 +2975,16 @@ const grafStyles = StyleSheet.create({
         flexDirection: 'row',
         paddingVertical: 8,
         borderBottomWidth: 1,
-        borderBottomColor: '#E5E7EB',
+        borderBottomColor: isDarkMode ? '#334155' : '#E5E7EB',
     },
     tableRowAlt: {
-        backgroundColor: '#F9FAFB',
+        backgroundColor: isDarkMode ? '#1e293b' : '#F9FAFB',
     },
     tableCell: {
         flex: 1,
         fontSize: 12,
         textAlign: 'center',
-        color: '#1F2937',
+        color: isDarkMode ? '#cbd5e1' : '#1F2937',
     },
     tableCellHeader: {
         color: '#FFFFFF',
@@ -2859,20 +3004,21 @@ const grafStyles = StyleSheet.create({
         padding: 16,
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#E5E7EB',
+        borderColor: isDarkMode ? '#334155' : '#E5E7EB',
     },
     cardLabel: {
         fontSize: 12,
-        color: '#6B7280',
+        color: isDarkMode ? '#94a3b8' : '#6B7280',
         marginBottom: 4,
     },
     cardValue: {
         fontSize: 20,
         fontWeight: 'bold',
+        color: colors.text,
     },
     progressBarContainer: {
         height: 20,
-        backgroundColor: '#E5E7EB',
+        backgroundColor: isDarkMode ? '#334155' : '#E5E7EB',
         borderRadius: 10,
         overflow: 'hidden',
         marginVertical: 8,
@@ -2884,14 +3030,14 @@ const grafStyles = StyleSheet.create({
     progressText: {
         textAlign: 'center',
         fontSize: 14,
-        color: '#6B7280',
+        color: isDarkMode ? '#94a3b8' : '#6B7280',
     },
     // Detailed Rubro Report Styles
     rubroReportRow: { marginBottom: 16 },
     rubroReportHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-    rubroReportName: { fontSize: 14, fontWeight: 'bold', color: '#374151' },
+    rubroReportName: { fontSize: 14, fontWeight: 'bold', color: isDarkMode ? '#e2e8f0' : '#374151' },
     rubroReportStatus: { fontSize: 12, fontWeight: '500' },
-    rubroProgressBarContainer: { height: 12, backgroundColor: '#E5E7EB', borderRadius: 6, overflow: 'hidden' },
+    rubroProgressBarContainer: { height: 12, backgroundColor: isDarkMode ? '#334155' : '#E5E7EB', borderRadius: 6, overflow: 'hidden' },
     rubroProgressBar: { height: '100%', borderRadius: 6 },
     rubroWarningText: { fontSize: 11, color: '#DC2626', marginTop: 4, fontWeight: '500' },
     reportButton: {
@@ -2911,7 +3057,8 @@ const grafStyles = StyleSheet.create({
 // Adapted from TalleresGastosScreen
 // ===================== PRODUCTOS TAB =====================
 function ProductosTab() {
-    const { colors, isDarkMode } = useTheme();
+    const { colors: _c, isDarkMode: _d } = useTheme(); const colors = lightColors; const isDarkMode = false;
+    const styles = getStyles(isDarkMode, colors);
     const [loading, setLoading] = useState(true);
     const [items, setItems] = useState([]);
     const [rubros, setRubros] = useState([]);
@@ -2997,7 +3144,7 @@ function ProductosTab() {
                             <Text style={styles.itemName}>{item.nombre} {item.referencia ? `(${item.referencia})` : ''}</Text>
                             <Text style={styles.itemSubDetail}>Rubro: {item.rubroNombre || rubros.find(r => r.id === item.rubroId)?.nombre || 'Desconocido'}</Text>
                             <Text style={styles.itemSubDetail}>Medida: {item.medida || 'N/A'}</Text>
-                            {item.descripcion ? <Text style={{fontSize: 12, color: '#666', fontStyle: 'italic'}}>{item.descripcion}</Text> : null}
+                            {item.descripcion ? <Text style={{fontSize: 12, color: isDarkMode ? '#94a3b8' : '#666', fontStyle: 'italic'}}>{item.descripcion}</Text> : null}
                         </View>
                         <View style={styles.itemActions}>
                             <TouchableOpacity onPress={() => handleEdit(item)}><Text style={styles.editButton}>✏️</Text></TouchableOpacity>
@@ -3043,7 +3190,8 @@ function ProductosTab() {
 
 // ===================== COTIZACIONES TAB =====================
 function CotizacionesTab() {
-    const { colors } = useTheme();
+    const { colors: _c, isDarkMode: _d } = useTheme(); const colors = lightColors; const isDarkMode = false;
+    const styles = getStyles(isDarkMode, colors);
     const [loading, setLoading] = useState(true);
     const [items, setItems] = useState([]);
     const [rubros, setRubros] = useState([]);
@@ -3191,8 +3339,8 @@ function CotizacionesTab() {
                                 {item.cantidad && item.valorUnitario && (
                                     <Text style={styles.itemSubDetail}>{item.cantidad} {item.productoMedida || item.medida} x {formatCurrency(item.valorUnitario)}</Text>
                                 )}
-                                <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#059669' }}>{formatCurrency(item.precioCotizado)}</Text>
-                                {item.descripcion && <Text style={{ fontSize: 12, color: '#666' }}>{item.descripcion}</Text>}
+                                <Text style={{ fontSize: 16, fontWeight: 'bold', color: isDarkMode ? '#34d399' : '#059669' }}>{formatCurrency(item.precioCotizado)}</Text>
+                                {item.descripcion && <Text style={{ fontSize: 12, color: isDarkMode ? '#94a3b8' : '#666' }}>{item.descripcion}</Text>}
                             </View>
                             <View style={styles.itemActions}>
                                 <TouchableOpacity onPress={() => handleEdit(item)}><Text style={styles.editButton}>✏️</Text></TouchableOpacity>
@@ -3246,7 +3394,7 @@ function CotizacionesTab() {
                         <View style={{ flexDirection: 'row', gap: 10 }}>
                             <View style={{ flex: 1 }}>
                                 <Text style={styles.label}>Medida</Text>
-                                <TextInput style={[styles.input, { backgroundColor: '#f3f4f6' }]} value={productos.find(p => p.id.toString() === formData.productoId)?.medida || 'N/A'} editable={false} />
+                                <TextInput style={[styles.input, styles.inputDisabled]} value={productos.find(p => p.id.toString() === formData.productoId)?.medida || 'N/A'} editable={false} />
                             </View>
                             <View style={{ flex: 1 }}>
                                 <Text style={styles.label}>Cantidad</Text>
@@ -3258,7 +3406,7 @@ function CotizacionesTab() {
                         <TextInput style={styles.input} value={formData.valorUnitario} onChangeText={t => setFormData(p => ({ ...p, valorUnitario: t }))} keyboardType="numeric" placeholder="$ 0" />
 
                         <Text style={styles.label}>Precio Total (Auto) *</Text>
-                        <TextInput style={[styles.input, { backgroundColor: '#f3f4f6' }]} value={formData.precio} editable={false} placeholder="$ 0" />
+                        <TextInput style={[styles.input, styles.inputDisabled]} value={formData.precio} editable={false} placeholder="$ 0" />
 
                         <Text style={styles.label}>Descripción</Text>
                         <TextInput style={styles.input} value={formData.descripcion} onChangeText={t => setFormData(p => ({ ...p, descripcion: t }))} placeholder="Opcional..." />

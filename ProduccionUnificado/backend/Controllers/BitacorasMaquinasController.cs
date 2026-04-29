@@ -33,6 +33,22 @@ namespace TiempoProcesos.API.Controllers
         public async Task<ActionResult<BitacoraMaquina>> PostBitacora(BitacoraMaquina bitacora)
         {
             bitacora.FechaRegistro = DateTime.UtcNow;
+
+            // Lógica de Consecutivo con Gap Filling por Máquina
+            var existentes = await _context.BitacorasMaquinas
+                .Where(b => b.HojaVidaId == bitacora.HojaVidaId)
+                .Select(b => b.Consecutivo)
+                .OrderBy(c => c)
+                .ToListAsync();
+
+            int nextConsecutivo = 1;
+            foreach (var c in existentes)
+            {
+                if (c == nextConsecutivo) nextConsecutivo++;
+                else if (c > nextConsecutivo) break;
+            }
+            bitacora.Consecutivo = nextConsecutivo;
+
             _context.BitacorasMaquinas.Add(bitacora);
             await _context.SaveChangesAsync();
             return Ok(bitacora);

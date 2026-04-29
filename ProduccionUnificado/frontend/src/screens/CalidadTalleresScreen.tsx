@@ -465,12 +465,11 @@ export default function CalidadTalleresScreen({ onLogout, username }: CalidadTal
             setTipoInsumosPendientes(data.tipoInsumosPendientes || 'Ninguno');
             setObservaciones(data.observaciones || '');
 
-            // Helper: split photos supporting both new '|||' and legacy ';' separator
+            // Helper: split photos supporting various separators (|||, ||, or ;)
             const splitPhotos = (str: string | null | undefined): string[] => {
                 if (!str) return [];
-                // If contains '|||' use that, otherwise fall back to ';'
-                const sep = str.includes('|||') ? '|||' : ';';
-                return str.split(sep).map(s => s.trim()).filter(Boolean);
+                // Use a regex to split by any of the known separators
+                return str.split(/\|\|\||\|\||;/).map(s => s.trim()).filter(Boolean);
             };
 
             setPhotos({

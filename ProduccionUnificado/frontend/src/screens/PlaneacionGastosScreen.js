@@ -251,7 +251,7 @@ function GastosTab() {
         const selectedRubro = rubros.find(r => r.id?.toString() === formData.rubroId);
         if (!selectedRubro) return false;
         const name = selectedRubro.nombre.toLowerCase();
-        return name.includes('horas extras') || name.includes('hora extra');
+        return name.includes('horas extras') || name.includes('hora extra') || name.includes('horas adiccionales') || name.includes('horas adicionales');
     }, [formData.rubroId, rubros]);
 
     const isRecargo = useMemo(() => {
@@ -354,7 +354,12 @@ function GastosTab() {
         setShowModal(true);
     };
 
-    // ========== SMART BREAKDOWN (Hora Inicio/Fin) ==========
+    // ========== SMART BREAKDOWN (Turno base desde horaInicio) ==========
+    // Reglas: L-V = 8h base, Sáb = 4h, Dom/Festivo = 0h (todo es extra)
+    // Dentro del turno base + nocturno (19:00-06:00) = Recargo Nocturno
+    // Fuera del turno base + diurno = Hora Extra Diurna
+    // Fuera del turno base + nocturno = Hora Extra Nocturna
+    // Dom/Festivo: todo es Dominical (Diurna o Nocturna)
     const calculateSmartBreakdown = useCallback(() => {
         if (formData.tipoGasto === 'normal') { setBreakdown([]); return; }
         if (!formData.personalId || !formData.horaInicio || !formData.horaFin || !formData.fecha) { setBreakdown([]); return; }
@@ -372,34 +377,27 @@ function GastosTab() {
         };
         const date = parseDate(formData.fecha);
         const formatISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+        const toMin = (t) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0); };
+        const startFull = toMin(formData.horaInicio);
+        let endFull = toMin(formData.horaFin);
+        if (endFull <= startFull) endFull += 24 * 60;
+
+        const NIGHT_START = 19 * 60, NIGHT_END = 6 * 60;
+
+        // Determinar duración base del turno según el día de INICIO
         const dateISO = formatISO(date);
         const isSunday = date.getDay() === 0;
         const isHoliday = COLOMBIAN_HOLIDAYS.includes(dateISO);
-        const isSpecialDay = isSunday || isHoliday;
+        const isSpecialDayStart = isSunday || isHoliday;
         const isSaturday = date.getDay() === 6;
 
-        const toMin = (t) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0); };
-        const start = toMin(formData.horaInicio);
-        let end = toMin(formData.horaFin);
-        if (end <= start) end += 24 * 60;
-
-        const MonFriShifts = [{ start: 6 * 60, end: 14 * 60 }, { start: 7 * 60, end: 16 * 60 }, { start: 14 * 60, end: 22 * 60 }];
-        const SatShift = { start: 8 * 60, end: 12 * 60 };
-
-        let baseStart, baseEnd;
-        if (isSpecialDay) { baseStart = 0; baseEnd = 0; }
-        else if (isSaturday) { baseStart = SatShift.start; baseEnd = SatShift.end; }
-        else {
-            let bestShift = null, maxOverlap = 0;
-            MonFriShifts.forEach(s => { const ov = Math.min(s.end, end) - Math.max(s.start, start); if (ov > maxOverlap) { maxOverlap = ov; bestShift = s; } });
-            if (bestShift && maxOverlap >= 30) { baseStart = bestShift.start; baseEnd = bestShift.end; }
-            else { const em = MonFriShifts.find(s => Math.abs(s.end - start) <= 15); if (em) { baseStart = em.start; baseEnd = em.end; } else { baseStart = 0; baseEnd = 0; } }
-        }
+        const baseShiftMinutes = isSpecialDayStart ? 0 : (isSaturday ? 4 * 60 : 8 * 60);
+        const shiftEndMin = startFull + baseShiftMinutes;
 
         const breakdownItems = [];
-        const NIGHT_START = 19 * 60, NIGHT_END = 6 * 60;
 
-        const addBreakdown = (s, e, typeNameMatch, isHe) => {
+        const addBreakdown = (s, e, typeNameMatch, isHe, isSpecialDay) => {
             if (e <= s) return;
             const duration = (e - s) / 60;
             const list = isHe ? tiposHora : tiposRecargo;
@@ -411,32 +409,77 @@ function GastosTab() {
             if (tipo) { const ex = breakdownItems.find(i => i.typeId === tipo.id && i.isHe === isHe); if (ex) ex.hours += duration; else breakdownItems.push({ type: tipo.nombre, typeId: tipo.id, hours: duration, isHe }); }
         };
 
-        const processSub = (s, e, outside) => {
-            if (e <= s) return;
-            if (s < NIGHT_END && e > NIGHT_END) { processSub(s, NIGHT_END, outside); processSub(NIGHT_END, e, outside); return; }
-            if (s < NIGHT_START && e > NIGHT_START) { processSub(s, NIGHT_START, outside); processSub(NIGHT_START, e, outside); return; }
-            const mid = (s + e) / 2; const isNight = mid >= NIGHT_START || mid < NIGHT_END;
-            if (isSpecialDay) addBreakdown(s, e, isNight ? 'Dominical Nocturna' : 'Dominical Diurna', true);
-            else if (outside) addBreakdown(s, e, isNight ? 'Extra Nocturna' : 'Extra Diurna', true);
-            else if (!outside && isNight) addBreakdown(s, e, 'Recargo Nocturno', false);
+        // Generar todos los puntos de corte relevantes
+        const cutPoints = new Set([startFull, endFull]);
+        if (shiftEndMin > startFull && shiftEndMin < endFull) cutPoints.add(shiftEndMin);
+        [NIGHT_END, NIGHT_START, 1440, NIGHT_END + 1440, NIGHT_START + 1440].forEach(boundary => {
+            if (boundary > startFull && boundary < endFull) cutPoints.add(boundary);
+        });
+        const sortedCuts = [...cutPoints].sort((a, b) => a - b);
+
+        // Procesar cada sub-intervalo
+        for (let i = 0; i < sortedCuts.length - 1; i++) {
+            const s = sortedCuts[i];
+            const e = sortedCuts[i + 1];
+            if (e <= s) continue;
+
+            const mid = (s + e) / 2;
+            const actualDate = new Date(date);
+            if (mid >= 1440) actualDate.setDate(actualDate.getDate() + 1);
+            const actualDateISO = formatISO(actualDate);
+            const isSpecialDay = actualDate.getDay() === 0 || COLOMBIAN_HOLIDAYS.includes(actualDateISO);
+
+            const isWithinShift = s < shiftEndMin;
+            const timeInDay = mid % 1440;
+            const isNight = timeInDay >= NIGHT_START || timeInDay < NIGHT_END;
+
+            if (isSpecialDay) {
+                addBreakdown(s, e, isNight ? 'Dominical Nocturna' : 'Dominical Diurna', true, true);
+            } else if (isWithinShift) {
+                if (isNight) addBreakdown(s, e, 'Recargo Nocturno', false, false);
+            } else {
+                addBreakdown(s, e, isNight ? 'Extra Nocturna' : 'Extra Diurna', true, false);
+            }
+        }
+
+        const formatHours = (h) => {
+            const isNegative = h < 0;
+            const totalMin = Math.round(Math.abs(h) * 60);
+            const hh = Math.floor(totalMin / 60);
+            const mm = totalMin % 60;
+            return `${isNegative ? '-' : ''}${hh}:${mm.toString().padStart(2, '0')}`;
         };
 
-        const processInterval = (s, e) => {
-            if (e <= s) return;
-            if (isSpecialDay) { processSub(s, e, true); return; }
-            if (s < baseStart && e > baseStart) { processInterval(s, baseStart); processInterval(baseStart, e); return; }
-            if (s < baseEnd && e > baseEnd) { processInterval(s, baseEnd); processInterval(baseEnd, e); return; }
-            processSub(s, e, e <= baseStart || s >= baseEnd);
-        };
+        // --- LÓGICA DE DESCUENTO DE COMIDA (-1 HORA) ---
+        const totalDurationMin = endFull - startFull;
+        if (totalDurationMin >= 6 * 60) {
+            const extraItem = breakdownItems.find(item => item.isHe);
+            if (extraItem && extraItem.hours > 1) {
+                extraItem.hours -= 1.0;
+            } else if (extraItem) {
+                const recargoItem = breakdownItems.find(item => !item.isHe);
+                if (recargoItem) recargoItem.hours = Math.max(0, recargoItem.hours - 1.0);
+            } else {
+                const recargoItem = breakdownItems.find(item => !item.isHe);
+                if (recargoItem) recargoItem.hours = Math.max(0, recargoItem.hours - 1.0);
+            }
+            // Agregar línea informativa de COMIDA (solo visual)
+            breakdownItems.push({ 
+                type: '- COMIDA (Descuento)', 
+                typeId: 0, 
+                hours: -1.0, 
+                isHe: false,
+                isLunch: true 
+            });
+        }
 
-        processInterval(start, end);
-        setBreakdown(breakdownItems);
+        setBreakdown(breakdownItems.map(item => ({ ...item, formattedHours: formatHours(item.hours) })));
 
-        // Calcular costo total
+        // Calcular costo total (EXCLUYE COMIDA, ya restado de extras)
         let totalCost = 0;
         const salario = parseFloat(worker.salario) || 0;
         const valorHoraBase = salario / 220;
-        breakdownItems.forEach(item => {
+        breakdownItems.filter(item => !item.isLunch).forEach(item => {
             const list = item.isHe ? tiposHora : tiposRecargo;
             const tipo = list.find(t => t.id == item.typeId);
             if (tipo) totalCost += valorHoraBase * (parseFloat(tipo.factor) || 1.0) * item.hours;
@@ -477,7 +520,7 @@ function GastosTab() {
                 const tiposHora = tiposHorasRecargos.tiposHora || [];
                 const tiposRecargo = tiposHorasRecargos.tiposRecargo || [];
 
-                const promises = breakdown.map(item => {
+                const promises = breakdown.filter(item => !item.isLunch).map(item => {
                     const list = item.isHe ? tiposHora : tiposRecargo;
                     const tipo = list.find(t => t.id == item.typeId);
                     const factor = parseFloat(tipo?.factor) || 1.0;
@@ -790,7 +833,7 @@ function GastosTab() {
                                             onValueChange={(v) => {
                                                 const selectedRubro = rubros.find(r => r.id?.toString() === v);
                                                 const name = selectedRubro?.nombre?.toLowerCase() || '';
-                                                const isHE = name.includes('horas extras') || name.includes('hora extra');
+                                                const isHE = name.includes('horas extras') || name.includes('hora extra') || name.includes('horas adiccionales') || name.includes('horas adicionales');
                                                 const isRec = name.includes('recargo');
                                                 setFormData(p => ({
                                                     ...p,
@@ -814,39 +857,81 @@ function GastosTab() {
 
                             {formData.rubroId ? (
                                 <>
-                                    {/* Solicitud de Crédito Checkbox */}
+                                    {/* Checkboxes Row: Pendiente & Solicitud de Crédito */}
                                     {!isLegalizing && !isHorasExtras && !isRecargo && (
-                                        <TouchableOpacity
-                                            style={{
-                                                flexDirection: 'row',
-                                                alignItems: 'center',
-                                                marginBottom: 15,
-                                                padding: 10,
-                                                backgroundColor: '#F5F3FF',
-                                                borderRadius: 8,
-                                                borderWidth: 1,
-                                                borderColor: '#DDD6FE'
-                                            }}
-                                            onPress={() => setFormData(p => ({ ...p, esSolicitudCredito: !p.esSolicitudCredito }))}
-                                        >
-                                            <View style={{
-                                                width: 20,
-                                                height: 20,
-                                                borderWidth: 2,
-                                                borderColor: '#7C3AED',
-                                                borderRadius: 4,
-                                                justifyContent: 'center',
-                                                alignItems: 'center',
-                                                marginRight: 10,
-                                                backgroundColor: formData.esSolicitudCredito ? '#7C3AED' : 'white'
-                                            }}>
-                                                {formData.esSolicitudCredito && <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>✓</Text>}
-                                            </View>
-                                            <View>
-                                                <Text style={{ fontWeight: 'bold', color: '#5B21B6' }}>Solicitud de Crédito</Text>
-                                                <Text style={{ fontSize: 11, color: '#6D28D9' }}>Marcar para trámite de crédito</Text>
-                                            </View>
-                                        </TouchableOpacity>
+                                        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
+                                            <TouchableOpacity
+                                                style={{
+                                                    flex: 1,
+                                                    flexDirection: 'row',
+                                                    alignItems: 'center',
+                                                    padding: 10,
+                                                    backgroundColor: '#FFF7ED',
+                                                    borderRadius: 8,
+                                                    borderWidth: 1,
+                                                    borderColor: '#FFEDD5'
+                                                }}
+                                                onPress={() => setFormData(p => ({ 
+                                                    ...p, 
+                                                    esPendiente: !p.esPendiente,
+                                                    esSolicitudCredito: !p.esPendiente ? false : p.esSolicitudCredito 
+                                                }))}
+                                            >
+                                                <View style={{
+                                                    width: 20,
+                                                    height: 20,
+                                                    borderWidth: 2,
+                                                    borderColor: '#F97316',
+                                                    borderRadius: 4,
+                                                    justifyContent: 'center',
+                                                    alignItems: 'center',
+                                                    marginRight: 10,
+                                                    backgroundColor: formData.esPendiente ? '#F97316' : 'white'
+                                                }}>
+                                                    {formData.esPendiente && <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>✓</Text>}
+                                                </View>
+                                                <View>
+                                                    <Text style={{ fontWeight: 'bold', color: '#9A3412' }}>Gasto Pendiente</Text>
+                                                    <Text style={{ fontSize: 10, color: '#C2410C' }}>Sin factura aún</Text>
+                                                </View>
+                                            </TouchableOpacity>
+
+                                            <TouchableOpacity
+                                                style={{
+                                                    flex: 1,
+                                                    flexDirection: 'row',
+                                                    alignItems: 'center',
+                                                    padding: 10,
+                                                    backgroundColor: '#F5F3FF',
+                                                    borderRadius: 8,
+                                                    borderWidth: 1,
+                                                    borderColor: '#DDD6FE'
+                                                }}
+                                                onPress={() => setFormData(p => ({ 
+                                                    ...p, 
+                                                    esSolicitudCredito: !p.esSolicitudCredito,
+                                                    esPendiente: !p.esSolicitudCredito ? false : p.esPendiente
+                                                }))}
+                                            >
+                                                <View style={{
+                                                    width: 20,
+                                                    height: 20,
+                                                    borderWidth: 2,
+                                                    borderColor: '#7C3AED',
+                                                    borderRadius: 4,
+                                                    justifyContent: 'center',
+                                                    alignItems: 'center',
+                                                    marginRight: 10,
+                                                    backgroundColor: formData.esSolicitudCredito ? '#7C3AED' : 'white'
+                                                }}>
+                                                    {formData.esSolicitudCredito && <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>✓</Text>}
+                                                </View>
+                                                <View>
+                                                    <Text style={{ fontWeight: 'bold', color: '#5B21B6' }}>Solicitud de Crédito</Text>
+                                                    <Text style={{ fontSize: 10, color: '#6D28D9' }}>Trámite de crédito</Text>
+                                                </View>
+                                            </TouchableOpacity>
+                                        </View>
                                     )}
 
                                     {formData.tipoGasto === 'normal' ? (
@@ -924,8 +1009,8 @@ function GastosTab() {
                                                 <View style={{ backgroundColor: '#F3F4F6', padding: 10, borderRadius: 8, marginBottom: 15 }}>
                                                     <Text style={{ fontWeight: 'bold', marginBottom: 5, fontSize: 13, color: '#1F2937' }}>Desglose de Horas:</Text>
                                                     {breakdown.map((item, idx) => (
-                                                        <Text key={idx} style={{ fontSize: 12, color: '#4B5563' }}>
-                                                            • {item.type}: {item.hours.toFixed(2)} hrs
+                                                        <Text key={idx} style={{ fontSize: 13, color: '#4B5563', fontWeight: 'bold' }}>
+                                                            • {item.type}: {item.formattedHours || item.hours.toFixed(2)}
                                                         </Text>
                                                     ))}
                                                 </View>

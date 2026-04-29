@@ -676,7 +676,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
                         </TouchableOpacity>
 
                         <Text style={[styles.bentoMainTitle, { color: colors.text }]}>Elige un módulo para continuar</Text>
-                        <Text style={[styles.bentoMainSubtitle, { color: colors.subText }]}>4 módulos disponibles</Text>
+                        <Text style={[styles.bentoMainSubtitle, { color: colors.subText }]}>3 módulos disponibles</Text>
                     </View>
 
                     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
@@ -758,33 +758,6 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
                                         </View>
                                         <View style={[styles.bentoArrowCircle, { backgroundColor: isDarkMode ? 'rgba(139, 92, 246, 0.2)' : 'rgba(139, 92, 246, 0.1)' }]}>
                                             <MaterialCommunityIcons name="chevron-right" size={18} color="#8B5CF6" />
-                                        </View>
-                                    </View>
-                                </TouchableOpacity>
-
-                                <TouchableOpacity 
-                                    style={[styles.bentoCard, styles.bentoCardSmall, { backgroundColor: isDarkMode ? '#1E3A8A' : '#DBEAFE' }]}
-                                    onPress={() => {
-                                        setMode('MANTENIMIENTO_GASTOS');
-                                        // We will pass initialTab via a temporary hack or state if possible
-                                        // Since MantenimientoGastosScreen now accepts initialTab, we need to handle it.
-                                        // For now, let's just go there.
-                                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MANTENIMIENTO_GASTOS');
-                                    }}
-                                >
-                                    <View style={[styles.bentoTag, { backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.15)' }]}>
-                                        <Text style={[styles.bentoTagText, { color: '#3B82F6' }]}>CATÁLOGO</Text>
-                                    </View>
-                                    <View style={[styles.bentoIconBox, { backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)' }]}>
-                                        <MaterialCommunityIcons name="package-variant" size={24} color="#3B82F6" />
-                                    </View>
-                                    <View style={styles.bentoCardFooter}>
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={[styles.bentoCardTitle, { color: isDarkMode ? '#EFF6FF' : '#1E3A8A' }]}>Productos</Text>
-                                            <Text style={[styles.bentoCardDesc, { color: isDarkMode ? '#93C5FD' : '#2563EB' }]}>Maestro de repuestos y servicios.</Text>
-                                        </View>
-                                        <View style={[styles.bentoArrowCircle, { backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)' }]}>
-                                            <MaterialCommunityIcons name="chevron-right" size={18} color="#3B82F6" />
                                         </View>
                                     </View>
                                 </TouchableOpacity>

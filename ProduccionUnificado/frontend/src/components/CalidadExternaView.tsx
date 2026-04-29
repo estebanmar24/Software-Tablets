@@ -148,7 +148,7 @@ export default function CalidadExternaView() {
         // Always show: display the attribute label + value. Only skip if both are undefined/null (field not captured)
         if (stateBoolean === undefined || stateBoolean === null) return null;
 
-        const urls = (fotoUrl || '').split(';').filter(u => u.trim());
+        const urls = (fotoUrl || '').split(/\|\|\||\|\||;/).filter(u => u.trim());
 
         return (
             <View style={[styles.photoDefectContainer, { width: '100%', alignItems: 'flex-start' }]}>

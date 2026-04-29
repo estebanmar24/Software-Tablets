@@ -147,8 +147,9 @@ public class BitacoraMaquina
     
     [MaxLength(100)]
     public string RegistradoPor { get; set; } = string.Empty;
-    
     public DateTime FechaRegistro { get; set; } = DateTime.UtcNow;
+    public bool Resuelto { get; set; } = false;
+    public int Consecutivo { get; set; }
 
     [ForeignKey("HojaVidaId")]
     public HojaVidaMaquina? HojaVida { get; set; }

@@ -62,6 +62,14 @@ const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('es-CO');
 };
 
+const formatHours = (h) => {
+    const isNegative = h < 0;
+    const totalMin = Math.round(Math.abs(h) * 60);
+    const hh = Math.floor(totalMin / 60);
+    const mm = totalMin % 60;
+    return `${isNegative ? '-' : ''}${hh}:${mm.toString().padStart(2, '0')}`;
+};
+
 // ===================== MAIN COMPONENT =====================
 // 2026-03-16 Fix: Automated Sunday/Holiday detection factors
 const COLOMBIAN_HOLIDAYS = [
@@ -351,6 +359,11 @@ function GastosTab() {
     }, [formData.rubroId, formData.personalId, formData.cantidadHoras, formData.tipoHoraId, formData.tipoRecargoId, rubros, personal, tiposHora, tiposRecargo]);
 
     // SMART OT Logic
+    // Reglas: L-V = 8h base desde horaInicio, Sáb = 4h, Dom/Festivo = 0h (todo es extra)
+    // Dentro del turno base + nocturno (19:00-06:00) = Recargo Nocturno
+    // Fuera del turno base + diurno = Hora Extra Diurna
+    // Fuera del turno base + nocturno = Hora Extra Nocturna
+    // Dom/Festivo: todo es Dominical (Diurna o Nocturna)
     const calculateSmartBreakdown = useCallback(() => {
         if (!formData.personalId || !formData.horaInicio || !formData.horaFin || !formData.fecha) {
             setBreakdown([]);
@@ -362,8 +375,6 @@ function GastosTab() {
             setBreakdown([]);
             return;
         }
-
-        // No longer relying on schedule from DB
 
         const parseDate = (d) => {
             if (!d) return new Date();
@@ -383,75 +394,32 @@ function GastosTab() {
             return `${year}-${month}-${day}`;
         };
 
-        const dateISO = formatISO(date);
-        const isSunday = date.getDay() === 0;
-        const isHoliday = COLOMBIAN_HOLIDAYS.includes(dateISO);
-        const isSpecialDay = isSunday || isHoliday;
-        const isSaturday = date.getDay() === 6;
-
         const toMin = (t) => {
             if (!t) return 0;
             const [h, m] = t.split(':').map(Number);
             return h * 60 + (m || 0);
         };
 
-        const start = toMin(formData.horaInicio);
-        let end = toMin(formData.horaFin);
-        if (end <= start) end += 24 * 60; // Crosses midnight
+        const startFull = toMin(formData.horaInicio);
+        let endFull = toMin(formData.horaFin);
+        if (endFull <= startFull) endFull += 24 * 60; // Crosses midnight
 
-        // HARDCODED STANDARD SHIFTS
-        const MonFriShifts = [
-            { start: 6 * 60, end: 14 * 60, name: '6-2' },   // 06:00 - 14:00 (8h)
-            { start: 7 * 60, end: 16 * 60, name: '7-4' },   // 07:00 - 16:00 (9h total, incl 1h lunch)
-            { start: 14 * 60, end: 22 * 60, name: '2-10' }  // 14:00 - 22:00 (8h)
-        ];
-        const SatShift = { start: 8 * 60, end: 12 * 60, name: '8-12' }; // 08:00 - 12:00 (4h)
-
-        let baseStart, baseEnd;
-        if (isSpecialDay) {
-            baseStart = 0; baseEnd = 0; // No base shift on special days
-        } else if (isSaturday) {
-            baseStart = SatShift.start;
-            baseEnd = SatShift.end;
-        } else {
-            // REFINED GUESS SHIFT based on Maximum Overlap
-            let bestShift = null;
-            let maxOverlap = 0;
-
-            MonFriShifts.forEach(s => {
-                const overlapStart = Math.max(s.start, start);
-                const overlapEnd = Math.min(s.end, end);
-                const overlapDuration = overlapEnd - overlapStart;
-
-                if (overlapDuration > maxOverlap) {
-                    maxOverlap = overlapDuration;
-                    bestShift = s;
-                }
-            });
-
-            // Threshold: At least 30 mins overlap to consider it "within shift"
-            if (bestShift && maxOverlap >= 30) {
-                baseStart = bestShift.start;
-                baseEnd = bestShift.end;
-            } else {
-                // If no significant overlap, maybe they are starting OT exactly at the end of a shift
-                const endMatchedShift = MonFriShifts.find(s => Math.abs(s.end - start) <= 15);
-                if (endMatchedShift) {
-                    baseStart = endMatchedShift.start;
-                    baseEnd = endMatchedShift.end;
-                } else {
-                    baseStart = 0; baseEnd = 0;
-                }
-            }
-        }
-
-        const breakdownItems = [];
-
-        // Boundaries (Night time is 7 PM to 6 AM)
         const NIGHT_START = 19 * 60; // 7 PM
         const NIGHT_END = 6 * 60;    // 6 AM
 
-        const addBreakdown = (s, e, typeNameMatch, isHe) => {
+        // Determinar duración base del turno según el día de INICIO
+        const dateISO = formatISO(date);
+        const isSunday = date.getDay() === 0;
+        const isHoliday = COLOMBIAN_HOLIDAYS.includes(dateISO);
+        const isSpecialDayStart = isSunday || isHoliday;
+        const isSaturday = date.getDay() === 6;
+
+        const baseShiftMinutes = isSpecialDayStart ? 0 : (isSaturday ? 4 * 60 : 8 * 60);
+        const shiftEndMin = startFull + baseShiftMinutes;
+
+        const breakdownItems = [];
+
+        const addBreakdown = (s, e, typeNameMatch, isHe, isSpecialDay) => {
             if (e <= s) return;
             const duration = (e - s) / 60;
             const list = isHe ? tiposHora : tiposRecargo;
@@ -459,7 +427,6 @@ function GastosTab() {
             const search = typeNameMatch.toLowerCase();
             const timeOfDay = search.includes('nocturn') ? 'nocturn' : 'diurn';
 
-            // Precise finding: Prioritize special types on special days, and normal types on normal days
             let tipo = list.find(t => {
                 const name = (t.nombre || t.Nombre || "").toLowerCase();
                 const matchesTime = name.includes(timeOfDay);
@@ -472,7 +439,6 @@ function GastosTab() {
                 }
             });
 
-            // Fallback 1: If special type with specific time of day not found, just match any special type
             if (!tipo && isSpecialDay) {
                 tipo = list.find(t => {
                     const name = (t.nombre || t.Nombre || "").toLowerCase();
@@ -480,7 +446,6 @@ function GastosTab() {
                 });
             }
 
-            // Fallback 2: General match if all else fails
             if (!tipo) {
                 tipo = list.find(t => (t.nombre || t.Nombre || "").toLowerCase().includes(search));
             }
@@ -494,72 +459,88 @@ function GastosTab() {
             }
         };
 
-        const processSubInterval = (s, e, isOutsideShift) => {
-            if (e <= s) return;
-            // Split by night boundaries
-            if (s < NIGHT_END && e > NIGHT_END) {
-                processSubInterval(s, NIGHT_END, isOutsideShift);
-                processSubInterval(NIGHT_END, e, isOutsideShift);
-                return;
-            }
-            if (s < NIGHT_START && e > NIGHT_START) {
-                processSubInterval(s, NIGHT_START, isOutsideShift);
-                processSubInterval(NIGHT_START, e, isOutsideShift);
-                return;
-            }
+        // Generar todos los puntos de corte relevantes en el rango [startFull, endFull]
+        const cutPoints = new Set([startFull, endFull]);
 
+        // Añadir límite de turno base
+        if (shiftEndMin > startFull && shiftEndMin < endFull) cutPoints.add(shiftEndMin);
+
+        // Añadir límites nocturnos (19:00 y 06:00) y medianoche, en escala extendida
+        [NIGHT_END, NIGHT_START, 1440, NIGHT_END + 1440, NIGHT_START + 1440].forEach(boundary => {
+            if (boundary > startFull && boundary < endFull) cutPoints.add(boundary);
+        });
+
+        const sortedCuts = [...cutPoints].sort((a, b) => a - b);
+
+        // Procesar cada sub-intervalo
+        for (let i = 0; i < sortedCuts.length - 1; i++) {
+            const s = sortedCuts[i];
+            const e = sortedCuts[i + 1];
+            if (e <= s) continue;
+
+            // Determinar la fecha real de este intervalo
             const mid = (s + e) / 2;
-            const isNight = mid >= NIGHT_START || mid < NIGHT_END;
+            const actualDate = new Date(date);
+            if (mid >= 1440) actualDate.setDate(actualDate.getDate() + 1);
+            const actualDateISO = formatISO(actualDate);
+            const isSpecialDay = actualDate.getDay() === 0 || COLOMBIAN_HOLIDAYS.includes(actualDateISO);
+
+            // ¿Está dentro del turno base?
+            const isWithinShift = s < shiftEndMin;
+
+            // ¿Es horario nocturno? (19:00-06:00)
+            const timeInDay = mid % 1440;
+            const isNight = timeInDay >= NIGHT_START || timeInDay < NIGHT_END;
 
             if (isSpecialDay) {
-                if (isNight) addBreakdown(s, e, 'Dominical Nocturna', true);
-                else addBreakdown(s, e, 'Dominical Diurna', true);
+                addBreakdown(s, e, isNight ? 'Dominical Nocturna' : 'Dominical Diurna', true, true);
+            } else if (isWithinShift) {
+                if (isNight) {
+                    addBreakdown(s, e, 'Recargo Nocturno', false, false);
+                }
+                // Si es diurno dentro del turno = hora normal, no se muestra
             } else {
-                if (isOutsideShift) {
-                    if (isNight) addBreakdown(s, e, 'Extra Nocturna', true);
-                    else addBreakdown(s, e, 'Extra Diurna', true);
-                } else if (!isOutsideShift && isNight) {
-                    addBreakdown(s, e, 'Recargo Nocturno', false);
+                if (isNight) {
+                    addBreakdown(s, e, 'Extra Nocturna', true, false);
+                } else {
+                    addBreakdown(s, e, 'Extra Diurna', true, false);
                 }
             }
-        };
+        }
 
-        const processInterval = (s, e) => {
-            if (e <= s) return;
-
-            // If special day, everything is outside base shift effectively for OT
-            if (isSpecialDay) {
-                processSubInterval(s, e, true);
-                return;
+        // --- LÓGICA DE DESCUENTO DE COMIDA (-1 HORA) ---
+        const totalDurationMin = endFull - startFull;
+        if (totalDurationMin >= 6 * 60) {
+            const extraItem = breakdownItems.find(item => item.isHe);
+            if (extraItem && extraItem.hours > 1) {
+                extraItem.hours -= 1.0;
+            } else if (extraItem) {
+                const recargoItem = breakdownItems.find(item => !item.isHe);
+                if (recargoItem) recargoItem.hours = Math.max(0, recargoItem.hours - 1.0);
+            } else {
+                const recargoItem = breakdownItems.find(item => !item.isHe);
+                if (recargoItem) recargoItem.hours = Math.max(0, recargoItem.hours - 1.0);
             }
+            // Agregar línea informativa de COMIDA (solo visual)
+            breakdownItems.push({ 
+                type: '- COMIDA (Descuento)', 
+                typeId: 0, 
+                hours: -1.0, 
+                isHe: false,
+                isLunch: true 
+            });
+        }
 
-            // Split by base shift boundaries
-            if (s < baseStart && e > baseStart) {
-                processInterval(s, baseStart);
-                processInterval(baseStart, e);
-                return;
-            }
-            if (s < baseEnd && e > baseEnd) {
-                processInterval(s, baseEnd);
-                processInterval(baseEnd, e);
-                return;
-            }
+        setBreakdown(breakdownItems.map(item => ({ ...item, formattedHours: formatHours(item.hours) })));
 
-            const isOutside = (e <= baseStart || s >= baseEnd);
-            processSubInterval(s, e, isOutside);
-        };
-
-        processInterval(start, end);
-        setBreakdown(breakdownItems);
-
-        // Update total price based on breakdown
+        // Update total price based on breakdown (EXCLUDE LUNCH, was already subtracted)
         let totalCost = 0;
         let sRaw = worker.salario || worker.Salario || 0;
         if (typeof sRaw === 'string') sRaw = sRaw.replace(/\./g, '').replace(/,/g, '.');
         const salario = parseFloat(sRaw) || 0;
         const valorHoraBase = salario / 220;
 
-        breakdownItems.forEach(item => {
+        breakdownItems.filter(item => !item.isLunch).forEach(item => {
             const list = item.isHe ? tiposHora : tiposRecargo;
             // Use loose equality for comparison
             const tipo = list.find(t => (t.id || t.Id) == item.typeId);
@@ -577,7 +558,7 @@ function GastosTab() {
                 setFormData(prev => ({ ...prev, precio: Math.round(totalCost).toString() }));
             }
         }
-    }, [formData.personalId, formData.horaInicio, formData.horaFin, formData.fecha, formData.rubroId, personal, horarios, tiposHora, tiposRecargo, rubros]);
+    }, [formData.personalId, formData.horaInicio, formData.horaFin, formData.fecha, formData.rubroId, personal, tiposHora, tiposRecargo, rubros]);
 
     useEffect(() => {
         calculateSmartBreakdown();
@@ -733,7 +714,7 @@ function GastosTab() {
                 const salario = parseFloat(sRaw) || 0;
                 const valorHoraBase = salario / 220;
 
-                const promises = breakdown.map(item => {
+                const promises = breakdown.filter(item => !item.isLunch).map(item => {
                     const list = item.isHe ? tiposHora : tiposRecargo;
                     const tipo = list.find(t => (t.id || t.Id) == item.typeId);
                     const factor = parseFloat(tipo?.factor || tipo?.Factor) || 1.0;
@@ -1254,7 +1235,7 @@ function GastosTab() {
                                                         <Text style={{ fontWeight: 'bold', color: '#0369A1', marginBottom: 5 }}>📊 Desglose Automático:</Text>
                                                         {breakdown.map((item, idx) => (
                                                             <Text key={idx} style={{ fontSize: 13, color: '#0C4A6E' }}>
-                                                                • {item.type}: <Text style={{ fontWeight: 'bold' }}>{item.hours.toFixed(2)}h</Text>
+                                                                • {item.type}: <Text style={{ fontWeight: 'bold' }}>{item.formattedHours || item.hours.toFixed(2)}</Text>
                                                             </Text>
                                                         ))}
                                                         <Text style={{ fontSize: 11, color: '#64748B', marginTop: 5, fontStyle: 'italic' }}>

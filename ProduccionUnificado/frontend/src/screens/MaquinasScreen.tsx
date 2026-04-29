@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, FlatList, TextInput, Modal, Image, Platform, Dimensions } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -22,6 +22,8 @@ interface BitacoraEntry {
     estadoMaquina: string;
     registradoPor: string;
     fechaRegistro?: string;
+    consecutivo?: number;
+    resuelto?: boolean;
 }
 
 interface MantenimientoEntry {
@@ -65,7 +67,8 @@ interface HojaVida {
     fotos?: { id?: number; url: string }[];
 }
 
-const FormInput = ({ label, value, onChangeText, placeholder, multiline = false, colors, isDarkMode }: any) => (
+
+const FormInput = ({ label, value, onChangeText, placeholder, multiline = false, colors, isDarkMode, styles }: any) => (
     <View style={styles.formGroup}>
         <Text style={[styles.label, { color: colors.text }]}>{label}</Text>
         <TextInput
@@ -89,6 +92,8 @@ const SERVER_URL = (api.defaults.baseURL && api.defaults.baseURL.includes('http'
 
 export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBack?: () => void; publicId?: number; publicMode?: boolean }) {
     const { colors, isDarkMode } = useTheme();
+    const styles = getStyles(isDarkMode, colors);
+
     const [activeTab, setActiveTab] = useState<SubModule>(publicMode ? 'HOJA_VIDA' : 'HOJA_VIDA');
     const [hojasVida, setHojasVida] = useState<HojaVida[]>([]);
     const [bitacoras, setBitacoras] = useState<BitacoraEntry[]>([]);
@@ -106,6 +111,10 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
     const [pdfReadyUrl, setPdfReadyUrl] = useState<string | null>(null);
     const [isEditingBitacora, setIsEditingBitacora] = useState(false);
     
+    // ScrollView ref for machine tabs
+    const maqScrollRef = useRef<ScrollView>(null);
+    const maqScrollX = useRef(0);
+
     // Cronograma States
     const [cronogramaActividades, setCronogramaActividades] = useState<any[]>([]);
     const [cronogramaRegistros, setCronogramaRegistros] = useState<any[]>([]);
@@ -240,11 +249,41 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                 await api.post('MantenimientosMaquinas', payload);
             }
 
-            Alert.alert("Éxito", "Mantenimiento guardado correctamente.");
+            // --- SINCRONIZACIÓN AUTOMÁTICA CON CRONOGRAMA ---
+            if (selectedActsForMantenimiento.length > 0) {
+                const now = new Date();
+                const d = now.getDate();
+                const m = now.getMonth() + 1;
+                const a = now.getFullYear();
+
+                try {
+                    await Promise.all(selectedActsForMantenimiento.map(actId => 
+                        api.post('Cronogramas/ToggleStatus', {
+                            hojaVidaId: Number(mantenimientoForm.hojaVidaId),
+                            actividadId: Number(actId),
+                            anio: a,
+                            mes: m,
+                            dia: d,
+                            estado: 1 // EJECUTADO
+                        }).catch(e => console.error("Error sincronizando actividad:", e))
+                    ));
+
+                    // Recargar cronograma si es la misma máquina y año
+                    if (selectedCronogramaMaq?.id === mantenimientoForm.hojaVidaId && selectedAnio === a) {
+                        loadCronogramaData(mantenimientoForm.hojaVidaId, a);
+                    }
+                } catch (syncErr) {
+                    console.error("Sync Error", syncErr);
+                }
+            }
+
+            Alert.alert("Éxito", "Mantenimiento guardado y sincronizado con cronograma.");
             setMantenimientoModalVisible(false);
-            loadMantenimientos(); // Recargar la lista
+            loadMantenimientos(); 
+            loadBitacoras(); // Refrescar tickets para actualizar etiquetas de resuelto
             
-            // Reset form
+            // Reset form and selections
+            setSelectedActsForMantenimiento([]);
             setMantenimientoForm({
                 hojaVidaId: 0,
                 fecha: new Date().toISOString(),
@@ -696,6 +735,20 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
     };
 
     const handleDelete = (item: HojaVida) => {
+        if (Platform.OS === 'web') {
+            if (window.confirm(`¿Estás seguro de que deseas eliminar la hoja de vida de "${item.nombre}"?`)) {
+                (async () => {
+                    try {
+                        await api.delete(`HojaVidaMaquinas/${item.id}`);
+                        loadHojasVida();
+                    } catch (error) {
+                        alert("No se pudo eliminar el registro.");
+                    }
+                })();
+            }
+            return;
+        }
+
         Alert.alert(
             "Eliminar Hoja de Vida",
             `¿Estás seguro de que deseas eliminar la hoja de vida de "${item.nombre}"?`,
@@ -743,13 +796,340 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                         reader.onerror = () => resolve("");
                         reader.readAsDataURL(blob);
                     })
-                    .catch(() => resolve(""));
             };
             img.src = url;
         });
     };
 
-    const handleExportPdf = async (item: HojaVidaMaquina, dataBitacoras?: BitacoraMaquina[]) => {
+    const handleExportTicketPdf = async (ticket: BitacoraEntry, machine: HojaVida) => {
+        try {
+
+            const doc = new jsPDF();
+            const margin = 15;
+            const tableWidth = 180;
+            let currentY = 15;
+
+            // Header Box
+            doc.setDrawColor(0);
+            doc.setLineWidth(0.3);
+            doc.rect(margin, currentY, tableWidth, 30);
+
+            // Logo
+            try {
+                const logoUrl = window.location.origin + '/empresa-logo.jpeg';
+                const logo64 = await urlToBase64(logoUrl);
+                if (logo64) doc.addImage(logo64, 'JPEG', margin + 5, currentY + 3, 44, 24);
+            } catch(e) {}
+
+            doc.line(margin + 55, currentY, margin + 55, currentY + 30);
+            doc.line(margin + 135, currentY, margin + 135, currentY + 30);
+
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(12);
+            doc.text("REGISTRO DE NOVEDAD / DAÑO", margin + 95, currentY + 12, { align: 'center' });
+            doc.setFontSize(14);
+            const tNumber = ticket.consecutivo ?? ticket.Consecutivo ?? ticket.id ?? 0;
+            doc.text(`TICKET #${tNumber}`, margin + 95, currentY + 22, { align: 'center' });
+
+            doc.setFontSize(8);
+            doc.setFont("helvetica", "normal");
+            doc.text("Código: FO-GM-002", margin + 138, currentY + 10);
+            doc.text("Versión: 1", margin + 138, currentY + 20);
+            doc.text(`Fecha: ${new Date().toLocaleDateString()}`, margin + 138, currentY + 28);
+
+            currentY += 40;
+
+            // Machine Info Table
+            autoTable(doc, {
+                startY: currentY,
+                head: [['INFORMACIÓN DEL EQUIPO', 'DETALLES']],
+                body: [
+                    ['Nombre de Máquina', machine.nombre || 'N/A'],
+                    ['Número de Inventario', machine.numeroInventario || 'N/A'],
+                    ['Marca / Modelo', `${machine.marca || 'N/A'} / ${machine.modelo || 'N/A'}`],
+                    ['Ubicación', machine.ubicacion || 'N/A']
+                ],
+                margin: { left: margin },
+                tableWidth: tableWidth,
+                theme: 'grid',
+                headStyles: { fillColor: [80, 80, 80] },
+                columnStyles: { 0: { fontStyle: 'bold', cellWidth: 60 } }
+            });
+
+            currentY = (doc as any).lastAutoTable.finalY + 10;
+
+            // Ticket Details Table
+            autoTable(doc, {
+                startY: currentY,
+                head: [['DATOS DEL REPORTE', 'VALOR']],
+                body: [
+                    ['Fecha y Hora Reporte', new Date(ticket.fecha).toLocaleString()],
+                    ['Turno', ticket.turno],
+                    ['Reportado Por', ticket.registradoPor || 'N/A'],
+                    ['Estado de Máquina', ticket.estadoMaquina || 'N/A']
+                ],
+                margin: { left: margin },
+                tableWidth: tableWidth,
+                theme: 'grid',
+                headStyles: { fillColor: [44, 62, 80] },
+                columnStyles: { 0: { fontStyle: 'bold', cellWidth: 60 } }
+            });
+
+            currentY = (doc as any).lastAutoTable.finalY + 15;
+
+            // Description Section
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(10);
+            doc.text("DESCRIPCIÓN DETALLADA DE LA NOVEDAD:", margin, currentY);
+            currentY += 7;
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(11);
+            const splitDesc = doc.splitTextToSize(ticket.descripcion || "Sin descripción", tableWidth);
+            doc.text(splitDesc, margin, currentY);
+            
+            currentY += (splitDesc.length * 6) + 20;
+
+            // Signature Section
+            if (currentY > 250) {
+                doc.addPage();
+                currentY = 30;
+            }
+            
+            doc.line(margin, currentY, margin + 70, currentY);
+            doc.setFontSize(9);
+            doc.text("Firma de quien reporta", margin, currentY + 5);
+            doc.text(ticket.registradoPor || "", margin, currentY + 10);
+
+            doc.line(margin + 110, currentY, margin + 180, currentY);
+            doc.text("Firma de Mantenimiento / Jefe de Área", margin + 110, currentY + 5);
+
+            const pdfName = `Ticket_${ticket.consecutivo ?? ticket.id ?? 0}_${machine.nombre.replace(/ /g, '_')}.pdf`;
+            doc.save(pdfName);
+        } catch (error) {
+            console.error("Error PDF Ticket:", error);
+            Alert.alert("Error", "No se pudo generar el PDF del ticket.");
+        }
+    };
+
+    const handleExportMaintenancePdf = async (maint: MantenimientoEntry, machine: HojaVida) => {
+        const doc = new jsPDF();
+        const logoB64 = await urlToBase64(window.location.origin + '/empresa-logo.jpeg');
+        
+        // Buscar ticket asociado si existe
+        const ticketId = maint.ticketId || maint.TicketId;
+        const associatedTicket = ticketId ? bitacoras.find(b => b.id === ticketId) : null;
+        
+        // --- CABECERA ---
+        // Dibujar marco de cabecera
+        doc.rect(10, 10, 190, 25); // Marco principal
+        doc.line(45, 10, 45, 35); // Separador Logo
+        doc.line(160, 10, 160, 35); // Separador Control
+        
+        // Logo
+        if (logoB64) {
+            doc.addImage(logoB64, 'JPEG', 12, 12, 30, 20);
+        }
+        
+        // Título Central
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "bold");
+        doc.text("SISTEMA DE GESTIÓN DE SEGURIDAD Y SALUD EN EL TRABAJO", 102.5, 16, { align: 'center' });
+        doc.setFontSize(12);
+        doc.text("REGISTRO DE MANTENIMIENTO", 102.5, 23, { align: 'center' });
+        doc.setFontSize(11);
+        doc.text("ALEPH S.A.S", 102.5, 30, { align: 'center' });
+        
+        // Tabla de Control (Derecha)
+        doc.setFontSize(8);
+        doc.line(160, 16, 200, 16); // Línea 1
+        doc.line(160, 22, 200, 22); // Línea 2
+        doc.line(160, 28, 200, 28); // Línea 3
+        
+        doc.text("Codigo: SST-FT-", 162, 14);
+        doc.text("Version: 02", 162, 20);
+        doc.text("Fecha: 13/02/2026", 162, 26);
+        doc.text("Pagina 1 de 1", 162, 32);
+
+        // --- SECCIÓN: SOLICITUD DE MANTENIMIENTO ---
+        doc.setFillColor(41, 73, 106); // Azul oscuro
+        doc.rect(10, 35, 190, 7, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(10);
+        doc.text("SOLICITUD DE MANTENIMIENTO", 105, 40, { align: 'center' });
+        
+        doc.setTextColor(0, 0, 0);
+        
+        // Tabla de Solicitud (Datos del Ticket)
+        const ticketDate = associatedTicket ? new Date(associatedTicket.fecha) : new Date(maint.fecha);
+        const dia = ticketDate.getDate().toString().padStart(2, '0');
+        const mes = (ticketDate.getMonth() + 1).toString().padStart(2, '0');
+        const anio = ticketDate.getFullYear().toString();
+
+        autoTable(doc, {
+            startY: 42,
+            theme: 'plain',
+            styles: { fontSize: 8, cellPadding: 2, lineWidth: 0.1, lineColor: [0, 0, 0] },
+            body: [
+                [
+                    { content: 'FECHA DE SOLICITUD DE MANTENIMIENTO', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fontStyle: 'bold', cellWidth: 40 } },
+                    { content: 'DIA', styles: { halign: 'center', cellWidth: 15 } },
+                    { content: 'MES', styles: { halign: 'center', cellWidth: 15 } },
+                    { content: 'AÑO', styles: { halign: 'center', cellWidth: 15 } },
+                    { content: 'TIPO DE MANTENIMIENTO :', styles: { fontStyle: 'bold', halign: 'center', cellWidth: 40 } },
+                    { content: (maint.tipoMantenimiento || maint.tipo || '').toUpperCase(), styles: { halign: 'center', fontStyle: 'bold', cellWidth: 65 } }
+                ],
+                [
+                    { content: dia, styles: { halign: 'center' } },
+                    { content: mes, styles: { halign: 'center' } },
+                    { content: anio, styles: { halign: 'center' } },
+                    { content: ' ', colSpan: 2 } 
+                ]
+            ]
+        });
+
+        // Nombre del equipo y Descripción Inicial
+        autoTable(doc, {
+            startY: (doc as any).lastAutoTable.finalY,
+            theme: 'plain',
+            styles: { fontSize: 8, cellPadding: 3, lineWidth: 0.1, lineColor: [0, 0, 0], overflow: 'linebreak' },
+            body: [
+                [
+                    { content: 'NOMBRE DEL EQUIPO Y CODIGO', styles: { fontStyle: 'bold', halign: 'center', cellWidth: 40 } },
+                    { content: `${machine.nombre} - ${machine.codigo || ''}`, styles: { cellWidth: 150 } }
+                ],
+                [
+                    { content: 'DESCRIPCIÓN DE ESTADO INICIAL', colSpan: 2, styles: { fontStyle: 'bold', halign: 'center' } }
+                ],
+                [
+                    { content: associatedTicket?.descripcion || 'No se especificó descripción de ticket.', colSpan: 2, styles: { minHeight: 15 } }
+                ],
+                [
+                    { content: 'NOMBRE O AREA QUIEN SOLICITA', styles: { fontStyle: 'bold', halign: 'center', cellWidth: 40 } },
+                    { content: (associatedTicket?.registradoPor || 'ÁREA TÉCNICA').toUpperCase(), styles: { cellWidth: 150 } }
+                ]
+            ]
+        });
+
+        // --- SECCIÓN: ORDEN DE TRABAJO DE MANTENIMIENTO ---
+        doc.setFillColor(41, 73, 106);
+        doc.rect(10, (doc as any).lastAutoTable.finalY, 190, 7, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.text("ORDEN DE TRABAJO DE MANTENIMIENTO", 105, (doc as any).lastAutoTable.finalY + 5, { align: 'center' });
+        doc.setTextColor(0, 0, 0);
+
+        const maintDate = new Date(maint.fecha);
+        const mDia = maintDate.getDate().toString().padStart(2, '0');
+        const mMes = (maintDate.getMonth() + 1).toString().padStart(2, '0');
+        const mAnio = maintDate.getFullYear().toString();
+
+        autoTable(doc, {
+            startY: (doc as any).lastAutoTable.finalY + 7,
+            theme: 'plain',
+            styles: { fontSize: 8, cellPadding: 2, lineWidth: 0.1, lineColor: [0, 0, 0] },
+            body: [
+                [
+                    { content: 'FECHA DE REALIZACIÓN DEL MANTENIMIENTO', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fontStyle: 'bold', cellWidth: 40 } },
+                    { content: 'DIA', styles: { halign: 'center', cellWidth: 15 } },
+                    { content: 'MES', styles: { halign: 'center', cellWidth: 15 } },
+                    { content: 'AÑO', styles: { halign: 'center', cellWidth: 15 } },
+                    { content: 'REALIZADO POR:', styles: { fontStyle: 'bold', halign: 'center', cellWidth: 40 } },
+                    { content: (maint.ejecutadoPor || '').toUpperCase(), styles: { cellWidth: 65 } }
+                ],
+                [
+                    { content: mDia, styles: { halign: 'center' } },
+                    { content: mMes, styles: { halign: 'center' } },
+                    { content: mAnio, styles: { halign: 'center' } },
+                    { content: 'TIPO DE MANTENIMIENTO A EJECUTAR', styles: { fontStyle: 'bold', halign: 'center', cellWidth: 40 } },
+                    { content: (maint.tipoMantenimiento || maint.tipo || '').toUpperCase(), styles: { halign: 'center', fontStyle: 'bold', cellWidth: 65 } }
+                ],
+                [
+                    { content: 'NOMBRE DEL EQUIPO', styles: { fontStyle: 'bold', halign: 'center', cellWidth: 40 } },
+                    { content: machine.nombre.toUpperCase(), colSpan: 5 }
+                ],
+                [
+                    { content: 'TIEMPO', styles: { fontStyle: 'bold', halign: 'center', cellWidth: 40 } },
+                    { 
+                        content: (() => {
+                            const dateStr = maint.fechaRegistro || maint.fecha;
+                            const date = new Date(dateStr);
+                            // Si la fecha viene de la DB en UTC, esto la convertirá a la local del navegador
+                            return date.toLocaleString('es-CO', { 
+                                year: 'numeric', 
+                                month: 'numeric', 
+                                day: 'numeric', 
+                                hour: '2-digit', 
+                                minute: '2-digit', 
+                                second: '2-digit',
+                                hour12: true 
+                            });
+                        })(), 
+                        colSpan: 5 
+                    }
+                ]
+            ]
+        });
+
+        // Recursos Necesarios
+        autoTable(doc, {
+            startY: (doc as any).lastAutoTable.finalY,
+            theme: 'plain',
+            styles: { fontSize: 8, cellPadding: 2, lineWidth: 0.1, lineColor: [0, 0, 0] },
+            body: [
+                [
+                    { content: 'RECURSOS NECESARIOS', rowSpan: 2, styles: { fontStyle: 'bold', valign: 'middle', halign: 'center', cellWidth: 40 } },
+                    { content: 'EQUIPOS', styles: { fontStyle: 'bold', halign: 'center', cellWidth: 50 } },
+                    { content: 'MATERIALES / HERRAMIENTAS', styles: { fontStyle: 'bold', halign: 'center', cellWidth: 50 } },
+                    { content: 'REPUESTOS', styles: { fontStyle: 'bold', halign: 'center', cellWidth: 50 } }
+                ],
+                [
+                    { content: ' ', styles: { minHeight: 15 } },
+                    { content: ' ' },
+                    { content: ' ' }
+                ],
+                [
+                    { content: 'DESCRIPCION DE LA ACTIVIDAD A EJECUTAR', colSpan: 4, styles: { fontStyle: 'bold', halign: 'center' } }
+                ],
+                [
+                    { content: maint.observacion, colSpan: 4, styles: { minHeight: 40 } }
+                ],
+                [
+                    { content: 'VALOR TOTAL DEL MANTENIMIENTO', colSpan: 3, styles: { fontStyle: 'bold', halign: 'center' } },
+                    { content: ' ', styles: { halign: 'right' } }
+                ],
+                [
+                    { content: 'NOMBRE DE QUIEN RECIBE Y VERIFICA', colSpan: 2, styles: { fontStyle: 'bold', halign: 'center' } },
+                    { content: 'FIRMA DE QUIEN RECIBE Y VERIFICA', colSpan: 2, styles: { fontStyle: 'bold', halign: 'center' } }
+                ],
+                [
+                    { content: ' ', colSpan: 2, styles: { minHeight: 15 } },
+                    { content: ' ', colSpan: 2 }
+                ]
+            ]
+        });
+
+        // --- Guardado / Descarga ---
+        const filename = `Mantenimiento_${maint.consecutivo || maint.id}_${machine.nombre.replace(/ /g, '_')}.pdf`;
+        if (Platform.OS === 'web') {
+            const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+            if (isMobile) {
+                doc.output('dataurlnewwindow');
+            } else {
+                const blob = doc.output('blob');
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+            }
+        } else {
+            doc.save(filename);
+        }
+    };
+
+    const handleExportPdf = async (item: HojaVida, dataBitacoras?: BitacoraEntry[]) => {
+
         try {
             // Cargar Tickets (Bitácoras)
             let listTickets = dataBitacoras;
@@ -1168,6 +1548,7 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
         }
     };
 
+
     const renderCronograma = () => {
         const mesesNombres = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
         const mesesSiglas = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -1238,11 +1619,11 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
             <View style={{ flex: 1, padding: 20 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 }}>
                     <View>
-                        <Text style={{ fontSize: 28, fontWeight: 'bold', color: isDarkMode ? 'white' : '#1e293b' }}>Cronograma de Mantenimiento</Text>
-                        <Text style={{ fontSize: 16, color: '#64748b' }}>Selecciona un mes para registrar actividades</Text>
+                        <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.text }}>Cronograma de Mantenimiento</Text>
+                        <Text style={{ fontSize: 16, color: colors.subText }}>Selecciona un mes para registrar actividades</Text>
                     </View>
-                    <View style={{ backgroundColor: isDarkMode ? '#1e293b' : 'white', padding: 15, borderRadius: 15, elevation: 5, alignItems: 'center', minWidth: 150 }}>
-                        <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#64748b', marginBottom: 5 }}>CUMPLIMIENTO ANUAL</Text>
+                    <View style={{ backgroundColor: isDarkMode ? '#1e293b' : 'white', padding: 15, borderRadius: 15, elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, alignItems: 'center', minWidth: 150 }}>
+                        <Text style={{ fontSize: 12, fontWeight: 'bold', color: colors.subText, marginBottom: 5 }}>CUMPLIMIENTO ANUAL</Text>
                         <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#84cc16' }}>{totalComp}%</Text>
                     </View>
                 </View>
@@ -1288,72 +1669,86 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
         );
 
         const renderMonthDetail = () => {
-            const getVisibleDays = () => {
+            const getVisibleDays = (offset = cronogramaSemanaOffset) => {
                 if (!selectedMesCronograma) return [];
                 const firstOfMonth = new Date(selectedAnio, selectedMesCronograma - 1, 1);
                 const dayIdx = firstOfMonth.getDay(); 
                 const diffToMonday = dayIdx === 0 ? -6 : 1 - dayIdx;
                 const startPoint = new Date(firstOfMonth);
-                startPoint.setDate(firstOfMonth.getDate() + diffToMonday + (cronogramaSemanaOffset * 7));
+                startPoint.setDate(firstOfMonth.getDate() + diffToMonday + (offset * 7));
+                
                 return Array.from({ length: 7 }, (_, i) => {
                     const d = new Date(startPoint);
                     d.setDate(startPoint.getDate() + i);
-                    return d;
-                });
+                    return { date: d, dayIdx: i };
+                }).filter(item => item.date.getMonth() + 1 === selectedMesCronograma);
             };
+
+            const hasDaysInOffset = (offset: number) => {
+                const days = getVisibleDays(offset);
+                return days.length > 0;
+            };
+
             const visibleDays = getVisibleDays();
             const currentMStats = mStats[selectedMesCronograma! - 1];
 
             return (
                 <View style={{ flex: 1, flexDirection: 'row', padding: 15, gap: 15 }}>
-                    <View style={{ flex: 3.5, backgroundColor: 'white', borderRadius: 12, overflow: 'hidden', elevation: 2 }}>
+                    <View style={{ flex: 3.5, backgroundColor: isDarkMode ? '#1e293b' : 'white', borderRadius: 12, overflow: 'hidden', elevation: 2, borderWidth: 1, borderColor: colors.border }}>
                         <ScrollView style={{ flex: 1 }}>
                             <ScrollView horizontal>
                                 <View>
-                                    <View style={{ flexDirection: 'row', backgroundColor: '#f8fafc', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
+                                    <View style={{ flexDirection: 'row', backgroundColor: isDarkMode ? '#0f172a' : '#f8fafc', borderBottomWidth: 1, borderBottomColor: colors.border }}>
                                         <View style={{ width: 300, padding: 15, flexDirection: 'row', alignItems: 'center' }}>
-                                            <TouchableOpacity onPress={() => setSelectedMesCronograma(null)} style={{ marginRight: 15, padding: 8, backgroundColor: '#3182ce', borderRadius: 8 }}>
+                                            <TouchableOpacity onPress={() => setSelectedMesCronograma(null)} style={{ marginRight: 15, padding: 8, backgroundColor: colors.primary, borderRadius: 8 }}>
                                                 <MaterialCommunityIcons name="view-dashboard" size={16} color="white" />
                                             </TouchableOpacity>
-                                            <Text style={{ fontWeight: 'bold', color: '#1e293b', fontSize: 13 }}>{mesesNombres[selectedMesCronograma! - 1].toUpperCase()}</Text>
+                                            <Text style={{ fontWeight: 'bold', color: colors.text, fontSize: 13 }}>{mesesNombres[selectedMesCronograma! - 1].toUpperCase()}</Text>
                                         </View>
                                         <View style={{ flexDirection: 'row' }}>
-                                            <TouchableOpacity onPress={() => setCronogramaSemanaOffset(v => v - 1)} style={{ width: 45, justifyContent: 'center', alignItems: 'center' }}><MaterialCommunityIcons name="chevron-left" size={30} color="#3182ce" /></TouchableOpacity>
-                                            {visibleDays.map((date, idx) => (
-                                                <View key={idx} style={{ width: 80, paddingVertical: 10, alignItems: 'center', borderLeftWidth: 1, borderLeftColor: '#e2e8f0' }}>
-                                                    <Text style={{ fontWeight: 'bold', fontSize: 11, color: '#3182ce' }}>{diasSemanaNombres[idx]}</Text>
-                                                    <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#1e293b' }}>{date.getDate()}</Text>
+                                            <TouchableOpacity 
+                                                onPress={() => setCronogramaSemanaOffset(v => v - 1)} 
+                                                disabled={!hasDaysInOffset(cronogramaSemanaOffset - 1)}
+                                                style={{ width: 45, justifyContent: 'center', alignItems: 'center', opacity: hasDaysInOffset(cronogramaSemanaOffset - 1) ? 1 : 0.2 }}
+                                            >
+                                                <MaterialCommunityIcons name="chevron-left" size={30} color={colors.primary} />
+                                            </TouchableOpacity>
+
+                                            {visibleDays.map((item, idx) => (
+                                                <View key={idx} style={{ width: 80, paddingVertical: 10, alignItems: 'center', borderLeftWidth: 1, borderLeftColor: colors.border }}>
+                                                    <Text style={{ fontWeight: 'bold', fontSize: 11, color: colors.primary }}>{diasSemanaNombres[item.dayIdx]}</Text>
+                                                    <Text style={{ fontSize: 16, fontWeight: 'bold', color: colors.text }}>{item.date.getDate()}</Text>
                                                 </View>
                                             ))}
-                                            <TouchableOpacity onPress={() => setCronogramaSemanaOffset(v => v + 1)} style={{ width: 45, justifyContent: 'center', alignItems: 'center', borderLeftWidth: 1, borderLeftColor: '#e2e8f0' }}>
-                                                <MaterialCommunityIcons name="chevron-right" size={30} color="#3182ce" />
+
+                                            <TouchableOpacity 
+                                                onPress={() => setCronogramaSemanaOffset(v => v + 1)} 
+                                                disabled={!hasDaysInOffset(cronogramaSemanaOffset + 1)}
+                                                style={{ width: 45, justifyContent: 'center', alignItems: 'center', borderLeftWidth: 1, borderLeftColor: colors.border, opacity: hasDaysInOffset(cronogramaSemanaOffset + 1) ? 1 : 0.2 }}
+                                            >
+                                                <MaterialCommunityIcons name="chevron-right" size={30} color={colors.primary} />
                                             </TouchableOpacity>
                                         </View>
                                     </View>
 
                                     {cronogramaActividades.map((act, index) => (
-                                        <View key={act.id} style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#f1f5f9', backgroundColor: index % 2 === 0 ? 'white' : '#f8fafc' }}>
-                                            <View style={{ width: 300, padding: 12, flexDirection: 'row', alignItems: 'center', borderRightWidth: 1, borderRightColor: '#e2e8f0' }}>
+                                        <View key={act.id} style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: index % 2 === 0 ? (isDarkMode ? '#1e293b' : 'white') : (isDarkMode ? '#0f172a' : '#f8fafc') }}>
+                                            <View style={{ width: 300, padding: 12, flexDirection: 'row', alignItems: 'center', borderRightWidth: 1, borderRightColor: colors.border }}>
                                                 <View style={{ flex: 1 }}>
-                                                    <Text style={{ fontSize: 12, color: '#2d3748', fontWeight: 'bold' }}>{act.operacion}</Text>
+                                                    <Text style={{ fontSize: 12, color: colors.text, fontWeight: 'bold' }}>{act.operacion}</Text>
                                                     <View style={{ backgroundColor: (act.tipoMantenimiento || 'preventivo') === 'correctivo' ? '#ef444420' : (act.tipoMantenimiento || 'preventivo') === 'preventivo' ? '#3B82F620' : '#84cc1620', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, alignSelf: 'flex-start', marginTop: 4 }}>
                                                         <Text style={{ fontSize: 9, fontWeight: 'bold', color: (act.tipoMantenimiento || 'preventivo') === 'correctivo' ? '#ef4444' : (act.tipoMantenimiento || 'preventivo') === 'preventivo' ? '#3B82F6' : '#84cc16' }}>{(act.tipoMantenimiento || 'preventivo').toUpperCase()}</Text>
                                                     </View>
                                                 </View>
-                                                <TouchableOpacity onPress={() => handleEditActividad(act)} style={{ padding: 6 }}><MaterialCommunityIcons name="pencil-outline" size={18} color="#3182ce" /></TouchableOpacity>
-                                                <TouchableOpacity onPress={() => handleDeleteActividad(act.id)} style={{ padding: 6 }}><MaterialCommunityIcons name="trash-can-outline" size={18} color="#e53e3e" /></TouchableOpacity>
+                                                <TouchableOpacity onPress={() => handleEditActividad(act)} style={{ padding: 6 }}><MaterialCommunityIcons name="pencil-outline" size={18} color={colors.primary} /></TouchableOpacity>
+                                                <TouchableOpacity onPress={() => handleDeleteActividad(act.id)} style={{ padding: 6 }}><MaterialCommunityIcons name="trash-can-outline" size={18} color="#ef4444" /></TouchableOpacity>
                                             </View>
 
-                                            <View style={{ width: 45, backgroundColor: '#f8fafc', borderLeftWidth: 1, borderLeftColor: '#e2e8f0' }} />
-                                            {visibleDays.map((date, idx) => {
-                                                const m = date.getMonth() + 1;
-                                                const d = date.getDate();
-                                                const isCurrentMonth = m === selectedMesCronograma;
+                                            <View style={{ width: 45, backgroundColor: isDarkMode ? '#0f172a' : '#f8fafc', borderLeftWidth: 1, borderLeftColor: colors.border }} />
+                                            {visibleDays.map((item, idx) => {
+                                                const m = item.date.getMonth() + 1;
+                                                const d = item.date.getDate();
                                                 
-                                                if (!isCurrentMonth) {
-                                                    return <View key={idx} style={{ width: 80, height: 60, borderLeftWidth: 1, borderLeftColor: '#f1f5f9', backgroundColor: '#f8fafc' }} />;
-                                                }
-
                                                 const list = Array.isArray(cronogramaRegistros) ? cronogramaRegistros : [];
                                                 const reg = list.find(r => 
                                                     Number(r.actividadId || r.ActividadId) === Number(act.id) && 
@@ -1368,12 +1763,12 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                                     <View key={idx} style={{ position: 'relative', zIndex: isPickerActive ? 10000 : 1 }}>
                                                         <TouchableOpacity 
                                                             onPress={() => setStatusPicker({ actId: act.id, mes: m, dia: d })}
-                                                            style={{ width: 80, height: 60, borderLeftWidth: 1, borderLeftColor: '#f1f5f9', backgroundColor: s.color, alignItems: 'center', justifyContent: 'center' }}
+                                                            style={{ width: 80, height: 60, borderLeftWidth: 1, borderLeftColor: colors.border, backgroundColor: s.color, alignItems: 'center', justifyContent: 'center' }}
                                                         >
                                                             {s.icon ? (
                                                                 <MaterialCommunityIcons name={s.icon as any} size={24} color="white" />
                                                             ) : (
-                                                                <Text style={{ color: '#cbd5e0', fontWeight: 'bold', fontSize: 14 }}>{s.text}</Text>
+                                                                <Text style={{ color: isDarkMode ? '#475569' : '#cbd5e0', fontWeight: 'bold', fontSize: 14 }}>{s.text}</Text>
                                                             )}
                                                         </TouchableOpacity>
 
@@ -1408,27 +1803,28 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                                     </View>
                                                 );
                                             })}
-                                            <View style={{ width: 45, backgroundColor: '#f8fafc', borderLeftWidth: 1, borderLeftColor: '#e2e8f0' }} />
+                                            <View style={{ width: 45, backgroundColor: isDarkMode ? '#0f172a' : '#f8fafc', borderLeftWidth: 1, borderLeftColor: colors.border }} />
                                         </View>
                                     ))}
-                                    <View style={{ padding: 15, backgroundColor: '#f8fafc', borderTopWidth: 1, borderTopColor: '#e2e8f0' }}>
+                                    <View style={{ padding: 15, backgroundColor: isDarkMode ? '#0f172a' : '#f8fafc', borderTopWidth: 1, borderTopColor: colors.border }}>
                                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                                             <TextInput 
-                                                style={{ flex: 1, height: 45, backgroundColor: 'white', borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 15, color: '#4a5568' }}
+                                                style={{ flex: 1, height: 45, backgroundColor: isDarkMode ? '#1e293b' : 'white', borderRadius: 10, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 15, color: colors.text }}
                                                 placeholder="Nombre de la nueva operación..."
+                                                placeholderTextColor={colors.subText}
                                                 value={newActividadNombre}
                                                 onChangeText={setNewActividadNombre}
                                             />
-                                            <TouchableOpacity onPress={handleAddActividad} style={{ backgroundColor: '#3182ce', padding: 12, borderRadius: 10 }}><MaterialCommunityIcons name="plus" size={24} color="white" /></TouchableOpacity>
+                                            <TouchableOpacity onPress={handleAddActividad} style={{ backgroundColor: colors.primary, padding: 12, borderRadius: 10 }}><MaterialCommunityIcons name="plus" size={24} color="white" /></TouchableOpacity>
                                         </View>
                                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                                             {['correctivo', 'preventivo', 'limpieza', 'ajuste', 'calibracion'].map(t => (
                                                 <TouchableOpacity 
                                                     key={t} 
                                                     onPress={() => setNewActividadTipo(t)}
-                                                    style={[{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: '#e2e8f0' }, newActividadTipo === t && { backgroundColor: '#3182ce', borderColor: '#3182ce' }]}
+                                                    style={[{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: colors.border }, newActividadTipo === t && { backgroundColor: colors.primary, borderColor: colors.primary }]}
                                                 >
-                                                    <Text style={{ fontSize: 10, fontWeight: 'bold', color: newActividadTipo === t ? 'white' : '#64748b' }}>{t.toUpperCase()}</Text>
+                                                    <Text style={{ fontSize: 10, fontWeight: 'bold', color: newActividadTipo === t ? 'white' : colors.subText }}>{t.toUpperCase()}</Text>
                                                 </TouchableOpacity>
                                             ))}
                                         </View>
@@ -1437,16 +1833,16 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                             </ScrollView>
                         </ScrollView>
                     </View>
-                    <View style={{ flex: 1, backgroundColor: 'white', borderRadius: 20, overflow: 'hidden', elevation: 4 }}>
-                        <View style={{ backgroundColor: '#1e293b', padding: 15 }}><Text style={{ color: 'white', fontWeight: 'bold', textAlign: 'center' }}>RESUMEN: {mesesSiglas[selectedMesCronograma! - 1]}</Text></View>
+                    <View style={{ flex: 1, backgroundColor: isDarkMode ? '#1e293b' : 'white', borderRadius: 20, overflow: 'hidden', elevation: 4, borderWidth: 1, borderColor: colors.border }}>
+                        <View style={{ backgroundColor: '#1e293b', padding: 15, borderBottomWidth: 1, borderBottomColor: colors.border }}><Text style={{ color: 'white', fontWeight: 'bold', textAlign: 'center' }}>RESUMEN: {mesesSiglas[selectedMesCronograma! - 1]}</Text></View>
                         <View style={{ flex: 1, padding: 15, gap: 10 }}>
-                            <View style={{ backgroundColor: '#ebf8ff', padding: 15, borderRadius: 15, alignItems: 'center' }}><Text style={{ fontSize: 24, fontWeight: 'bold', color: '#3182ce' }}>{currentMStats.comp}%</Text></View>
+                            <View style={{ backgroundColor: isDarkMode ? '#0f172a' : '#ebf8ff', padding: 15, borderRadius: 15, alignItems: 'center' }}><Text style={{ fontSize: 24, fontWeight: 'bold', color: colors.primary }}>{currentMStats.comp}%</Text></View>
                             {[1, 2, 3, 4, 5].map(st => {
                                 const stStyle = getStatusStyles(st);
                                 const count = currentMStats[stStyle.text as keyof typeof global] || 0;
                                 return (
-                                    <View key={st} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', borderRadius: 12, borderLeftWidth: 5, borderLeftColor: stStyle.color, height: 50 }}>
-                                        <View style={{ flex: 1, paddingHorizontal: 12 }}><Text style={{ fontSize: 11, fontWeight: 'bold', color: '#4b5563' }}>{stStyle.label}</Text></View>
+                                    <View key={st} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDarkMode ? '#0f172a' : '#f8fafc', borderRadius: 12, borderLeftWidth: 5, borderLeftColor: stStyle.color, height: 50 }}>
+                                        <View style={{ flex: 1, paddingHorizontal: 12 }}><Text style={{ fontSize: 11, fontWeight: 'bold', color: colors.subText }}>{stStyle.label}</Text></View>
                                         <View style={{ paddingHorizontal: 15 }}><Text style={{ color: stStyle.color, fontWeight: 'bold', fontSize: 16 }}>{count}</Text></View>
                                     </View>
                                 );
@@ -1458,15 +1854,35 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
         };
 
         return (
-            <View style={{ flex: 1, backgroundColor: isDarkMode ? '#0f172a' : '#f8fafc' }}>
-                <View style={{ padding: 15, backgroundColor: isDarkMode ? '#1e293b' : '#1a202c', flexDirection: 'row', alignItems: 'center', gap: 15, elevation: 8 }}>
-                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
+            <View style={[styles.container, { backgroundColor: colors.background }]}>
+                <View style={{ padding: 10, paddingVertical: 12, backgroundColor: isDarkMode ? '#1e293b' : '#1a202c', flexDirection: 'row', alignItems: 'center', gap: 8, elevation: 8 }}>
+                     <TouchableOpacity 
+                         onPress={() => { maqScrollX.current = Math.max(0, maqScrollX.current - 300); maqScrollRef.current?.scrollTo({ x: maqScrollX.current, animated: true }); }}
+                         style={{ padding: 6, backgroundColor: '#374151', borderRadius: 8 }}
+                     >
+                         <MaterialCommunityIcons name="chevron-left" size={22} color="#9CA3AF" />
+                     </TouchableOpacity>
+                     <ScrollView 
+                         ref={maqScrollRef}
+                         horizontal 
+                         showsHorizontalScrollIndicator={true} 
+                         style={{ flex: 1 }}
+                         contentContainerStyle={{ paddingVertical: 4 }}
+                         onScroll={(e) => { maqScrollX.current = e.nativeEvent.contentOffset.x; }}
+                         scrollEventThrottle={16}
+                     >
                         {hojasVida.map(maq => (
-                            <TouchableOpacity key={maq.id} onPress={() => { setSelectedCronogramaMaq(maq); setSelectedMesCronograma(null); }} style={[{ paddingHorizontal: 18, paddingVertical: 10, borderRadius: 30, marginRight: 12, borderWidth: 1, borderColor: '#4b5563' }, selectedCronogramaMaq?.id === maq.id && { backgroundColor: '#3182ce', borderColor: '#3182ce' }]}>
-                                <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 15 }}>{maq.nombre}</Text>
+                            <TouchableOpacity key={maq.id} onPress={() => { setSelectedCronogramaMaq(maq); setSelectedMesCronograma(null); }} style={[{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: 25, marginRight: 8, borderWidth: 1.5, borderColor: '#4b5563' }, selectedCronogramaMaq?.id === maq.id && { backgroundColor: '#3182ce', borderColor: '#3182ce' }]}>
+                                <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 13 }} numberOfLines={1}>{maq.nombre}</Text>
                             </TouchableOpacity>
                         ))}
                      </ScrollView>
+                     <TouchableOpacity 
+                         onPress={() => { maqScrollX.current = maqScrollX.current + 300; maqScrollRef.current?.scrollTo({ x: maqScrollX.current, animated: true }); }}
+                         style={{ padding: 6, backgroundColor: '#374151', borderRadius: 8 }}
+                     >
+                         <MaterialCommunityIcons name="chevron-right" size={22} color="#9CA3AF" />
+                     </TouchableOpacity>
                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15, backgroundColor: '#2d3748', padding: 10, borderRadius: 15 }}>
                         <TouchableOpacity onPress={() => setSelectedAnio(v => v - 1)}><MaterialCommunityIcons name="chevron-left" size={32} color="white" /></TouchableOpacity>
                         <Text style={{ fontWeight: 'bold', fontSize: 20, color: 'white' }}>{selectedAnio}</Text>
@@ -1686,10 +2102,18 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                     )}
                                     renderItem={({ item }) => {
                                         const maq = hojasVida.find(h => h.id === item.hojaVidaId);
+                                        const tNum = item.consecutivo ?? item.Consecutivo ?? item.id ?? 0;
                                         return (
                                             <View style={[styles.bitacoraCard, { backgroundColor: isDarkMode ? '#1e293b' : 'white', borderLeftColor: item.estadoMaquina === 'Operativa' ? '#10B981' : '#EF4444' }]}>
                                                 <View style={{ flex: 1 }}>
-                                                    <Text style={[styles.bitacoraTitle, { color: colors.text }]}>{maq?.nombre || 'Máquina'} - Ticket #{item.consecutivo ?? item.Consecutivo ?? 0}</Text>
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                                                        <Text style={[styles.bitacoraTitle, { color: colors.text, marginBottom: 0 }]}>{maq?.nombre || 'Máquina'} - Ticket #{tNum}</Text>
+                                                        <View style={[styles.badge, { backgroundColor: item.resuelto ? '#10B98120' : '#F59E0B20', marginLeft: 10, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }]}>
+                                                            <Text style={[styles.badgeText, { color: item.resuelto ? '#10B981' : '#F59E0B', fontSize: 10 }]}>
+                                                                {item.resuelto ? 'RESUELTO' : 'NO RESUELTO'}
+                                                            </Text>
+                                                        </View>
+                                                    </View>
                                                     <View style={styles.bitacoraRow}>
                                                         <MaterialCommunityIcons name="clock-outline" size={14} color={colors.subText} />
                                                         <Text style={[styles.bitacoraDate, { color: colors.subText }]}> {new Date(item.fecha).toLocaleString()} - {item.turno}</Text>
@@ -1697,9 +2121,17 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                                     <Text style={[styles.bitacoraDesc, { color: colors.text }]}>{item.descripcion}</Text>
                                                     <Text style={[styles.bitacoraUser, { color: colors.primary }]}>Generado por: {item.registradoPor || 'Anónimo'}</Text>
                                                 </View>
-                                                <TouchableOpacity onPress={() => handleDeleteBitacora(item)}>
-                                                    <MaterialCommunityIcons name="delete-outline" size={22} color="#EF4444" />
-                                                </TouchableOpacity>
+                                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                                    <TouchableOpacity 
+                                                        onPress={() => handleExportTicketPdf(item, maq!)}
+                                                        style={{ marginRight: 15, padding: 5 }}
+                                                    >
+                                                        <MaterialCommunityIcons name="file-pdf-box" size={24} color="#E11D48" />
+                                                    </TouchableOpacity>
+                                                    <TouchableOpacity onPress={() => handleDeleteBitacora(item)}>
+                                                        <MaterialCommunityIcons name="delete-outline" size={22} color="#EF4444" />
+                                                    </TouchableOpacity>
+                                                </View>
                                             </View>
                                         );
                                     }}
@@ -1778,6 +2210,13 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                                     <Text style={[styles.bitacoraUser, { color: colors.primary }]}>Por: {item.ejecutadoPor}</Text>
                                                 </View>
                                                 <View style={{ justifyContent: 'space-around', marginLeft: 15 }}>
+                                                    <TouchableOpacity 
+                                                        onPress={() => handleExportMaintenancePdf(item, maq!)}
+                                                        style={{ padding: 5 }}
+                                                    >
+                                                        <MaterialCommunityIcons name="file-pdf-box" size={26} color="#3B82F6" />
+                                                    </TouchableOpacity>
+
                                                     <TouchableOpacity onPress={() => {
                                                         setMantenimientoForm({
                                                             ...item,
@@ -1787,6 +2226,7 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                                         });
                                                         setIsEditingMantenimiento(true);
                                                         setMantenimientoModalVisible(true);
+                                         setSelectedActsForMantenimiento([]);
                                                     }}>
                                                         <MaterialCommunityIcons name="pencil-outline" size={24} color={colors.subText} />
                                                     </TouchableOpacity>
@@ -2053,8 +2493,8 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                 </>
                             )}
 
-                            <FormInput label="Ejecutado por *" value={mantenimientoForm.ejecutadoPor} onChangeText={(t: string) => setMantenimientoForm({...mantenimientoForm, ejecutadoPor: t})} placeholder="Nombre del técnico" colors={colors} isDarkMode={isDarkMode} />
-                            <FormInput label="Observaciones / Detalles" value={mantenimientoForm.observacion} onChangeText={(t: string) => setMantenimientoForm({...mantenimientoForm, observacion: t})} placeholder="Detalle lo realizado..." multiline colors={colors} isDarkMode={isDarkMode} />
+                            <FormInput label="Ejecutado por *" value={mantenimientoForm.ejecutadoPor} onChangeText={(t: string) => setMantenimientoForm({...mantenimientoForm, ejecutadoPor: t})} placeholder="Nombre del técnico" colors={colors} isDarkMode={isDarkMode} styles={styles} />
+                            <FormInput label="Observaciones / Detalles" value={mantenimientoForm.observacion} onChangeText={(t: string) => setMantenimientoForm({...mantenimientoForm, observacion: t})} placeholder="Detalle lo realizado..." multiline colors={colors} isDarkMode={isDarkMode} styles={styles} />
 
                             <View style={styles.photoUploadSection}>
                                 <Text style={[styles.label, { color: colors.text }]}>Fotos del Mantenimiento</Text>
@@ -2175,12 +2615,12 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                     </View>
                                 </View>
                                 <View style={{ flex: 1 }}>
-                                    <FormInput label="Estado Máquina" value={bitacoraForm.estadoMaquina} onChangeText={(t: string) => setBitacoraForm({...bitacoraForm, estadoMaquina: t})} placeholder="Operativa / Parada" colors={colors} isDarkMode={isDarkMode} />
+                                    <FormInput label="Estado Máquina" value={bitacoraForm.estadoMaquina} onChangeText={(t: string) => setBitacoraForm({...bitacoraForm, estadoMaquina: t})} placeholder="Operativa / Parada" colors={colors} isDarkMode={isDarkMode} styles={styles} />
                                 </View>
                             </View>
 
-                            <FormInput label="Quién registra" value={bitacoraForm.registradoPor} onChangeText={(t: string) => setBitacoraForm({...bitacoraForm, registradoPor: t})} placeholder="Nombre completo" colors={colors} isDarkMode={isDarkMode} />
-                            <FormInput label="Descripción de la Novedad / Actividad *" value={bitacoraForm.descripcion} onChangeText={(t: string) => setBitacoraForm({...bitacoraForm, descripcion: t})} placeholder="Escribe aquí los detalles..." multiline colors={colors} isDarkMode={isDarkMode} />
+                            <FormInput label="Quién registra" value={bitacoraForm.registradoPor} onChangeText={(t: string) => setBitacoraForm({...bitacoraForm, registradoPor: t})} placeholder="Nombre completo" colors={colors} isDarkMode={isDarkMode} styles={styles} />
+                            <FormInput label="Descripción de la Novedad / Actividad *" value={bitacoraForm.descripcion} onChangeText={(t: string) => setBitacoraForm({...bitacoraForm, descripcion: t})} placeholder="Escribe aquí los detalles..." multiline colors={colors} isDarkMode={isDarkMode} styles={styles} />
 
                             <TouchableOpacity 
                                 style={[styles.btnSave, { backgroundColor: colors.primary, marginTop: 20 }]} 
@@ -2218,7 +2658,7 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                 </View>
                             </View>
 
-                            <FormInput label="Nombre de la Máquina *" value={form.nombre} onChangeText={(txt: string) => setForm({ ...form, nombre: txt })} placeholder="Ej: Prensa Heidelberg" colors={colors} isDarkMode={isDarkMode} />
+                            <FormInput label="Nombre de la Máquina *" value={form.nombre} onChangeText={(txt: string) => setForm({ ...form, nombre: txt })} placeholder="Ej: Prensa Heidelberg" colors={colors} isDarkMode={isDarkMode} styles={styles} />
                             
                             {/* Foto Section */}
                             <View style={styles.photoUploadSection}>
@@ -2258,19 +2698,19 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
 
                             <View style={styles.row}>
                                 <View style={{ flex: 1, marginRight: 10 }}>
-                                    <FormInput label="Nro Inventario" value={form.numeroInventario} onChangeText={(txt: string) => setForm({ ...form, numeroInventario: txt })} placeholder="Ej: MQ-001" colors={colors} isDarkMode={isDarkMode} />
+                                    <FormInput label="Nro Inventario" value={form.numeroInventario} onChangeText={(txt: string) => setForm({ ...form, numeroInventario: txt })} placeholder="Ej: MQ-001" colors={colors} isDarkMode={isDarkMode} styles={styles} />
                                 </View>
                                 <View style={{ flex: 1 }}>
-                                    <FormInput label="Marca" value={form.marca} onChangeText={(txt: string) => setForm({ ...form, marca: txt })} placeholder="Ej: Heidelberg" colors={colors} isDarkMode={isDarkMode} />
+                                    <FormInput label="Marca" value={form.marca} onChangeText={(txt: string) => setForm({ ...form, marca: txt })} placeholder="Ej: Heidelberg" colors={colors} isDarkMode={isDarkMode} styles={styles} />
                                 </View>
                             </View>
 
                             <View style={styles.row}>
                                 <View style={{ flex: 1, marginRight: 10 }}>
-                                    <FormInput label="Modelo" value={form.modelo} onChangeText={(txt: string) => setForm({ ...form, modelo: txt })} placeholder="Ej: SM-74" colors={colors} isDarkMode={isDarkMode} />
+                                    <FormInput label="Modelo" value={form.modelo} onChangeText={(txt: string) => setForm({ ...form, modelo: txt })} placeholder="Ej: SM-74" colors={colors} isDarkMode={isDarkMode} styles={styles} />
                                 </View>
                                 <View style={{ flex: 1 }}>
-                                    <FormInput label="Serie / Serial" value={form.serie} onChangeText={(txt: string) => setForm({ ...form, serie: txt })} placeholder="S/N: 12345" colors={colors} isDarkMode={isDarkMode} />
+                                    <FormInput label="Serie / Serial" value={form.serie} onChangeText={(txt: string) => setForm({ ...form, serie: txt })} placeholder="S/N: 12345" colors={colors} isDarkMode={isDarkMode} styles={styles} />
                                 </View>
                             </View>
 
@@ -2290,33 +2730,33 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                     </View>
                                 </View>
                                 <View style={{ flex: 1 }}>
-                                    <FormInput label="Vida Útil Est." value={form.vidaUtil} onChangeText={(txt: string) => setForm({ ...form, vidaUtil: txt })} placeholder="Ej: 10 años" colors={colors} isDarkMode={isDarkMode} />
+                                    <FormInput label="Vida Útil Est." value={form.vidaUtil} onChangeText={(txt: string) => setForm({ ...form, vidaUtil: txt })} placeholder="Ej: 10 años" colors={colors} isDarkMode={isDarkMode} styles={styles} />
                                 </View>
                             </View>
 
                             <View style={styles.formRow}>
-                                <FormInput label="Proceso" value={form.proceso} onChangeText={(t: string) => setForm({...form, proceso: t})} placeholder="Ej: Impresión, Corte..." colors={colors} isDarkMode={isDarkMode} />
-                                <FormInput label="Ubicación" value={form.ubicacion} onChangeText={(t: string) => setForm({...form, ubicacion: t})} placeholder="Ej: Planta 1/2..." colors={colors} isDarkMode={isDarkMode} />
+                                <FormInput label="Proceso" value={form.proceso} onChangeText={(t: string) => setForm({...form, proceso: t})} placeholder="Ej: Impresión, Corte..." colors={colors} isDarkMode={isDarkMode} styles={styles} />
+                                <FormInput label="Ubicación" value={form.ubicacion} onChangeText={(t: string) => setForm({...form, ubicacion: t})} placeholder="Ej: Planta 1/2..." colors={colors} isDarkMode={isDarkMode} styles={styles} />
                             </View>
 
                             <Text style={[styles.sectionTitle, { color: colors.primary, marginTop: 15 }]}>Ficha Técnica (Opcional)</Text>
                             <View style={styles.formRow}>
-                                <FormInput label="Voltaje" value={form.voltaje} onChangeText={(t: string) => setForm({...form, voltaje: t})} placeholder="Ej: 110V / 220V" colors={colors} isDarkMode={isDarkMode} />
-                                <FormInput label="Corriente" value={form.corriente} onChangeText={(t: string) => setForm({...form, corriente: t})} placeholder="Ej: 10A" colors={colors} isDarkMode={isDarkMode} />
+                                <FormInput label="Voltaje" value={form.voltaje} onChangeText={(t: string) => setForm({...form, voltaje: t})} placeholder="Ej: 110V / 220V" colors={colors} isDarkMode={isDarkMode} styles={styles} />
+                                <FormInput label="Corriente" value={form.corriente} onChangeText={(t: string) => setForm({...form, corriente: t})} placeholder="Ej: 10A" colors={colors} isDarkMode={isDarkMode} styles={styles} />
                             </View>
                             <View style={styles.formRow}>
-                                <FormInput label="Potencia" value={form.potencia} onChangeText={(t: string) => setForm({...form, potencia: t})} placeholder="Ej: 1500W" colors={colors} isDarkMode={isDarkMode} />
-                                <FormInput label="Dimensiones" value={form.dimensiones} onChangeText={(t: string) => setForm({...form, dimensiones: t})} placeholder="Ej: 100x80x150cm" colors={colors} isDarkMode={isDarkMode} />
+                                <FormInput label="Potencia" value={form.potencia} onChangeText={(t: string) => setForm({...form, potencia: t})} placeholder="Ej: 1500W" colors={colors} isDarkMode={isDarkMode} styles={styles} />
+                                <FormInput label="Dimensiones" value={form.dimensiones} onChangeText={(t: string) => setForm({...form, dimensiones: t})} placeholder="Ej: 100x80x150cm" colors={colors} isDarkMode={isDarkMode} styles={styles} />
                             </View>
                             <View style={styles.formRow}>
-                                <FormInput label="Peso" value={form.peso} onChangeText={(t: string) => setForm({...form, peso: t})} placeholder="Ej: 80kg" colors={colors} isDarkMode={isDarkMode} />
+                                <FormInput label="Peso" value={form.peso} onChangeText={(t: string) => setForm({...form, peso: t})} placeholder="Ej: 80kg" colors={colors} isDarkMode={isDarkMode} styles={styles} />
                             </View>
-                            <FormInput label="Otros Detalles Técnicos" value={form.otroTecnico} onChangeText={(t: string) => setForm({...form, otroTecnico: t})} placeholder="..." multiline colors={colors} isDarkMode={isDarkMode} />
+                            <FormInput label="Otros Detalles Técnicos" value={form.otroTecnico} onChangeText={(t: string) => setForm({...form, otroTecnico: t})} placeholder="..." multiline colors={colors} isDarkMode={isDarkMode} styles={styles} />
 
                             <Text style={[styles.sectionTitle, { color: colors.primary, marginTop: 15 }]}>Seguridad y Riesgos</Text>
-                            <FormInput label="EPPS" value={form.eppsYRiesgos} onChangeText={(t: string) => setForm({...form, eppsYRiesgos: t})} placeholder="Lista de EPPS necesarios..." multiline colors={colors} isDarkMode={isDarkMode} />
-                            <FormInput label="Señalización Requerida" value={form.senalizacion} onChangeText={(txt: string) => setForm({ ...form, senalizacion: txt })} placeholder="Uso de cofia, etc..." multiline colors={colors} isDarkMode={isDarkMode} />
-                            <FormInput label="Riesgos Asociados" value={form.riesgosAsociados} onChangeText={(txt: string) => setForm({ ...form, riesgosAsociados: txt })} placeholder="Detalle los riesgos operacionales..." multiline colors={colors} isDarkMode={isDarkMode} />
+                            <FormInput label="EPPS" value={form.eppsYRiesgos} onChangeText={(t: string) => setForm({...form, eppsYRiesgos: t})} placeholder="Lista de EPPS necesarios..." multiline colors={colors} isDarkMode={isDarkMode} styles={styles} />
+                            <FormInput label="Señalización Requerida" value={form.senalizacion} onChangeText={(txt: string) => setForm({ ...form, senalizacion: txt })} placeholder="Uso de cofia, etc..." multiline colors={colors} isDarkMode={isDarkMode} styles={styles} />
+                            <FormInput label="Riesgos Asociados" value={form.riesgosAsociados} onChangeText={(txt: string) => setForm({ ...form, riesgosAsociados: txt })} placeholder="Detalle los riesgos operacionales..." multiline colors={colors} isDarkMode={isDarkMode} styles={styles} />
 
                             <View style={styles.modalActions}>
                                 <TouchableOpacity 
@@ -2425,25 +2865,38 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
     );
 }
 
-const styles = StyleSheet.create({
-    container: { flex: 1 },
+const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
     rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
     badgeText: { fontSize: 11, fontWeight: 'bold' },
-    headerContainer: { backgroundColor: 'transparent', borderBottomWidth: 1 },
+    headerContainer: { backgroundColor: 'transparent', borderBottomWidth: 1, borderBottomColor: colors.border },
     tabsScroll: { paddingHorizontal: 10, paddingVertical: 10 },
     tabButton: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 10, borderBottomWidth: 3, borderBottomColor: 'transparent', marginRight: 10 },
-    activeTabButton: { borderBottomWidth: 3 },
-    tabText: { marginLeft: 8, fontWeight: 'bold', fontSize: 13 },
+    activeTabButton: { borderBottomWidth: 3, borderBottomColor: colors.primary },
+    tabText: { marginLeft: 8, fontWeight: 'bold', fontSize: 13, color: colors.text },
     
     listContainer: { flex: 1 },
-    maquinaCard: { flexDirection: 'row', alignItems: 'center', padding: 15, borderRadius: 12, marginBottom: 12, borderLeftWidth: 5, elevation: 3, shadowOpacity: 0.1, shadowRadius: 3, shadowOffset: { width: 0, height: 2 } },
+    maquinaCard: { 
+        flexDirection: 'row', 
+        alignItems: 'center', 
+        padding: 15, 
+        borderRadius: 12, 
+        marginBottom: 12, 
+        borderLeftWidth: 5, 
+        backgroundColor: colors.card,
+        elevation: 3, 
+        shadowOpacity: 0.1, 
+        shadowRadius: 3, 
+        shadowOffset: { width: 0, height: 2 },
+        borderColor: colors.border
+    },
     maquinaInfo: { flex: 1 },
-    maquinaName: { fontSize: 18, fontWeight: 'bold' },
-    maquinaSub: { fontSize: 14, marginTop: 4 },
+    maquinaName: { fontSize: 18, fontWeight: 'bold', color: colors.text },
+    maquinaSub: { fontSize: 14, marginTop: 4, color: colors.subText },
     
     thumbnailContainer: { marginRight: 15, position: 'relative' },
-    thumbnail: { width: 60, height: 60, borderRadius: 8, backgroundColor: '#f0f0f0' },
+    thumbnail: { width: 60, height: 60, borderRadius: 8, backgroundColor: isDarkMode ? '#1e293b' : '#f0f0f0' },
     photoCount: { position: 'absolute', bottom: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 4, borderRadius: 4 },
     photoCountText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
 
@@ -2451,50 +2904,54 @@ const styles = StyleSheet.create({
     actionBtn: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
 
     emptyView: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40 },
-    emptySubtitle: { fontSize: 15, textAlign: 'center', marginTop: 15, lineHeight: 22 },
+    emptySubtitle: { fontSize: 15, textAlign: 'center', marginTop: 15, lineHeight: 22, color: colors.subText },
     
-    fab: { position: 'absolute', bottom: 30, right: 30, width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', elevation: 5, shadowOpacity: 0.3 },
+    fab: { position: 'absolute', bottom: 30, right: 30, width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', elevation: 5, shadowOpacity: 0.3, backgroundColor: colors.primary },
 
-    // Modal Styles
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
-    modalContent: { width: '95%', maxWidth: 800, maxHeight: '95%', borderRadius: 15, overflow: 'hidden' },
-    modalHeader: { padding: 20, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    modalTitle: { fontSize: 20, fontWeight: 'bold' },
+    modalContent: { width: '95%', maxWidth: 800, maxHeight: '95%', borderRadius: 15, overflow: 'hidden', backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
+    modalHeader: { padding: 20, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    modalTitle: { fontSize: 20, fontWeight: 'bold', color: colors.text },
     formScroll: { flex: 1 },
-    formatHeader: { flexDirection: 'row', marginBottom: 20, gap: 10 },
-    badge: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 },
-    badgeText: { fontSize: 12, fontWeight: 'bold' },
-    
-    photoUploadSection: { marginBottom: 20 },
     photoList: { flexDirection: 'row', marginTop: 10 },
-    addPhotoBtn: { width: 100, height: 100, borderRadius: 12, borderStyle: 'dashed', borderWidth: 2, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
-    addPhotoText: { fontSize: 12, fontWeight: 'bold', marginTop: 5 },
+    addPhotoBtn: { width: 100, height: 100, borderRadius: 12, borderStyle: 'dashed', borderWidth: 2, borderColor: colors.border, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+    addPhotoText: { fontSize: 12, fontWeight: 'bold', marginTop: 5, color: colors.subText },
     photoWrapper: { position: 'relative', marginRight: 15 },
     photoItem: { width: 100, height: 100, borderRadius: 12 },
-    removePhotoBadge: { position: 'absolute', top: -8, right: -8, backgroundColor: 'white', borderRadius: 11 },
+    removePhotoBadge: { position: 'absolute', top: -8, right: -8, backgroundColor: colors.card, borderRadius: 11, borderWidth: 1, borderColor: colors.border },
 
     formGroup: { marginBottom: 15 },
-    sectionTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 15, borderLeftWidth: 4, paddingLeft: 10, alignSelf: 'flex-start' },
-    label: { fontSize: 14, fontWeight: 'bold', marginBottom: 8 },
-    input: { borderWidth: 1, borderRadius: 8, padding: 12, fontSize: 15 },
+    sectionTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 15, borderLeftWidth: 4, paddingLeft: 10, alignSelf: 'flex-start', color: colors.text },
+    label: { fontSize: 14, fontWeight: 'bold', marginBottom: 8, color: colors.text },
+    input: { borderWidth: 1, borderRadius: 8, padding: 12, fontSize: 15, backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', color: colors.text, borderColor: colors.border },
     row: { flexDirection: 'row', marginBottom: 0 },
     formRow: { flexDirection: 'row', gap: 10, marginBottom: 0 },
     modalActions: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 20, marginBottom: 40, gap: 10 },
-    btnCancel: { paddingVertical: 12, paddingHorizontal: 20, borderRadius: 8, borderWidth: 1, justifyContent: 'center' },
-    btnCancelText: { fontWeight: 'bold' },
-    btnSave: { flex: 1, flexDirection: 'row', paddingVertical: 12, paddingHorizontal: 25, borderRadius: 8, alignItems: 'center', justifyContent: 'center', gap: 10 },
+    btnCancel: { paddingVertical: 12, paddingHorizontal: 20, borderRadius: 8, borderWidth: 1, borderColor: colors.border, justifyContent: 'center' },
+    btnCancelText: { fontWeight: 'bold', color: colors.subText },
+    btnSave: { flex: 1, flexDirection: 'row', paddingVertical: 12, paddingHorizontal: 25, borderRadius: 8, alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: colors.primary },
     btnSaveText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
 
-    // Bitacora Styles
-    bitacoraCard: { padding: 15, borderRadius: 12, marginBottom: 12, flexDirection: 'row', alignItems: 'center', borderLeftWidth: 5, elevation: 2, shadowOpacity: 0.1 },
-    bitacoraTitle: { fontSize: 16, fontWeight: 'bold' },
+    bitacoraCard: { 
+        padding: 15, 
+        borderRadius: 12, 
+        marginBottom: 12, 
+        flexDirection: 'row', 
+        alignItems: 'center', 
+        borderLeftWidth: 5, 
+        backgroundColor: colors.card,
+        elevation: 2, 
+        shadowOpacity: 0.1,
+        borderColor: colors.border
+    },
+    bitacoraTitle: { fontSize: 16, fontWeight: 'bold', color: colors.text },
     bitacoraRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 4 },
-    bitacoraDate: { fontSize: 12 },
-    bitacoraDesc: { fontSize: 14, marginTop: 5, lineHeight: 20 },
-    bitacoraUser: { fontSize: 12, fontWeight: 'bold', marginTop: 8 },
+    bitacoraDate: { fontSize: 12, color: colors.subText },
+    bitacoraDesc: { fontSize: 14, marginTop: 5, lineHeight: 20, color: colors.text },
+    bitacoraUser: { fontSize: 12, fontWeight: 'bold', marginTop: 8, color: colors.subText },
     
-    pickerContainer: { borderWidth: 1, borderRadius: 8, padding: 5, marginBottom: 15 },
-    maqOption: { paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, borderWidth: 1, marginRight: 10, backgroundColor: 'transparent' },
+    pickerContainer: { borderWidth: 1, borderRadius: 8, padding: 5, marginBottom: 15, borderColor: colors.border, backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc' },
+    maqOption: { paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, borderWidth: 1, marginRight: 10, borderColor: colors.border },
     maqListOption: { 
         paddingHorizontal: 15, 
         paddingVertical: 12, 
@@ -2504,13 +2961,13 @@ const styles = StyleSheet.create({
         backgroundColor: 'transparent',
         flexDirection: 'row',
         alignItems: 'center',
-        borderColor: '#e2e8f0'
+        borderColor: colors.border
     },
-    maqOptionText: { fontSize: 13, fontWeight: 'bold' },
+    maqOptionText: { fontSize: 13, fontWeight: 'bold', color: colors.text },
     
     turnosContainer: { flexDirection: 'row', gap: 8, marginBottom: 15 },
-    turnoBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, borderWidth: 1, alignItems: 'center' },
-    turnoText: { fontSize: 12, fontWeight: 'bold' },
-    cronogramaCell: { width: 50, height: 50, borderRightWidth: 1, alignItems: 'center', justifyContent: 'center' },
-    cronogramaHeaderCell: { width: 50, padding: 10, borderRightWidth: 1, alignItems: 'center' }
+    turnoBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
+    turnoText: { fontSize: 12, fontWeight: 'bold', color: colors.text },
+    cronogramaCell: { width: 50, height: 50, borderRightWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+    cronogramaHeaderCell: { width: 50, padding: 10, borderRightWidth: 1, borderColor: colors.border, alignItems: 'center' }
 });

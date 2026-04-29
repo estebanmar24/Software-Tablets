@@ -154,6 +154,216 @@ public static class DbInitializer
                 );
             ");
             Console.WriteLine("[DB INIT] Hoja de Vida and Cronograma tables checked/created.");
+            
+            // PRODUCCION & TALLERES MANAGEMENT (GASTOS)
+            // PRODUCCION & TALLERES MANAGEMENT (GASTOS)
+            context.Database.ExecuteSqlRaw(@"
+                -- TALLERES TABLES
+                CREATE TABLE IF NOT EXISTS ""Talleres_Rubros"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""Nombre"" TEXT NOT NULL,
+                    ""Activo"" BOOLEAN NOT NULL DEFAULT TRUE
+                );
+                CREATE TABLE IF NOT EXISTS ""Talleres_Proveedores"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""Nombre"" TEXT NOT NULL,
+                    ""NitCedula"" TEXT NOT NULL DEFAULT '',
+                    ""Telefono"" TEXT,
+                    ""PrecioCotizado"" DECIMAL(18,2),
+                    ""Activo"" BOOLEAN NOT NULL DEFAULT TRUE,
+                    ""RubroId"" INTEGER REFERENCES ""Talleres_Rubros""(""Id"")
+                );
+                -- Garantizar columnas en Talleres_Proveedores si ya existe
+                ALTER TABLE ""Talleres_Proveedores"" ADD COLUMN IF NOT EXISTS ""NitCedula"" TEXT DEFAULT '';
+                ALTER TABLE ""Talleres_Proveedores"" ADD COLUMN IF NOT EXISTS ""PrecioCotizado"" DECIMAL(18,2);
+
+                CREATE TABLE IF NOT EXISTS ""Talleres_Gastos"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""ProveedorId"" INTEGER REFERENCES ""Talleres_Proveedores""(""Id""),
+                    ""RubroId"" INTEGER NOT NULL REFERENCES ""Talleres_Rubros""(""Id""),
+                    ""Anio"" INTEGER NOT NULL,
+                    ""Mes"" INTEGER NOT NULL,
+                    ""NumeroFactura"" TEXT,
+                    ""Precio"" DECIMAL(18,2) NOT NULL,
+                    ""Fecha"" TIMESTAMP NOT NULL,
+                    ""Observaciones"" TEXT,
+                    ""FacturaPdfUrl"" TEXT,
+                    ""PersonalId"" INTEGER,
+                    ""TipoHoraId"" INTEGER,
+                    ""TipoRecargoId"" INTEGER,
+                    ""CantidadHoras"" DECIMAL(18,2),
+                    ""NumeroOP"" TEXT,
+                    ""EsPendiente"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""EsSolicitudCredito"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""FechaCreacion"" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    ""FechaModificacion"" TIMESTAMP,
+                    ""CreadoPorId"" INTEGER
+                );
+                -- Garantizar columnas en Talleres_Gastos si ya existe
+                ALTER TABLE ""Talleres_Gastos"" ADD COLUMN IF NOT EXISTS ""PersonalId"" INTEGER;
+                ALTER TABLE ""Talleres_Gastos"" ADD COLUMN IF NOT EXISTS ""TipoHoraId"" INTEGER;
+                ALTER TABLE ""Talleres_Gastos"" ADD COLUMN IF NOT EXISTS ""TipoRecargoId"" INTEGER;
+                ALTER TABLE ""Talleres_Gastos"" ADD COLUMN IF NOT EXISTS ""CantidadHoras"" DECIMAL(18,2);
+                ALTER TABLE ""Talleres_Gastos"" ADD COLUMN IF NOT EXISTS ""NumeroOP"" TEXT;
+                ALTER TABLE ""Talleres_Gastos"" ADD COLUMN IF NOT EXISTS ""EsSolicitudCredito"" BOOLEAN DEFAULT FALSE;
+
+                CREATE TABLE IF NOT EXISTS ""Talleres_PresupuestosMensuales"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""RubroId"" INTEGER NOT NULL REFERENCES ""Talleres_Rubros""(""Id""),
+                    ""Anio"" INTEGER NOT NULL,
+                    ""Mes"" INTEGER NOT NULL,
+                    ""Presupuesto"" DECIMAL(18,2) NOT NULL
+                );
+
+                -- PRODUCCION TABLES
+                CREATE TABLE IF NOT EXISTS ""Produccion_Rubros"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""Nombre"" TEXT NOT NULL,
+                    ""Activo"" BOOLEAN NOT NULL DEFAULT TRUE
+                );
+                CREATE TABLE IF NOT EXISTS ""Produccion_Proveedores"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""Nombre"" TEXT NOT NULL,
+                    ""Nit"" TEXT,
+                    ""Telefono"" TEXT,
+                    ""RubroId"" INTEGER REFERENCES ""Produccion_Rubros""(""Id""),
+                    ""PrecioCotizado"" DECIMAL(18,2),
+                    ""Activo"" BOOLEAN NOT NULL DEFAULT TRUE
+                );
+                -- Garantizar columnas en Produccion_Proveedores
+                ALTER TABLE ""Produccion_Proveedores"" ADD COLUMN IF NOT EXISTS ""Telefono"" TEXT;
+                ALTER TABLE ""Produccion_Proveedores"" ADD COLUMN IF NOT EXISTS ""RubroId"" INTEGER REFERENCES ""Produccion_Rubros""(""Id"");
+                ALTER TABLE ""Produccion_Proveedores"" ADD COLUMN IF NOT EXISTS ""PrecioCotizado"" DECIMAL(18,2);
+
+                CREATE TABLE IF NOT EXISTS ""Produccion_TiposHora"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""Nombre"" TEXT NOT NULL,
+                    ""Porcentaje"" DECIMAL(18,2) NOT NULL,
+                    ""Factor"" DECIMAL(18,4) NOT NULL,
+                    ""Activo"" BOOLEAN NOT NULL DEFAULT TRUE
+                );
+                CREATE TABLE IF NOT EXISTS ""Produccion_TiposRecargo"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""Nombre"" TEXT NOT NULL,
+                    ""Porcentaje"" DECIMAL(18,2) NOT NULL,
+                    ""Factor"" DECIMAL(18,4) NOT NULL,
+                    ""Activo"" BOOLEAN NOT NULL DEFAULT TRUE
+                );
+                CREATE TABLE IF NOT EXISTS ""Produccion_Productos"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""Nombre"" TEXT NOT NULL,
+                    ""Referencia"" TEXT,
+                    ""Descripcion"" TEXT,
+                    ""RubroId"" INTEGER REFERENCES ""Produccion_Rubros""(""Id""),
+                    ""Medida"" TEXT,
+                    ""Activo"" BOOLEAN NOT NULL DEFAULT TRUE
+                );
+                -- Garantizar columnas en Produccion_Productos
+                ALTER TABLE ""Produccion_Productos"" ADD COLUMN IF NOT EXISTS ""Referencia"" TEXT;
+                ALTER TABLE ""Produccion_Productos"" ADD COLUMN IF NOT EXISTS ""Descripcion"" TEXT;
+                ALTER TABLE ""Produccion_Productos"" ADD COLUMN IF NOT EXISTS ""Medida"" TEXT;
+
+                CREATE TABLE IF NOT EXISTS ""Produccion_Gastos"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""RubroId"" INTEGER NOT NULL REFERENCES ""Produccion_Rubros""(""Id""),
+                    ""ProveedorId"" INTEGER REFERENCES ""Produccion_Proveedores""(""Id""),
+                    ""UsuarioId"" INTEGER,
+                    ""MaquinaId"" INTEGER,
+                    ""TipoHoraId"" INTEGER REFERENCES ""Produccion_TiposHora""(""Id""),
+                    ""TipoRecargoId"" INTEGER REFERENCES ""Produccion_TiposRecargo""(""Id""),
+                    ""Precio"" DECIMAL(18,2) NOT NULL,
+                    ""Fecha"" TIMESTAMP NOT NULL,
+                    ""Nota"" TEXT,
+                    ""CantidadHoras"" DECIMAL(18,2),
+                    ""Anio"" INTEGER NOT NULL,
+                    ""Mes"" INTEGER NOT NULL,
+                    ""NumeroFactura"" TEXT,
+                    ""FacturaPdfUrl"" TEXT,
+                    ""NumeroOP"" TEXT,
+                    ""EsPendiente"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""EsSolicitudCredito"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""FechaCreacion"" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    ""FechaModificacion"" TIMESTAMP,
+                    ""CreadoPorId"" INTEGER
+                );
+                -- Garantizar columnas en Produccion_Gastos
+                ALTER TABLE ""Produccion_Gastos"" ADD COLUMN IF NOT EXISTS ""EsSolicitudCredito"" BOOLEAN DEFAULT FALSE;
+                ALTER TABLE ""Produccion_Gastos"" ADD COLUMN IF NOT EXISTS ""NumeroOP"" TEXT;
+
+                CREATE TABLE IF NOT EXISTS ""Produccion_PresupuestosMensuales"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""RubroId"" INTEGER NOT NULL REFERENCES ""Produccion_Rubros""(""Id""),
+                    ""Anio"" INTEGER NOT NULL,
+                    ""Mes"" INTEGER NOT NULL,
+                    ""Presupuesto"" DECIMAL(18,2) NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS ""Produccion_Cotizaciones"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""ProveedorId"" INTEGER NOT NULL REFERENCES ""Produccion_Proveedores""(""Id""),
+                    ""RubroId"" INTEGER NOT NULL REFERENCES ""Produccion_Rubros""(""Id""),
+                    ""Anio"" INTEGER NOT NULL,
+                    ""Mes"" INTEGER NOT NULL,
+                    ""PrecioCotizado"" DECIMAL(18,2) NOT NULL,
+                    ""FechaCotizacion"" TIMESTAMP NOT NULL,
+                    ""Descripcion"" TEXT,
+                    ""ProductoId"" INTEGER REFERENCES ""Produccion_Productos""(""Id""),
+                    ""Cantidad"" DECIMAL(18,2),
+                    ""ValorUnitario"" DECIMAL(18,2),
+                    ""Activo"" BOOLEAN NOT NULL DEFAULT TRUE
+                );
+                -- Garantizar columnas en Produccion_Cotizaciones
+                ALTER TABLE ""Produccion_Cotizaciones"" ADD COLUMN IF NOT EXISTS ""ProductoId"" INTEGER REFERENCES ""Produccion_Productos""(""Id"");
+                ALTER TABLE ""Produccion_Cotizaciones"" ADD COLUMN IF NOT EXISTS ""Cantidad"" DECIMAL(18,2);
+                ALTER TABLE ""Produccion_Cotizaciones"" ADD COLUMN IF NOT EXISTS ""ValorUnitario"" DECIMAL(18,2);
+
+                CREATE TABLE IF NOT EXISTS ""Talleres_Cotizaciones"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""ProveedorId"" INTEGER NOT NULL REFERENCES ""Talleres_Proveedores""(""Id""),
+                    ""RubroId"" INTEGER NOT NULL REFERENCES ""Talleres_Rubros""(""Id""),
+                    ""Anio"" INTEGER NOT NULL,
+                    ""Mes"" INTEGER NOT NULL,
+                    ""PrecioCotizado"" DECIMAL(18,2) NOT NULL,
+                    ""FechaCotizacion"" TIMESTAMP NOT NULL,
+                    ""Descripcion"" TEXT,
+                    ""Activo"" BOOLEAN NOT NULL DEFAULT TRUE
+                );
+
+                -- Asegurar que existen Rubros base en Produccion_Rubros
+                DO $$ BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM ""Produccion_Rubros"" WHERE ""Nombre"" = 'Recargo') THEN INSERT INTO ""Produccion_Rubros"" (""Nombre"", ""Activo"") VALUES ('Recargo', true); END IF;
+                    IF NOT EXISTS (SELECT 1 FROM ""Produccion_Rubros"" WHERE ""Nombre"" = 'Insumos') THEN INSERT INTO ""Produccion_Rubros"" (""Nombre"", ""Activo"") VALUES ('Insumos', true); END IF;
+                    IF NOT EXISTS (SELECT 1 FROM ""Produccion_Rubros"" WHERE ""Nombre"" = 'Mantenimiento') THEN INSERT INTO ""Produccion_Rubros"" (""Nombre"", ""Activo"") VALUES ('Mantenimiento', true); END IF;
+                    IF NOT EXISTS (SELECT 1 FROM ""Produccion_Rubros"" WHERE ""Nombre"" = 'Repuesto') THEN INSERT INTO ""Produccion_Rubros"" (""Nombre"", ""Activo"") VALUES ('Repuesto', true); END IF;
+                    IF NOT EXISTS (SELECT 1 FROM ""Produccion_Rubros"" WHERE ""Nombre"" = 'Salarios') THEN INSERT INTO ""Produccion_Rubros"" (""Nombre"", ""Activo"") VALUES ('Salarios', true); END IF;
+                    IF NOT EXISTS (SELECT 1 FROM ""Produccion_Rubros"" WHERE ""Nombre"" = 'Horas Extras') THEN INSERT INTO ""Produccion_Rubros"" (""Nombre"", ""Activo"") VALUES ('Horas Extras', true); END IF;
+                END $$;
+            ");
+
+            // Seed Produccion_TiposHora if empty
+            if (!context.Produccion_TiposHora.Any())
+            {
+                context.Produccion_TiposHora.AddRange(new List<Produccion_TipoHora>
+                {
+                    new Produccion_TipoHora { Nombre = "Extra Diurna", Porcentaje = 25, Factor = 1.25m, Activo = true },
+                    new Produccion_TipoHora { Nombre = "Extra Nocturna", Porcentaje = 75, Factor = 1.75m, Activo = true },
+                    new Produccion_TipoHora { Nombre = "Dominical Diurna", Porcentaje = 100, Factor = 2.00m, Activo = true },
+                    new Produccion_TipoHora { Nombre = "Dominical Nocturna", Porcentaje = 150, Factor = 2.50m, Activo = true }
+                });
+                context.SaveChanges();
+            }
+
+            // Seed Produccion_TiposRecargo if empty
+            if (!context.Produccion_TiposRecargo.Any())
+            {
+                context.Produccion_TiposRecargo.AddRange(new List<Produccion_TipoRecargo>
+                {
+                    new Produccion_TipoRecargo { Nombre = "Recargo Nocturno", Porcentaje = 35, Factor = 0.35m, Activo = true },
+                    new Produccion_TipoRecargo { Nombre = "Recargo Dominical/Festivo", Porcentaje = 75, Factor = 0.75m, Activo = true },
+                    new Produccion_TipoRecargo { Nombre = "Recargo Nocturno Dominical", Porcentaje = 110, Factor = 1.10m, Activo = true }
+                });
+                context.SaveChanges();
+            }
 
             // Asegurar columnas consecutivas
             context.Database.ExecuteSqlRaw(@"
