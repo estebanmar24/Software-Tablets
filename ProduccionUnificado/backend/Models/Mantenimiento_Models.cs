@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 
 namespace TiempoProcesos.API.Models
 {
@@ -65,9 +66,11 @@ namespace TiempoProcesos.API.Models
         [ForeignKey("MaquinaId")]
         public virtual TiempoProcesos.API.Models.Maquina? Maquina { get; set; }
 
+        [Column("productoid")]
         public int? ProductoId { get; set; }
         [ForeignKey("ProductoId")]
         public Mantenimiento_Producto? Producto { get; set; }
+        [Column("cantidad")]
         public decimal? Cantidad { get; set; }
 
         public decimal Precio { get; set; }
@@ -131,17 +134,37 @@ namespace TiempoProcesos.API.Models
         public int Id { get; set; }
         [Required]
         [MaxLength(200)]
+        [JsonPropertyName("nombre")]
         public string Nombre { get; set; } = string.Empty;
+
+        [JsonPropertyName("rubroId")]
         public int RubroId { get; set; }
+
         [ForeignKey("RubroId")]
         public Mantenimiento_Rubro? Rubro { get; set; }
+
         [MaxLength(100)]
+        [JsonPropertyName("referencia")]
         public string? Referencia { get; set; }
+        
+        [Column("descripcion")]
+        [JsonPropertyName("descripcion")]
         public string? Descripcion { get; set; }
+        
         [MaxLength(50)]
+        [Column("medida")]
+        [JsonPropertyName("medida")]
         public string? Medida { get; set; }
+        
+        [Column("puntoreorden")]
+        [JsonPropertyName("puntoReorden")]
         public int PuntoReorden { get; set; } = 0;
+        
+        [Column("maxstock")]
+        [JsonPropertyName("maxStock")]
         public int MaxStock { get; set; } = 0;
+        
+        [JsonPropertyName("activo")]
         public bool Activo { get; set; } = true;
     }
 }

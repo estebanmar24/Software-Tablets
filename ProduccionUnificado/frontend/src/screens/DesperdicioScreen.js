@@ -605,7 +605,89 @@ export default function DesperdicioScreen({ navigation }) {
                 }
             });
 
+            finalY = doc.lastAutoTable.finalY + 15;
+
+            // --- GENERAR GRÁFICA DE BARRAS CON QUICKCHART ---
+            try {
+                // Filtrar máquinas que tengan desperdicio > 0 para que la gráfica sea legible
+                const dataForChart = summaryMaqData
+                    .map(item => ({
+                        label: item[0],
+                        value: parseFloat(item[2].replace(/\./g, '').replace(/,/g, '.'))
+                    }))
+                    .filter(item => item.value > 0)
+                    .sort((a, b) => b.value - a.value); // Ordenar de mayor a menor desperdicio
+
+                if (dataForChart.length > 0) {
+                    // Check page break para la gráfica
+                    if (finalY > doc.internal.pageSize.getHeight() - 100) {
+                        doc.addPage();
+                        finalY = 20;
+                    }
+
+                    const chartConfig = {
+                        type: 'bar',
+                        data: {
+                            labels: dataForChart.map(d => d.label),
+                            datasets: [{
+                                label: 'Desperdicio por Máquina',
+                                data: dataForChart.map(d => d.value),
+                                backgroundColor: 'rgba(41, 128, 185, 0.8)',
+                                borderColor: 'rgba(41, 128, 185, 1)',
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            title: {
+                                display: true,
+                                text: 'Comparativa de Desperdicio por Máquina'
+                            },
+                            legend: { display: false },
+                            plugins: {
+                                datalabels: {
+                                    anchor: 'end',
+                                    align: 'top',
+                                    color: '#333',
+                                    font: { weight: 'bold' }
+                                }
+                            },
+                            scales: {
+                                yAxes: [{ ticks: { beginAtZero: true } }]
+                            }
+                        }
+                    };
+
+                    const qcResponse = await fetch('https://quickchart.io/chart', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            chart: chartConfig,
+                            width: 600,
+                            height: 350,
+                            backgroundColor: 'white',
+                            format: 'png'
+                        })
+                    });
+
+                    if (qcResponse.ok) {
+                        const qcBlob = await qcResponse.blob();
+                        const base64Chart = await new Promise((resolve) => {
+                            const reader = new FileReader();
+                            reader.readAsDataURL(qcBlob);
+                            reader.onloadend = () => resolve(reader.result);
+                        });
+
+                        doc.text('Gráfica de Desperdicios:', 14, finalY);
+                        doc.addImage(base64Chart, 'PNG', 14, finalY + 5, 180, 105);
+                        finalY += 120;
+                    }
+                }
+            } catch (chartErr) {
+                console.log("Error generando gráfica:", chartErr);
+            }
+
             doc.save(`reporte_desperdicios_${new Date().getTime()}.pdf`);
+
 
         } catch (error) {
             console.error(error);

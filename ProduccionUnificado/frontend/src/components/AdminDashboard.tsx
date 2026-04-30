@@ -260,22 +260,31 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area, perm
 
     const renderActiveScreen = () => {
         switch (activeTab) {
+            case 'prod_captura':
             case 'captura':
                 return <CaptureGridScreen navigation={mockNavigation} />;
+            case 'prod_desperdicio':
             case 'desperdicio':
                 return <DesperdicioScreenComp navigation={mockNavigation} />;
+            case 'prod_tablero':
             case 'tablero':
                 return <DashboardScreen navigation={mockNavigation} />;
+            case 'prod_historial':
             case 'historial':
                 return <HistoryScreen navigation={mockNavigation} />;
+            case 'prod_maquinas':
             case 'maquinas':
                 return <MaquinasScreen navigation={mockNavigation} />;
+            case 'prod_operarios':
             case 'operarios':
                 return <ListsScreen navigation={mockNavigation} />;
+            case 'prod_calidad':
             case 'calidad':
                 return <QualityView navigation={mockNavigation} />;
+            case 'prod_cartas':
             case 'cartas':
                 return <CartasScreen navigation={mockNavigation} />;
+            case 'prod_calidad_ext':
             case 'calidadExterna':
                 return <CalidadExternaView />;
             default:

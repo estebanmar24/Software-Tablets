@@ -1218,52 +1218,79 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
             drawFormatHeader(1);
             currentY += 35;
 
-            // 1. TABLA INFORMACIÓN Y FOTO
-            const mainTableH = 60;
-            doc.rect(margin, currentY, tableWidth, mainTableH);
-            doc.line(margin + 45, currentY, margin + 45, currentY + mainTableH);
-            doc.line(margin + 95, currentY, margin + 95, currentY + mainTableH);
-            for(let i=1; i<6; i++) doc.line(margin, currentY + (i*10), margin + 95, currentY + (i*10));
+            // 1. TABLA INFORMACIÓN Y FOTO (Layout de una sola columna para más espacio)
+            const rowH = 10; 
+            const numRows = 10;
+            const leftPartW = 100; // Ancho para etiquetas y valores
+            const infoTableH = rowH * numRows;
             
-            doc.setFontSize(9);
+            doc.rect(margin, currentY, tableWidth, infoTableH);
+            doc.line(margin + leftPartW, currentY, margin + leftPartW, currentY + infoTableH);
+            
+            // Dibujar líneas horizontales en la parte izquierda
+            for(let i=1; i < numRows; i++) {
+                doc.line(margin, currentY + (i * rowH), margin + leftPartW, currentY + (i * rowH));
+            }
+            
+            doc.setFontSize(8.5);
             doc.setFont("helvetica", "bold");
-            doc.text("Maquina", margin + 2, currentY + 7);
-            doc.text("Numero de Inventario", margin + 47, currentY + 7);
-            doc.text("Marca", margin + 2, currentY + 17);
-            doc.text("Serie", margin + 47, currentY + 17);
-            doc.text("Modelo", margin + 2, currentY + 27);
-            doc.text("Tipo", margin + 47, currentY + 27);
-            doc.text("Fecha de compra", margin + 2, currentY + 37);
-            doc.text("Vida Útil", margin + 47, currentY + 37);
-            doc.text("Proceso", margin + 2, currentY + 47);
-            doc.text("Ubicación", margin + 47, currentY + 47);
+            const labels = [
+                "Maquina:", "Inventario:", "Marca:", "Serie:", 
+                "Modelo:", "Tipo:", "F. Compra:", "Vida Útil:", 
+                "Proceso:", "Ubicación:"
+            ];
             
-            doc.setFont("helvetica", "normal");
-            doc.text(item.nombre || "", margin + 43, currentY + 7, { align: 'right' });
-            doc.text(item.numeroInventario || "", margin + 93, currentY + 7, { align: 'right' });
-            doc.text(item.marca || "", margin + 43, currentY + 17, { align: 'right' });
-            doc.text(item.serie || "", margin + 93, currentY + 17, { align: 'right' });
-            doc.text(item.modelo || "", margin + 43, currentY + 27, { align: 'right' });
-            doc.text(item.color || "", margin + 93, currentY + 27, { align: 'right' });
-            doc.text(item.fechaCompra ? new Date(item.fechaCompra).toLocaleDateString() : "", margin + 43, currentY + 37, { align: 'right' });
-            doc.text(item.vidaUtil || "", margin + 93, currentY + 37, { align: 'right' });
-            doc.text(item.proceso || "", margin + 43, currentY + 47, { align: 'right' });
-            doc.text(item.ubicacion || "", margin + 93, currentY + 47, { align: 'right' });
-            
-            doc.setFont("helvetica", "bold");
-            doc.text("Fotografía", margin + 137, currentY + 7, { align: 'center' });
+            const values = [
+                item.nombre || "",
+                item.numeroInventario || "",
+                item.marca || "",
+                item.serie || "",
+                item.modelo || "",
+                item.tipo || "",
+                item.fechaCompra ? new Date(item.fechaCompra).toLocaleDateString() : "",
+                item.vidaUtil || "",
+                item.proceso || "",
+                item.ubicacion || ""
+            ];
 
+            // Helper para ajustar fuente dinámicamente y evitar solapamientos
+            const drawAutoValue = (text: string, x: number, y: number, maxW: number) => {
+                let size = 9;
+                doc.setFontSize(size);
+                doc.setFont("helvetica", "normal");
+                while (doc.getTextWidth(text || "") > maxW && size > 5) {
+                    size -= 0.3;
+                    doc.setFontSize(size);
+                }
+                doc.text(text || "", x, y, { align: 'left' });
+            };
+
+            const xVal = margin + 20; 
+            const wVal = leftPartW - 22; 
+
+            labels.forEach((label, i) => {
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(8.5);
+                doc.text(label, margin + 2, currentY + (i * rowH) + 6.5);
+                drawAutoValue(values[i], xVal, currentY + (i * rowH) + 6.5, wVal);
+            });
+            
+            doc.setFont("helvetica", "bold");
+            doc.text("Fotografía", margin + leftPartW + (tableWidth - leftPartW)/2, currentY + 7, { align: 'center' });
+            
             if (item.fotos && item.fotos.length > 0) {
                 try {
                     const fullUrl = (item.fotos[0].url.startsWith('http') || item.fotos[0].url.startsWith('data')) 
                         ? item.fotos[0].url : SERVER_URL + item.fotos[0].url;
                     const b64 = await urlToBase64(fullUrl);
-                    if (b64) doc.addImage(b64, 'JPEG', margin + 97, currentY + 10, 80, 48);
+                    if (b64) {
+                        doc.addImage(b64, 'JPEG', margin + leftPartW + 2, currentY + 12, (tableWidth - leftPartW) - 4, infoTableH - 16);
+                    }
                 } catch(e) {
-                    console.warn("No se pudo cargar la foto de la máquina, se generará sin ella.");
+                    console.warn("No se pudo cargar la foto de la máquina");
                 }
             }
-            currentY += mainTableH + 5;
+            currentY += infoTableH + 5;
 
             // 1.1 SECCIÓN FICHA TÉCNICA (NUEVA - SIEMPRE VISIBLE)
             checkNewPage(45);

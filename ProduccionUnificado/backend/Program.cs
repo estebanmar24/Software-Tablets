@@ -119,6 +119,14 @@ using (var scope = app.Services.CreateScope())
             context.Database.ExecuteSqlRaw("ALTER TABLE \"Usuarios\" ADD COLUMN IF NOT EXISTS \"Salario\" numeric NOT NULL DEFAULT 0;"); 
             context.Database.ExecuteSqlRaw("ALTER TABLE \"Usuarios\" ADD COLUMN IF NOT EXISTS \"Documento\" text NOT NULL DEFAULT '';"); 
             context.Database.ExecuteSqlRaw("ALTER TABLE \"AdminUsuarios\" ADD COLUMN IF NOT EXISTS \"Permissions\" text NOT NULL DEFAULT '';");
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Gastos\" ADD COLUMN IF NOT EXISTS \"cantidadhoras\" numeric NULL;");
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Gastos\" ADD COLUMN IF NOT EXISTS \"horafin\" text NULL;");
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Gastos\" ADD COLUMN IF NOT EXISTS \"horainicio\" text NULL;");
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Gastos\" ADD COLUMN IF NOT EXISTS \"otramaquinanombre\" text NULL;");
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Gastos\" ADD COLUMN IF NOT EXISTS \"tipohoraid\" integer NULL;");
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Gastos\" ADD COLUMN IF NOT EXISTS \"tiporecargoid\" integer NULL;");
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Gastos\" ADD COLUMN IF NOT EXISTS \"usuarioid\" integer NULL;");
+
             context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Gastos\" ADD COLUMN IF NOT EXISTS \"CantidadHoras\" numeric NULL;");
             context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Gastos\" ADD COLUMN IF NOT EXISTS \"HoraFin\" text NULL;");
             context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Gastos\" ADD COLUMN IF NOT EXISTS \"HoraInicio\" text NULL;");
@@ -126,6 +134,23 @@ using (var scope = app.Services.CreateScope())
             context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Gastos\" ADD COLUMN IF NOT EXISTS \"TipoHoraId\" integer NULL;");
             context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Gastos\" ADD COLUMN IF NOT EXISTS \"TipoRecargoId\" integer NULL;");
             context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Gastos\" ADD COLUMN IF NOT EXISTS \"UsuarioId\" integer NULL;");
+            
+            // Campos de Majo (Inventario/Mantenimiento) - Usar lowercase para evitar líos con PostgreSQL
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Productos\" ADD COLUMN IF NOT EXISTS \"descripcion\" text NULL;");
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Productos\" ADD COLUMN IF NOT EXISTS \"medida\" varchar(50) NULL;");
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Productos\" ADD COLUMN IF NOT EXISTS \"puntoreorden\" integer NOT NULL DEFAULT 0;");
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Productos\" ADD COLUMN IF NOT EXISTS \"maxstock\" integer NOT NULL DEFAULT 0;");
+            
+            // Mantener capitalizados por retrocompatibilidad si ya existen
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Productos\" ADD COLUMN IF NOT EXISTS \"Descripcion\" text NULL;");
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Productos\" ADD COLUMN IF NOT EXISTS \"Medida\" varchar(50) NULL;");
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Productos\" ADD COLUMN IF NOT EXISTS \"PuntoReorden\" integer NOT NULL DEFAULT 0;");
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Productos\" ADD COLUMN IF NOT EXISTS \"MaxStock\" integer NOT NULL DEFAULT 0;");
+            
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Gastos\" ADD COLUMN IF NOT EXISTS \"productoid\" integer NULL;");
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Gastos\" ADD COLUMN IF NOT EXISTS \"cantidad\" numeric NULL;");
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Gastos\" ADD COLUMN IF NOT EXISTS \"ProductoId\" integer NULL;");
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Gastos\" ADD COLUMN IF NOT EXISTS \"Cantidad\" numeric NULL;");
             
             // Performance Indexes for Produccion_Gastos
             context.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS \"IX_Produccion_Gastos_Anio_Mes\" ON \"Produccion_Gastos\" (\"Anio\", \"Mes\");");

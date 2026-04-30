@@ -49,6 +49,18 @@ public class MantenimientoController : ControllerBase
         var productos = await _context.Mantenimiento_Productos
             .Include(p => p.Rubro)
             .Where(p => p.Activo)
+            .Select(p => new
+            {
+                p.Id,
+                p.Nombre,
+                p.Referencia,
+                p.Descripcion,
+                p.Medida,
+                p.PuntoReorden,
+                p.MaxStock,
+                p.RubroId,
+                RubroNombre = p.Rubro != null ? p.Rubro.Nombre : "N/A"
+            })
             .ToListAsync();
 
         var usuarios = await _context.Usuarios

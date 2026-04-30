@@ -3087,6 +3087,8 @@ function ProductosTab() {
     const [descripcion, setDescripcion] = useState('');
     const [medida, setMedida] = useState('');
     const [rubroId, setRubroId] = useState('');
+    const [puntoReorden, setPuntoReorden] = useState('0');
+    const [maxStock, setMaxStock] = useState('0');
     const [saving, setSaving] = useState(false);
 
     const loadData = async () => {
@@ -3101,14 +3103,33 @@ function ProductosTab() {
 
     useEffect(() => { loadData(); }, []);
 
-    const handleAdd = () => { setEditItem(null); setNombre(''); setReferencia(''); setDescripcion(''); setMedida(''); setRubroId(''); setShowModal(true); };
-    const handleEdit = (item) => { setEditItem(item); setNombre(item.nombre); setReferencia(item.referencia || ''); setDescripcion(item.descripcion || ''); setMedida(item.medida || ''); setRubroId(item.rubroId?.toString() || ''); setShowModal(true); };
+    const handleAdd = () => { setEditItem(null); setNombre(''); setReferencia(''); setDescripcion(''); setMedida(''); setRubroId(''); setPuntoReorden('0'); setMaxStock('0'); setShowModal(true); };
+    const handleEdit = (item) => { 
+        setEditItem(item); 
+        setNombre(item.nombre); 
+        setReferencia(item.referencia || ''); 
+        setDescripcion(item.descripcion || ''); 
+        setMedida(item.medida || ''); 
+        setRubroId(item.rubroId?.toString() || ''); 
+        setPuntoReorden(item.puntoReorden?.toString() || '0');
+        setMaxStock(item.maxStock?.toString() || '0');
+        setShowModal(true); 
+    };
 
     const handleSave = async () => {
-        if (!nombre.trim() || !rubroId) { Alert.alert('Error', 'Complete campos obligatorios'); return; }
+        if (!nombre.trim() || !rubroId || !medida) { Alert.alert('Error', 'Complete campos obligatorios (incluyendo Medida)'); return; }
         try {
             setSaving(true);
-            const prodData = { nombre, referencia, descripcion, medida, rubroId: parseInt(rubroId), activo: true };
+            const prodData = { 
+                nombre, 
+                referencia, 
+                descripcion, 
+                medida, 
+                rubroId: parseInt(rubroId), 
+                puntoReorden: parseInt(puntoReorden) || 0,
+                maxStock: parseInt(maxStock) || 0,
+                activo: true 
+            };
             if (editItem) {
                 await mantenimientoApi.updateProducto(editItem.id, { ...prodData, id: editItem.id });
                 Alert.alert('Éxito', 'Producto actualizado');
@@ -3162,6 +3183,7 @@ function ProductosTab() {
                             <Text style={styles.itemName}>{item.nombre} {item.referencia ? `(${item.referencia})` : ''}</Text>
                             <Text style={styles.itemSubDetail}>Rubro: {item.rubroNombre || rubros.find(r => r.id === item.rubroId)?.nombre || 'Desconocido'}</Text>
                             <Text style={styles.itemSubDetail}>Medida: {item.medida || 'N/A'}</Text>
+                            <Text style={styles.itemSubDetail}>Stock: Reorden {item.puntoReorden || 0} / Máx {item.maxStock || 0}</Text>
                             {item.descripcion ? <Text style={{fontSize: 12, color: isDarkMode ? '#94a3b8' : '#666', fontStyle: 'italic'}}>{item.descripcion}</Text> : null}
                         </View>
                         <View style={styles.itemActions}>
@@ -3193,6 +3215,16 @@ function ProductosTab() {
                             <Picker.Item label="Seleccione Rubro..." value="" />
                             {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
                         </Picker>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.label}>Punto Reorden</Text>
+                            <TextInput style={styles.input} value={puntoReorden} onChangeText={setPuntoReorden} keyboardType="numeric" placeholder="0" />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.label}>Stock Máximo</Text>
+                            <TextInput style={styles.input} value={maxStock} onChangeText={setMaxStock} keyboardType="numeric" placeholder="0" />
+                        </View>
                     </View>
                     <View style={styles.modalActions}>
                         <TouchableOpacity style={styles.cancelButton} onPress={() => setShowModal(false)}><Text style={styles.cancelButtonText}>Cancelar</Text></TouchableOpacity>
