@@ -6,7 +6,7 @@ public class Usuario
 {
     public int Id { get; set; }
     public string Nombre { get; set; } = string.Empty;
-    public string Documento { get; set; } = string.Empty; // ADDED
+    public string Documento { get; set; } = string.Empty;
     [Column("Estado")]
     public bool Activo { get; set; } = true;
     public DateTime? FechaCreacion { get; set; }

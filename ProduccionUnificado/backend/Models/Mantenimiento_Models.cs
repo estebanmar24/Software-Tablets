@@ -70,22 +70,19 @@ namespace TiempoProcesos.API.Models
         public string? NumeroFactura { get; set; }
         public string? FacturaPdfUrl { get; set; }
         public bool EsPendiente { get; set; }
-        public int? UsuarioId { get; set; }
-        [ForeignKey("UsuarioId")]
-        public virtual Usuario? Usuario { get; set; }
-        public int? TipoHoraId { get; set; }
-        [ForeignKey("TipoHoraId")]
-        public virtual Mantenimiento_TipoHora? TipoHora { get; set; }
-        public int? TipoRecargoId { get; set; }
-        [ForeignKey("TipoRecargoId")]
-        public virtual Mantenimiento_TipoRecargo? TipoRecargo { get; set; }
+        public bool Activo { get; set; } = true;
+
+        // Nuevos campos para mano de obra
         public decimal? CantidadHoras { get; set; }
         public string? HoraInicio { get; set; }
         public string? HoraFin { get; set; }
-        public bool EsSolicitudCredito { get; set; }
-        public string? NumeroOP { get; set; }
+        public int? UsuarioId { get; set; }
+        public int? TipoHoraId { get; set; }
+        public int? TipoRecargoId { get; set; }
         public string? OtraMaquinaNombre { get; set; }
-        public bool Activo { get; set; } = true;
+        
+        public bool EsSolicitudCredito { get; set; } = false;
+        public string? NumeroOP { get; set; }
         
         // Shadow properties for quick access
         public int Anio { get; set; }

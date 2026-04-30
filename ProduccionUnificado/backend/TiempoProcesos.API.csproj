@@ -3,7 +3,7 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <DefaultItemExcludes>$(DefaultItemExcludes);temp_pdf_reader\**;node_modules\**;CheckDB\**;DiagnosticDB\**;wwwroot\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);temp_pdf_reader\**;node_modules\**;CheckDB\**;DiagnosticDB\**</DefaultItemExcludes>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />

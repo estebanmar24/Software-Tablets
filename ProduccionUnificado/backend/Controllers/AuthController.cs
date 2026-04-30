@@ -78,7 +78,8 @@ public class AuthController : ControllerBase
             Role = user.Role,
             Username = user.Username,
             NombreMostrar = user.NombreMostrar,
-            Area = user.Area ?? string.Empty
+            Area = user.Area ?? string.Empty,
+            Permissions = user.Permissions ?? string.Empty
         });
     }
 }

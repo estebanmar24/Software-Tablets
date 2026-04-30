@@ -6,6 +6,7 @@ import { getUsers, createUser, updateUser, deleteUser } from '../services/api';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import { ThemeToggle } from '../../App';
+import ResponsabilidadesScreen from './ResponsabilidadesScreen';
 
 interface User {
     id: number;
@@ -22,6 +23,7 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
     const [loading, setLoading] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
+    const [currentView, setCurrentView] = useState<'users' | 'responsabilidades'>('users');
 
     // Form state
     const [editingId, setEditingId] = useState<number | null>(null);
@@ -227,9 +229,17 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
                     <Text style={styles.title}>Gestión de Usuarios (DB)</Text>
                     <ThemeToggle />
                 </View>
-                <TouchableOpacity onPress={openNew} style={styles.addBtn}>
-                    <Text style={styles.addBtnText}>+ Nuevo Usuario</Text>
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <TouchableOpacity 
+                        onPress={() => setCurrentView('responsabilidades')} 
+                        style={[styles.addBtn, { backgroundColor: '#6366F1', marginRight: 10 }]}
+                    >
+                        <Text style={styles.addBtnText}>Responsabilidades</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={openNew} style={styles.addBtn}>
+                        <Text style={styles.addBtnText}>+ Nuevo Usuario</Text>
+                    </TouchableOpacity>
+                </View>
             </View>
 
             <FlatList
@@ -240,6 +250,15 @@ export default function UserManagementScreen({ onBack }: { onBack: () => void })
                 onRefresh={loadUsers}
                 contentContainerStyle={styles.list}
             />
+
+            {currentView === 'responsabilidades' && (
+                <View style={StyleSheet.absoluteFill}>
+                    <ResponsabilidadesScreen 
+                        onBack={() => setCurrentView('users')} 
+                        users={users}
+                    />
+                </View>
+            )}
 
             <Modal visible={modalVisible} animationType="slide" transparent>
                 <View style={styles.modalOverlay}>

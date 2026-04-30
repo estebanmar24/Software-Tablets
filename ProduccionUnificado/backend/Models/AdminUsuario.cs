@@ -20,6 +20,6 @@ public class AdminUsuario
     public string Area { get; set; } = string.Empty;
 
     public string Email { get; set; } = string.Empty;
-
+    public string Permissions { get; set; } = string.Empty;
     public bool Activo { get; set; } = true;
 }

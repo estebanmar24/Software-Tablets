@@ -1948,7 +1948,7 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                             onPress={() => openEdit(item)}
                         >
                             <View style={styles.maquinaInfo}>
-                                <Text style={[styles.maquinaName, { color: colors.text }]}>{item.nombre}</Text>
+                                <Text style={[styles.maquinaName, { color: colors.text }]}>{item.nombre.toLowerCase()}</Text>
                                 <Text style={[styles.maquinaSub, { color: colors.subText }]}>Inv: {item.numeroInventario || 'N/A'} | Marca: {item.marca || 'N/A'}</Text>
                             </View>
                             

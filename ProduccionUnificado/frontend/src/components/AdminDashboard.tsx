@@ -41,20 +41,21 @@ interface AdminDashboardProps {
     role?: string;
     displayName?: string;
     area?: string;
+    permissions?: string;
 }
 
 type TabName = 'captura' | 'desperdicio' | 'tablero' | 'historial' | 'maquinas' | 'operarios' | 'cartas' | 'calidad' | 'calidadExterna';
 
-const allTabs: { key: TabName; label: string; icon: string; roles: string[] }[] = [
-    { key: 'captura', label: 'Captura Mensual', icon: '📝', roles: ['admin', 'master', 'produccion'] },
-    { key: 'desperdicio', label: 'Desperdicio', icon: '🗑️', roles: ['admin', 'master', 'produccion'] },
-    { key: 'tablero', label: 'Tablero Semáforos', icon: '🚦', roles: ['admin', 'master', 'produccion'] },
-    { key: 'historial', label: 'Historial', icon: '📋', roles: ['admin', 'master'] },
-    { key: 'maquinas', label: 'Config Máquinas', icon: '⚙️', roles: ['admin', 'master', 'talleres'] },
-    { key: 'operarios', label: 'Operarios', icon: '👥', roles: ['admin', 'master', 'gh'] },
-    { key: 'calidad', label: 'Novedades de OP y Calidad', icon: '✅', roles: ['admin', 'master', 'calidad'] },
-    { key: 'cartas', label: 'Cartas', icon: '📄', roles: ['admin', 'master'] },
-    { key: 'calidadExterna', label: 'Calidad Externa', icon: '🏭', roles: ['admin', 'calidad', 'modulo_calidad'] },
+const allTabs: { key: string; label: string; icon: string; roles: string[] }[] = [
+    { key: 'prod_captura', label: 'Captura Mensual', icon: '📝', roles: ['admin', 'master', 'produccion'] },
+    { key: 'prod_desperdicio', label: 'Desperdicio', icon: '🗑️', roles: ['admin', 'master', 'produccion'] },
+    { key: 'prod_tablero', label: 'Tablero Semáforos', icon: '🚦', roles: ['admin', 'master', 'produccion'] },
+    { key: 'prod_historial', label: 'Historial', icon: '📋', roles: ['admin', 'master'] },
+    { key: 'prod_maquinas', label: 'Config Máquinas', icon: '⚙️', roles: ['admin', 'master', 'talleres'] },
+    { key: 'prod_operarios', label: 'Operarios', icon: '👥', roles: ['admin', 'master', 'gh'] },
+    { key: 'prod_calidad', label: 'Novedades de OP y Calidad', icon: '✅', roles: ['admin', 'master', 'calidad'] },
+    { key: 'prod_cartas', label: 'Cartas', icon: '📄', roles: ['admin', 'master'] },
+    { key: 'prod_calidad_ext', label: 'Calidad Externa', icon: '🏭', roles: ['admin', 'calidad', 'modulo_calidad'] },
 ];
 
 /**
@@ -135,7 +136,7 @@ function MaintenanceCard({ disabled, onPress }: { disabled?: boolean, onPress: (
     );
 }
 
-function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: AdminDashboardProps) {
+function AdminDashboardContent({ onBack, role = 'admin', displayName, area, permissions }: AdminDashboardProps) {
     const { colors, isDarkMode } = useTheme();
     // Mode: 'MENU' | 'CONTENT' ...
     const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'MANTENIMIENTO_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS' | 'TICKETS' | 'CALIDAD_EXTERNA' | 'PLANES_ACCION' | 'USUARIOS' | 'MAQUINAS' | 'MANTENIMIENTO_SELECTOR' | 'INVENTARIO_MANTENIMIENTO'>(() => {
@@ -149,18 +150,36 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
         }
         return 'MENU';
     });
-    const [activeTab, setActiveTab] = useState<string>('captura');
+    const [activeTab, setActiveTab] = useState<string>('prod_captura');
     const [qualityTitle, setQualityTitle] = useState<string>('Control en Proceso de Calidad y Novedades');
     const [pendingPlansCount, setPendingPlansCount] = useState(0);
     const [resumen, setResumen] = useState<any>(null);
     const { width } = useWindowDimensions();
     const isMobile = width < 768;
 
-    const { userRoles, tabs } = useMemo(() => {
+    const { userRoles, tabs, userPermissions } = useMemo(() => {
         const roles = (role || '').split(',').map(r => r.trim().toLowerCase());
-        const filteredTabs = allTabs.filter(t => t.roles && t.roles.some(r => roles.includes(r)));
-        return { userRoles: roles, tabs: filteredTabs };
-    }, [role]);
+        let perms: Record<string, boolean> = {};
+        try {
+            perms = permissions ? JSON.parse(permissions) : {};
+        } catch (e) {
+            console.error('Error parsing permissions in dashboard:', e);
+        }
+        
+        const filteredTabs = allTabs.filter(t => {
+            const hasRole = t.roles && t.roles.some(r => roles.includes(r));
+            if (!hasRole) return false;
+            
+            // If permissions are set (at least one permission is defined), filter by them
+            if (Object.keys(perms).length > 0) {
+                return perms[t.key] === true;
+            }
+            
+            return true;
+        });
+        
+        return { userRoles: roles, tabs: filteredTabs, userPermissions: perms };
+    }, [role, permissions]);
 
     useEffect(() => {
         if (tabs.length > 0 && !tabs.find(t => t.key === activeTab)) {
@@ -515,6 +534,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
                     navigation={mockNavigation}
                     userArea={area}
                     userRole={role}
+                    permissions={permissions}
                 />
             </View>
         );
@@ -858,19 +878,24 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
         Alert.alert('Próximamente', `El módulo "${moduleName}" estará disponible pronto.`);
     };
 
-    const isMasterEnabled = userRoles.includes('admin') || userRoles.includes('master');
-    const isCalidadEnabled = userRoles.includes('admin') || userRoles.includes('modulo_calidad');
-    const isProduccionEnabled = userRoles.includes('admin') || userRoles.includes('produccion');
-    const isTalleresEnabled = userRoles.includes('admin') || userRoles.includes('talleres');
-    const isPresupuestoEnabled = userRoles.includes('admin') || userRoles.includes('presupuesto');
-    const isGHEnabled = userRoles.includes('admin') || userRoles.includes('gh');
-    const isSSTEnabled = userRoles.includes('admin') || userRoles.includes('sst');
-    const isEquiposEnabled = userRoles.includes('admin') || userRoles.includes('equipos');
-    const isMantenimientoEnabled = userRoles.includes('admin') || userRoles.includes('mantenimiento') || userRoles.includes('talleres');
-    const isPlaneacionEnabled = userRoles.includes('admin') || userRoles.includes('planeacion');
-    const isDisenoEnabled = userRoles.includes('admin') || userRoles.includes('diseno');
-    const isPlaneadorEnabled = userRoles.includes('admin') || userRoles.includes('calidad') || userRoles.includes('modulo_calidad') || userRoles.includes('planeador');
-    const isMaquinasEnabled = userRoles.includes('admin') || userRoles.includes('maquinas');
+    const hasPerm = (id: string) => {
+        if (Object.keys(userPermissions).length === 0) return true;
+        return userPermissions[id] === true;
+    };
+
+    const isMasterEnabled = (userRoles.includes('admin') || userRoles.includes('master')) && (hasPerm('prod_captura') || hasPerm('prod_desperdicio') || hasPerm('prod_tablero') || hasPerm('prod_historial'));
+    const isCalidadEnabled = (userRoles.includes('admin') || userRoles.includes('modulo_calidad')) && (hasPerm('calidad_encuestas') || hasPerm('calidad_prod') || hasPerm('calidad_consolidado') || hasPerm('calidad_planes') || hasPerm('calidad_ext') || hasPerm('calidad_actas'));
+    const isProduccionEnabled = (userRoles.includes('admin') || userRoles.includes('produccion')) && hasPerm('prod_gastos_raw');
+    const isTalleresEnabled = (userRoles.includes('admin') || userRoles.includes('talleres')) && hasPerm('talleres_gastos');
+    const isPresupuestoEnabled = (userRoles.includes('admin') || userRoles.includes('presupuesto')) && hasPerm('sst_presupuesto');
+    const isGHEnabled = (userRoles.includes('admin') || userRoles.includes('gh')) && hasPerm('gh_gastos');
+    const isSSTEnabled = (userRoles.includes('admin') || userRoles.includes('sst')) && hasPerm('sst_gastos');
+    const isEquiposEnabled = (userRoles.includes('admin') || userRoles.includes('equipos')) && hasPerm('mant_maquinas');
+    const isMantenimientoEnabled = (userRoles.includes('admin') || userRoles.includes('mantenimiento') || userRoles.includes('talleres')) && (hasPerm('mant_maquinas') || hasPerm('mant_gastos') || hasPerm('mant_inventario'));
+    const isPlaneacionEnabled = (userRoles.includes('admin') || userRoles.includes('planeacion')) && hasPerm('plan_gastos');
+    const isDisenoEnabled = (userRoles.includes('admin') || userRoles.includes('diseno')) && hasPerm('diseno_gastos');
+    const isPlaneadorEnabled = (userRoles.includes('admin') || userRoles.includes('calidad') || userRoles.includes('modulo_calidad') || userRoles.includes('planeador')) && hasPerm('prod_calidad_ext');
+    const isMaquinasEnabled = (userRoles.includes('admin') || userRoles.includes('maquinas')) && hasPerm('prod_maquinas');
 
     const roleDisplayNames: Record<string, string> = {
         'admin': 'Administrador',
@@ -962,7 +987,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
                         icon="📊"
                         onPress={() => {
                             setMode('CONTENT');
-                            setActiveTab('captura');
+                            setActiveTab('prod_captura');
                             if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'CONTENT');
                         }}
                         disabled={!isMasterEnabled}
@@ -1086,8 +1111,8 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area }: Ad
     );
 }
 
-export function AdminDashboard({ onBack, role, displayName, area }: AdminDashboardProps) {
-    return <AdminDashboardContent onBack={onBack} role={role} displayName={displayName} area={area} />;
+export function AdminDashboard({ onBack, role, displayName, area, permissions }: AdminDashboardProps) {
+    return <AdminDashboardContent onBack={onBack} role={role} displayName={displayName} area={area} permissions={permissions} />;
 }
 
 const styles = StyleSheet.create({

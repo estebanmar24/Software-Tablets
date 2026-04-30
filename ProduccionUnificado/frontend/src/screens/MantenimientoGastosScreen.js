@@ -402,18 +402,21 @@ function GastosTab() {
         }
     };
 
-    // Cascading filter: Rubro -> Proveedor
     useEffect(() => {
         if (formData.rubroId) {
-            const filtered = proveedores.filter(p => !p.rubroId || p.rubroId.toString() === formData.rubroId.toString());
-            setFilteredProveedores(filtered);
-            if (formData.proveedorId && !filtered.find(p => p.id.toString() === formData.proveedorId.toString())) {
-                setFormData(prev => ({ ...prev, proveedorId: '' }));
+            let filtered = proveedores.filter(p => !p.rubroId || p.rubroId.toString() === formData.rubroId.toString());
+            // Si estamos editando, asegurarnos de que el proveedor actual esté en la lista para que no se borre
+            if (editItem && editItem.proveedorId) {
+                const currentP = proveedores.find(p => p.id === editItem.proveedorId);
+                if (currentP && !filtered.find(p => p.id === currentP.id)) {
+                    filtered = [currentP, ...filtered];
+                }
             }
+            setFilteredProveedores(filtered);
         } else {
             setFilteredProveedores(proveedores);
         }
-    }, [formData.rubroId, proveedores]);
+    }, [formData.rubroId, proveedores, editItem]);
 
     // Autofill Price from Cotizaciones when Proveedor is selected
     useEffect(() => {
@@ -626,18 +629,33 @@ function GastosTab() {
                 }
             }
 
+            // Construcción limpia y segura del objeto para el backend
+            const safeParseInt = (val) => {
+                const parsed = parseInt(val);
+                return isNaN(parsed) ? null : parsed;
+            };
+
             const gastoData = {
-                ...formData,
                 id: editItem ? editItem.id : 0,
-                rubroId: parseInt(formData.rubroId),
-                proveedorId: formData.proveedorId ? parseInt(formData.proveedorId) : null,
-                usuarioId: formData.usuarioId ? parseInt(formData.usuarioId) : null,
-                maquinaId: (!formData.esOtraMaquina && formData.maquinaId) ? parseInt(formData.maquinaId) : null,
+                rubroId: safeParseInt(formData.rubroId) || 0,
+                proveedorId: safeParseInt(formData.proveedorId),
+                maquinaId: (!formData.esOtraMaquina && formData.maquinaId) ? safeParseInt(formData.maquinaId) : null,
                 otraMaquinaNombre: formData.esOtraMaquina ? formData.otraMaquinaNombre : null,
-                tipoHoraId: formData.tipoHoraId ? parseInt(formData.tipoHoraId) : null,
-                tipoRecargoId: formData.tipoRecargoId ? parseInt(formData.tipoRecargoId) : null,
-                precio: parseFloat(formData.precio || 0),
+                precio: parseFloat(formData.precio || 0) || 0,
+                fecha: formData.fecha,
+                nota: formData.nota || '',
+                numeroFactura: formData.numeroFactura || '',
                 facturaPdfUrl: finalFacturaPdfUrl,
+                esPendiente: !!formData.esPendiente,
+                esSolicitudCredito: !!formData.esSolicitudCredito,
+                numeroOP: formData.numeroOP || '',
+                usuarioId: safeParseInt(formData.usuarioId),
+                tipoHoraId: safeParseInt(formData.tipoHoraId),
+                tipoRecargoId: safeParseInt(formData.tipoRecargoId),
+                cantidadHoras: parseFloat(formData.cantidadHoras) || null,
+                horaInicio: formData.horaInicio || null,
+                horaFin: formData.horaFin || null,
+                activo: true,
                 anio: parseInt(formData.fecha.split('-')[0]),
                 mes: parseInt(formData.fecha.split('-')[1])
             };
@@ -697,7 +715,7 @@ function GastosTab() {
                 });
                 await Promise.all(promises);
             } else {
-                if (editItem) await mantenimientoApi.updateGasto(editItem.id, gastoData);
+                if (editItem) await mantenimientoApi.updateGasto(editItem.id, { ...gastoData, id: editItem.id });
                 else await mantenimientoApi.createGasto(gastoData);
             }
 
@@ -1360,7 +1378,7 @@ function GastosTab() {
                                                 onChangeText={handlePriceChange}
                                                 keyboardType="numeric"
                                                 placeholder="0"
-                                                editable={(formData.esPendiente || !!formData.numeroFactura.trim())}
+                                                editable={(formData.esPendiente || !!formData.numeroFactura.trim() || !!editItem)}
                                             />
                                         </View>
                                     </View>
