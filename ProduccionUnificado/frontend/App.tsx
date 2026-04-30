@@ -121,6 +121,7 @@ function AppContent() {
   const [adminRole, setAdminRole] = useState<string>('admin');
   const [adminName, setAdminName] = useState<string>('');
   const [adminArea, setAdminArea] = useState<string>('');
+  const [adminPermissions, setAdminPermissions] = useState<string>('');
 
   // Persistence for currentView - solo persiste 'admin', siempre inicia en 'timer'
   useEffect(() => {
@@ -146,9 +147,11 @@ function AppContent() {
         const savedRole = await AsyncStorage.getItem('adminRole');
         const savedName = await AsyncStorage.getItem('adminName');
         const savedArea = await AsyncStorage.getItem('adminArea');
+        const savedPermissions = await AsyncStorage.getItem('adminPermissions');
         if (savedRole) setAdminRole(savedRole);
         if (savedName) setAdminName(savedName);
         if (savedArea) setAdminArea(savedArea);
+        if (savedPermissions) setAdminPermissions(savedPermissions);
 
       } catch (e) {
         console.log('Failed to load view state');
@@ -164,12 +167,13 @@ function AppContent() {
       AsyncStorage.setItem('adminRole', adminRole);
       AsyncStorage.setItem('adminName', adminName);
       AsyncStorage.setItem('adminArea', adminArea);
+      AsyncStorage.setItem('adminPermissions', adminPermissions);
     } else {
       AsyncStorage.setItem('lastView', 'timer');
     }
-  }, [currentView, adminRole, adminName, adminArea]);
+  }, [currentView, adminRole, adminName, adminArea, adminPermissions]);
 
-  const handleLoginSuccess = (role: string, nombreMostrar: string, username: string = '', area: string = '') => {
+  const handleLoginSuccess = (role: string, nombreMostrar: string, username: string = '', area: string = '', permissions: string = '') => {
     const normalizedRole = (role || '').toLowerCase().trim();
     const normalizedName = (nombreMostrar || '').toLowerCase().trim();
     const normalizedUsername = (username || '').toLowerCase().trim();
@@ -177,6 +181,7 @@ function AppContent() {
     setAdminRole(normalizedRole);
     setAdminName(nombreMostrar || '');
     setAdminArea(area || '');
+    setAdminPermissions(permissions || '');
 
     // Priority Routing: Develop > Calidad > ESST (Exclusive) > Admin (General)
     if (normalizedRole.includes('develop')) {
@@ -785,13 +790,17 @@ function AppContent() {
     // FAIL-SAFE: Si el rol es develop, NUNCA mostrar el dashboard admin
     if (adminRole.includes('develop')) {
       return (
-        <UserManagementScreen onBack={() => {
-          setAdminRole('');
-          setAdminName('');
-          setCurrentView('timer');
-          AsyncStorage.removeItem('adminRole');
-          AsyncStorage.removeItem('lastView');
-        }} />
+        <UserManagementScreen 
+          onBack={() => {
+            setAdminRole('');
+            setAdminName('');
+            setAdminPermissions('');
+            setCurrentView('timer');
+            AsyncStorage.removeItem('adminRole');
+            AsyncStorage.removeItem('adminPermissions');
+            AsyncStorage.removeItem('lastView');
+          }} 
+        />
       );
     }
 
@@ -801,6 +810,7 @@ function AppContent() {
         onBack={() => setCurrentView('timer')}
         displayName={adminName}
         area={adminArea}
+        permissions={adminPermissions}
       />
     );
   }
@@ -852,8 +862,10 @@ function AppContent() {
       <UserManagementScreen onBack={() => {
         setAdminRole('');
         setAdminName('');
+        setAdminPermissions('');
         setCurrentView('timer');
         AsyncStorage.removeItem('adminRole');
+        AsyncStorage.removeItem('adminPermissions');
         // No removemos adminName aqui por si acaso, pero borramos persistencia de vista
         AsyncStorage.removeItem('lastView');
       }} />

@@ -7,7 +7,7 @@ import ConsolidadoNCView from './ConsolidadoNCView';
 import CalidadExternaView from './CalidadExternaView';
 import ActasDestruccionView from './ActasDestruccionView';
 
-type CalidadTab = 'encuestas' | 'produccion' | 'consolidadoNC' | 'planesAccion' | 'calidadExterna' | 'actasDestruccion';
+type CalidadTab = 'calidad_encuestas' | 'calidad_prod' | 'calidad_consolidado' | 'calidad_planes' | 'calidad_ext' | 'calidad_actas';
 
 interface TabDef {
     key: CalidadTab;
@@ -16,12 +16,12 @@ interface TabDef {
 }
 
 const tabs: TabDef[] = [
-    { key: 'encuestas', label: 'Control en Proceso de Calidad y Novedades', icon: '✅' },
-    { key: 'produccion', label: 'Reporte de NC a Calidad', icon: '📦' },
-    { key: 'consolidadoNC', label: 'Consolidado de NC', icon: '📋' },
-    { key: 'planesAccion', label: 'Planes de Acción', icon: '🚀' },
-    { key: 'calidadExterna', label: 'Calidad Externa', icon: '🏭' },
-    { key: 'actasDestruccion', label: 'Actas de Destrucción', icon: '📜' },
+    { key: 'calidad_encuestas', label: 'Control en Proceso de Calidad y Novedades', icon: '✅' },
+    { key: 'calidad_prod', label: 'Reporte de NC a Calidad', icon: '📦' },
+    { key: 'calidad_consolidado', label: 'Consolidado de NC', icon: '📋' },
+    { key: 'calidad_planes', label: 'Planes de Acción', icon: '🚀' },
+    { key: 'calidad_ext', label: 'Calidad Externa', icon: '🏭' },
+    { key: 'calidad_actas', label: 'Actas de Destrucción', icon: '📜' },
 ];
 
 interface CalidadDashboardProps {
@@ -29,10 +29,24 @@ interface CalidadDashboardProps {
     navigation: any;
     userArea?: string;
     userRole?: string;
+    permissions?: string;
 }
 
-export default function CalidadDashboard({ onTabChange, navigation, userArea, userRole }: CalidadDashboardProps) {
-    const [activeTab, setActiveTab] = useState<CalidadTab>('encuestas');
+export default function CalidadDashboard({ onTabChange, navigation, userArea, userRole, permissions }: CalidadDashboardProps) {
+    const [activeTab, setActiveTab] = useState<CalidadTab>('calidad_encuestas');
+
+    const filteredTabs = React.useMemo(() => {
+        let perms: Record<string, boolean> = {};
+        try {
+            perms = permissions ? JSON.parse(permissions) : {};
+        } catch (e) {
+            console.error('Error parsing permissions in calidad dashboard:', e);
+        }
+
+        if (Object.keys(perms).length === 0) return tabs;
+
+        return tabs.filter(tab => perms[tab.key] === true);
+    }, [permissions]);
 
     const handleTabChange = (tab: TabDef) => {
         setActiveTab(tab.key);
@@ -43,17 +57,17 @@ export default function CalidadDashboard({ onTabChange, navigation, userArea, us
 
     const renderContent = () => {
         switch (activeTab) {
-            case 'encuestas':
+            case 'calidad_encuestas':
                 return <QualityView navigation={navigation} />;
-            case 'produccion':
+            case 'calidad_prod':
                 return <EncuestaCalidadProduccionView />;
-            case 'planesAccion':
+            case 'calidad_planes':
                 return <PlanAccionView userArea={userArea} userRole={userRole} />;
-            case 'consolidadoNC':
+            case 'calidad_consolidado':
                 return <ConsolidadoNCView />;
-            case 'calidadExterna':
+            case 'calidad_ext':
                 return <CalidadExternaView />;
-            case 'actasDestruccion':
+            case 'calidad_actas':
                 return <ActasDestruccionView />;
             default:
                 return null;
@@ -64,7 +78,7 @@ export default function CalidadDashboard({ onTabChange, navigation, userArea, us
         <View style={styles.container}>
             {/* Tab bar */}
             <View style={styles.tabBar}>
-                {tabs.map(tab => (
+                {filteredTabs.map(tab => (
                     <TouchableOpacity
                         key={tab.key}
                         style={[styles.tab, activeTab === tab.key && styles.tabActive]}

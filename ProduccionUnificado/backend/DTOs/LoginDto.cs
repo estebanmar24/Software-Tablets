@@ -19,4 +19,5 @@ public class LoginResponseDto
     public string Username { get; set; } = string.Empty;
     public string NombreMostrar { get; set; } = string.Empty;
     public string Area { get; set; } = string.Empty;
+    public string Permissions { get; set; } = string.Empty;
 }

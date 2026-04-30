@@ -54,7 +54,7 @@ public class ProduccionController : ControllerBase
         var usuarios = await _context.Usuarios
             .Where(u => u.Activo)
             .OrderBy(u => u.Nombre)
-            .Select(u => new { u.Id, u.Nombre, u.Salario, u.Documento }) // Include Salario and Documento
+            .Select(u => new { u.Id, u.Nombre, u.Salario, u.Documento })
             .ToListAsync();
 
         var productos = await _context.Produccion_Productos.Where(p => p.Activo).ToListAsync();
@@ -927,6 +927,7 @@ public class ProduccionController : ControllerBase
         try 
         {
             var query = _context.Produccion_Gastos
+                .AsNoTracking()
                 .Include(g => g.Rubro)
                 .Include(g => g.Proveedor)
                 .Include(g => g.Usuario)
@@ -1757,6 +1758,7 @@ public class ProduccionController : ControllerBase
     public async Task<ActionResult> GetGraficas(int anio, int? mes = null)
     {
         var query = _context.Produccion_Gastos
+            .AsNoTracking()
             .Include(g => g.Rubro)
             .Include(g => g.Proveedor)
             .Include(g => g.Usuario)
@@ -1799,6 +1801,7 @@ public class ProduccionController : ControllerBase
         // Resumen mensual (para vista anual)
         var resumenMensual = new List<object>();
         var presupuestos = await _context.Produccion_PresupuestosMensuales
+            .AsNoTracking()
             .Where(p => p.Anio == anio)
             .ToListAsync();
 

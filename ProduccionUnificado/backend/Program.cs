@@ -100,25 +100,6 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Global exception handler
-app.Use(async (context, next) =>
-{
-    try
-    {
-        await next();
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"[UNHANDLED EXCEPTION] {ex.GetType().Name}: {ex.Message}");
-        if (!context.Response.HasStarted)
-        {
-            context.Response.StatusCode = 500;
-            context.Response.ContentType = "application/json";
-            // No enviar el mensaje real del error al cliente en producción
-            await context.Response.WriteAsync("{\"error\": \"Un error interno ha ocurrido en el servidor.\"}");
-        }
-    }
-});
 
 ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
 
@@ -128,60 +109,46 @@ using (var scope = app.Services.CreateScope())
     var services = scope.ServiceProvider;
     try
     {
+        Console.WriteLine("[STARTUP] Getting DbContext...");
         var context = services.GetRequiredService<AppDbContext>();
+        Console.WriteLine("[STARTUP] DbContext acquired.");
         
-        // Manual schema fixes for Action Plans
+        // Manual schema fixes
         try { 
-            context.Database.ExecuteSqlRaw("DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='PlanesAccion' AND column_name='tipotrabajo') THEN ALTER TABLE \"PlanesAccion\" RENAME COLUMN \"tipotrabajo\" TO \"TipoTrabajo\"; END IF; END $$;");
             context.Database.ExecuteSqlRaw("ALTER TABLE \"PlanesAccion\" ADD COLUMN IF NOT EXISTS \"TipoTrabajo\" VARCHAR(50) DEFAULT 'Nuevo' NOT NULL;"); 
-        } catch (Exception ex) { Console.WriteLine($"[DB FIX] Error fixing PlanesAccion: {ex.Message}"); }
-        
-        try { context.Database.ExecuteSqlRaw("ALTER TABLE \"Talleres_Personal\" ADD COLUMN IF NOT EXISTS \"HorarioId\" integer NULL REFERENCES \"Horarios\"(\"Id\");"); } catch {}
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Usuarios\" ADD COLUMN IF NOT EXISTS \"Salario\" numeric NOT NULL DEFAULT 0;"); 
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Usuarios\" ADD COLUMN IF NOT EXISTS \"Documento\" text NOT NULL DEFAULT '';"); 
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"AdminUsuarios\" ADD COLUMN IF NOT EXISTS \"Permissions\" text NOT NULL DEFAULT '';");
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Gastos\" ADD COLUMN IF NOT EXISTS \"CantidadHoras\" numeric NULL;");
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Gastos\" ADD COLUMN IF NOT EXISTS \"HoraFin\" text NULL;");
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Gastos\" ADD COLUMN IF NOT EXISTS \"HoraInicio\" text NULL;");
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Gastos\" ADD COLUMN IF NOT EXISTS \"OtraMaquinaNombre\" text NULL;");
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Gastos\" ADD COLUMN IF NOT EXISTS \"TipoHoraId\" integer NULL;");
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Gastos\" ADD COLUMN IF NOT EXISTS \"TipoRecargoId\" integer NULL;");
+            context.Database.ExecuteSqlRaw("ALTER TABLE \"Mantenimiento_Gastos\" ADD COLUMN IF NOT EXISTS \"UsuarioId\" integer NULL;");
+            
+            // Performance Indexes for Produccion_Gastos
+            context.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS \"IX_Produccion_Gastos_Anio_Mes\" ON \"Produccion_Gastos\" (\"Anio\", \"Mes\");");
+            context.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS \"IX_Produccion_Gastos_RubroId\" ON \"Produccion_Gastos\" (\"RubroId\");");
+        } catch (Exception ex) { Console.WriteLine($"[DB FIX] Error applying manual fixes: {ex.Message}"); }
 
-        // Migración Hoja de Vida Máquinas (Ficha Técnica)
         try {
-            string sqlHV = @"
-                ALTER TABLE ""HojasVidaMaquinas"" ADD COLUMN IF NOT EXISTS ""Proceso"" TEXT;
-                ALTER TABLE ""HojasVidaMaquinas"" ADD COLUMN IF NOT EXISTS ""Ubicacion"" TEXT;
-                ALTER TABLE ""HojasVidaMaquinas"" ADD COLUMN IF NOT EXISTS ""Voltaje"" TEXT;
-                ALTER TABLE ""HojasVidaMaquinas"" ADD COLUMN IF NOT EXISTS ""Corriente"" TEXT;
-                ALTER TABLE ""HojasVidaMaquinas"" ADD COLUMN IF NOT EXISTS ""Potencia"" TEXT;
-                ALTER TABLE ""HojasVidaMaquinas"" ADD COLUMN IF NOT EXISTS ""Dimensiones"" TEXT;
-                ALTER TABLE ""HojasVidaMaquinas"" ADD COLUMN IF NOT EXISTS ""Peso"" TEXT;
-                ALTER TABLE ""HojasVidaMaquinas"" ADD COLUMN IF NOT EXISTS ""OtroTecnico"" TEXT;
-            ";
-            context.Database.ExecuteSqlRaw(sqlHV);
-        } catch (Exception ex) { Console.WriteLine($"[DB FIX] Error adding Technical Fields to HojasVidaMaquinas: {ex.Message}"); }
-
-        // Crear tabla BitacorasMaquinas
-        try {
-            string sqlBitacora = @"
-                CREATE TABLE IF NOT EXISTS ""BitacorasMaquinas"" (
-                    ""Id"" SERIAL PRIMARY KEY,
-                    ""HojaVidaId"" INTEGER NOT NULL REFERENCES ""HojasVidaMaquinas""(""Id"") ON DELETE CASCADE,
-                    ""Fecha"" TIMESTAMP WITH TIME ZONE NOT NULL,
-                    ""Turno"" VARCHAR(50),
-                    ""Descripcion"" TEXT NOT NULL,
-                    ""EstadoMaquina"" VARCHAR(50),
-                    ""RegistradoPor"" VARCHAR(100),
-                    ""FechaRegistro"" TIMESTAMP WITH TIME ZONE NOT NULL
-                );
-            ";
-            context.Database.ExecuteSqlRaw(sqlBitacora);
-        } catch (Exception ex) { Console.WriteLine($"[DB FIX] Error creating BitacorasMaquinas table: {ex.Message}"); }
-        
-        try {
-            context.Database.ExecuteSqlRaw("ALTER TABLE \"EncuestasCalidadTalleres\" DROP CONSTRAINT IF EXISTS \"FK_EncuestasCalidadTalleres_Usuarios_UsuarioId\";");
-            context.Database.ExecuteSqlRaw("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name='FK_EncuestasCalidadTalleres_AdminUsuarios_UsuarioId') THEN ALTER TABLE \"EncuestasCalidadTalleres\" ADD CONSTRAINT \"FK_EncuestasCalidadTalleres_AdminUsuarios_UsuarioId\" FOREIGN KEY (\"UsuarioId\") REFERENCES \"AdminUsuarios\"(\"Id\"); END IF; END $$;");
-        } catch (Exception ex) { Console.WriteLine($"[DB FIX] Error fixing EncuestasCalidadTalleres FK: {ex.Message}"); }
-
-        DbInitializer.Initialize(context);
+            Console.WriteLine("[STARTUP] Initializing Database via DbInitializer...");
+            DbInitializer.Initialize(context);
+            Console.WriteLine("[STARTUP] DbInitializer finished.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[CRITICAL ERROR] Database initialization failed: {ex.Message}");
+        }
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[CRITICAL ERROR] Database initialization failed: {ex.Message}");
+        Console.WriteLine($"[STARTUP ERROR] Fatal error during startup: {ex.Message}");
     }
 }
+
+app.UseDeveloperExceptionPage();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
