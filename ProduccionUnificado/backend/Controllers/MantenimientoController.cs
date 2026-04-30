@@ -189,6 +189,7 @@ public class MantenimientoController : ControllerBase
             .Include(g => g.Rubro)
             .Include(g => g.Proveedor)
             .Include(g => g.Maquina)
+            .Include(g => g.Producto)
             .Where(g => g.Activo && g.Anio == anio && g.Mes == mes)
             .OrderByDescending(g => g.Fecha)
             .Select(g => new
@@ -202,6 +203,10 @@ public class MantenimientoController : ControllerBase
                 g.MaquinaId,
                 MaquinaNombre = g.Maquina != null ? g.Maquina.Nombre : (g.OtraMaquinaNombre ?? "N/A"),
                 Maquina = g.Maquina != null ? new { g.Maquina.Id, g.Maquina.Nombre } : null,
+                g.ProductoId,
+                Producto = g.Producto != null ? new { g.Producto.Id, g.Producto.Nombre } : null,
+                ProductoNombre = g.Producto != null ? g.Producto.Nombre : "N/A",
+                g.Cantidad,
                 g.OtraMaquinaNombre,
                 g.Precio,
                 Fecha = g.Fecha.ToString("yyyy-MM-ddTHH:mm:ss"),
@@ -447,6 +452,10 @@ public class MantenimientoController : ControllerBase
                 p.Id,
                 p.Nombre,
                 p.Referencia,
+                p.Descripcion,
+                p.Medida,
+                p.PuntoReorden,
+                p.MaxStock,
                 p.RubroId,
                 RubroNombre = p.Rubro != null ? p.Rubro.Nombre : "N/A"
             })
@@ -480,6 +489,38 @@ public class MantenimientoController : ControllerBase
         prod.Activo = false;
         await _context.SaveChangesAsync();
         return NoContent();
+    }
+
+    #endregion
+
+    #region Inventario
+
+    [HttpGet("inventario")]
+    public async Task<ActionResult> GetInventario()
+    {
+        var rubrosValidos = new[] { "Ferreteria", "Ferretería", "Lubricacion", "Lubricación", "Repuestos", "Rodamientos", "Sistema Aire", "Consumible", "Eléctrico", "Neumático", "Mecánico" };
+        
+        var productos = await _context.Mantenimiento_Productos
+            .Include(p => p.Rubro)
+            .Where(p => p.Activo && p.Rubro != null && rubrosValidos.Contains(p.Rubro.Nombre))
+            .Select(p => new
+            {
+                id = p.Id.ToString(),
+                codigo = p.Referencia ?? $"PRD-{p.Id}",
+                nombre = p.Nombre,
+                referencia = p.Referencia ?? "",
+                descripcion = p.Descripcion ?? "",
+                medida = p.Medida ?? "",
+                categoria = p.Rubro!.Nombre,
+                maxStock = p.MaxStock,
+                puntoReorden = p.PuntoReorden,
+                stock = _context.Mantenimiento_Gastos
+                    .Where(g => g.ProductoId == p.Id && g.Activo && !g.EsPendiente)
+                    .Sum(g => g.Cantidad ?? 0)
+            })
+            .ToListAsync();
+
+        return Ok(productos);
     }
 
     #endregion

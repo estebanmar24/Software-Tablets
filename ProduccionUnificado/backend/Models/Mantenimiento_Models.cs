@@ -64,6 +64,12 @@ namespace TiempoProcesos.API.Models
         public int? MaquinaId { get; set; }
         [ForeignKey("MaquinaId")]
         public virtual TiempoProcesos.API.Models.Maquina? Maquina { get; set; }
+
+        public int? ProductoId { get; set; }
+        [ForeignKey("ProductoId")]
+        public Mantenimiento_Producto? Producto { get; set; }
+        public decimal? Cantidad { get; set; }
+
         public decimal Precio { get; set; }
         public DateTime Fecha { get; set; }
         public string? Nota { get; set; }
@@ -131,6 +137,11 @@ namespace TiempoProcesos.API.Models
         public Mantenimiento_Rubro? Rubro { get; set; }
         [MaxLength(100)]
         public string? Referencia { get; set; }
+        public string? Descripcion { get; set; }
+        [MaxLength(50)]
+        public string? Medida { get; set; }
+        public int PuntoReorden { get; set; } = 0;
+        public int MaxStock { get; set; } = 0;
         public bool Activo { get; set; } = true;
     }
 }
