@@ -107,6 +107,8 @@ public class AppDbContext : DbContext
 
     // Planeador
     public DbSet<PlaneacionMaquina> PlaneacionesMaquinas { get; set; }
+    public DbSet<ProgramacionOP> ProgramacionesOP { get; set; }
+    public DbSet<ProgramacionOPProceso> ProgramacionesOPProcesos { get; set; }
 
     // Calidad Talleres Externos
     public DbSet<TallerExterno> TalleresExternos { get; set; }
@@ -572,6 +574,21 @@ public class AppDbContext : DbContext
             .WithMany()
             .HasForeignKey(p => p.OrdenProduccionId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<ProgramacionOP>().ToTable("ProgramacionesOP");
+        modelBuilder.Entity<ProgramacionOPProceso>().ToTable("ProgramacionesOPProcesos");
+
+        modelBuilder.Entity<ProgramacionOP>()
+            .HasOne(p => p.OrdenProduccion)
+            .WithMany()
+            .HasForeignKey(p => p.OrdenProduccionId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<ProgramacionOPProceso>()
+            .HasOne(p => p.ProgramacionOP)
+            .WithMany(op => op.Procesos)
+            .HasForeignKey(p => p.ProgramacionOPId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<TallerExterno>().ToTable("TalleresExternos");
         modelBuilder.Entity<EncuestaCalidadTaller>().ToTable("EncuestasCalidadTalleres");

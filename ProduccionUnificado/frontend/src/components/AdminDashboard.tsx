@@ -26,6 +26,8 @@ import DisenoGastosScreen from '../screens/DisenoGastosScreen';
 import TicketsScreen from '../screens/TicketsScreen';
 import MantenimientoGastosScreen from '../screens/MantenimientoGastosScreen';
 import CalidadExternaView from './CalidadExternaView';
+// @ts-ignore
+import PlaneadorMaquinasScreen from '../screens/PlaneadorMaquinasScreen';
 import PlanAccionView from './PlanAccionView';
 import UserManagementScreen from '../screens/UserManagementScreen';
 import MaquinasScreen from '../screens/MaquinasScreen';
@@ -139,11 +141,11 @@ function MaintenanceCard({ disabled, onPress }: { disabled?: boolean, onPress: (
 function AdminDashboardContent({ onBack, role = 'admin', displayName, area, permissions }: AdminDashboardProps) {
     const { colors, isDarkMode } = useTheme();
     // Mode: 'MENU' | 'CONTENT' ...
-    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'MANTENIMIENTO_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS' | 'TICKETS' | 'CALIDAD_EXTERNA' | 'PLANES_ACCION' | 'USUARIOS' | 'MAQUINAS' | 'MANTENIMIENTO_SELECTOR' | 'INVENTARIO_MANTENIMIENTO'>(() => {
+    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'MANTENIMIENTO_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS' | 'TICKETS' | 'CALIDAD_EXTERNA' | 'PLANEADOR_MAQUINAS' | 'PLANES_ACCION' | 'USUARIOS' | 'MAQUINAS' | 'MANTENIMIENTO_SELECTOR' | 'INVENTARIO_MANTENIMIENTO'>(() => {
 
         if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
             const savedMode = window.localStorage.getItem('adminDashboardMode');
-            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS' || savedMode === 'PRODUCCION_GASTOS' || savedMode === 'MANTENIMIENTO_GASTOS' || savedMode === 'TALLERES_GASTOS' || savedMode === 'CALIDAD' || savedMode === 'PLANEACION_GASTOS' || savedMode === 'DISENO_GASTOS' || savedMode === 'TICKETS' || savedMode === 'CALIDAD_EXTERNA' || savedMode === 'PLANES_ACCION' || savedMode === 'USUARIOS' || savedMode === 'MAQUINAS' || savedMode === 'MANTENIMIENTO_SELECTOR' || savedMode === 'INVENTARIO_MANTENIMIENTO') {
+            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS' || savedMode === 'PRODUCCION_GASTOS' || savedMode === 'MANTENIMIENTO_GASTOS' || savedMode === 'TALLERES_GASTOS' || savedMode === 'CALIDAD' || savedMode === 'PLANEACION_GASTOS' || savedMode === 'DISENO_GASTOS' || savedMode === 'TICKETS' || savedMode === 'CALIDAD_EXTERNA' || savedMode === 'PLANEADOR_MAQUINAS' || savedMode === 'PLANES_ACCION' || savedMode === 'USUARIOS' || savedMode === 'MAQUINAS' || savedMode === 'MANTENIMIENTO_SELECTOR' || savedMode === 'INVENTARIO_MANTENIMIENTO') {
 
                 return savedMode as any;
             }
@@ -443,6 +445,30 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area, perm
     }
 
     // --- VISTA PLANEADOR DE MAQUINAS ---
+    if (mode === 'PLANEADOR_MAQUINAS') {
+        return (
+            <View style={styles.container}>
+                <View style={styles.header}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => {
+                        setMode('MENU');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                    }}>
+                        <Text style={styles.backButtonText}>← Volver al Panel</Text>
+                    </TouchableOpacity>
+                    <View style={styles.centeredTitleContainer} pointerEvents="box-none">
+                        <Text style={styles.title}>Planeación de Máquinas</Text>
+                    </View>
+                    <Image
+                        source={require('../../assets/logo_perla.png')}
+                        style={[styles.contentHeaderLogo, isDarkMode && { opacity: 0.95 }]}
+                        resizeMode="contain"
+                    />
+                </View>
+                <PlaneadorMaquinasScreen />
+            </View>
+        );
+    }
+
     if (mode === 'CALIDAD_EXTERNA') {
         return (
             <View style={styles.container}>
@@ -1107,8 +1133,8 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area, perm
                         description="Programación de OPs por Horarios"
                         icon="🏭"
                         onPress={() => {
-                            setMode('CALIDAD_EXTERNA');
-                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'CALIDAD_EXTERNA');
+                            setMode('PLANEADOR_MAQUINAS');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'PLANEADOR_MAQUINAS');
                         }}
                         disabled={!isPlaneadorEnabled}
                     />

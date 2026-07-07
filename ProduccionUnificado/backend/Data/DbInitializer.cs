@@ -382,5 +382,36 @@ public static class DbInitializer
             ");
         }
         catch (Exception ex) { Console.WriteLine($"[DB ERROR] Tables Init: {ex.Message}"); }
+
+        // PROGRAMACIÓN OP (GANTT)
+        try
+        {
+            context.Database.ExecuteSqlRaw(@"
+                CREATE TABLE IF NOT EXISTS ""ProgramacionesOP"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""NumeroOP"" TEXT NOT NULL,
+                    ""OrdenProduccionId"" INTEGER REFERENCES ""OrdenesProduccion""(""Id"") ON DELETE SET NULL,
+                    ""Cliente"" TEXT NOT NULL DEFAULT '',
+                    ""MetaTiros"" INTEGER NOT NULL DEFAULT 0,
+                    ""Color"" TEXT,
+                    ""FechaCreacion"" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS ""ProgramacionesOPProcesos"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""ProgramacionOPId"" INTEGER NOT NULL REFERENCES ""ProgramacionesOP""(""Id"") ON DELETE CASCADE,
+                    ""Proceso"" TEXT NOT NULL,
+                    ""FechaInicio"" TIMESTAMP NOT NULL,
+                    ""FechaFin"" TIMESTAMP NOT NULL,
+                    ""HorasEstimadas"" DECIMAL(18,2),
+                    ""TiemposAuxiliaresJson"" TEXT
+                );
+
+                ALTER TABLE ""ProgramacionesOPProcesos"" ADD COLUMN IF NOT EXISTS ""HorasEstimadas"" DECIMAL(18,2);
+                ALTER TABLE ""ProgramacionesOPProcesos"" ADD COLUMN IF NOT EXISTS ""TiemposAuxiliaresJson"" TEXT;
+            ");
+            Console.WriteLine("[DB INIT] ProgramacionesOP tables checked/created.");
+        }
+        catch (Exception ex) { Console.WriteLine($"[DB ERROR] ProgramacionesOP: {ex.Message}"); }
     }
 }
