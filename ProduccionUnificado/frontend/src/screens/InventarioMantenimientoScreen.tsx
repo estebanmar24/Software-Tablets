@@ -1,59 +1,11 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Platform, Modal } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Platform, Modal, ActivityIndicator, Alert } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useTheme } from '../contexts/ThemeContext';
 import Svg, { Path, Circle, Line, Polyline } from 'react-native-svg';
+import { mantenimientoApi } from '../services/mantenimientoApi';
 
-const INITIAL_DATA = [
-    {
-        id: '1',
-        codigo: 'MT-015',
-        nombre: 'Tornillos',
-        referencia: '5/16 X 1 1/2',
-        descripcion: 'Tornillos galvanizados',
-        medida: 'Uni',
-        categoria: 'Ferretería',
-        stock: 12,
-        maxStock: 15,
-        puntoReorden: 5,
-    },
-    {
-        id: '2',
-        codigo: 'VL-042',
-        nombre: 'Válvula Neumática 2"',
-        referencia: 'Festo - Doble efecto',
-        descripcion: 'Válvula de control direccional.',
-        medida: 'Unidad',
-        categoria: 'Neumático',
-        stock: 3,
-        maxStock: 10,
-        puntoReorden: 10,
-    },
-    {
-        id: '3',
-        codigo: 'FL-108',
-        nombre: 'Filtro de Aceite Hidráulico',
-        referencia: 'Parker - 10 micras',
-        descripcion: 'Filtro de repuesto para sistema hidráulico.',
-        medida: 'Unidad',
-        categoria: 'Consumible',
-        stock: 0,
-        maxStock: 25,
-        puntoReorden: 5,
-    },
-    {
-        id: '4',
-        codigo: 'RD-6205',
-        nombre: 'Rodamiento Rígido de Bolas',
-        referencia: 'SKF - 6205-2RS1',
-        descripcion: 'Rodamiento sellado.',
-        medida: 'Unidad',
-        categoria: 'Mecánico',
-        stock: 32,
-        maxStock: 50,
-        puntoReorden: 10,
-    }
-];
+const INITIAL_DATA: any[] = [];
 
 const getEstado = (stock: number, puntoReorden: number) => {
     if (stock === 0) return 'AGOTADO';
@@ -129,15 +81,34 @@ interface InventarioMantenimientoScreenProps {
 
 const InventarioMantenimientoScreen: React.FC<InventarioMantenimientoScreenProps> = ({ onBack }) => {
     const { colors, isDarkMode, toggleTheme } = useTheme();
-    const [inventoryData, setInventoryData] = useState(INITIAL_DATA);
+    const [inventoryData, setInventoryData] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [selectedItem, setSelectedItem] = useState<any>(null);
     const [tempReorderPoint, setTempReorderPoint] = useState('');
+    const [tempMaxStock, setTempMaxStock] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('Todas');
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedTab, setSelectedTab] = useState('Todos los ítems');
     const [isDetailsModalVisible, setIsDetailsModalVisible] = useState(false);
     const [detailsItem, setDetailsItem] = useState<any>(null);
+
+    const loadData = useCallback(async () => {
+        try {
+            setLoading(true);
+            const data = await mantenimientoApi.getInventario();
+            setInventoryData(data || []);
+        } catch (error) {
+            console.error('Error loading inventory:', error);
+            Alert.alert('Error', 'No se pudo cargar el inventario');
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
 
     const totalRegistrados = inventoryData.reduce((sum, item) => sum + item.stock, 0);
     const stockBajoCount = inventoryData.filter(item => getEstado(item.stock, item.puntoReorden) === 'STOCK BAJO').length;
@@ -171,18 +142,33 @@ const InventarioMantenimientoScreen: React.FC<InventarioMantenimientoScreenProps
     const openReorderModal = (item: any) => {
         setSelectedItem(item);
         setTempReorderPoint(item.puntoReorden.toString());
+        setTempMaxStock(item.maxStock.toString());
         setIsModalVisible(true);
     };
 
-    const saveReorderPoint = () => {
+    const saveReorderPoint = async () => {
         if (selectedItem) {
             const newPoint = parseInt(tempReorderPoint, 10);
-            if (!isNaN(newPoint)) {
-                setInventoryData(prev => prev.map(invItem =>
-                    invItem.id === selectedItem.id
-                        ? { ...invItem, puntoReorden: newPoint }
-                        : invItem
-                ));
+            const newMax = parseInt(tempMaxStock, 10);
+            if (!isNaN(newPoint) && !isNaN(newMax)) {
+                try {
+                    // Obtener datos originales del producto para no perder info
+                    const maestros = await mantenimientoApi.getMaestros();
+                    const original = maestros.productos.find((p: any) => p.id.toString() === selectedItem.id);
+                    
+                    if (original) {
+                        await mantenimientoApi.updateProducto(selectedItem.id, {
+                            ...original,
+                            puntoReorden: newPoint,
+                            maxStock: newMax
+                        });
+                        Alert.alert('Éxito', 'Inventario actualizado correctamente');
+                        loadData(); // Recargar datos
+                    }
+                } catch (error) {
+                    console.error('Error updating product:', error);
+                    Alert.alert('Error', 'No se pudo actualizar el producto');
+                }
             }
         }
         setIsModalVisible(false);
@@ -561,10 +547,9 @@ const InventarioMantenimientoScreen: React.FC<InventarioMantenimientoScreenProps
                             }}
                         >
                             <Picker.Item label="Todas las categorías" value="Todas" color={Platform.OS === 'web' && isDarkMode ? '#000' : undefined} />
-                            <Picker.Item label="Eléctrico" value="Eléctrico" color={Platform.OS === 'web' && isDarkMode ? '#000' : undefined} />
-                            <Picker.Item label="Neumático" value="Neumático" color={Platform.OS === 'web' && isDarkMode ? '#000' : undefined} />
-                            <Picker.Item label="Consumible" value="Consumible" color={Platform.OS === 'web' && isDarkMode ? '#000' : undefined} />
-                            <Picker.Item label="Mecánico" value="Mecánico" color={Platform.OS === 'web' && isDarkMode ? '#000' : undefined} />
+                            {Array.from(new Set(inventoryData.map(i => i.categoria))).sort().map(cat => (
+                                <Picker.Item key={cat} label={cat} value={cat} color={Platform.OS === 'web' && isDarkMode ? '#000' : undefined} />
+                            ))}
                         </Picker>
                     </View>
                 </View>
@@ -579,41 +564,47 @@ const InventarioMantenimientoScreen: React.FC<InventarioMantenimientoScreenProps
                         <Text style={[dynamicStyles.th, { flex: 0.5, textAlign: 'center' }]}>ACCIONES</Text>
                     </View>
 
-                    {filteredInventory.map((item, index) => {
-                        const estadoCalculado = getEstado(item.stock, item.puntoReorden);
-                        return (
-                            <View key={item.id} style={[dynamicStyles.tableRow, index === filteredInventory.length - 1 && dynamicStyles.tableRowLast]}>
-                                <Text style={[dynamicStyles.td, { flex: 1, color: colors.subText }]}>{item.codigo}</Text>
+                    {loading ? (
+                        <View style={{ padding: 40 }}>
+                            <ActivityIndicator size="large" color="#0d7a78" />
+                        </View>
+                    ) : (
+                        filteredInventory.map((item, index) => {
+                            const estadoCalculado = getEstado(item.stock, item.puntoReorden);
+                            return (
+                                <View key={item.id} style={[dynamicStyles.tableRow, index === filteredInventory.length - 1 && dynamicStyles.tableRowLast]}>
+                                    <Text style={[dynamicStyles.td, { flex: 1, color: colors.subText }]}>{item.codigo}</Text>
 
-                                <View style={{ flex: 2.5, paddingRight: 16, justifyContent: 'center' }}>
-                                    <Text style={[dynamicStyles.td, { fontWeight: '600' }]}>{item.nombre}</Text>
-                                    <TouchableOpacity onPress={() => openDetailsModal(item)} style={{ marginTop: 2 }}>
-                                        <Text style={{ color: '#0d9488', fontSize: 12, fontWeight: '600' }}>Ver detalles</Text>
-                                    </TouchableOpacity>
+                                    <View style={{ flex: 2.5, paddingRight: 16, justifyContent: 'center' }}>
+                                        <Text style={[dynamicStyles.td, { fontWeight: '600' }]}>{item.nombre}</Text>
+                                        <TouchableOpacity onPress={() => openDetailsModal(item)} style={{ marginTop: 2 }}>
+                                            <Text style={{ color: '#0d9488', fontSize: 12, fontWeight: '600' }}>Ver detalles</Text>
+                                        </TouchableOpacity>
+                                    </View>
+
+                                    <Text style={[dynamicStyles.td, { flex: 1.5 }]}>{item.categoria}</Text>
+
+                                    <View style={{ flex: 1.5, justifyContent: 'center' }}>
+                                        <StatePill state={estadoCalculado} />
+                                    </View>
+
+                                    <View style={{ flex: 2, justifyContent: 'center', paddingRight: 16 }}>
+                                        <StockProgress stock={item.stock} maxStock={item.maxStock} state={estadoCalculado} />
+                                    </View>
+
+                                    <View style={{ flex: 0.5, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                                        <TouchableOpacity onPress={() => openReorderModal(item)}>
+                                            <IconEdit color={
+                                                estadoCalculado === 'AGOTADO' || estadoCalculado === 'CRÍTICO' ? '#ef4444' :
+                                                    estadoCalculado === 'STOCK BAJO' ? '#f97316' :
+                                                        colors.subText
+                                            } />
+                                        </TouchableOpacity>
+                                    </View>
                                 </View>
-
-                                <Text style={[dynamicStyles.td, { flex: 1.5 }]}>{item.categoria}</Text>
-
-                                <View style={{ flex: 1.5, justifyContent: 'center' }}>
-                                    <StatePill state={estadoCalculado} />
-                                </View>
-
-                                <View style={{ flex: 2, justifyContent: 'center', paddingRight: 16 }}>
-                                    <StockProgress stock={item.stock} maxStock={item.maxStock} state={estadoCalculado} />
-                                </View>
-
-                                <View style={{ flex: 0.5, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-                                    <TouchableOpacity onPress={() => openReorderModal(item)}>
-                                        <IconEdit color={
-                                            estadoCalculado === 'AGOTADO' || estadoCalculado === 'CRÍTICO' ? '#ef4444' :
-                                                estadoCalculado === 'STOCK BAJO' ? '#f97316' :
-                                                    colors.subText
-                                        } />
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-                        );
-                    })}
+                            );
+                        })
+                    )}
                 </View>
             </ScrollView>
 
@@ -636,7 +627,7 @@ const InventarioMantenimientoScreen: React.FC<InventarioMantenimientoScreenProps
                                 borderRadius: 8,
                                 padding: 12,
                                 color: colors.text,
-                                marginBottom: 20,
+                                marginBottom: 15,
                                 fontSize: 16,
                                 backgroundColor: isDarkMode ? '#1f2937' : '#f9fafb',
                                 ...(Platform.OS === 'web' && { outlineStyle: 'none' } as any),
@@ -644,6 +635,27 @@ const InventarioMantenimientoScreen: React.FC<InventarioMantenimientoScreenProps
                             keyboardType="numeric"
                             value={tempReorderPoint}
                             onChangeText={setTempReorderPoint}
+                            placeholder="Punto de Reorden"
+                        />
+                        <Text style={{ color: colors.text, marginBottom: 8, fontSize: 14 }}>
+                            Stock Máximo (Capacidad del estante)
+                        </Text>
+                        <TextInput
+                            style={{
+                                borderWidth: 1,
+                                borderColor: colors.border,
+                                borderRadius: 8,
+                                padding: 12,
+                                color: colors.text,
+                                marginBottom: 20,
+                                fontSize: 16,
+                                backgroundColor: isDarkMode ? '#1f2937' : '#f9fafb',
+                                ...(Platform.OS === 'web' && { outlineStyle: 'none' } as any),
+                            }}
+                            keyboardType="numeric"
+                            value={tempMaxStock}
+                            onChangeText={setTempMaxStock}
+                            placeholder="Stock Máximo"
                         />
                         <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
                             <TouchableOpacity onPress={() => setIsModalVisible(false)} style={{ paddingVertical: 10, paddingHorizontal: 16 }}>

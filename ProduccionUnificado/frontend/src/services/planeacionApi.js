@@ -252,5 +252,39 @@ export async function getDebugData() {
     return response.data;
 }
 
+// ==================== PROGRAMACIÓN OP (GANTT) ====================
+
+export async function getProcesosGantt() {
+    const response = await api.get(`${API_BASE_URL}/PlaneadorMaquinas/procesos`);
+    return response.data;
+}
+
+export async function getProgramacionesRango(start, end) {
+    const response = await api.get(`${API_BASE_URL}/PlaneadorMaquinas/programacion/rango`, {
+        params: { start, end },
+    });
+    return response.data;
+}
+
+export async function getProgramacion(id) {
+    const response = await api.get(`${API_BASE_URL}/PlaneadorMaquinas/programacion/${id}`);
+    return response.data;
+}
+
+export async function crearProgramacionOP(payload) {
+    const response = await api.post(`${API_BASE_URL}/PlaneadorMaquinas/programacion`, payload);
+    return response.data;
+}
+
+export async function actualizarProgramacionOP(id, payload) {
+    await api.put(`${API_BASE_URL}/PlaneadorMaquinas/programacion/${id}`, payload);
+    return true;
+}
+
+export async function eliminarProgramacionOP(id) {
+    await api.delete(`${API_BASE_URL}/PlaneadorMaquinas/programacion/${id}`);
+    return true;
+}
+
 
 

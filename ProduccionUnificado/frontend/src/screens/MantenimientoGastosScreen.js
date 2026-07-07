@@ -142,6 +142,7 @@ function GastosTab() {
     const [proveedores, setProveedores] = useState([]);
     const [maquinas, setMaquinas] = useState([]);
     const [usuarios, setUsuarios] = useState([]);
+    const [productos, setProductos] = useState([]);
     const [tiposHora, setTiposHora] = useState([]);
     const [tiposRecargo, setTiposRecargo] = useState([]);
 
@@ -171,9 +172,9 @@ function GastosTab() {
     const [isLegalizing, setIsLegalizing] = useState(false); // State for UI rendering
     const isLegalizingRef = useRef(false); // Ref for robust state tracking
     const [formData, setFormData] = useState({
-        rubroId: '', proveedorId: '', maquinaId: '',
+        rubroId: '', proveedorId: '', maquinaId: '', productoId: '',
         usuarioId: '', tipoHoraId: '', tipoRecargoId: '',
-        horaInicio: '', horaFin: '', cantidadHoras: '',
+        horaInicio: '', horaFin: '', cantidadHoras: '', cantidad: '',
         precio: '', precioDisplay: '', fecha: new Date().toISOString().split('T')[0], nota: '',
         numeroFactura: '', facturaPdfUrl: '', archivoFactura: null, archivoNombre: '', numeroOP: '', esPendiente: false, esSolicitudCredito: false
     });
@@ -193,6 +194,7 @@ function GastosTab() {
             setProveedores(data.proveedores || []);
             setMaquinas(data.maquinas || []);
             setUsuarios(data.usuarios || []);
+            setProductos(data.productos || []);
             setTiposHora(data.tiposHora || []);
             setTiposRecargo(data.tiposRecargo || []);
         } catch (error) {
@@ -476,10 +478,10 @@ function GastosTab() {
         setIsLegalizing(false);
         isLegalizingRef.current = false;
         setFormData({
-            rubroId: '', proveedorId: '', maquinaId: '',
+            rubroId: '', proveedorId: '', maquinaId: '', productoId: '',
             precio: '', precioDisplay: '', fecha: new Date().toISOString().split('T')[0], nota: '',
             numeroFactura: '', facturaPdfUrl: '', archivoFactura: null, archivoNombre: '', numeroOP: '', esPendiente: false, esSolicitudCredito: false,
-            esOtraMaquina: false, otraMaquinaNombre: ''
+            esOtraMaquina: false, otraMaquinaNombre: '', cantidad: ''
         });
     };
 
@@ -528,7 +530,9 @@ function GastosTab() {
             esPendiente: false,
             esSolicitudCredito: gasto.esSolicitudCredito || false,
             esOtraMaquina: !!gasto.otraMaquinaNombre,
-            otraMaquinaNombre: gasto.otraMaquinaNombre || ''
+            otraMaquinaNombre: gasto.otraMaquinaNombre || '',
+            productoId: gasto.productoId?.toString() || '',
+            cantidad: gasto.cantidad?.toString() || ''
         });
         setShowModal(true);
     };
@@ -557,7 +561,9 @@ function GastosTab() {
             esPendiente: gasto.esPendiente || false,
             esSolicitudCredito: gasto.esSolicitudCredito || false,
             esOtraMaquina: !!gasto.otraMaquinaNombre,
-            otraMaquinaNombre: gasto.otraMaquinaNombre || ''
+            otraMaquinaNombre: gasto.otraMaquinaNombre || '',
+            productoId: gasto.productoId?.toString() || '',
+            cantidad: gasto.cantidad?.toString() || ''
         });
         setShowModal(true);
     };
@@ -650,6 +656,8 @@ function GastosTab() {
                 esSolicitudCredito: !!formData.esSolicitudCredito,
                 numeroOP: formData.numeroOP || '',
                 usuarioId: safeParseInt(formData.usuarioId),
+                productoId: safeParseInt(formData.productoId),
+                cantidad: parseFloat(formData.cantidad) || null,
                 tipoHoraId: safeParseInt(formData.tipoHoraId),
                 tipoRecargoId: safeParseInt(formData.tipoRecargoId),
                 cantidadHoras: parseFloat(formData.cantidadHoras) || null,
@@ -739,10 +747,9 @@ function GastosTab() {
     const isHorasExtras = selectedRubroName.includes('horas extras') || selectedRubroName.includes('hora extra');
     const isRecargo = selectedRubroName.includes('recargo');
     const isMaintenance = selectedRubroName.includes('mantenimiento') || selectedRubroName.includes('repuesto');
-
-    console.log('DEBUG: rubroId:', formData.rubroId, 'foundRubro:', rubros.find(r => r.id == formData.rubroId));
-    console.log('DEBUG: selectedRubroName:', selectedRubroName);
-    console.log('DEBUG: isMaintenance:', isMaintenance);
+    const isInventoryRubro = ['ferreteria', 'ferretería', 'lubricacion', 'lubricación', 'repuestos', 'rodamientos', 'sistema aire'].includes(selectedRubroName);
+    
+    const filteredProductos = productos.filter(p => p.rubroId == formData.rubroId);
 
     // Calculate totals for summary cards - SST style
     const totalMes = resumen?.total || 0;
@@ -1221,6 +1228,38 @@ function GastosTab() {
                                                             <Picker.Item key={m.id} label={m.nombre || m.Nombre} value={m.id?.toString()} />
                                                         ))}
                                                     </Picker>
+                                                </View>
+                                            )}
+                                        </View>
+                                    )}
+
+                                    {isInventoryRubro && (
+                                        <View style={{ marginBottom: 15 }}>
+                                            <Text style={styles.label}>Producto de Inventario *</Text>
+                                            <View style={styles.pickerContainer}>
+                                                <Picker
+                                                    selectedValue={formData.productoId}
+                                                    onValueChange={(v) => {
+                                                        const prod = productos.find(p => p.id.toString() === v);
+                                                        setFormData(p => ({ ...p, productoId: v, nota: prod ? `${prod.nombre} ${prod.referencia || ''}` : p.nota }));
+                                                    }}
+                                                >
+                                                    <Picker.Item label="Seleccione Producto..." value="" />
+                                                    {filteredProductos.map(p => (
+                                                        <Picker.Item key={p.id} label={`${p.nombre} ${p.referencia ? `(${p.referencia})` : ''}`} value={p.id.toString()} />
+                                                    ))}
+                                                </Picker>
+                                            </View>
+                                            {formData.productoId && (
+                                                <View style={{ flexFull: 1, marginTop: 10 }}>
+                                                    <Text style={styles.label}>Cantidad a Ingresar *</Text>
+                                                    <TextInput
+                                                        style={styles.input}
+                                                        value={formData.cantidad}
+                                                        onChangeText={(t) => setFormData(p => ({ ...p, cantidad: t }))}
+                                                        placeholder="Cantidad"
+                                                        keyboardType="numeric"
+                                                    />
                                                 </View>
                                             )}
                                         </View>

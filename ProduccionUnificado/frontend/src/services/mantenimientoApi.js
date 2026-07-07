@@ -189,5 +189,10 @@ export const mantenimientoApi = {
         const nombres = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
             'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
         return nombres[mes] || '';
+    },
+
+    getInventario: async () => {
+        const response = await api.get(`${BASE_URL}/inventario`);
+        return response.data;
     }
 };
