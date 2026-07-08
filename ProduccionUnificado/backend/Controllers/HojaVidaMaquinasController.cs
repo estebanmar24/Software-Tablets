@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
+using TiempoProcesos.API.Helpers;
 using Microsoft.AspNetCore.Authorization;
 
 namespace TiempoProcesos.API.Controllers
@@ -80,6 +81,8 @@ namespace TiempoProcesos.API.Controllers
 
                 _context.HojasVidaMaquinas.Add(hoja);
                 await _context.SaveChangesAsync();
+                await MantenimientoTrazabilidadHelper.RegistrarAsync(_context, HttpContext, "Maquinaria", "HojaVida", "Crear",
+                    hoja.Id, $"Hoja de vida creada: {hoja.Nombre}", new { hoja.NumeroInventario, hoja.Marca });
 
                 return CreatedAtAction("GetHojaVida", new { id = hoja.Id }, hoja);
             }
@@ -126,6 +129,8 @@ namespace TiempoProcesos.API.Controllers
             try
             {
                 await _context.SaveChangesAsync();
+                await MantenimientoTrazabilidadHelper.RegistrarAsync(_context, HttpContext, "Maquinaria", "HojaVida", "Actualizar",
+                    hoja.Id, $"Hoja de vida actualizada: {hoja.Nombre}");
             }
             catch (DbUpdateConcurrencyException)
             {
@@ -144,6 +149,8 @@ namespace TiempoProcesos.API.Controllers
 
             hoja.Activo = false; // Soft delete
             await _context.SaveChangesAsync();
+            await MantenimientoTrazabilidadHelper.RegistrarAsync(_context, HttpContext, "Maquinaria", "HojaVida", "Eliminar",
+                hoja.Id, $"Hoja de vida eliminada: {hoja.Nombre}");
 
             return NoContent();
         }
@@ -156,6 +163,9 @@ namespace TiempoProcesos.API.Controllers
             mant.HojaVidaId = id;
             _context.MantenimientosHojaVida.Add(mant);
             await _context.SaveChangesAsync();
+            await MantenimientoTrazabilidadHelper.RegistrarAsync(_context, HttpContext, "Maquinaria", "Mantenimiento", "Crear",
+                mant.Id, $"Mantenimiento {mant.TipoMantenimiento} registrado (hoja #{id})",
+                new { mant.Consecutivo, mant.TicketId });
 
             return Ok(mant);
         }

@@ -19,6 +19,10 @@ public interface ITiempoProcesoService
     Task<List<TiempoProcesoDto>> GetHistorialDetalladoAsync(DateTime fechaInicio, DateTime fechaFin, int? maquinaId, int? usuarioId);
     Task RecalcularProduccionMesAsync(int anio, int mes);
     Task<TiempoProcesoDto> FinalizarTiempoAsync(long id, RegistrarTiempoRequest request);
+    Task<TiempoProcesoDto> PausarTiempoAsync(long id);
+    Task<TiempoProcesoDto> ReanudarTiempoAsync(long id);
+    Task<TiempoProcesoDto> AjustarTiempoAsync(long id, AjustarTiempoRequest request);
+    Task<int> RepararProcesosAbiertosAsync(DateTime fecha, int? maquinaId, int? usuarioId);
 }
 
 public class TiempoProcesoService : ITiempoProcesoService
@@ -151,7 +155,12 @@ public class TiempoProcesoService : ITiempoProcesoService
                 ActividadCodigo = t.Actividad?.Codigo,
                 Tiros = t.Tiros,
                 Desperdicio = t.Desperdicio,
-                Observaciones = t.Observaciones
+                Observaciones = t.Observaciones,
+                SubCodigoActividad = t.SubCodigoActividad,
+                SubCodigoDetalle = t.SubCodigoDetalle,
+                Estado = t.Estado,
+                PausadoEn = t.PausadoEn,
+                TiempoPausadoSegundos = t.TiempoPausadoSegundos
             }).ToList()
         };
     }
@@ -195,7 +204,14 @@ public class TiempoProcesoService : ITiempoProcesoService
             ActividadCodigo = t.Actividad?.Codigo ?? "",
             Tiros = t.Tiros,
             Desperdicio = t.Desperdicio,
-            Observaciones = t.Observaciones ?? string.Empty
+            Observaciones = t.Observaciones ?? string.Empty,
+            SubCodigoActividad = t.SubCodigoActividad,
+            SubCodigoDetalle = t.SubCodigoDetalle,
+            Estado = t.Estado,
+            PausadoEn = t.PausadoEn,
+            TiempoPausadoSegundos = t.TiempoPausadoSegundos,
+            MaquinaMeta100Porciento = t.Maquina?.Meta100Porciento ?? 0,
+            ActividadEsProductiva = t.Actividad?.EsProductiva ?? false
         }).ToList();
     }
 
@@ -228,6 +244,17 @@ public class TiempoProcesoService : ITiempoProcesoService
             }
         }
 
+        // Si horaInicio == horaFin y duracion = 0, el registro se está abriendo "en curso" desde la tablet.
+        var estaEnCurso = request.HoraInicio == request.HoraFin
+            && (string.IsNullOrEmpty(request.Duracion) || request.Duracion == "00:00:00");
+
+        if (estaEnCurso)
+        {
+            var horaCorte = request.Fecha.Date.Add(TimeSpan.Parse(request.HoraInicio));
+            await CerrarProcesosAbiertosAnterioresAsync(
+                request.UsuarioId, request.MaquinaId, request.Fecha.Date, horaCorte);
+        }
+
         var tiempoProceso = new TiempoProceso
         {
             Fecha = request.Fecha.Date,
@@ -241,7 +268,12 @@ public class TiempoProcesoService : ITiempoProcesoService
             Tiros = request.Tiros,
             Desperdicio = request.Desperdicio,
             Observaciones = request.Observaciones,
-            HorarioId = request.HorarioId  // Turno de trabajo
+            SubCodigoActividad = request.SubCodigoActividad,
+            SubCodigoDetalle = request.SubCodigoDetalle,
+            HorarioId = request.HorarioId,
+            Estado = estaEnCurso ? "EnProgreso" : "Finalizado",
+            TiempoPausadoSegundos = 0,
+            PausadoEn = null
         };
 
         try {
@@ -279,7 +311,12 @@ public class TiempoProcesoService : ITiempoProcesoService
             ActividadCodigo = tiempoProceso.Actividad?.Codigo,
             Tiros = tiempoProceso.Tiros,
             Desperdicio = tiempoProceso.Desperdicio,
-            Observaciones = tiempoProceso.Observaciones
+            Observaciones = tiempoProceso.Observaciones,
+            SubCodigoActividad = tiempoProceso.SubCodigoActividad,
+            SubCodigoDetalle = tiempoProceso.SubCodigoDetalle,
+            Estado = tiempoProceso.Estado,
+            PausadoEn = tiempoProceso.PausadoEn,
+            TiempoPausadoSegundos = tiempoProceso.TiempoPausadoSegundos
         };
     }
 
@@ -564,35 +601,10 @@ public class TiempoProcesoService : ITiempoProcesoService
             // 2. ValorAPagar BONIFICABLE (Prorrateado por horas trabajadas)
             // Lógica ajustada para coincidir con el Frontend: La meta se ajusta a las horas trabajadas.
             // Si trabajó 4 horas, la meta es el 50% de la diaria. Si trabajó 12 horas, es el 150%.
-            // Precision Alignment: The Frontend calculates T.Horas by summing ALL rounded components.
-            // Using 2 decimal places for each part to match Cuadro accumulation logic exactly.
-            decimal horasParaMeta = Math.Round(diario.TotalHorasProductivas, 2) + 
-                                   Math.Round(diario.HorasMantenimiento, 2) + 
-                                   Math.Round(diario.HorasDescanso, 2) + 
-                                   Math.Round(diario.HorasOtrosAux, 2) + 
-                                   Math.Round(diario.TiempoFaltaTrabajo, 2) + 
-                                   Math.Round(diario.TiempoReparacion, 2) + 
-                                   Math.Round(diario.TiempoOtroMuerto, 2);
-            
-            // Calibration: If PuestaPunto is already in TotalHorasProductivas (case of manual entries), 
-            // but we have detail logs, they are separate. In summary recals, Productive usually includes Setup.
-            // If TPP is non-zero, it should be part of the base meta scaling anyway.
-            if (diario.TiempoPuestaPunto > 0 && Array.IndexOf(new[] { Math.Round(diario.TotalHorasProductivas, 2), Math.Round(diario.HorasDescanso, 2) }, Math.Round(diario.TiempoPuestaPunto, 2)) == -1)
-            {
-                horasParaMeta += Math.Round(diario.TiempoPuestaPunto, 2);
-            }
-
-            // Selective Deduction Logic: Only printers (SpeedMaster, Sord) or high-volume machines (Meta >= 30,000) 
-            // apply the lunch hour deduction to match Frontend behavior.
-            bool esImpresoraOMetaAlta = (maquina.Meta100Porciento >= 30000 || 
-                                        maquina.Nombre.Contains("SpeedMaster", StringComparison.OrdinalIgnoreCase) || 
-                                        maquina.Nombre.Contains("Sord", StringComparison.OrdinalIgnoreCase));
-
-            if (esImpresoraOMetaAlta && diario.HorasDescanso >= 0.99m && diario.HorasMantenimiento == 0 && diario.HorasOtrosAux == 0 && diario.TotalHorasProductivas <= 8.01m)
-            {
-                // Calibration deduction to match Velez $343,313 exactly.
-                horasParaMeta -= 0.99125m;
-            }
+            // Misma base que el cuadro de captura: productivas + mantenimiento + otros aux (sin descanso ni tiempos muertos)
+            decimal horasParaMeta = Math.Round(diario.TotalHorasProductivas, 2) +
+                                   Math.Round(diario.HorasMantenimiento, 2) +
+                                   Math.Round(diario.HorasOtrosAux, 2);
 
             decimal factorProrrateo = horasParaMeta > 0 ? (horasParaMeta / 8.0m) : 0;
             decimal meta100Prorrateada = meta100Base * factorProrrateo;
@@ -754,25 +766,11 @@ public class TiempoProcesoService : ITiempoProcesoService
                         // var tirosExtraTotales = Math.Max(0, tirosNetosTotales - meta75);
                         // diario.ValorAPagar = tirosExtraTotales * diario.ValorTiroSnapshot;
 
-                        // 2. ValorAPagar BONIFICABLE (Prorrateado)
-                        // Precision Alignment: The Frontend calculates T.Horas by summing ALL rounded components.
-                        decimal horasParaMeta = Math.Round(diario.TotalHorasProductivas, 2) + 
-                                               Math.Round(diario.HorasMantenimiento, 2) + 
-                                               Math.Round(diario.HorasDescanso, 2) + 
-                                               Math.Round(diario.HorasOtrosAux, 2) + 
-                                               Math.Round(diario.TiempoFaltaTrabajo, 2) + 
-                                               Math.Round(diario.TiempoReparacion, 2) + 
-                                               Math.Round(diario.TiempoOtroMuerto, 2);
+                        // 2. ValorAPagar BONIFICABLE (Prorrateado) — misma base de horas que captura mensual
+                        decimal horasParaMeta = Math.Round(diario.TotalHorasProductivas, 2) +
+                                               Math.Round(diario.HorasMantenimiento, 2) +
+                                               Math.Round(diario.HorasOtrosAux, 2);
 
-                        bool esImpresoraOMetaAlta = (diario.Maquina.Meta100Porciento >= 30000 || 
-                                                    diario.Maquina.Nombre.Contains("SpeedMaster", StringComparison.OrdinalIgnoreCase) || 
-                                                    diario.Maquina.Nombre.Contains("Sord", StringComparison.OrdinalIgnoreCase));
-
-                        if (esImpresoraOMetaAlta && diario.HorasDescanso >= 0.99m && diario.HorasMantenimiento == 0 && diario.HorasOtrosAux == 0 && diario.TotalHorasProductivas <= 8.01m)
-                        {
-                            horasParaMeta -= 0.99125m;
-                        }
-                        
                         decimal factorProrrateo = horasParaMeta > 0 ? (horasParaMeta / 8.0m) : 0;
                         decimal meta100Prorrateada = meta100Base * factorProrrateo;
                         decimal meta75Prorrateada = meta100Prorrateada * 0.75m;
@@ -852,13 +850,28 @@ public class TiempoProcesoService : ITiempoProcesoService
 
         if (tiempo == null) throw new Exception("Registro no encontrado");
 
+        // Si estaba pausado al pulsar Stop, contabilizamos el lapso de pausa final para no
+        // perderlo (acumulado total se mantiene aunque el tiempo lo gestione el frontend).
+        // Usamos DateTime.Now (hora local del servidor) para que sea consistente con
+        // HoraInicio/HoraFin y los timestamps que ve el frontend.
+        if (tiempo.Estado == "Pausado" && tiempo.PausadoEn.HasValue)
+        {
+            var pausadoEnLocal = NormalizarFechaLocal(tiempo.PausadoEn.Value);
+            var lapsoSeg = (long)Math.Max(0, (DateTime.Now - pausadoEnLocal).TotalSeconds);
+            tiempo.TiempoPausadoSegundos += lapsoSeg;
+            tiempo.PausadoEn = null;
+        }
+
         tiempo.HoraFin = request.Fecha.Date.Add(TimeSpan.Parse(request.HoraFin));
         tiempo.Duracion = TimeSpan.Parse(request.Duracion).Ticks;
-        
+
         tiempo.Tiros = request.Tiros;
         tiempo.Desperdicio = request.Desperdicio;
         if (!string.IsNullOrEmpty(request.Observaciones))
             tiempo.Observaciones = request.Observaciones;
+        tiempo.SubCodigoActividad = request.SubCodigoActividad;
+        tiempo.SubCodigoDetalle = request.SubCodigoDetalle;
+        tiempo.Estado = "Finalizado";
 
         await _context.SaveChangesAsync();
         await ActualizarProduccionDiaria(tiempo.Fecha, tiempo.MaquinaId, tiempo.UsuarioId);
@@ -876,9 +889,273 @@ public class TiempoProcesoService : ITiempoProcesoService
             MaquinaNombre = tiempo.Maquina?.Nombre ?? "",
             ActividadId = tiempo.ActividadId,
             ActividadNombre = tiempo.Actividad?.Nombre ?? "",
+            ActividadCodigo = tiempo.Actividad?.Codigo ?? "",
             Tiros = tiempo.Tiros,
             Desperdicio = tiempo.Desperdicio,
-            Observaciones = tiempo.Observaciones
+            Observaciones = tiempo.Observaciones,
+            SubCodigoActividad = tiempo.SubCodigoActividad,
+            SubCodigoDetalle = tiempo.SubCodigoDetalle,
+            Estado = tiempo.Estado,
+            PausadoEn = tiempo.PausadoEn,
+            TiempoPausadoSegundos = tiempo.TiempoPausadoSegundos
+        };
+    }
+
+    public async Task<TiempoProcesoDto> PausarTiempoAsync(long id)
+    {
+        var tiempo = await _context.TiemposProceso
+            .Include(t => t.Usuario)
+            .Include(t => t.Maquina)
+            .Include(t => t.Actividad)
+            .Include(t => t.OrdenProduccion)
+            .FirstOrDefaultAsync(t => t.Id == id);
+
+        if (tiempo == null) throw new Exception("Registro no encontrado");
+        if (tiempo.Estado == "Finalizado")
+            throw new Exception("El proceso ya está finalizado");
+
+        // Pausar es idempotente: si ya estaba pausado, no movemos PausadoEn.
+        // Guardamos en hora local del servidor (igual que HoraInicio/HoraFin)
+        // para evitar desfase de zona horaria al mostrarse en el cliente.
+        if (tiempo.Estado != "Pausado")
+        {
+            tiempo.Estado = "Pausado";
+            tiempo.PausadoEn = DateTime.Now;
+            await _context.SaveChangesAsync();
+        }
+
+        return ToDto(tiempo);
+    }
+
+    public async Task<TiempoProcesoDto> ReanudarTiempoAsync(long id)
+    {
+        var tiempo = await _context.TiemposProceso
+            .Include(t => t.Usuario)
+            .Include(t => t.Maquina)
+            .Include(t => t.Actividad)
+            .Include(t => t.OrdenProduccion)
+            .FirstOrDefaultAsync(t => t.Id == id);
+
+        if (tiempo == null) throw new Exception("Registro no encontrado");
+        if (tiempo.Estado == "Finalizado")
+            throw new Exception("El proceso ya está finalizado");
+
+        if (tiempo.Estado == "Pausado" && tiempo.PausadoEn.HasValue)
+        {
+            // Aseguramos que el cálculo se haga siempre en hora local del servidor,
+            // tolerando registros antiguos que pudieran haberse guardado en UTC.
+            var pausadoEnLocal = NormalizarFechaLocal(tiempo.PausadoEn.Value);
+            var lapsoSeg = (long)Math.Max(0, (DateTime.Now - pausadoEnLocal).TotalSeconds);
+            tiempo.TiempoPausadoSegundos += lapsoSeg;
+            tiempo.PausadoEn = null;
+            tiempo.Estado = "EnProgreso";
+            await _context.SaveChangesAsync();
+        }
+
+        return ToDto(tiempo);
+    }
+
+    public async Task<TiempoProcesoDto> AjustarTiempoAsync(long id, AjustarTiempoRequest request)
+    {
+        var tiempo = await _context.TiemposProceso
+            .Include(t => t.Usuario)
+            .Include(t => t.Maquina)
+            .Include(t => t.Actividad)
+            .Include(t => t.OrdenProduccion)
+            .FirstOrDefaultAsync(t => t.Id == id);
+
+        if (tiempo == null) throw new Exception("Registro no encontrado");
+
+        if (!string.IsNullOrWhiteSpace(request.HoraInicio))
+            tiempo.HoraInicio = tiempo.Fecha.Date.Add(TimeSpan.Parse(request.HoraInicio));
+
+        if (!string.IsNullOrWhiteSpace(request.HoraFin))
+            tiempo.HoraFin = tiempo.Fecha.Date.Add(TimeSpan.Parse(request.HoraFin));
+
+        if (request.Tiros.HasValue) tiempo.Tiros = request.Tiros.Value;
+        if (request.Desperdicio.HasValue) tiempo.Desperdicio = request.Desperdicio.Value;
+        if (request.Observaciones != null) tiempo.Observaciones = request.Observaciones;
+
+        if (request.ActividadId.HasValue && request.ActividadId.Value > 0)
+        {
+            var actividad = await _context.Actividades.FindAsync(request.ActividadId.Value);
+            if (actividad == null) throw new Exception("Actividad no válida");
+            tiempo.ActividadId = actividad.Id;
+        }
+
+        if (request.OrdenProduccionId.HasValue)
+        {
+            tiempo.OrdenProduccionId = request.OrdenProduccionId.Value <= 0
+                ? null
+                : request.OrdenProduccionId.Value;
+        }
+        else if (request.ReferenciaOP != null)
+        {
+            var refOp = request.ReferenciaOP.Trim();
+            if (string.IsNullOrEmpty(refOp))
+            {
+                tiempo.OrdenProduccionId = null;
+            }
+            else
+            {
+                var existingOp = await _context.OrdenesProduccion
+                    .FirstOrDefaultAsync(op => op.Numero == refOp);
+                if (existingOp != null)
+                {
+                    tiempo.OrdenProduccionId = existingOp.Id;
+                }
+                else
+                {
+                    var newOp = new OrdenProduccion
+                    {
+                        Numero = refOp,
+                        Descripcion = "Generada Automáticamente",
+                        Estado = "EnProceso",
+                        FechaCreacion = DateTime.Now
+                    };
+                    _context.OrdenesProduccion.Add(newOp);
+                    await _context.SaveChangesAsync();
+                    tiempo.OrdenProduccionId = newOp.Id;
+                }
+            }
+        }
+
+        var debeFinalizar = request.Finalizar
+            || (tiempo.Estado != "Finalizado" && tiempo.HoraFin > tiempo.HoraInicio);
+
+        if (debeFinalizar)
+        {
+            if (tiempo.Estado == "Pausado" && tiempo.PausadoEn.HasValue)
+            {
+                var pausadoEnLocal = NormalizarFechaLocal(tiempo.PausadoEn.Value);
+                tiempo.TiempoPausadoSegundos += (long)Math.Max(0, (tiempo.HoraFin - pausadoEnLocal).TotalSeconds);
+                tiempo.PausadoEn = null;
+            }
+
+            var inicio = NormalizarFechaLocal(tiempo.HoraInicio);
+            var fin = NormalizarFechaLocal(tiempo.HoraFin);
+            var seg = (long)Math.Max(0, (fin - inicio).TotalSeconds - tiempo.TiempoPausadoSegundos);
+            tiempo.Duracion = TimeSpan.FromSeconds(seg).Ticks;
+            tiempo.Estado = "Finalizado";
+        }
+
+        await _context.SaveChangesAsync();
+        await _context.Entry(tiempo).Reference(t => t.Actividad).LoadAsync();
+        await _context.Entry(tiempo).Reference(t => t.OrdenProduccion).LoadAsync();
+        await ActualizarProduccionDiaria(tiempo.Fecha, tiempo.MaquinaId, tiempo.UsuarioId);
+        return ToDto(tiempo);
+    }
+
+    public async Task<int> RepararProcesosAbiertosAsync(DateTime fecha, int? maquinaId, int? usuarioId)
+    {
+        var query = _context.TiemposProceso
+            .Where(t => t.Fecha.Date == fecha.Date
+                && (t.Estado == "EnProgreso" || t.Estado == "Pausado"));
+
+        if (maquinaId.HasValue) query = query.Where(t => t.MaquinaId == maquinaId.Value);
+        if (usuarioId.HasValue) query = query.Where(t => t.UsuarioId == usuarioId.Value);
+
+        var abiertos = await query.OrderBy(t => t.HoraInicio).ToListAsync();
+        var grupos = abiertos.GroupBy(t => new { t.UsuarioId, t.MaquinaId });
+        var cerrados = 0;
+
+        foreach (var grupo in grupos)
+        {
+            var lista = grupo.OrderBy(t => t.HoraInicio).ToList();
+            if (lista.Count <= 1) continue;
+
+            for (var i = 0; i < lista.Count - 1; i++)
+            {
+                var corte = lista[i + 1].HoraInicio;
+                await FinalizarRegistroEnCorteAsync(lista[i], corte);
+                cerrados++;
+            }
+        }
+
+        if (cerrados > 0)
+            await _context.SaveChangesAsync();
+
+        var pares = abiertos.Select(t => new { t.MaquinaId, t.UsuarioId }).Distinct();
+        foreach (var p in pares)
+            await ActualizarProduccionDiaria(fecha.Date, p.MaquinaId, p.UsuarioId);
+
+        return cerrados;
+    }
+
+    private async Task CerrarProcesosAbiertosAnterioresAsync(
+        int usuarioId, int maquinaId, DateTime fecha, DateTime horaCorte)
+    {
+        var abiertos = await _context.TiemposProceso
+            .Where(t => t.UsuarioId == usuarioId
+                && t.MaquinaId == maquinaId
+                && t.Fecha.Date == fecha.Date
+                && (t.Estado == "EnProgreso" || t.Estado == "Pausado"))
+            .ToListAsync();
+
+        foreach (var t in abiertos)
+            await FinalizarRegistroEnCorteAsync(t, horaCorte);
+
+        if (abiertos.Count > 0)
+            await _context.SaveChangesAsync();
+    }
+
+    private Task FinalizarRegistroEnCorteAsync(TiempoProceso tiempo, DateTime horaCorte)
+    {
+        if (tiempo.Estado == "Pausado" && tiempo.PausadoEn.HasValue)
+        {
+            var pausadoEnLocal = NormalizarFechaLocal(tiempo.PausadoEn.Value);
+            tiempo.TiempoPausadoSegundos += (long)Math.Max(0, (horaCorte - pausadoEnLocal).TotalSeconds);
+            tiempo.PausadoEn = null;
+        }
+
+        tiempo.HoraFin = horaCorte;
+        var inicio = NormalizarFechaLocal(tiempo.HoraInicio);
+        var seg = (long)Math.Max(0, (horaCorte - inicio).TotalSeconds - tiempo.TiempoPausadoSegundos);
+        tiempo.Duracion = TimeSpan.FromSeconds(seg).Ticks;
+        tiempo.Estado = "Finalizado";
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Devuelve la fecha en hora local. Si el <see cref="DateTime.Kind"/> es <c>Utc</c>
+    /// la convierte a local; si es <c>Unspecified</c> asume que ya viene en local
+    /// (caso típico al leer columnas <c>timestamp without time zone</c>).
+    /// </summary>
+    private static DateTime NormalizarFechaLocal(DateTime fecha)
+    {
+        return fecha.Kind switch
+        {
+            DateTimeKind.Utc => fecha.ToLocalTime(),
+            _ => fecha
+        };
+    }
+
+    private static TiempoProcesoDto ToDto(TiempoProceso t)
+    {
+        return new TiempoProcesoDto
+        {
+            Id = t.Id,
+            Fecha = t.Fecha,
+            HoraInicio = t.HoraInicio.ToString("HH:mm:ss"),
+            HoraFin = t.HoraFin.ToString("HH:mm:ss"),
+            Duracion = TimeSpan.FromTicks(t.Duracion).ToString(@"hh\:mm\:ss"),
+            UsuarioId = t.UsuarioId,
+            UsuarioNombre = t.Usuario?.Nombre ?? string.Empty,
+            MaquinaId = t.MaquinaId,
+            MaquinaNombre = t.Maquina?.Nombre ?? string.Empty,
+            OrdenProduccionId = t.OrdenProduccionId,
+            OrdenProduccionNumero = t.OrdenProduccion?.Numero,
+            ActividadId = t.ActividadId,
+            ActividadNombre = t.Actividad?.Nombre ?? string.Empty,
+            ActividadCodigo = t.Actividad?.Codigo ?? string.Empty,
+            Tiros = t.Tiros,
+            Desperdicio = t.Desperdicio,
+            Observaciones = t.Observaciones,
+            SubCodigoActividad = t.SubCodigoActividad,
+            SubCodigoDetalle = t.SubCodigoDetalle,
+            Estado = t.Estado,
+            PausadoEn = t.PausadoEn,
+            TiempoPausadoSegundos = t.TiempoPausadoSegundos
         };
     }
 }

@@ -24,6 +24,7 @@ namespace TiempoProcesos.API.Models
         public int? RubroId { get; set; }
         [ForeignKey("RubroId")]
         public Mantenimiento_Rubro? Rubro { get; set; }
+        public ICollection<Mantenimiento_ProveedorRubro> ProveedorRubros { get; set; } = new List<Mantenimiento_ProveedorRubro>();
         [MaxLength(50)]
         public string? Nit { get; set; }
         [MaxLength(50)]
@@ -74,10 +75,16 @@ namespace TiempoProcesos.API.Models
         public decimal? Cantidad { get; set; }
 
         public decimal Precio { get; set; }
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal? PrecioBase { get; set; }
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal? PrecioIva { get; set; }
         public DateTime Fecha { get; set; }
         public string? Nota { get; set; }
         public string? NumeroFactura { get; set; }
         public string? FacturaPdfUrl { get; set; }
+        public DateTime? FechaEntregaFactura { get; set; }
+        public DateTime? FechaVencimientoFactura { get; set; }
         public bool EsPendiente { get; set; }
         public bool Activo { get; set; } = true;
 
@@ -86,16 +93,27 @@ namespace TiempoProcesos.API.Models
         public string? HoraInicio { get; set; }
         public string? HoraFin { get; set; }
         public int? UsuarioId { get; set; }
+        [ForeignKey("UsuarioId")]
+        public virtual Usuario? Usuario { get; set; }
         public int? TipoHoraId { get; set; }
         public int? TipoRecargoId { get; set; }
         public string? OtraMaquinaNombre { get; set; }
         
         public bool EsSolicitudCredito { get; set; } = false;
+        public bool EsEfectivo { get; set; } = false;
         public string? NumeroOP { get; set; }
         
+        // Admin who created the record
+        public int? CreadoPorId { get; set; }
+        [ForeignKey("CreadoPorId")]
+        public AdminUsuario? CreadoPor { get; set; }
+
         // Shadow properties for quick access
         public int Anio { get; set; }
         public int Mes { get; set; }
+
+        [MaxLength(50)]
+        public string Estado { get; set; } = "Montado";
     }
 
     public class Mantenimiento_PresupuestoMensual
@@ -155,6 +173,15 @@ namespace TiempoProcesos.API.Models
         [Column("medida")]
         [JsonPropertyName("medida")]
         public string? Medida { get; set; }
+
+        [MaxLength(100)]
+        [Column("tipoproducto")]
+        [JsonPropertyName("tipoProducto")]
+        public string? TipoProducto { get; set; }
+
+        [Column("stock", TypeName = "decimal(18,2)")]
+        [JsonPropertyName("stock")]
+        public decimal Stock { get; set; } = 0;
         
         [Column("puntoreorden")]
         [JsonPropertyName("puntoReorden")]
@@ -166,5 +193,85 @@ namespace TiempoProcesos.API.Models
         
         [JsonPropertyName("activo")]
         public bool Activo { get; set; } = true;
+    }
+
+    /// <summary>
+    /// Entrada o salida manual de inventario (requiere motivo documentado).
+    /// </summary>
+    public class Mantenimiento_AjusteInventario
+    {
+        public int Id { get; set; }
+
+        [Column("productoid")]
+        public int ProductoId { get; set; }
+        [ForeignKey("ProductoId")]
+        public Mantenimiento_Producto? Producto { get; set; }
+
+        /// <summary>ENTRADA o SALIDA</summary>
+        [Required]
+        [MaxLength(20)]
+        public string Tipo { get; set; } = "ENTRADA";
+
+        [Column("cantidad", TypeName = "decimal(18,2)")]
+        public decimal Cantidad { get; set; }
+
+        [Required]
+        [MaxLength(500)]
+        public string Razon { get; set; } = string.Empty;
+
+        public DateTime Fecha { get; set; }
+        public bool Activo { get; set; } = true;
+    }
+
+    /// <summary>
+    /// Salida de inventario por uso/consumo en mantenimiento (descuenta stock del producto).
+    /// </summary>
+    public class Mantenimiento_Consumo
+    {
+        public int Id { get; set; }
+
+        [Column("productoid")]
+        public int ProductoId { get; set; }
+        [ForeignKey("ProductoId")]
+        public Mantenimiento_Producto? Producto { get; set; }
+
+        [Column("cantidad", TypeName = "decimal(18,2)")]
+        public decimal Cantidad { get; set; }
+
+        public DateTime Fecha { get; set; }
+
+        public int? MaquinaId { get; set; }
+        [ForeignKey("MaquinaId")]
+        public virtual Maquina? Maquina { get; set; }
+
+        /// <summary>Máquina del módulo Maquinaria (hoja de vida). Fuente principal para tickets y cronograma.</summary>
+        public int? HojaVidaId { get; set; }
+        [ForeignKey("HojaVidaId")]
+        public virtual HojaVidaMaquina? HojaVida { get; set; }
+
+        [MaxLength(100)]
+        [Column("tipomantenimiento")]
+        public string? TipoMantenimiento { get; set; }
+
+        /// <summary>Ticket de daño (BitacoraMaquina) asociado al mantenimiento.</summary>
+        public int? BitacoraId { get; set; }
+
+        /// <summary>Mantenimiento de Maquinaria al que se cargan los materiales.</summary>
+        public int? MantenimientoHojaVidaId { get; set; }
+        [ForeignKey("MantenimientoHojaVidaId")]
+        public virtual MantenimientoHojaVida? MantenimientoRegistro { get; set; }
+
+        /// <summary>IDs de actividades de cronograma seleccionadas (JSON array).</summary>
+        public string? ActividadesIds { get; set; }
+
+        [MaxLength(200)]
+        public string? Responsable { get; set; }
+
+        public string? Nota { get; set; }
+
+        public bool Activo { get; set; } = true;
+
+        public int Anio { get; set; }
+        public int Mes { get; set; }
     }
 }

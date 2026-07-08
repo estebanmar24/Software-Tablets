@@ -24,15 +24,20 @@ import * as talleresApi from '../services/talleresApi';
 import * as planeacionApi from '../services/planeacionApi';
 import * as disenoApi from '../services/disenoApi';
 import { produccionApi } from '../services/produccionApi';
+import { mantenimientoApi } from '../services/mantenimientoApi';
 
 const TABS = [
     { key: 'produccion', label: 'Producción', icon: '🏭' },
     { key: 'talleres', label: 'Talleres', icon: '🔧' },
+    { key: 'mantenimiento', label: 'Mantenimiento', icon: '🛠️' },
     { key: 'gh', label: 'G. Humana', icon: '👥' },
     { key: 'sst', label: 'SST', icon: '🦺' },
     { key: 'planeacion', label: 'Planeación', icon: '📅' },
     { key: 'diseno', label: 'Diseño', icon: '🎨' }
 ];
+
+const GRID_TABS = new Set(['produccion', 'talleres', 'mantenimiento', 'gh', 'sst', 'planeacion', 'diseno']);
+const RUBRO_TABS = new Set(['produccion', 'talleres', 'mantenimiento', 'planeacion', 'diseno']);
 
 export default function SSTPresupuestosScreen() {
     const { colors, isDarkMode } = useTheme();
@@ -59,6 +64,9 @@ export default function SSTPresupuestosScreen() {
                 setGridData(data);
             } else if (activeTab === 'talleres') {
                 const data = await talleresApi.getPresupuestosGrid(anio);
+                setGridData(data);
+            } else if (activeTab === 'mantenimiento') {
+                const data = await mantenimientoApi.getPresupuestosGrid(anio);
                 setGridData(data);
             } else if (activeTab === 'planeacion') {
                 const data = await planeacionApi.getPresupuestosGrid(anio);
@@ -154,6 +162,14 @@ export default function SSTPresupuestosScreen() {
                     presupuesto: p.presupuesto
                 }));
                 await talleresApi.setPresupuestosBulk(talleresPresupuestos);
+            } else if (activeTab === 'mantenimiento') {
+                const mantPresupuestos = presupuestos.map(p => ({
+                    rubroId: p.tipoServicioId,
+                    anio: p.anio,
+                    mes: p.mes,
+                    presupuesto: p.presupuesto
+                }));
+                await mantenimientoApi.setPresupuestosBulk(mantPresupuestos);
             } else if (activeTab === 'planeacion') {
                 const mappedPresupuestos = presupuestos.map(p => ({
                     rubroId: p.tipoServicioId,
@@ -254,7 +270,7 @@ export default function SSTPresupuestosScreen() {
                     <ActivityIndicator size="large" color={colors.primary} />
                     <Text style={[styles.loadingText, { color: colors.subText }]}>Cargando presupuestos...</Text>
                 </View>
-            ) : (activeTab !== 'sst' && activeTab !== 'gh' && activeTab !== 'produccion' && activeTab !== 'talleres' && activeTab !== 'planeacion' && activeTab !== 'diseno') ? (
+            ) : !GRID_TABS.has(activeTab) ? (
                 <View style={styles.placeholderContainer}>
                     <Text style={styles.placeholderIcon}>{TABS.find(t => t.key === activeTab)?.icon}</Text>
                     <Text style={styles.placeholderText}>
@@ -270,7 +286,7 @@ export default function SSTPresupuestosScreen() {
                             {/* Table Header */}
                             <View style={styles.tableRow}>
                                 <View style={[styles.tableCell, styles.headerCell, styles.serviceNameCell, { backgroundColor: colors.headerBackground, borderColor: colors.border }]}>
-                                    <Text style={styles.headerText}>{(activeTab === 'planeacion' || activeTab === 'diseno' || activeTab === 'produccion' || activeTab === 'talleres') ? 'Rubro' : 'Tipo de Servicio'}</Text>
+                                    <Text style={styles.headerText}>{RUBRO_TABS.has(activeTab) ? 'Rubro' : 'Tipo de Servicio'}</Text>
                                 </View>
                                 {sstApi.MESES.map(mes => (
                                     <View key={mes.value} style={[styles.tableCell, styles.headerCell, styles.monthCell, { backgroundColor: colors.headerBackground, borderColor: colors.border }]}>

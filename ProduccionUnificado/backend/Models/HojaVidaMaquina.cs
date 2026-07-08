@@ -154,3 +154,21 @@ public class BitacoraMaquina
     [ForeignKey("HojaVidaId")]
     public HojaVidaMaquina? HojaVida { get; set; }
 }
+
+/// <summary>Registro diario de actividades del personal de mantenimiento.</summary>
+public class BitacoraMantenimientoDiaria
+{
+    public int Id { get; set; }
+    public DateTime Fecha { get; set; }
+    [MaxLength(8)]
+    public string HoraInicio { get; set; } = "08:00:00";
+    [MaxLength(8)]
+    public string HoraFin { get; set; } = "17:00:00";
+    [MaxLength(200)]
+    public string Actividad { get; set; } = string.Empty;
+    [Required]
+    public string Descripcion { get; set; } = string.Empty;
+    [MaxLength(150)]
+    public string RegistradoPor { get; set; } = string.Empty;
+    public DateTime FechaRegistro { get; set; } = DateTime.UtcNow;
+}

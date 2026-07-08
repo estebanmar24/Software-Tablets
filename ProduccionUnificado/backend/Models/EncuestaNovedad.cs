@@ -8,7 +8,9 @@ public class EncuestaNovedad
     public string? FotoPath { get; set; }
     public string? Descripcion { get; set; }
     public int CantidadDefectuosa { get; set; } = 0;
-    
+    public string? InformeObservaciones { get; set; }
+    public string? InformeEstado { get; set; }
+
     // Navigation property
     public EncuestaCalidad? Encuesta { get; set; }
 }

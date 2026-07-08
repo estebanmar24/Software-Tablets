@@ -5,6 +5,7 @@ import { Usuario, Maquina, OrdenProduccion, Actividad, Horario } from '../types'
 import { useTheme } from '../contexts/ThemeContext';
 import { ThemeToggle } from '../../App';
 import { NetworkSelector } from './NetworkSelector';
+import { OpAdjuntosPanel } from './OpAdjuntosPanel';
 
 interface SidebarProps {
     usuarios: Usuario[];
@@ -255,6 +256,10 @@ export function Sidebar({
                                         ))}
                                     </View>
                                 )}
+                                <OpAdjuntosPanel
+                                    opNumero={opSearchText}
+                                    actividadCodigo={selectedActividad?.codigo ?? null}
+                                />
                             </View>
                         </View>
 

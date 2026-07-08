@@ -3,10 +3,18 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <DefaultItemExcludes>$(DefaultItemExcludes);temp_pdf_reader\**;node_modules\**;CheckDB\**;DiagnosticDB\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);temp_pdf_reader\**;node_modules\**;CheckDB\**;DiagnosticDB\**;tools\**;test_dotnet\**;publish\**;publish_*\**;audit\**</DefaultItemExcludes>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="Program_Test.cs" />
+    <Compile Remove="dump_mappings.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+    <PackageReference Include="Docnet.Core" Version="2.6.0" />
+    <PackageReference Include="PdfPig" Version="0.1.9" />
+    <PackageReference Include="System.Drawing.Common" Version="9.0.0" />
+    <PackageReference Include="Tesseract" Version="5.2.0" />
     <PackageReference Include="EPPlus" Version="7.5.0" />
     <PackageReference Include="MailKit" Version="4.10.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.0" />

@@ -149,6 +149,81 @@ public class TiempoProcesoController : ControllerBase
     }
 
     /// <summary>
+    /// Marca un proceso "EnProgreso" como Pausado (guarda el momento de la pausa).
+    /// </summary>
+    [HttpPut("pausar/{id}")]
+    public async Task<ActionResult<TiempoProcesoDto>> Pausar(long id)
+    {
+        try
+        {
+            var dto = await _service.PausarTiempoAsync(id);
+            if (dto == null) return NotFound(new { error = $"Registro {id} no encontrado" });
+            return Ok(dto);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Reanuda un proceso Pausado y acumula el tiempo en pausa.
+    /// </summary>
+    [HttpPut("reanudar/{id}")]
+    public async Task<ActionResult<TiempoProcesoDto>> Reanudar(long id)
+    {
+        try
+        {
+            var dto = await _service.ReanudarTiempoAsync(id);
+            if (dto == null) return NotFound(new { error = $"Registro {id} no encontrado" });
+            return Ok(dto);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Ajuste administrativo de horas/tiros de un registro (corrección de errores).
+    /// </summary>
+    [HttpPut("ajustar/{id}")]
+    public async Task<ActionResult<TiempoProcesoDto>> AjustarTiempo(long id, [FromBody] AjustarTiempoRequest request)
+    {
+        try
+        {
+            var resultado = await _service.AjustarTiempoAsync(id, request);
+            return Ok(resultado);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Cierra procesos abiertos duplicados encadenando hora fin = inicio del siguiente.
+    /// </summary>
+    [HttpPost("reparar-abiertos")]
+    public async Task<ActionResult<object>> RepararAbiertos(
+        [FromQuery] DateTime fecha,
+        [FromQuery] int? maquinaId,
+        [FromQuery] int? usuarioId)
+    {
+        try
+        {
+            var cerrados = await _service.RepararProcesosAbiertosAsync(fecha, maquinaId, usuarioId);
+            return Ok(new { cerrados, message = cerrados > 0
+                ? $"Se cerraron {cerrados} registro(s) duplicados en curso."
+                : "No había registros duplicados abiertos para reparar." });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Limpia los datos del día (historial y totales)
     /// </summary>
     [HttpDelete("limpiar")]

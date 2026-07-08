@@ -42,6 +42,8 @@ public class Talleres_Proveedor
     [ForeignKey("RubroId")]
     public virtual Talleres_Rubro? Rubro { get; set; }
 
+    public virtual ICollection<Talleres_ProveedorRubro> ProveedorRubros { get; set; } = new List<Talleres_ProveedorRubro>();
+
     // Navigation property
     public virtual ICollection<Talleres_Gasto> Gastos { get; set; } = new List<Talleres_Gasto>();
 }

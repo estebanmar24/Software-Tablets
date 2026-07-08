@@ -53,6 +53,11 @@ export const mantenimientoApi = {
         return response.data;
     },
 
+    patchPuntoReorden: async (id, puntoReorden) => {
+        const response = await api.patch(`${BASE_URL}/productos/${id}/punto-reorden`, { puntoReorden });
+        return response.data;
+    },
+
     deleteProducto: async (id) => {
         await api.delete(`${BASE_URL}/productos/${id}`);
     },
@@ -184,15 +189,149 @@ export const mantenimientoApi = {
         return response.data;
     },
 
+    // ==================== INVENTARIO ENDPOINT ====================
+    getInventario: async () => {
+        const response = await api.get(`${BASE_URL}/inventario`);
+        return response.data;
+    },
+
+    recalcularInventario: async () => {
+        const response = await api.post(`${BASE_URL}/inventario/recalcular`);
+        return response.data;
+    },
+
+    getMovimientosProducto: async (productoId) => {
+        const response = await api.get(`${BASE_URL}/productos/${productoId}/movimientos`);
+        return response.data;
+    },
+
+    registrarAjusteInventario: async (payload) => {
+        const response = await api.post(`${BASE_URL}/inventario/ajuste`, payload);
+        return response.data;
+    },
+
+    getHojasVidaMaquinas: async () => {
+        const response = await api.get(`${BASE_URL}/hojas-vida`);
+        return response.data;
+    },
+
+    getContextoConsumoHojaVida: async (hojaVidaId) => {
+        const response = await api.get(`${BASE_URL}/hojas-vida/${hojaVidaId}/contexto-consumo`);
+        return response.data;
+    },
+
+    /** @deprecated Usar getContextoConsumoHojaVida; solo registros antiguos con MaquinaId de producción */
+    getContextoConsumoMaquina: async (maquinaId) => {
+        const response = await api.get(`${BASE_URL}/maquinas/${maquinaId}/contexto-consumo`);
+        return response.data;
+    },
+
+    // ==================== CONSUMOS INVENTARIO ====================
+    getConsumos: async (anio, mes, productoId) => {
+        let url = `${BASE_URL}/consumos?`;
+        if (anio) url += `anio=${anio}&`;
+        if (mes) url += `mes=${mes}&`;
+        if (productoId) url += `productoId=${productoId}&`;
+        const response = await api.get(url);
+        return response.data;
+    },
+
+    createConsumo: async (consumo) => {
+        const response = await api.post(`${BASE_URL}/consumos`, consumo);
+        return response.data;
+    },
+
+    createConsumoLote: async (lote) => {
+        const response = await api.post(`${BASE_URL}/consumos/lote`, lote);
+        return response.data;
+    },
+
+    updateConsumo: async (id, consumo) => {
+        const response = await api.put(`${BASE_URL}/consumos/${id}`, consumo);
+        return response.data;
+    },
+
+    deleteConsumo: async (id) => {
+        const response = await api.delete(`${BASE_URL}/consumos/${id}`);
+        return response.data;
+    },
+
+    getConsumosResumen: async (params = {}) => {
+        let url = `${BASE_URL}/consumos-resumen?`;
+        if (params.hojaVidaId) url += `hojaVidaId=${params.hojaVidaId}&`;
+        if (params.mantenimientoHojaVidaId) url += `mantenimientoHojaVidaId=${params.mantenimientoHojaVidaId}&`;
+        const response = await api.get(url);
+        return response.data;
+    },
+
+    getTrazabilidad: async (params = {}) => {
+        const query = new URLSearchParams();
+        if (params.modulo) query.append('modulo', params.modulo);
+        if (params.accion) query.append('accion', params.accion);
+        if (params.q) query.append('q', params.q);
+        if (params.desde) query.append('desde', params.desde);
+        if (params.hasta) query.append('hasta', params.hasta);
+        if (params.page) query.append('page', String(params.page));
+        if (params.pageSize) query.append('pageSize', String(params.pageSize));
+        const qs = query.toString();
+        const response = await api.get(`${BASE_URL}/trazabilidad${qs ? `?${qs}` : ''}`);
+        return response.data;
+    },
+
+    exportarTrazabilidadExcel: async (params = {}) => {
+        const query = new URLSearchParams();
+        if (params.modulo) query.append('modulo', params.modulo);
+        if (params.accion) query.append('accion', params.accion);
+        if (params.q) query.append('q', params.q);
+        if (params.desde) query.append('desde', params.desde);
+        if (params.hasta) query.append('hasta', params.hasta);
+        const qs = query.toString();
+        const response = await api.get(`${BASE_URL}/trazabilidad/export-excel${qs ? `?${qs}` : ''}`, {
+            responseType: 'blob',
+        });
+        return response.data;
+    },
+
+    // ==================== BITÁCORA MANTENIMIENTO ====================
+    getBitacoraMantenimiento: async (params = {}) => {
+        const query = new URLSearchParams();
+        if (params.desde) query.append('desde', params.desde);
+        if (params.hasta) query.append('hasta', params.hasta);
+        if (params.q) query.append('q', params.q);
+        const qs = query.toString();
+        const response = await api.get(`BitacoraMantenimiento${qs ? `?${qs}` : ''}`);
+        return response.data;
+    },
+
+    createBitacoraMantenimiento: async (registro) => {
+        const response = await api.post('BitacoraMantenimiento', registro);
+        return response.data;
+    },
+
+    updateBitacoraMantenimiento: async (id, registro) => {
+        await api.put(`BitacoraMantenimiento/${id}`, registro);
+    },
+
+    deleteBitacoraMantenimiento: async (id) => {
+        await api.delete(`BitacoraMantenimiento/${id}`);
+    },
+
+    exportarBitacoraMantenimientoExcel: async (params = {}) => {
+        const query = new URLSearchParams();
+        if (params.desde) query.append('desde', params.desde);
+        if (params.hasta) query.append('hasta', params.hasta);
+        if (params.q) query.append('q', params.q);
+        const qs = query.toString();
+        const response = await api.get(`BitacoraMantenimiento/export-excel${qs ? `?${qs}` : ''}`, {
+            responseType: 'blob',
+        });
+        return response.data;
+    },
+
     // Helper for month names
     getMesNombre: (mes) => {
         const nombres = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
             'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
         return nombres[mes] || '';
-    },
-
-    getInventario: async () => {
-        const response = await api.get(`${BASE_URL}/inventario`);
-        return response.data;
     }
 };

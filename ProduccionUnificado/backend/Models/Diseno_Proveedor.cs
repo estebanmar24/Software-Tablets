@@ -28,6 +28,8 @@ public class Diseno_Proveedor
     [ForeignKey("RubroId")]
     public virtual Diseno_Rubro? Rubro { get; set; }
 
+    public virtual ICollection<Diseno_ProveedorRubro> ProveedorRubros { get; set; } = new List<Diseno_ProveedorRubro>();
+
     public bool Activo { get; set; } = true;
 
     public virtual ICollection<Diseno_Gasto> Gastos { get; set; } = new List<Diseno_Gasto>();

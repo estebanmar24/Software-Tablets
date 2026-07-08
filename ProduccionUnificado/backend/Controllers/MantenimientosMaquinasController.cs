@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
+using TiempoProcesos.API.Helpers;
 using Microsoft.AspNetCore.Authorization;
 
 namespace TiempoProcesos.API.Controllers
@@ -73,6 +74,9 @@ namespace TiempoProcesos.API.Controllers
             }
 
             await _context.SaveChangesAsync();
+            await MantenimientoTrazabilidadHelper.RegistrarAsync(_context, HttpContext, "Maquinaria", "Mantenimiento", "Crear",
+                mant.Id, $"Mantenimiento {mant.TipoMantenimiento} #{mant.Consecutivo} en máquina #{mant.HojaVidaId}",
+                new { mant.EjecutadoPor, mant.TicketId });
             return Ok(mant);
         }
 
@@ -101,6 +105,8 @@ namespace TiempoProcesos.API.Controllers
             }
 
             await _context.SaveChangesAsync();
+            await MantenimientoTrazabilidadHelper.RegistrarAsync(_context, HttpContext, "Maquinaria", "Mantenimiento", "Actualizar",
+                mant.Id, $"Mantenimiento actualizado: {mant.TipoMantenimiento} #{mant.Consecutivo}");
 
             // Si al editar se asoció un ticket, marcarlo como resuelto
             if (mant.TicketId.HasValue && mant.TicketId > 0)
@@ -124,6 +130,8 @@ namespace TiempoProcesos.API.Controllers
             
             _context.MantenimientosHojaVida.Remove(mant);
             await _context.SaveChangesAsync();
+            await MantenimientoTrazabilidadHelper.RegistrarAsync(_context, HttpContext, "Maquinaria", "Mantenimiento", "Eliminar",
+                mant.Id, $"Mantenimiento eliminado: {mant.TipoMantenimiento} #{mant.Consecutivo}");
             return NoContent();
         }
     }

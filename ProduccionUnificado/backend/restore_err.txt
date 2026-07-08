@@ -1,0 +1,4 @@
+﻿Compilación iniciada a las 5/05/2026 8:10:38 a. m..
+     1>Proyecto "G:\Proyecto-Tablets\ProduccionUnificado\backend\TiempoProcesos.API.csproj" en el nodo 1 (Restore destinos).
+     1>_GetAllRestoreProjectPathItems:
+         Determinando los proyectos que se van a restaurar...

@@ -46,9 +46,12 @@ namespace TiempoProcesos.API.Models
         public int PorcentajeAvance { get; set; } = 0;
 
         public virtual ICollection<PlanAccionEvidencia> Evidencias { get; set; } = new List<PlanAccionEvidencia>();
+        public virtual ICollection<PlanAccionObservacion> HistoricoObservaciones { get; set; } = new List<PlanAccionObservacion>();
 
         public string? Observaciones { get; set; }
 
         public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;
+
+        public DateTime? FechaFinalizacion { get; set; }
     }
 }

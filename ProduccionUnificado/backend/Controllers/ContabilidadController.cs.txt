@@ -1,0 +1,201 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using TiempoProcesos.API.Data;
+using TiempoProcesos.API.Models;
+
+namespace TiempoProcesos.API.Controllers
+{
+    [Route("api/[controller]")]
+    [ApiController]
+    [Authorize]
+    public class ContabilidadController : ControllerBase
+    {
+        private readonly AppDbContext _context;
+
+        public ContabilidadController(AppDbContext context)
+        {
+            _context = context;
+        }
+
+        [HttpGet("consolidado")]
+        public async Task<ActionResult<IEnumerable<ContabilidadGastoDTO>>> GetConsolidado([FromQuery] int mes, [FromQuery] int anio)
+        {
+            try
+            {
+                // Fetch from all modules
+                var produccionTask = _context.Produccion_Gastos
+                    .Include(g => g.Rubro)
+                    .Include(g => g.Proveedor)
+                    .Where(g => g.Mes == mes && g.Anio == anio)
+                    .Select(g => new ContabilidadGastoDTO
+                    {
+                        Id = g.Id,
+                        Area = "PRODUCCION",
+                        Rubro = g.Rubro != null ? g.Rubro.Nombre : "Sin Rubro",
+                        Proveedor = g.Proveedor != null ? g.Proveedor.Nombre : null,
+                        Precio = g.Precio,
+                        Fecha = g.Fecha,
+                        NumeroFactura = g.NumeroFactura,
+                        NumeroOP = g.NumeroOP,
+                        Nota = g.Nota,
+                        FacturaPdfUrl = g.FacturaPdfUrl,
+                        EsPendiente = g.EsPendiente,
+                        EsSolicitudCredito = g.EsSolicitudCredito,
+                        Mes = g.Mes,
+                        Anio = g.Anio
+                    }).ToListAsync();
+
+                var talleresTask = _context.Talleres_Gastos
+                    .Include(g => g.Rubro)
+                    .Include(g => g.Proveedor)
+                    .Where(g => g.Mes == mes && g.Anio == anio)
+                    .Select(g => new ContabilidadGastoDTO
+                    {
+                        Id = g.Id,
+                        Area = "TALLERES",
+                        Rubro = g.Rubro != null ? g.Rubro.Nombre : "Sin Rubro",
+                        Proveedor = g.Proveedor != null ? g.Proveedor.Nombre : null,
+                        Precio = g.Precio,
+                        Fecha = g.Fecha,
+                        NumeroFactura = g.NumeroFactura,
+                        NumeroOP = g.NumeroOP,
+                        Nota = g.Observaciones,
+                        FacturaPdfUrl = g.FacturaPdfUrl,
+                        EsPendiente = g.EsPendiente,
+                        EsSolicitudCredito = g.EsSolicitudCredito,
+                        Mes = g.Mes,
+                        Anio = g.Anio
+                    }).ToListAsync();
+
+                var mantenimientoTask = _context.Mantenimiento_Gastos
+                    .Include(g => g.Rubro)
+                    .Include(g => g.Proveedor)
+                    .Where(g => g.Mes == mes && g.Anio == anio)
+                    .Select(g => new ContabilidadGastoDTO
+                    {
+                        Id = g.Id,
+                        Area = "MANTENIMIENTO",
+                        Rubro = g.Rubro != null ? g.Rubro.Nombre : "Sin Rubro",
+                        Proveedor = g.Proveedor != null ? g.Proveedor.Nombre : null,
+                        Precio = g.Precio,
+                        Fecha = g.Fecha,
+                        NumeroFactura = g.NumeroFactura,
+                        NumeroOP = g.NumeroOP,
+                        Nota = g.Nota,
+                        FacturaPdfUrl = g.FacturaPdfUrl,
+                        EsPendiente = g.EsPendiente,
+                        EsSolicitudCredito = g.EsSolicitudCredito,
+                        Mes = g.Mes,
+                        Anio = g.Anio
+                    }).ToListAsync();
+
+                var ghTask = _context.GH_GastosMensuales
+                    .Include(g => g.Rubro)
+                    .Include(g => g.Proveedor)
+                    .Where(g => g.Mes == mes && g.Anio == anio)
+                    .Select(g => new ContabilidadGastoDTO
+                    {
+                        Id = g.Id,
+                        Area = "GESTION HUMANA",
+                        Rubro = g.Rubro != null ? g.Rubro.Nombre : "Sin Rubro",
+                        Proveedor = g.Proveedor != null ? g.Proveedor.Nombre : null,
+                        Precio = g.Precio,
+                        Fecha = g.FechaCompra,
+                        NumeroFactura = g.NumeroFactura,
+                        NumeroOP = null,
+                        Nota = g.Nota,
+                        FacturaPdfUrl = g.ArchivoFactura,
+                        EsPendiente = g.EsPendiente,
+                        EsSolicitudCredito = g.EsSolicitudCredito,
+                        Mes = g.Mes,
+                        Anio = g.Anio
+                    }).ToListAsync();
+
+                var sstTask = _context.SST_GastosMensuales
+                    .Include(g => g.Rubro)
+                    .Include(g => g.Proveedor)
+                    .Where(g => g.Mes == mes && g.Anio == anio)
+                    .Select(g => new ContabilidadGastoDTO
+                    {
+                        Id = g.Id,
+                        Area = "SST",
+                        Rubro = g.Rubro != null ? g.Rubro.Nombre : "Sin Rubro",
+                        Proveedor = g.Proveedor != null ? g.Proveedor.Nombre : null,
+                        Precio = g.Precio,
+                        Fecha = g.FechaCompra,
+                        NumeroFactura = g.NumeroFactura,
+                        NumeroOP = null,
+                        Nota = g.Nota,
+                        FacturaPdfUrl = g.ArchivoFactura,
+                        EsPendiente = g.EsPendiente,
+                        EsSolicitudCredito = g.EsSolicitudCredito,
+                        Mes = g.Mes,
+                        Anio = g.Anio
+                    }).ToListAsync();
+
+                var planeacionTask = _context.Planeacion_Gastos
+                    .Include(g => g.Rubro)
+                    .Include(g => g.Proveedor)
+                    .Where(g => g.Mes == mes && g.Anio == anio)
+                    .Select(g => new ContabilidadGastoDTO
+                    {
+                        Id = g.Id,
+                        Area = "PLANEACION",
+                        Rubro = g.Rubro != null ? g.Rubro.Nombre : "Sin Rubro",
+                        Proveedor = g.Proveedor != null ? g.Proveedor.Nombre : null,
+                        Precio = g.Precio,
+                        Fecha = g.Fecha,
+                        NumeroFactura = g.NumeroFactura,
+                        NumeroOP = g.NumeroOP,
+                        Nota = g.Observaciones,
+                        FacturaPdfUrl = g.FacturaPdfUrl,
+                        EsPendiente = g.EsPendiente,
+                        EsSolicitudCredito = g.EsSolicitudCredito,
+                        Mes = g.Mes,
+                        Anio = g.Anio
+                    }).ToListAsync();
+
+                var disenoTask = _context.Diseno_Gastos
+                    .Include(g => g.Rubro)
+                    .Include(g => g.Proveedor)
+                    .Where(g => g.Mes == mes && g.Anio == anio)
+                    .Select(g => new ContabilidadGastoDTO
+                    {
+                        Id = g.Id,
+                        Area = "DISENO",
+                        Rubro = g.Rubro != null ? g.Rubro.Nombre : "Sin Rubro",
+                        Proveedor = g.Proveedor != null ? g.Proveedor.Nombre : null,
+                        Precio = g.Precio,
+                        Fecha = g.Fecha,
+                        NumeroFactura = g.NumeroFactura,
+                        NumeroOP = g.OrdenProduccion,
+                        Nota = g.Observaciones,
+                        FacturaPdfUrl = g.FacturaPdfUrl,
+                        EsPendiente = g.EsPendiente,
+                        EsSolicitudCredito = g.EsSolicitudCredito,
+                        Mes = g.Mes,
+                        Anio = g.Anio
+                    }).ToListAsync();
+
+                await Task.WhenAll(produccionTask, talleresTask, mantenimientoTask, ghTask, sstTask, planeacionTask, disenoTask);
+
+                var allGastos = produccionTask.Result
+                    .Concat(talleresTask.Result)
+                    .Concat(mantenimientoTask.Result)
+                    .Concat(ghTask.Result)
+                    .Concat(sstTask.Result)
+                    .Concat(planeacionTask.Result)
+                    .Concat(disenoTask.Result)
+                    .OrderByDescending(g => g.Fecha)
+                    .ToList();
+
+                return Ok(allGastos);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error interno: {ex.Message}");
+            }
+        }
+    }
+}

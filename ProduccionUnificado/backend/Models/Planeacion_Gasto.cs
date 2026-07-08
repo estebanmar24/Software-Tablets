@@ -37,6 +37,10 @@ public class Planeacion_Gasto
     [Required]
     [Column(TypeName = "decimal(18,2)")]
     public decimal Precio { get; set; }
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? PrecioBase { get; set; }
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? PrecioIva { get; set; }
 
     [Required]
     public DateTime Fecha { get; set; }
@@ -89,6 +93,9 @@ public class Planeacion_Gasto
     [JsonPropertyName("esSolicitudCredito")]
     public bool EsSolicitudCredito { get; set; } = false;
 
+    [JsonPropertyName("esEfectivo")]
+    public bool EsEfectivo { get; set; } = false;
+
     // Navigation properties
     [ForeignKey("ProveedorId")]
     public virtual Planeacion_Proveedor? Proveedor { get; set; }
@@ -113,4 +120,7 @@ public class Planeacion_Gasto
     public int? CreadoPorId { get; set; }
     [ForeignKey("CreadoPorId")]
     public virtual AdminUsuario? CreadoPor { get; set; }
+
+    [MaxLength(50)]
+    public string Estado { get; set; } = "Montado";
 }

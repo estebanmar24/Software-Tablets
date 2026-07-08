@@ -8,8 +8,40 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { getFileServerUrl } from '../services/apiConfig';
 import api from '../services/apiClient';
 
+/** Renderiza un gráfico Chart.js en canvas oculto y devuelve base64 PNG (solo web). */
+const renderWebChartToBase64 = async (chartConfig, width = 900, height = 400) => {
+    if (typeof document === 'undefined') return null;
+    const [{ Chart, registerables }, { default: ChartDataLabels }] = await Promise.all([
+        import('chart.js'),
+        import('chartjs-plugin-datalabels'),
+    ]);
+    Chart.register(...registerables, ChartDataLabels);
 
-export default function DesperdicioScreen({ navigation }) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    canvas.style.position = 'fixed';
+    canvas.style.left = '-9999px';
+    document.body.appendChild(canvas);
+
+    const chart = new Chart(canvas.getContext('2d'), {
+        ...chartConfig,
+        options: {
+            ...chartConfig.options,
+            responsive: false,
+            animation: false,
+            maintainAspectRatio: false,
+        },
+    });
+
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const base64 = canvas.toDataURL('image/png');
+    chart.destroy();
+    document.body.removeChild(canvas);
+    return base64;
+};
+
+export default function DesperdicioScreen({ navigation, registradoPorNombre = '' }) {
     const { colors } = useTheme();
     // Estados principales
     const [maquinas, setMaquinas] = useState([]);
@@ -19,6 +51,7 @@ export default function DesperdicioScreen({ navigation }) {
     const [relaciones, setRelaciones] = useState([]); // [{ maquinaId, usuarioId }]
     const [loading, setLoading] = useState(false);
     const [generatingPdf, setGeneratingPdf] = useState(false);
+    const [generatingTracePdf, setGeneratingTracePdf] = useState(false);
 
     const logoSource = colors.alephLogo;
 
@@ -30,6 +63,7 @@ export default function DesperdicioScreen({ navigation }) {
     const [selectedOP, setSelectedOP] = useState('');
     const [selectedMes, setSelectedMes] = useState(new Date().getMonth() + 1); // 1-12, default current month
     const [selectedAnio, setSelectedAnio] = useState(new Date().getFullYear());
+    const [pdfMode, setPdfMode] = useState('normal'); // normal | detallado
     const [serverUrl, setServerUrl] = useState('');
 
     useEffect(() => {
@@ -122,6 +156,16 @@ export default function DesperdicioScreen({ navigation }) {
         }
     };
 
+    const nombreQuienRegistra = () => {
+        const desdeProp = (registradoPorNombre || '').trim();
+        if (desdeProp) return desdeProp;
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+            const ls = window.localStorage.getItem('adminName');
+            if (ls?.trim()) return ls.trim();
+        }
+        return 'Administración';
+    };
+
     const handleSaveRegistro = async () => {
         if (!newRegistro.esTallerExterno && (!newRegistro.maquinaId || !newRegistro.usuarioId)) {
             Alert.alert('Error', 'Máquina y Operario son obligatorios para uso general');
@@ -137,6 +181,8 @@ export default function DesperdicioScreen({ navigation }) {
             Alert.alert('Error', 'Agrega al menos un código con cantidad válida');
             return;
         }
+
+        const registradoPor = nombreQuienRegistra();
 
         try {
             if (newRegistro.id) {
@@ -168,7 +214,8 @@ export default function DesperdicioScreen({ navigation }) {
                             codigoDesperdicioId: item.codigoDesperdicioId ? parseInt(item.codigoDesperdicioId) : null,
                             cantidad: parseFloat(item.cantidad),
                             fecha: newRegistro.fecha.toISOString(),
-                            nota: item.nota
+                            nota: item.nota,
+                            registradoPor,
                         };
                         await api.post(`desperdicio`, newBody);
                     }
@@ -184,7 +231,8 @@ export default function DesperdicioScreen({ navigation }) {
                         codigoDesperdicioId: item.codigoDesperdicioId ? parseInt(item.codigoDesperdicioId) : null,
                         cantidad: parseFloat(item.cantidad),
                         fecha: newRegistro.fecha.toISOString(),
-                        nota: item.nota
+                        nota: item.nota,
+                        registradoPor,
                     };
                     const res = await api.post(`desperdicio`, body);
                     if (res.status !== 200 && res.status !== 201) {
@@ -605,10 +653,171 @@ export default function DesperdicioScreen({ navigation }) {
                 }
             });
 
-            finalY = doc.lastAutoTable.finalY + 15;
+            finalY = doc.lastAutoTable.finalY + 10;
+
+            // --- NUEVO: TABLAS ADICIONALES (manteniendo el resto del reporte igual) ---
+            if (finalY > doc.internal.pageSize.getHeight() - 60) {
+                doc.addPage();
+                finalY = 20;
+            }
+
+            const machineOpCodeGroup = {};
+            registrosOrdenados.forEach(r => {
+                const maqKey = r.maquinaNombre || 'Desconocida';
+                const opKey = (r.ordenProduccion && r.ordenProduccion.trim()) ? r.ordenProduccion.trim() : 'Sin OP';
+                const codKey = r.descripcion ? `${r.codigo} - ${r.descripcion}` : (r.codigo || 'S/C');
+                if (!machineOpCodeGroup[maqKey]) machineOpCodeGroup[maqKey] = {};
+                if (!machineOpCodeGroup[maqKey][opKey]) machineOpCodeGroup[maqKey][opKey] = {};
+                if (!machineOpCodeGroup[maqKey][opKey][codKey]) machineOpCodeGroup[maqKey][opKey][codKey] = 0;
+                machineOpCodeGroup[maqKey][opKey][codKey] += r.cantidad;
+            });
+
+            // Orden de máquinas: por prefijo numérico (si existe), luego alfabético
+            const machineSorter = (a, b) => {
+                const ma = (a || '').trim();
+                const mb = (b || '').trim();
+                const na = (ma.match(/^\d+/) || [])[0];
+                const nb = (mb.match(/^\d+/) || [])[0];
+                if (na && nb) {
+                    const da = parseInt(na, 10);
+                    const db = parseInt(nb, 10);
+                    if (da !== db) return da - db;
+                }
+                return ma.localeCompare(mb);
+            };
+
+            const machinesWithWaste = Object.keys(machineOpCodeGroup).sort(machineSorter);
+
+            // 1) Tabla clásica por Máquina y Código (solo en modo normal)
+            if (pdfMode === 'normal') {
+                doc.text('Desglose de Desperdicio por Máquina y Código:', 14, finalY);
+                finalY += 10;
+                machinesWithWaste.forEach((maq) => {
+                    if (finalY > doc.internal.pageSize.getHeight() - 35) {
+                        doc.addPage();
+                        finalY = 20;
+                    }
+
+                    const machineCodeTotals = {};
+                    Object.values(machineOpCodeGroup[maq]).forEach((codigos) => {
+                        Object.keys(codigos).forEach((cod) => {
+                            if (!machineCodeTotals[cod]) machineCodeTotals[cod] = 0;
+                            machineCodeTotals[cod] += codigos[cod];
+                        });
+                    });
+                    const machineData = Object.keys(machineCodeTotals)
+                        .map(cod => [cod, machineCodeTotals[cod]])
+                        .sort((a, b) => b[1] - a[1]) // descendente por cantidad
+                        .map(([cod, total]) => [
+                            cod,
+                            total.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                        ]);
+
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(10);
+                    doc.text(maq, 14, finalY);
+                    doc.setFont('helvetica', 'normal');
+                    doc.setFontSize(8);
+
+                    autoTable(doc, {
+                        head: [['Código / Motivo', 'Total']],
+                        body: machineData,
+                        startY: finalY + 2,
+                        theme: 'grid',
+                        styles: { fontSize: 8 },
+                        tableWidth: 100,
+                        margin: { left: 14 },
+                        columnStyles: {
+                            0: { cellWidth: 70 },
+                            1: { cellWidth: 30, halign: 'right' }
+                        }
+                    });
+
+                    finalY = doc.lastAutoTable.finalY + 8;
+                });
+            }
+
+            // 2) Tabla detallada nueva por Máquina -> OP -> Código, en descendente
+            if (finalY > doc.internal.pageSize.getHeight() - 50) {
+                doc.addPage();
+                finalY = 20;
+            }
+            doc.text('Detalle de Desperdicio por Máquina, OP y Código:', 14, finalY);
+            finalY += 8;
+
+            machinesWithWaste.forEach((maq) => {
+                if (finalY > doc.internal.pageSize.getHeight() - 35) {
+                    doc.addPage();
+                    finalY = 20;
+                }
+
+                const totalMaquina = Object.values(machineOpCodeGroup[maq]).reduce((sumOp, codigos) =>
+                    sumOp + Object.values(codigos).reduce((sumCod, v) => sumCod + v, 0), 0);
+
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(10);
+                doc.text(`${maq} | Total Máquina: ${totalMaquina.toFixed(2)}`, 14, finalY);
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(8);
+                finalY += 3;
+
+                const opOrdenadas = Object.keys(machineOpCodeGroup[maq])
+                    .map((op) => {
+                        const totalOp = Object.values(machineOpCodeGroup[maq][op]).reduce((s, v) => s + v, 0);
+                        return { op, totalOp };
+                    })
+                    .sort((a, b) => b.totalOp - a.totalOp); // descendente por subtotal OP
+
+                opOrdenadas.forEach(({ op, totalOp }) => {
+                    const codigos = machineOpCodeGroup[maq][op];
+                    const opData = Object.keys(codigos)
+                        .map(cod => [cod, codigos[cod]])
+                        .sort((a, b) => b[1] - a[1]) // descendente por cantidad dentro de la tabla
+                        .map(([cod, total]) => [
+                        op,
+                        cod,
+                        total.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                    ]);
+
+                    opData.push(['', 'Subtotal OP', totalOp.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })]);
+
+                    if (finalY > doc.internal.pageSize.getHeight() - 45) {
+                        doc.addPage();
+                        finalY = 20;
+                    }
+
+                    autoTable(doc, {
+                        head: [['OP', 'Código / Motivo', 'Cantidad']],
+                        body: opData,
+                        startY: finalY,
+                        theme: 'grid',
+                        styles: { fontSize: 8, cellPadding: 2 },
+                        margin: { left: 14 },
+                        columnStyles: {
+                            0: { cellWidth: 24 },
+                            1: { cellWidth: 96 },
+                            2: { cellWidth: 30, halign: 'right' }
+                        },
+                        didParseCell: function (data) {
+                            if (data.row.index === opData.length - 1) {
+                                data.cell.styles.fontStyle = 'bold';
+                                data.cell.styles.fillColor = [240, 248, 255];
+                            }
+                        }
+                    });
+
+                    finalY = doc.lastAutoTable.finalY + 5;
+                });
+            });
+
+            finalY += 10;
 
             // --- GENERAR GRÁFICA DE BARRAS CON QUICKCHART ---
             try {
+                // Forzar salto de página para las gráficas
+                doc.addPage();
+                finalY = 20;
+
                 // Filtrar máquinas que tengan desperdicio > 0 para que la gráfica sea legible
                 const dataForChart = summaryMaqData
                     .map(item => ({
@@ -618,6 +827,14 @@ export default function DesperdicioScreen({ navigation }) {
                     .filter(item => item.value > 0)
                     .sort((a, b) => b.value - a.value); // Ordenar de mayor a menor desperdicio
 
+                const dataForPctChart = summaryMaqData
+                    .map(item => ({
+                        label: item[0],
+                        value: parseFloat(item[3].replace(',', '.').replace('%', ''))
+                    }))
+                    .filter(item => item.value > 0)
+                    .sort((a, b) => b.value - a.value);
+
                 if (dataForChart.length > 0) {
                     // Check page break para la gráfica
                     if (finalY > doc.internal.pageSize.getHeight() - 100) {
@@ -626,11 +843,11 @@ export default function DesperdicioScreen({ navigation }) {
                     }
 
                     const chartConfig = {
-                        type: 'bar',
+                        type: 'horizontalBar', // Cambiado a barras horizontales para mejor lectura de nombres
                         data: {
                             labels: dataForChart.map(d => d.label),
                             datasets: [{
-                                label: 'Desperdicio por Máquina',
+                                label: 'Desperdicio por Máquina (Cantidades)',
                                 data: dataForChart.map(d => d.value),
                                 backgroundColor: 'rgba(41, 128, 185, 0.8)',
                                 borderColor: 'rgba(41, 128, 185, 1)',
@@ -640,19 +857,25 @@ export default function DesperdicioScreen({ navigation }) {
                         options: {
                             title: {
                                 display: true,
-                                text: 'Comparativa de Desperdicio por Máquina'
+                                text: 'Comparativa de Desperdicio por Máquina (Cantidades)'
                             },
                             legend: { display: false },
                             plugins: {
                                 datalabels: {
                                     anchor: 'end',
-                                    align: 'top',
+                                    align: 'right',
                                     color: '#333',
                                     font: { weight: 'bold' }
                                 }
                             },
                             scales: {
-                                yAxes: [{ ticks: { beginAtZero: true } }]
+                                xAxes: [{ ticks: { beginAtZero: true } }],
+                                yAxes: [{
+                                    ticks: {
+                                        fontSize: 10,
+                                        autoSkip: false
+                                    }
+                                }]
                             }
                         }
                     };
@@ -662,8 +885,8 @@ export default function DesperdicioScreen({ navigation }) {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             chart: chartConfig,
-                            width: 600,
-                            height: 350,
+                            width: 800, // Más ancho
+                            height: 500, // Más alto
                             backgroundColor: 'white',
                             format: 'png'
                         })
@@ -677,9 +900,86 @@ export default function DesperdicioScreen({ navigation }) {
                             reader.onloadend = () => resolve(reader.result);
                         });
 
-                        doc.text('Gráfica de Desperdicios:', 14, finalY);
-                        doc.addImage(base64Chart, 'PNG', 14, finalY + 5, 180, 105);
-                        finalY += 120;
+                        doc.text('Gráfica de Desperdicios (Cantidades):', 14, finalY);
+                        doc.addImage(base64Chart, 'PNG', 14, finalY + 5, 180, 110);
+                        finalY += 125;
+                    }
+                }
+
+                // --- SEGUNDA GRÁFICA: % DE DESPERDICIO ---
+                if (dataForPctChart.length > 0) {
+                    if (finalY > doc.internal.pageSize.getHeight() - 100) {
+                        doc.addPage();
+                        finalY = 20;
+                    }
+
+                    const chartConfigPct = {
+                        type: 'horizontalBar',
+                        data: {
+                            labels: dataForPctChart.map(d => d.label),
+                            datasets: [{
+                                label: '% Desperdicio',
+                                data: dataForPctChart.map(d => d.value),
+                                backgroundColor: 'rgba(231, 76, 60, 0.8)',
+                                borderColor: 'rgba(231, 76, 60, 1)',
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            title: {
+                                display: true,
+                                text: 'Porcentaje de Desperdicio por Máquina (%)'
+                            },
+                            legend: { display: false },
+                            plugins: {
+                                datalabels: {
+                                    anchor: 'end',
+                                    align: 'right',
+                                    color: '#333',
+                                    font: { weight: 'bold' },
+                                    formatter: (v) => v.toFixed(2) + '%'
+                                }
+                            },
+                            scales: {
+                                xAxes: [{ 
+                                    ticks: { 
+                                        beginAtZero: true,
+                                        callback: (v) => v + '%'
+                                    } 
+                                }],
+                                yAxes: [{
+                                    ticks: {
+                                        fontSize: 10,
+                                        autoSkip: false
+                                    }
+                                }]
+                            }
+                        }
+                    };
+
+                    const qcResponsePct = await fetch('https://quickchart.io/chart', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            chart: chartConfigPct,
+                            width: 800,
+                            height: 500,
+                            backgroundColor: 'white',
+                            format: 'png'
+                        })
+                    });
+
+                    if (qcResponsePct.ok) {
+                        const qcBlobPct = await qcResponsePct.blob();
+                        const base64ChartPct = await new Promise((resolve) => {
+                            const reader = new FileReader();
+                            reader.readAsDataURL(qcBlobPct);
+                            reader.onloadend = () => resolve(reader.result);
+                        });
+
+                        doc.text('Gráfica de % de Desperdicio:', 14, finalY);
+                        doc.addImage(base64ChartPct, 'PNG', 14, finalY + 5, 180, 110);
+                        finalY += 125;
                     }
                 }
             } catch (chartErr) {
@@ -694,6 +994,395 @@ export default function DesperdicioScreen({ navigation }) {
             Alert.alert("Error", "No se pudo generar el PDF");
         } finally {
             setGeneratingPdf(false);
+        }
+    };
+
+    const generateTrazabilidadPDF = async () => {
+        setGeneratingTracePdf(true);
+        try {
+            let jsPDF, autoTable;
+            if (Platform.OS === 'web') {
+                const jsPDFModule = await import('jspdf');
+                jsPDF = jsPDFModule.jsPDF;
+                const autoTableModule = await import('jspdf-autotable');
+                autoTable = autoTableModule.default;
+            } else {
+                alert("PDF disponible solo en Web por ahora.");
+                setGeneratingTracePdf(false);
+                return;
+            }
+
+            const anio = selectedAnio || new Date().getFullYear();
+            const mesHasta = selectedMes ? Number(selectedMes) : 12;
+            const res = await api.get(`desperdicio/trazabilidad-anual?anio=${anio}&mesHasta=${mesHasta}`);
+            const data = res.data || {};
+
+            const doc = new jsPDF();
+            const pageWidth = doc.internal.pageSize.getWidth();
+
+            doc.setFontSize(17);
+            doc.setFont('helvetica', 'bold');
+            doc.text('TRAZABILIDAD ANUAL DE DESPERDICIO', pageWidth / 2, 18, { align: 'center' });
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`Año: ${anio}  |  Corte hasta mes: ${data.mesHasta || mesHasta}`, pageWidth / 2, 26, { align: 'center' });
+
+            const totalAnual = Number(data.totalAnual || 0);
+            const mesCritico = data.mesMasCritico?.nombreMes || '-';
+            const valorMesCritico = Number(data.mesMasCritico?.total || 0);
+
+            doc.setFontSize(10);
+            doc.text(
+                `Total acumulado: ${totalAnual.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}  |  Mes más crítico: ${mesCritico} (${valorMesCritico.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`,
+                14,
+                35
+            );
+
+            const totalesMesRows = (data.totalPorMes || []).map((m) => [
+                m.nombreMes,
+                Number(m.total || 0).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            ]);
+
+            autoTable(doc, {
+                head: [['Mes', 'Desperdicio Total']],
+                body: totalesMesRows,
+                startY: 40,
+                theme: 'grid',
+                styles: { fontSize: 9 },
+                headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' },
+                columnStyles: { 1: { halign: 'right' } }
+            });
+
+            let finalY = doc.lastAutoTable.finalY + 8;
+
+            // Tendencia mensual en línea
+            try {
+                const chartLabels = (data.totalPorMes || []).map((m) => m.nombreMes);
+                const chartValues = (data.totalPorMes || []).map((m) => Number(m.total || 0));
+                if (chartLabels.length > 0) {
+                    const chartConfig = {
+                        type: 'line',
+                        data: {
+                            labels: chartLabels,
+                            datasets: [{
+                                label: 'Desperdicio mensual',
+                                data: chartValues,
+                                borderColor: 'rgba(13,110,253,1)',
+                                backgroundColor: 'rgba(13,110,253,0.2)',
+                                fill: true,
+                                tension: 0.3
+                            }]
+                        },
+                        options: {
+                            title: { display: true, text: 'Tendencia mensual de desperdicio' },
+                            legend: { display: false }
+                        }
+                    };
+
+                    const qcResponse = await fetch('https://quickchart.io/chart', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ chart: chartConfig, width: 900, height: 360, backgroundColor: 'white', format: 'png' })
+                    });
+                    if (qcResponse.ok) {
+                        const qcBlob = await qcResponse.blob();
+                        const base64Chart = await new Promise((resolve) => {
+                            const reader = new FileReader();
+                            reader.readAsDataURL(qcBlob);
+                            reader.onloadend = () => resolve(reader.result);
+                        });
+                        if (finalY > doc.internal.pageSize.getHeight() - 95) {
+                            doc.addPage();
+                            finalY = 20;
+                        }
+                        doc.text('Tendencia mensual (línea):', 14, finalY);
+                        doc.addImage(base64Chart, 'PNG', 14, finalY + 4, 180, 72);
+                        finalY += 82;
+                    }
+                }
+            } catch (chartErr) {
+                console.log('Error gráfica tendencia:', chartErr);
+            }
+
+            // Análisis estadístico técnico
+            try {
+                const vals = (data.totalPorMes || []).map((m) => Number(m.total || 0));
+                const labels = (data.totalPorMes || []).map((m) => m.nombreMes);
+                if (vals.length > 0) {
+                    const n = vals.length;
+                    const avg = vals.reduce((a, b) => a + b, 0) / n;
+                    const maxVal = Math.max(...vals);
+                    const minVal = Math.min(...vals);
+                    const idxMax = vals.findIndex((v) => v === maxVal);
+                    const idxMin = vals.findIndex((v) => v === minVal);
+
+                    const xAvg = (n - 1) / 2;
+                    const yAvg = avg;
+                    let num = 0;
+                    let den = 0;
+                    for (let i = 0; i < n; i++) {
+                        num += (i - xAvg) * (vals[i] - yAvg);
+                        den += (i - xAvg) * (i - xAvg);
+                    }
+                    const slope = den > 0 ? num / den : 0;
+
+                    const analysisRows = [
+                        ['Mes pico', `${labels[idxMax] || '-'} (${maxVal.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`],
+                        ['Mes mínimo', `${labels[idxMin] || '-'} (${minVal.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`],
+                        ['Pendiente de tendencia', slope > 0 ? `Al alza (+${slope.toLocaleString('es-CO', { maximumFractionDigits: 2 })} por mes)` : slope < 0 ? `A la baja (${slope.toLocaleString('es-CO', { maximumFractionDigits: 2 })} por mes)` : 'Estable']
+                    ];
+
+                    if (finalY > doc.internal.pageSize.getHeight() - 60) {
+                        doc.addPage();
+                        finalY = 20;
+                    }
+
+                    autoTable(doc, {
+                        head: [['Indicador técnico', 'Resultado']],
+                        body: analysisRows,
+                        startY: finalY,
+                        theme: 'grid',
+                        styles: { fontSize: 9 },
+                        headStyles: { fillColor: [33, 37, 41], textColor: 255, fontStyle: 'bold' }
+                    });
+                    finalY = doc.lastAutoTable.finalY + 8;
+                }
+            } catch (analysisErr) {
+                console.log('Error bloque análisis técnico:', analysisErr);
+            }
+
+            // Top máquinas por mes (gráfico de barras agrupadas)
+            try {
+                const topMaqMes = data.topMaquinasPorMes || [];
+                const mesesChart = (data.meses || []).map((m) => m.nombreMes);
+                const monthTotals = Object.fromEntries(
+                    (data.totalPorMes || []).map((x) => [x.mes, Number(x.total || 0)])
+                );
+                const maquinasSet = new Set();
+                topMaqMes.forEach((m) => (m.topMaquinas || []).forEach((x) => maquinasSet.add(x.maquinaNombre)));
+                const maquinasTop = Array.from(maquinasSet)
+                    .slice(0, 5);
+                if (mesesChart.length > 0 && maquinasTop.length > 0) {
+                    const colors = [
+                        'rgba(13,110,253,0.75)',
+                        'rgba(25,135,84,0.75)',
+                        'rgba(255,193,7,0.75)',
+                        'rgba(220,53,69,0.75)',
+                        'rgba(111,66,193,0.75)'
+                    ];
+                    const pctLabels = [];
+                    const datasets = maquinasTop.map((maq, idx) => {
+                        const pctRow = (data.meses || []).map((m) => {
+                            const mesData = topMaqMes.find((x) => x.mes === m.mes);
+                            const row = (mesData?.topMaquinas || []).find((x) => x.maquinaNombre === maq);
+                            if (row?.porcentaje != null) return Number(row.porcentaje);
+                            const total = Number(row?.total || 0);
+                            const mt = Number(mesData?.totalMes ?? monthTotals[m.mes] ?? 0);
+                            return mt > 0 ? Math.round((total / mt) * 1000) / 10 : 0;
+                        });
+                        pctLabels.push(pctRow);
+                        return {
+                            label: maq,
+                            backgroundColor: colors[idx % colors.length],
+                            borderColor: colors[idx % colors.length].replace('0.75', '1'),
+                            borderWidth: 1,
+                            data: (data.meses || []).map((m) => {
+                                const mesData = topMaqMes.find((x) => x.mes === m.mes);
+                                const row = (mesData?.topMaquinas || []).find((x) => x.maquinaNombre === maq);
+                                return Number(row?.total || 0);
+                            }),
+                        };
+                    });
+
+                    const maqB64 = await renderWebChartToBase64({
+                        type: 'bar',
+                        data: { labels: mesesChart, datasets },
+                        options: {
+                            plugins: {
+                                title: {
+                                    display: true,
+                                    text: 'Top máquinas por mes (% sobre total del mes en cada barra)',
+                                },
+                                legend: {
+                                    display: true,
+                                    position: 'bottom',
+                                    labels: { boxWidth: 10, font: { size: 9 } },
+                                },
+                                datalabels: {
+                                    display: true,
+                                    anchor: 'end',
+                                    align: 'top',
+                                    color: '#1f2937',
+                                    font: { size: 9, weight: 'bold' },
+                                    formatter: (_value, ctx) => {
+                                        const p = pctLabels[ctx.datasetIndex]?.[ctx.dataIndex] ?? 0;
+                                        return p > 0 ? `${p.toFixed(1)}%` : '';
+                                    },
+                                },
+                            },
+                            scales: {
+                                y: { beginAtZero: true },
+                            },
+                        },
+                    }, 900, 400);
+
+                    if (maqB64) {
+                        if (finalY > doc.internal.pageSize.getHeight() - 95) {
+                            doc.addPage();
+                            finalY = 20;
+                        }
+                        doc.text('Top máquinas por mes (gráfico):', 14, finalY);
+                        doc.addImage(maqB64, 'PNG', 14, finalY + 4, 180, 72);
+                        finalY += 82;
+                    }
+                }
+            } catch (maqErr) {
+                console.log('Error gráfico máquinas:', maqErr);
+            }
+
+            // Heatmap técnico (tabla con intensidad por código/mes)
+            const matrix = data.matrizCodigoMes || [];
+            if (matrix.length > 0 && (data.meses || []).length > 0) {
+                if (finalY > doc.internal.pageSize.getHeight() - 60) {
+                    doc.addPage();
+                    finalY = 20;
+                }
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(10);
+                doc.text('Heatmap técnico Código x Mes (top códigos):', 14, finalY);
+                doc.setFont('helvetica', 'normal');
+                const maxCell = Math.max(
+                    1,
+                    ...matrix.flatMap((r) => (r.valores || []).map((v) => Number(v || 0)))
+                );
+                const monthHeaders = (data.meses || []).map((m) => m.nombreMes.slice(0, 3));
+                const heatRows = matrix.map((row) => [
+                    `${row.codigo} ${row.descripcion ? '- ' + row.descripcion : ''}`,
+                    ...(row.valores || []).map((v) =>
+                        Number(v || 0).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+                    )
+                ]);
+
+                autoTable(doc, {
+                    head: [['Código', ...monthHeaders]],
+                    body: heatRows,
+                    startY: finalY + 3,
+                    theme: 'grid',
+                    styles: { fontSize: 7, cellPadding: 1.5 },
+                    didParseCell: function (hook) {
+                        if (hook.section !== 'body') return;
+                        if (hook.column.index < 1) return;
+                        const raw = (matrix[hook.row.index]?.valores || [])[hook.column.index - 1] || 0;
+                        const ratio = Math.max(0, Math.min(1, Number(raw) / maxCell));
+                        const red = 255;
+                        const greenBlue = Math.round(245 - ratio * 170);
+                        hook.cell.styles.fillColor = [red, greenBlue, greenBlue];
+                        hook.cell.styles.halign = 'right';
+                    }
+                });
+                finalY = doc.lastAutoTable.finalY + 8;
+            }
+
+            const criticosRows = (data.codigosPorMes || []).map((m) => [
+                m.nombreMes,
+                m.codigoMasCritico ? `${m.codigoMasCritico.codigo} - ${m.codigoMasCritico.descripcion || ''}` : '-',
+                Number(m.codigoMasCritico?.total || 0).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            ]);
+
+            if (finalY > doc.internal.pageSize.getHeight() - 60) {
+                doc.addPage();
+                finalY = 20;
+            }
+
+            autoTable(doc, {
+                head: [['Mes', 'Código más crítico', 'Total']],
+                body: criticosRows,
+                startY: finalY,
+                theme: 'grid',
+                styles: { fontSize: 9 },
+                headStyles: { fillColor: [192, 57, 43], textColor: 255, fontStyle: 'bold' },
+                columnStyles: { 2: { halign: 'right' } }
+            });
+
+            finalY = doc.lastAutoTable.finalY + 8;
+
+            // Top máquinas por mes (top 5)
+            (data.topMaquinasPorMes || []).forEach((m) => {
+                const totalMes = Number(m.totalMes ?? 0);
+                const rows = (m.topMaquinas || []).map((x) => {
+                    const total = Number(x.total || 0);
+                    const pct =
+                        x.porcentaje != null
+                            ? Number(x.porcentaje)
+                            : totalMes > 0
+                              ? Math.round((total / totalMes) * 1000) / 10
+                              : 0;
+                    return [
+                        x.maquinaNombre || 'Sin máquina',
+                        total.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                        `${pct.toFixed(1)}%`,
+                    ];
+                });
+                if (rows.length === 0) return;
+                if (finalY > doc.internal.pageSize.getHeight() - 45) {
+                    doc.addPage();
+                    finalY = 20;
+                }
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(10);
+                const totalMesTxt = totalMes.toLocaleString('es-CO', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                });
+                doc.text(`Top máquinas - ${m.nombreMes} (total mes: ${totalMesTxt})`, 14, finalY);
+                doc.setFont('helvetica', 'normal');
+                autoTable(doc, {
+                    head: [['Máquina', 'Total', '% del mes']],
+                    body: rows,
+                    startY: finalY + 3,
+                    theme: 'grid',
+                    styles: { fontSize: 8 },
+                    columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
+                });
+                finalY = doc.lastAutoTable.finalY + 6;
+            });
+
+            (data.codigosPorMes || []).forEach((m) => {
+                const rows = (m.topCodigos || []).map((c) => [
+                    c.codigo,
+                    c.descripcion || '',
+                    Number(c.total || 0).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                ]);
+                if (rows.length === 0) return;
+
+                if (finalY > doc.internal.pageSize.getHeight() - 50) {
+                    doc.addPage();
+                    finalY = 20;
+                }
+
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(10);
+                doc.text(`Top códigos - ${m.nombreMes}`, 14, finalY);
+                doc.setFont('helvetica', 'normal');
+
+                autoTable(doc, {
+                    head: [['Código', 'Descripción', 'Total']],
+                    body: rows,
+                    startY: finalY + 3,
+                    theme: 'grid',
+                    styles: { fontSize: 8 },
+                    columnStyles: { 2: { halign: 'right' } }
+                });
+
+                finalY = doc.lastAutoTable.finalY + 6;
+            });
+
+            doc.save(`trazabilidad_desperdicio_${anio}_${new Date().getTime()}.pdf`);
+        } catch (error) {
+            console.error(error);
+            Alert.alert("Error", "No se pudo generar el documento de trazabilidad.");
+        } finally {
+            setGeneratingTracePdf(false);
         }
     };
 
@@ -827,12 +1516,35 @@ export default function DesperdicioScreen({ navigation }) {
                 </View>
 
                 <View style={styles.buttonRow}>
+                    <View style={{ flexDirection: 'row', backgroundColor: '#e9ecef', borderRadius: 8, padding: 3, marginRight: 6 }}>
+                        <TouchableOpacity
+                            style={[styles.button, { paddingVertical: 6, paddingHorizontal: 10, backgroundColor: pdfMode === 'normal' ? '#007bff' : 'transparent' }]}
+                            onPress={() => setPdfMode('normal')}
+                        >
+                            <Text style={[styles.buttonText, { color: pdfMode === 'normal' ? '#fff' : '#495057' }]}>PDF Normal</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.button, { paddingVertical: 6, paddingHorizontal: 10, backgroundColor: pdfMode === 'detallado' ? '#007bff' : 'transparent' }]}
+                            onPress={() => setPdfMode('detallado')}
+                        >
+                            <Text style={[styles.buttonText, { color: pdfMode === 'detallado' ? '#fff' : '#495057' }]}>PDF Detallado</Text>
+                        </TouchableOpacity>
+                    </View>
+
                     <TouchableOpacity
                         style={[styles.button, { backgroundColor: '#6c757d', marginRight: 10 }]}
                         onPress={generatePDF}
                         disabled={generatingPdf}
                     >
                         {generatingPdf ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>📄 PDF</Text>}
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={[styles.button, { backgroundColor: '#0d6efd', marginRight: 10 }]}
+                        onPress={generateTrazabilidadPDF}
+                        disabled={generatingTracePdf}
+                    >
+                        {generatingTracePdf ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>📘 Trazabilidad Anual</Text>}
                     </TouchableOpacity>
 
                     <TouchableOpacity
@@ -875,6 +1587,7 @@ export default function DesperdicioScreen({ navigation }) {
                                 <Text>OP: {item.ordenProduccion || 'N/A'}</Text>
                                 <Text>Máq: {item.maquinaNombre}</Text>
                                 <Text>Oper: {item.usuarioNombre}</Text>
+                                <Text>Registró: {item.registradoPor || '—'}</Text>
                                 <Text>Fecha: {formatDate(new Date(item.fecha))}</Text>
                             </View>
                             <View style={{ alignItems: 'flex-end' }}>

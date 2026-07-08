@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
+using TiempoProcesos.API.Helpers;
 using Microsoft.AspNetCore.Authorization;
 
 namespace TiempoProcesos.API.Controllers
@@ -62,6 +63,8 @@ namespace TiempoProcesos.API.Controllers
             
             _context.BitacorasMaquinas.Remove(bitacora);
             await _context.SaveChangesAsync();
+            await MantenimientoTrazabilidadHelper.RegistrarAsync(_context, HttpContext, "Maquinaria", "Ticket", "Eliminar",
+                bitacora.Id, $"Ticket #{bitacora.Consecutivo} eliminado");
             return NoContent();
         }
     }

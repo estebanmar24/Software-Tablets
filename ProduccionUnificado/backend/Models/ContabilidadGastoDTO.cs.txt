@@ -1,0 +1,22 @@
+using System;
+
+namespace TiempoProcesos.API.Models
+{
+    public class ContabilidadGastoDTO
+    {
+        public int Id { get; set; }
+        public string Area { get; set; } = string.Empty; // Produccion, Talleres, Mantenimiento, GH, SST, Diseno, Planeacion
+        public string Rubro { get; set; } = string.Empty;
+        public string? Proveedor { get; set; }
+        public decimal Precio { get; set; }
+        public DateTime Fecha { get; set; }
+        public string? NumeroFactura { get; set; }
+        public string? NumeroOP { get; set; }
+        public string? Nota { get; set; }
+        public string? FacturaPdfUrl { get; set; }
+        public bool EsPendiente { get; set; }
+        public bool EsSolicitudCredito { get; set; }
+        public int Mes { get; set; }
+        public int Anio { get; set; }
+    }
+}

@@ -17,6 +17,9 @@ public class ConsolidadoNC
     public string? DescripcionNovedad { get; set; }  // From Observaciones
     
     // Manual fields
+    /// <summary>Alcance interno / externo (antes se usaba TipoReclamacion para INTERNO/EXTERNO).</summary>
+    public string? Alcance { get; set; }
+    /// <summary>Queja, reclamo, devolución, otro (catálogo dinámico).</summary>
     public string? TipoReclamacion { get; set; }
     public decimal CantidadNC { get; set; } = 0;
     public string? Item { get; set; }

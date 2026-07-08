@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Alert, Platform, ScrollView, useWindowDimensions, BackHandler, TouchableOpacity, Text } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, StyleSheet, Alert, Platform, ScrollView, useWindowDimensions, BackHandler, TouchableOpacity, Text, Modal } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { usePersistence } from './src/hooks/usePersistence';
 import { StatusBar } from 'expo-status-bar';
@@ -38,9 +38,66 @@ import CalidadTalleresScreen from './src/screens/CalidadTalleresScreen';
 import MaquinasScreen from './src/screens/MaquinasScreen';
 
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
+import {
+  getRegistroVivoMasReciente,
+  parseRecordStartDate,
+} from './src/utils/tiempoProceso';
+
+type SubcodigoActividad = {
+  codigo: string;
+  detalle: string;
+  /**
+   * Si es true, al seleccionar este subcódigo el operario está obligado
+   * a llenar el campo "Observaciones" antes de iniciar o de finalizar
+   * el registro. Se usa para los subcódigos "Otro".
+   */
+  requiereObservacion?: boolean;
+};
+
+const SUBCODIGOS_POR_ACTIVIDAD: Record<string, Array<SubcodigoActividad>> = {
+  '03': [
+    { codigo: '301', detalle: 'Daño electrico' },
+    { codigo: '302', detalle: 'Daño mecanico' },
+    { codigo: '303', detalle: 'Daño electroMecanico' },
+    { codigo: '399', detalle: 'Otro (especificar en observaciones)', requiereObservacion: true },
+  ],
+  '08': [
+    { codigo: '801', detalle: 'Cambio de mantilla' },
+    { codigo: '802', detalle: 'Esperando repuesto/Mecanico/Tecnico' },
+    { codigo: '803', detalle: 'Material Defectuoso' },
+    { codigo: '804', detalle: 'Problemas de humedad' },
+    { codigo: '805', detalle: 'Problemas de Registro' },
+    { codigo: '806', detalle: 'Sin fluido electrico' },
+    { codigo: '807', detalle: 'Tinta no conforme' },
+    { codigo: '808', detalle: 'Cambio de cuchilla' },
+    { codigo: '809', detalle: 'Limpieza de cilindros' },
+    { codigo: '810', detalle: 'Hoja en bateria' },
+    { codigo: '899', detalle: 'Otro (especificar en observaciones)', requiereObservacion: true },
+  ],
+  '13': [
+    { codigo: '1301', detalle: 'Esperando material' },
+    { codigo: '1302', detalle: 'Esperando planchas' },
+    { codigo: '1399', detalle: 'Otro (especificar en observaciones)', requiereObservacion: true },
+  ],
+  '14': [
+    { codigo: '1401', detalle: 'Cambio de bateria' },
+    { codigo: '1402', detalle: 'Calibracion de franjas' },
+    { codigo: '1403', detalle: 'Reunion programada' },
+    { codigo: '1404', detalle: 'Lavada de baterias' },
+    { codigo: '1499', detalle: 'Otro (especificar en observaciones)', requiereObservacion: true },
+  ],
+};
+
+const CODIGOS_OP_BLOQUEADA_460 = new Set(['08', '10', '13', '14']);
+
+const actividadFuerzaOP460 = (actividad: Actividad | null) => {
+  if (!actividad?.codigo) return false;
+  return CODIGOS_OP_BLOQUEADA_460.has(String(actividad.codigo).padStart(2, '0'));
+};
 
 export const ThemeToggle = () => {
   const { isDarkMode, toggleTheme } = useTheme();
+
   return (
     <TouchableOpacity
       style={[themeStyles.themeToggle, { backgroundColor: isDarkMode ? '#1F2937' : '#E2E8F0' }]}
@@ -118,7 +175,7 @@ function AppContent() {
   // Estado de vista
   const [currentView, setCurrentView] = useState<'timer' | 'login' | 'admin' | 'calidad' | 'calidad_talleres' | 'develop' | 'esst' | 'public_maquina'>('timer');
   const [publicMachineId, setPublicMachineId] = useState<number | null>(null);
-  const [adminRole, setAdminRole] = useState<string>('admin');
+  const [adminRole, setAdminRole] = useState<string>('');
   const [adminName, setAdminName] = useState<string>('');
   const [adminArea, setAdminArea] = useState<string>('');
   const [adminPermissions, setAdminPermissions] = useState<string>('');
@@ -219,6 +276,9 @@ function AppContent() {
   const [selectedHorario, setSelectedHorario] = useState<number | null>(null);
   const [opSearchText, setOpSearchText] = useState('');
   const [selectedActividad, setSelectedActividad] = useState<Actividad | null>(null);
+  const [selectedSubcodigo, setSelectedSubcodigo] = useState<string | null>(null);
+  const [selectedSubcodigoDetalle, setSelectedSubcodigoDetalle] = useState<string>('');
+  const [showSubcodigoModal, setShowSubcodigoModal] = useState(false);
   const [horarios, setHorarios] = useState<Horario[]>([]);
 
   // Estados de producción acumulada (durante la actividad actual)
@@ -284,6 +344,11 @@ function AppContent() {
   // Hook del cronómetro
   const timer = useTimer();
   const [activeProcessId, setActiveProcessId] = useState<number | null>(null);
+  const activeProcessIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    activeProcessIdRef.current = activeProcessId;
+  }, [activeProcessId]);
 
   // 1. Cargar datos persistidos al iniciar
   useEffect(() => {
@@ -305,7 +370,13 @@ function AppContent() {
         if (saved.timerStartTime) {
           const startDate = new Date(saved.timerStartTime);
           if (!isNaN(startDate.getTime())) {
-            timer.start(startDate);
+            if (saved.timerIsPaused && saved.timerPausedSeconds != null) {
+              // El proceso estaba pausado: restauramos el cronómetro en pausa
+              // con los segundos acumulados al momento de la pausa.
+              timer.restorePaused(saved.timerPausedSeconds, startDate);
+            } else {
+              timer.start(startDate);
+            }
           }
         }
       }
@@ -329,12 +400,14 @@ function AppContent() {
       tirosAcumulados,
       desperdicioAcumulado,
       timerStartTime: timer.startTime ? timer.startTime.toISOString() : null,
+      timerIsPaused: timer.isPaused,
+      timerPausedSeconds: timer.isPaused ? timer.seconds : null,
       activeProcessId: activeProcessId
     });
   }, [
     selectedUsuario, selectedMaquina, selectedHorario, selectedActividad, selectedOrden,
     opSearchText, observaciones, tirosAcumulados, desperdicioAcumulado,
-    timer.startTime, isRestored, activeProcessId
+    timer.startTime, timer.isPaused, timer.seconds, isRestored, activeProcessId
   ]);
 
   // Cargar catálogos al iniciar
@@ -342,10 +415,31 @@ function AppContent() {
     loadCatalogs();
   }, []);
 
+  useEffect(() => {
+    if (actividadFuerzaOP460(selectedActividad) && opSearchText !== '460') {
+      setOpSearchText('460');
+      setSelectedOrden(null);
+    }
+  }, [selectedActividad, opSearchText]);
+
   // Cargar producción cuando cambian los filtros (Usuario o Máquina)
   useEffect(() => {
+    if (!isRestored) return;
     loadProductionData();
-  }, [selectedUsuario, selectedMaquina]);
+  }, [selectedUsuario, selectedMaquina, isRestored]);
+
+  // Re-sincronizar cuando ya cargaron las actividades (necesarias para corregir ACTIVIDAD ACTUAL)
+  useEffect(() => {
+    if (!isRestored || actividades.length === 0 || !selectedUsuario || !selectedMaquina) return;
+    loadProductionData();
+  }, [actividades.length, isRestored, selectedUsuario, selectedMaquina]);
+
+  // Mantener la tablet alineada con el servidor (p. ej. si cambió de Producción a Falta de Trabajo)
+  useEffect(() => {
+    if (!isRestored || !selectedUsuario || !selectedMaquina) return undefined;
+    const interval = setInterval(() => loadProductionData(), 20000);
+    return () => clearInterval(interval);
+  }, [isRestored, selectedUsuario, selectedMaquina]);
 
   // Cargar Planeación Actual al cambiar de máquina
   useEffect(() => {
@@ -474,6 +568,59 @@ function AppContent() {
     return () => backHandler.remove();
   }, []);
 
+  const syncSessionWithServer = (historial: TiempoProceso[]) => {
+    const vivo = getRegistroVivoMasReciente(historial);
+
+    if (!vivo) {
+      setActiveProcessId(null);
+      if (timer.isRunning) timer.reset();
+      return;
+    }
+
+    const actividadReal = actividades.find((a) => a.id === vivo.actividadId);
+    if (actividadReal) {
+      setSelectedActividad(actividadReal);
+    }
+
+    if (vivo.subCodigoActividad) {
+      setSelectedSubcodigo(vivo.subCodigoActividad);
+      setSelectedSubcodigoDetalle(vivo.subCodigoDetalle || '');
+    } else {
+      setSelectedSubcodigo(null);
+      setSelectedSubcodigoDetalle('');
+    }
+
+    if (vivo.ordenProduccionNumero) {
+      setOpSearchText(String(vivo.ordenProduccionNumero));
+    }
+
+    setActiveProcessId(vivo.id);
+    setTirosAcumulados(Number(vivo.tiros) || 0);
+    setDesperdicioAcumulado(Number(vivo.desperdicio) || 0);
+
+    const startDate = parseRecordStartDate(vivo);
+    if (!startDate) return;
+
+    const pausado = vivo.estado === 'Pausado';
+    const mismoProceso = activeProcessIdRef.current === vivo.id;
+    const actividadCambio = actividadReal != null && selectedActividad?.id !== actividadReal.id;
+    const timerAlineado = timer.isRunning && timer.isPaused === pausado;
+    if (mismoProceso && timerAlineado && !actividadCambio) return;
+
+    if (pausado) {
+      let refMs = Date.now();
+      if (vivo.pausadoEn) {
+        const pausadoMs = new Date(vivo.pausadoEn).getTime();
+        if (!Number.isNaN(pausadoMs)) refMs = pausadoMs;
+      }
+      const pausasMs = (Number(vivo.tiempoPausadoSegundos) || 0) * 1000;
+      const elapsed = Math.max(0, Math.floor((refMs - startDate.getTime() - pausasMs) / 1000));
+      timer.restorePaused(elapsed, startDate);
+    } else {
+      timer.start(startDate);
+    }
+  };
+
   const loadProductionData = async () => {
     try {
       // STRICT FILTER: Solo cargar si hay Usuario Y Máquina seleccionados
@@ -494,6 +641,10 @@ function AppContent() {
       setHistorial(produccionData.historial);
       setTirosTotalesDia(produccionData.tirosTotales);
       setDesperdicioTotalDia(produccionData.desperdicioTotal);
+
+      if (isRestored && actividades.length > 0) {
+        syncSessionWithServer(produccionData.historial);
+      }
     } catch (error) {
       console.log('API no disponible (producción)');
       // Limpiar datos si hay error
@@ -506,10 +657,43 @@ function AppContent() {
   // Verificar si se puede iniciar el cronómetro
   const canStart = selectedActividad !== null && selectedMaquina !== null && selectedUsuario !== null && selectedHorario !== null;
 
+  const actividadConSubcodigo = selectedActividad?.codigo || '';
+  const subcodigosActividadActual = SUBCODIGOS_POR_ACTIVIDAD[actividadConSubcodigo] || [];
+  const requiresSubcodigo = subcodigosActividadActual.length > 0;
+  // El subcódigo seleccionado actualmente (con sus metadatos), o null.
+  const subcodigoSeleccionadoMeta = (() => {
+    if (!selectedSubcodigo) return null;
+    return subcodigosActividadActual.find(s => s.codigo === selectedSubcodigo) || null;
+  })();
+  // Si el subcódigo activo exige observación (los "Otro").
+  const subcodigoExigeObservacion = !!subcodigoSeleccionadoMeta?.requiereObservacion;
+  const observacionesConSubcodigo = (() => {
+    const baseObs = (observaciones || '').trim();
+    if (!requiresSubcodigo || !selectedSubcodigo || !actividadConSubcodigo) return baseObs;
+    const subLabel = `Subcodigo ${actividadConSubcodigo}: ${selectedSubcodigo}${selectedSubcodigoDetalle ? ` - ${selectedSubcodigoDetalle}` : ''}`;
+    return baseObs ? `${subLabel} | ${baseObs}` : subLabel;
+  })();
+
   // Manejadores de eventos
   const handleStart = async () => {
     if (!canStart) {
       showAlert('Datos incompletos', 'Debe seleccionar máquina, horario, operario y actividad antes de iniciar.');
+      return;
+    }
+
+    if (requiresSubcodigo && !selectedSubcodigo) {
+      showAlert('Subcódigo requerido', `Para el código ${actividadConSubcodigo} debe seleccionar un subcódigo antes de iniciar.`);
+      setShowSubcodigoModal(true);
+      return;
+    }
+
+    // Si el subcódigo elegido es uno de los "Otro", obligamos al operario a
+    // describir la situación en el campo Observaciones antes de iniciar.
+    if (subcodigoExigeObservacion && (!observaciones || observaciones.trim().length === 0)) {
+      showAlert(
+        'Observación requerida',
+        `⚠️ Seleccionó el subcódigo "${selectedSubcodigoDetalle || 'Otro'}". Debe describir el motivo en el campo "Observaciones" antes de iniciar.`
+      );
       return;
     }
 
@@ -540,6 +724,9 @@ function AppContent() {
       const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       const startTimeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0') + ':' + now.getSeconds().toString().padStart(2, '0');
 
+      const forzarOP460 = actividadFuerzaOP460(selectedActividad);
+      const referenciaOPFinal = forzarOP460 ? '460' : (opSearchText.trim() || '460');
+
       const payload: RegistrarTiempoRequest = {
         fecha: localDate,
         horaInicio: startTimeStr,
@@ -547,27 +734,67 @@ function AppContent() {
         duracion: "00:00:00",
         usuarioId: selectedUsuario!,
         maquinaId: selectedMaquina!,
-        ordenProduccionId: selectedOrden || undefined,
+        ordenProduccionId: forzarOP460 ? undefined : (selectedOrden || undefined),
         actividadId: selectedActividad!.id,
         tiros: 0,
         desperdicio: 0,
-        referenciaOP: opSearchText.trim() || '460',
-        observaciones: observaciones || '',
+        referenciaOP: referenciaOPFinal,
+        observaciones: observacionesConSubcodigo,
+        subCodigoActividad: selectedSubcodigo || undefined,
+        subCodigoDetalle: selectedSubcodigoDetalle || undefined,
         horarioId: selectedHorario || undefined
       };
 
       const savedRecord = await coreApi.registrarTiempo(payload);
       setActiveProcessId(savedRecord.id);
-
-      // Add to history with "Running" indicators
-      const displayRecord: TiempoProceso = {
-        ...savedRecord,
-        horaFin: '---',
-        duracion: 'En Progreso'
-      };
-      setHistorial(prev => [displayRecord, ...prev]);
+      await loadProductionData();
     } catch (e) {
       console.error("Error starting backend process:", e);
+    }
+  };
+
+  const handlePause = async () => {
+    // Si no hay proceso activo registrado en backend, sólo pausamos timer local
+    if (!activeProcessId) {
+      timer.pause();
+      return;
+    }
+    try {
+      const updated = await coreApi.pausarTiempo(activeProcessId);
+      timer.pause();
+      // Refrescar el registro en el historial con su nuevo estado
+      setHistorial((prev) =>
+        prev.map((item) =>
+          item.id === activeProcessId
+            ? { ...item, estado: updated.estado, pausadoEn: updated.pausadoEn, tiempoPausadoSegundos: updated.tiempoPausadoSegundos }
+            : item
+        )
+      );
+    } catch (e) {
+      console.error('Error al pausar el proceso:', e);
+      // Aun así, pausamos el timer local para reflejar la intención del operario.
+      timer.pause();
+    }
+  };
+
+  const handleResume = async () => {
+    if (!activeProcessId) {
+      timer.resume();
+      return;
+    }
+    try {
+      const updated = await coreApi.reanudarTiempo(activeProcessId);
+      timer.resume();
+      setHistorial((prev) =>
+        prev.map((item) =>
+          item.id === activeProcessId
+            ? { ...item, estado: updated.estado, pausadoEn: updated.pausadoEn, tiempoPausadoSegundos: updated.tiempoPausadoSegundos }
+            : item
+        )
+      );
+    } catch (e) {
+      console.error('Error al reanudar el proceso:', e);
+      timer.resume();
     }
   };
 
@@ -588,11 +815,24 @@ function AppContent() {
       }
     }
 
+    // Validar: si se eligió un subcódigo "Otro", la observación es obligatoria
+    // también al finalizar (por si pasó algún registro abierto sin observación).
+    if (subcodigoExigeObservacion && (!observaciones || observaciones.trim().length === 0)) {
+      showAlert(
+        'Observación requerida',
+        `⚠️ El subcódigo "${selectedSubcodigoDetalle || 'Otro'}" exige que describa el motivo en el campo "Observaciones" antes de finalizar.`
+      );
+      return;
+    }
+
     const { duration, startTime, endTime } = timer.stop();
 
     // Crear registro para payload
     const today = new Date();
     const localDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+    const forzarOP460 = actividadFuerzaOP460(selectedActividad);
+    const referenciaOPFinal = forzarOP460 ? '460' : (opSearchText.trim() || '460');
 
     const payload: RegistrarTiempoRequest = {
       fecha: localDate,
@@ -601,12 +841,14 @@ function AppContent() {
       duracion: duration,
       usuarioId: selectedUsuario!,
       maquinaId: selectedMaquina!,
-      ordenProduccionId: selectedOrden || undefined,
+      ordenProduccionId: forzarOP460 ? undefined : (selectedOrden || undefined),
       actividadId: selectedActividad!.id,
       tiros: tirosAcumulados,
       desperdicio: desperdicioAcumulado,
-      referenciaOP: opSearchText.trim() || '460',
-      observaciones: observaciones,
+      referenciaOP: referenciaOPFinal,
+      observaciones: observacionesConSubcodigo,
+      subCodigoActividad: selectedSubcodigo || undefined,
+      subCodigoDetalle: selectedSubcodigoDetalle || undefined,
       horarioId: selectedHorario || undefined,
     };
 
@@ -617,26 +859,20 @@ function AppContent() {
       if (activeProcessId) {
         console.log('Finalizando proceso existente:', activeProcessId);
         savedRecord = await coreApi.finalizarTiempo(activeProcessId, payload);
-        // Actualizar en historial (reemplazar el item con "En Progreso")
-        setHistorial((prev) => prev.map(item => item.id === activeProcessId ? savedRecord : item));
         setActiveProcessId(null);
       } else {
         console.log('No hay proceso activo, creando nuevo registro');
         savedRecord = await coreApi.registrarTiempo(payload);
-        // Agregar al historial
-        setHistorial((prev) => [savedRecord, ...prev]);
       }
 
       console.log('Guardado exitoso:', savedRecord);
-
-      // Actualizar totales del día
-      setTirosTotalesDia((prev) => prev + tirosAcumulados);
-      setDesperdicioTotalDia((prev) => prev + desperdicioAcumulado);
 
       // Reiniciar contadores INMEDIATAMENTE
       setTirosAcumulados(0);
       setDesperdicioAcumulado(0);
       setObservaciones('');
+
+      await loadProductionData();
 
       // Guardar registros detallados de desperdicio si existen
       if (wasteRecords.length > 0) {
@@ -715,14 +951,26 @@ function AppContent() {
     setOpSearchText('');
     setSelectedOrden(null);
 
-    // Special logic: If Descanso (04) or Reparación (03), auto-fill OP 460
-    if (actividad.codigo === '03' || actividad.codigo === '04' || actividad.nombre === 'Descanso' || actividad.nombre === 'Reparación') {
+    // Reset subcódigo cuando se cambia de actividad.
+    setSelectedSubcodigo(null);
+    setSelectedSubcodigoDetalle('');
+
+    // OP bloqueada para tiempos muertos/auxiliares definidos por código.
+    // También conservamos la lógica histórica para Descanso/Reparación.
+    if (
+      actividadFuerzaOP460(actividad) ||
+      actividad.codigo === '03' || actividad.codigo === '04' ||
+      actividad.nombre === 'Descanso' || actividad.nombre === 'Reparación'
+    ) {
       setOpSearchText('460');
       // Deselect any specific order object to ensure we just use the text '460'
       setSelectedOrden(null);
     }
 
     setSelectedActividad(actividad);
+    if ((SUBCODIGOS_POR_ACTIVIDAD[actividad.codigo] || []).length > 0) {
+      setShowSubcodigoModal(true);
+    }
   };
 
   // Helpers para alertas
@@ -892,6 +1140,9 @@ function AppContent() {
     );
   }
 
+  const opBloqueadaEn460 = actividadFuerzaOP460(selectedActividad);
+  const opDisplayText = opBloqueadaEn460 ? '460' : opSearchText;
+
   // Wrapper for mobile scroll
   const MainWrapper: React.ElementType = isMobile ? ScrollView : View;
   const wrapperProps = isMobile
@@ -923,9 +1174,22 @@ function AppContent() {
         scrollEnabled={!isMobile} // Disable internal scroll on mobile
         isCollapsible={isPhone} // Solo colapsable en teléfonos
         style={isMobile ? { width: '100%', borderRightWidth: 0, borderBottomWidth: 1, borderBottomColor: '#E8ECF0', zIndex: 10 } : undefined}
-        opSearchText={opSearchText}
-        onOpSearchTextChange={setOpSearchText}
-        isOpDisabled={selectedActividad?.codigo === '03' || selectedActividad?.codigo === '04' || selectedActividad?.nombre === 'Descanso' || selectedActividad?.nombre === 'Reparación'}
+        opSearchText={opDisplayText}
+        onOpSearchTextChange={(txt) => {
+          if (opBloqueadaEn460) {
+            setOpSearchText('460');
+            setSelectedOrden(null);
+            return;
+          }
+          setOpSearchText(txt);
+        }}
+        isOpDisabled={
+          opBloqueadaEn460 ||
+          selectedActividad?.codigo === '03' ||
+          selectedActividad?.codigo === '04' ||
+          selectedActividad?.nombre === 'Descanso' ||
+          selectedActividad?.nombre === 'Reparación'
+        }
       />
 
       {/* Contenido principal */}
@@ -944,9 +1208,12 @@ function AppContent() {
             <Content
               timer={timer}
               selectedActividad={selectedActividad}
+              subActividadDescripcion={selectedSubcodigoDetalle}
               canStart={canStart}
               handleStart={handleStart}
               handleStop={handleStop}
+              handlePause={handlePause}
+              handleResume={handleResume}
               isMobile={isMobile}
               actividades={actividades}
               handleSelectActividad={handleSelectActividad}
@@ -959,6 +1226,9 @@ function AppContent() {
               metaDia={planeacionActual?.metaTiros || maquinas.find(m => m.id === selectedMaquina)?.metaRendimiento || 0}
               valorPorTiro={maquinas.find(m => m.id === selectedMaquina)?.valorPorTiro || 0}
               planeacionActual={planeacionActual}
+              opNumero={opDisplayText}
+              maquinaId={selectedMaquina}
+              maquinaNombre={maquinas.find((m) => m.id === selectedMaquina)?.nombre ?? null}
             />
 
           </ScrollView>
@@ -966,9 +1236,12 @@ function AppContent() {
           <Content
             timer={timer}
             selectedActividad={selectedActividad}
+            subActividadDescripcion={selectedSubcodigoDetalle}
             canStart={canStart}
             handleStart={handleStart}
             handleStop={handleStop}
+            handlePause={handlePause}
+            handleResume={handleResume}
             isMobile={isMobile}
             actividades={actividades}
             handleSelectActividad={handleSelectActividad}
@@ -980,6 +1253,10 @@ function AppContent() {
             desperdicioTotal={desperdicioTotalDia + desperdicioAcumulado}
             metaDia={maquinas.find(m => m.id === selectedMaquina)?.metaRendimiento || 0}
             valorPorTiro={maquinas.find(m => m.id === selectedMaquina)?.valorPorTiro || 0}
+            planeacionActual={planeacionActual}
+            opNumero={opDisplayText}
+            maquinaId={selectedMaquina}
+            maquinaNombre={maquinas.find((m) => m.id === selectedMaquina)?.nombre ?? null}
           />
         )}
       </View>
@@ -996,12 +1273,54 @@ function AppContent() {
             codigoDesperdicioId: codigoId,
             cantidad: cantidad,
             fecha: new Date().toISOString(), // Fecha local UTC o similar
-            ordenProduccion: opSearchText || undefined
+            ordenProduccion: opSearchText || undefined,
+            registradoPor: 'Tablet',
           };
           handleAddWaste(record);
         }}
         codigos={codigosDesperdicio}
       />
+
+      <Modal
+        visible={showSubcodigoModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSubcodigoModal(false)}
+      >
+        <View style={styles.subcodigoOverlay}>
+          <View style={[styles.subcodigoContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.subcodigoTitle, { color: colors.text }]}>Seleccione subcódigo para {actividadConSubcodigo || 'actividad'}</Text>
+            <ScrollView style={styles.subcodigoList}>
+              {subcodigosActividadActual.map((item) => {
+                const isSelected = selectedSubcodigo === item.codigo;
+                return (
+                  <TouchableOpacity
+                    key={item.codigo}
+                    style={[
+                      styles.subcodigoItem,
+                      { borderColor: colors.border, backgroundColor: isSelected ? colors.primary : colors.inputBackground },
+                    ]}
+                    onPress={() => {
+                      setSelectedSubcodigo(item.codigo);
+                      setSelectedSubcodigoDetalle(item.detalle);
+                      setShowSubcodigoModal(false);
+                    }}
+                  >
+                    <Text style={[styles.subcodigoCode, { color: isSelected ? '#FFFFFF' : colors.primary }]}>{item.codigo}</Text>
+                    <Text style={[styles.subcodigoDetail, { color: isSelected ? '#FFFFFF' : colors.text }]}>{item.detalle}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <TouchableOpacity
+              style={[styles.subcodigoCloseBtn, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}
+              onPress={() => setShowSubcodigoModal(false)}
+            >
+              <Text style={[styles.subcodigoCloseBtnText, { color: colors.text }]}>Cerrar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </MainWrapper>
   );
 }
@@ -1009,9 +1328,12 @@ function AppContent() {
 // Extracted Content Component to avoid duplication logic
 const Content = ({
   timer, selectedActividad, canStart, handleStart, handleStop,
+  handlePause, handleResume,
+  subActividadDescripcion,
   isMobile, actividades, handleSelectActividad, handleAddTiros,
   onOpenWasteModal, historial, handleClearData, tirosTotales,
-  desperdicioTotal, metaDia, valorPorTiro, planeacionActual
+  desperdicioTotal, metaDia, valorPorTiro, planeacionActual,
+  opNumero, maquinaId, maquinaNombre,
 }: any) => (
 
   <View style={!isMobile ? { minHeight: '100%', padding: 20 } : {}}>
@@ -1019,11 +1341,12 @@ const Content = ({
     <TimerHeader
       formattedTime={timer.formattedTime}
       selectedActividad={selectedActividad}
+      subActividadDescripcion={subActividadDescripcion}
       isRunning={timer.isRunning}
       isPaused={timer.isPaused}
       onStart={handleStart}
-      onPause={timer.pause}
-      onResume={timer.resume}
+      onPause={handlePause || timer.pause}
+      onResume={handleResume || timer.resume}
       onStop={handleStop}
       canStart={canStart}
     />
@@ -1060,6 +1383,9 @@ const Content = ({
             meta={metaDia}
             valorPorTiro={valorPorTiro}
             planeacionActual={planeacionActual}
+            opNumero={opNumero ?? ''}
+            maquinaId={maquinaId ?? null}
+            maquinaNombre={maquinaNombre ?? null}
           />
 
         </View>
@@ -1092,6 +1418,55 @@ const styles = StyleSheet.create({
   rightColumn: {
     flex: 1,
     minWidth: 250,
+  },
+  subcodigoOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  subcodigoContainer: {
+    width: '100%',
+    maxWidth: 620,
+    maxHeight: '82%',
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 16,
+  },
+  subcodigoTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  subcodigoList: {
+    maxHeight: 420,
+  },
+  subcodigoItem: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 8,
+  },
+  subcodigoCode: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 3,
+  },
+  subcodigoDetail: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  subcodigoCloseBtn: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  subcodigoCloseBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 

@@ -15,6 +15,8 @@ namespace TiempoProcesos.API.Models
         public decimal TotalHorasAuxiliares { get; set; }
         public decimal PromedioHoraProductiva { get; set; }
         public decimal TotalHoras { get; set; }
+        /// <summary>Suma de horas base para meta del mes (total − descanso − T.Muertos), mismos días que cuentan para Meta100.</summary>
+        public decimal TotalHorasEfectivasMeta { get; set; }
         public decimal ValorAPagar { get; set; }
         public decimal ValorAPagarBonificable { get; set; }
         public decimal ValorBonifPotencial { get; set; }

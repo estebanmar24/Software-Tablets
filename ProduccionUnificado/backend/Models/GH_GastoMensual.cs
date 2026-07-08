@@ -43,6 +43,10 @@ public class GH_GastoMensual
     [Required]
     [Column(TypeName = "decimal(18,2)")]
     public decimal Precio { get; set; }
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? PrecioBase { get; set; }
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? PrecioIva { get; set; }
 
     [Required]
     public DateTime FechaCompra { get; set; }
@@ -56,6 +60,7 @@ public class GH_GastoMensual
     public bool EsPendiente { get; set; } = false;
 
     public bool EsSolicitudCredito { get; set; } = false;
+    public bool EsEfectivo { get; set; } = false;
 
     /// <summary>
     /// Base64 encoded PDF file or URL to stored file
@@ -89,4 +94,7 @@ public class GH_GastoMensual
     public int? CreadoPorId { get; set; }
     [ForeignKey("CreadoPorId")]
     public virtual AdminUsuario? CreadoPor { get; set; }
+
+    [MaxLength(50)]
+    public string Estado { get; set; } = "Montado";
 }

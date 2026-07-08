@@ -23,15 +23,33 @@ import { Asset } from 'expo-asset';
 import { Picker } from '@react-native-picker/picker';
 import { produccionApi } from '../services/produccionApi';
 import { ExpenseHistoryModal } from '../components/ExpenseHistoryModal';
+import MultiRubroPicker from '../components/MultiRubroPicker';
+import { getProveedorRubroIds, proveedorMatchesRubro, getProveedorRubrosLabel } from '../utils/proveedorRubros';
+import MedioPagoGastoControls, {
+    medioPagoToFlags,
+    flagsToMedioPago,
+    MedioPagoBadge,
+    showAlertMedioPagoRequerido
+} from '../components/MedioPagoGastoControls';
 import { useTheme } from '../contexts/ThemeContext';
 import { getFileServerUrl, getApiBaseUrl } from '../services/apiConfig';
+import api from '../services/apiClient';
+import { parseMontoInput, GastoListaPrecios } from '../utils/gastoPrecioForm';
+import { gastoPermiteEdicionTrasContabilidad } from '../utils/gastoEditPermission';
+import { resolveOvertimeShiftContext, applyLegacyLunchDiscount } from '../utils/overtimeLunch';
+import {
+    MSG_GASTO_HORAS_DUPLICADO,
+    findDuplicateOvertimeAmongCandidates,
+    buildOvertimeCandidatesFromForm,
+} from '../utils/duplicateOvertimeGasto';
+import { showAppAlert, extractApiErrorMessage, isOvertimeDuplicateMessage } from '../utils/appAlert';
+import { calcValorAPagarLabor, calcValorHoraLabor, parseNumeroLabor } from '../utils/laborHorasExtras';
 
 // TABS - Same structure as SST
 const TABS = [
     { key: 'gastos', label: 'Captura de Gastos', icon: '💰' },
     { key: 'graficas', label: 'Gráficas', icon: '📊' },
     { key: 'rubros', label: 'Rubros', icon: '📁' },
-    { key: 'productos', label: 'Productos', icon: '📦' },
     { key: 'cotizaciones', label: 'Cotizaciones', icon: '📝' },
     { key: 'proveedores', label: 'Proveedores', icon: '🏢' },
     { key: 'tiposHora', label: 'H. Extras', icon: '⏱️' },
@@ -54,6 +72,15 @@ const formatCurrency = (value) => {
 const formatDate = (dateString) => {
     if (!dateString) return '';
     return new Date(dateString).toLocaleDateString('es-CO');
+};
+
+const getEstadoColor = (estado) => {
+    switch (estado) {
+        case 'Pagado': return '#10B981';
+        case 'Entregado': return '#3B82F6';
+        case 'Montado': return '#6B7280';
+        default: return '#6B7280';
+    }
 };
 
 
@@ -119,6 +146,7 @@ export default function ProduccionGastosScreen() {
 
 // ===================== GASTOS TAB =====================
 function GastosTab() {
+    const { colors: themeColors } = useTheme();
     const [loading, setLoading] = useState(true);
     const [serverUrl, setServerUrl] = useState('');
     const [apiBaseUrl, setApiBaseUrl] = useState('');
@@ -165,11 +193,13 @@ function GastosTab() {
     const isLegalizingRef = useRef(false); // Ref for robust state tracking
     const [formData, setFormData] = useState({
         rubroId: '', proveedorId: '', usuarioId: '', maquinaId: '', tipoHoraId: '', tipoRecargoId: '',
-        precio: '', fecha: new Date().toISOString().split('T')[0], nota: '', cantidadHoras: '',
+        precio: '', precioBase: '', precioIva: '', fecha: new Date().toISOString().split('T')[0], nota: '', cantidadHoras: '',
         numeroFactura: '', facturaPdfUrl: '', numeroOP: '', esPendiente: false, esSolicitudCredito: false,
         horaInicio: '', horaFin: ''
     });
     const [breakdown, setBreakdown] = useState([]);
+    const [formOvertimeError, setFormOvertimeError] = useState('');
+    const [medioPago, setMedioPago] = useState(null); // 'credito' | 'efectivo' | null — obligatorio solo en gastos normales
     const [saving, setSaving] = useState(false);
 
     const [presupuestoInfo, setPresupuestoInfo] = useState(null);
@@ -196,16 +226,34 @@ function GastosTab() {
     const loadGastos = useCallback(async () => {
         setLoading(true);
         try {
-            const [gastosData, resumenData, cotData] = await Promise.all([
+            const [gastosResult, resumenResult, cotResult] = await Promise.allSettled([
                 produccionApi.getGastos(anio, mes),
                 produccionApi.getResumen(anio, mes),
-                produccionApi.getCotizaciones(anio, mes)
+                produccionApi.getCotizaciones(anio, mes),
             ]);
-            setGastos(gastosData.gastos || []);
-            setResumen(resumenData);
-            setCotizaciones(cotData);
-        } catch (error) {
-            console.error('Error loading gastos:', error);
+
+            if (gastosResult.status === 'fulfilled') {
+                setGastos(gastosResult.value.gastos || []);
+            } else {
+                console.error('Error loading gastos:', gastosResult.reason);
+                const status = gastosResult.reason?.response?.status;
+                const msg = status === 502
+                    ? 'El servidor no respondió (502). Espere unos segundos y pulse Actualizar.'
+                    : 'No se pudo cargar la lista de gastos.';
+                Alert.alert('Error', msg);
+            }
+
+            if (resumenResult.status === 'fulfilled') {
+                setResumen(resumenResult.value);
+            } else {
+                console.error('Error loading resumen:', resumenResult.reason);
+            }
+
+            if (cotResult.status === 'fulfilled') {
+                setCotizaciones(cotResult.value);
+            } else {
+                console.error('Error loading cotizaciones:', cotResult.reason);
+            }
         } finally {
             setLoading(false);
         }
@@ -283,8 +331,15 @@ function GastosTab() {
         setEditItem(null);
         setIsLegalizing(false);
         isLegalizingRef.current = false;
-        setFormData({ rubroId: '', proveedorId: '', usuarioId: '', maquinaId: '', tipoHoraId: '', tipoRecargoId: '', precio: '', fecha: new Date().toISOString().split('T')[0], nota: '', cantidadHoras: '', numeroFactura: '', facturaPdfUrl: '', numeroOP: '', esPendiente: false, esSolicitudCredito: false, horaInicio: '', horaFin: '' });
+        setMedioPago(null);
+        setFormOvertimeError('');
+        setFormData({ rubroId: '', proveedorId: '', usuarioId: '', maquinaId: '', tipoHoraId: '', tipoRecargoId: '', precio: '', precioBase: '', precioIva: '', fecha: new Date().toISOString().split('T')[0], nota: '', cantidadHoras: '', numeroFactura: '', facturaPdfUrl: '', numeroOP: '', esPendiente: false, esSolicitudCredito: false, horaInicio: '', horaFin: '' });
         setBreakdown([]);
+    };
+
+    const notifyDuplicateOvertime = () => {
+        setFormOvertimeError(MSG_GASTO_HORAS_DUPLICADO);
+        showAppAlert('Registro duplicado', MSG_GASTO_HORAS_DUPLICADO);
     };
 
     // ========== SMART BREAKDOWN (Turno base desde horaInicio) ==========
@@ -328,8 +383,10 @@ function GastosTab() {
         const isSpecialDayStart = isSundayStart || isHolidayStart;
         const isSaturdayStart = startDate.getDay() === 6;
 
-        const baseShiftMinutes = isSpecialDayStart ? 0 : (isSaturdayStart ? 4 * 60 : 8 * 60);
-        const shiftEndMin = startFull + baseShiftMinutes; // Momento exacto donde termina el turno base
+        const { shiftEndMin, lunchWindow, usesScheduledShift } = resolveOvertimeShiftContext(startFull, endFull, {
+            isSpecialDay: isSpecialDayStart,
+            isSaturday: isSaturdayStart,
+        });
 
         const addBreakdown = (s, e, typeNameMatch, isHe, isSpecialDay) => {
             if (e <= s) return;
@@ -362,6 +419,12 @@ function GastosTab() {
             if (boundary > startFull && boundary < endFull) cutPoints.add(boundary);
         });
 
+        const lunchWindowCtx = lunchWindow;
+        if (lunchWindowCtx) {
+            cutPoints.add(lunchWindowCtx.lunchStart);
+            cutPoints.add(lunchWindowCtx.lunchEnd);
+        }
+
         const sortedCuts = [...cutPoints].sort((a, b) => a - b);
 
         // Procesar cada sub-intervalo
@@ -369,13 +432,15 @@ function GastosTab() {
             const s = sortedCuts[i];
             const e = sortedCuts[i + 1];
             if (e <= s) continue;
+            if (lunchWindowCtx && s >= lunchWindowCtx.lunchStart && e <= lunchWindowCtx.lunchEnd) continue;
 
             // Determinar la fecha real de este intervalo
             const mid = (s + e) / 2;
             const actualDate = new Date(startDate);
             if (mid >= 1440) actualDate.setDate(actualDate.getDate() + 1);
             const actualDateISO = formatISO(actualDate);
-            const isSpecialDay = actualDate.getDay() === 0 || COLOMBIAN_HOLIDAYS.includes(actualDateISO);
+            // Para turnos que cruzan medianoche, se respeta la regla del día de inicio del turno.
+            const isSpecialDay = isSpecialDayStart;
 
             // ¿Está dentro del turno base?
             const isWithinShift = s < shiftEndMin;
@@ -414,45 +479,44 @@ function GastosTab() {
         // --- LÓGICA DE DESCUENTO DE COMIDA (-1 HORA) ---
         // Resta 1h directamente de las horas extra (solo visual + cálculo, NO se guarda como registro)
         const totalDurationMin = endFull - startFull;
-        if (totalDurationMin >= 6 * 60) {
-            const extraItem = breakdownItems.find(item => item.isHe);
-            if (extraItem && extraItem.hours > 1) {
-                extraItem.hours -= 1.0;
-            } else if (extraItem) {
-                // Si extra <= 1h, restar de recargos
-                const recargoItem = breakdownItems.find(item => !item.isHe);
-                if (recargoItem) recargoItem.hours = Math.max(0, recargoItem.hours - 1.0);
-            } else {
-                const recargoItem = breakdownItems.find(item => !item.isHe);
-                if (recargoItem) recargoItem.hours = Math.max(0, recargoItem.hours - 1.0);
-            }
-            // Agregar línea informativa de COMIDA (solo visual, NO se guarda)
-            breakdownItems.push({ 
-                type: '- COMIDA (Descuento)', 
-                typeId: 0, 
-                hours: -1.0, 
-                isHe: false,
-                isLunch: true 
-            });
+        const lunchDiscountApplied = lunchWindowCtx || usesScheduledShift
+            ? 0
+            : (totalDurationMin >= 6 * 60 && !isSaturdayStart
+                ? applyLegacyLunchDiscount(breakdownItems, 1.0)
+                : 0);
+
+        if (lunchDiscountApplied > 0 && breakdownItems.some(item => item.hours > 0)) {
+                // Agregar línea informativa de COMIDA (solo visual, NO se guarda)
+                breakdownItems.push({ 
+                    type: '- COMIDA (Descuento)', 
+                    typeId: 0, 
+                    hours: -lunchDiscountApplied, 
+                    isHe: false,
+                    isLunch: true 
+                });
         }
 
-        setBreakdown(breakdownItems.map(item => ({ ...item, formattedHours: formatHours(item.hours) })));
+        // Limpiar items en cero para evitar mostrar horas extra inexistentes.
+        const cleanedBreakdownItems = breakdownItems.filter(item => item.isLunch || item.hours > 0);
+
+        setBreakdown(cleanedBreakdownItems.map(item => ({ ...item, formattedHours: formatHours(item.hours) })));
 
         // Calcular costo total (EXCLUYE items de COMIDA, ya fue restado de las horas extra)
         let totalCost = 0;
         const salario = parseFloat(worker.salario) || 0;
         const valorHoraBase = salario / 220;
-        breakdownItems.filter(item => !item.isLunch).forEach(item => {
+        cleanedBreakdownItems.filter(item => !item.isLunch).forEach(item => {
             const list = item.isHe ? tiposHora : tiposRecargo;
             const tipo = list.find(t => t.id == item.typeId);
             if (tipo) totalCost += valorHoraBase * (parseFloat(tipo.factor) || 1.0) * item.hours;
         });
 
-        if (totalCost > 0) {
-            const selectedRubro = rubros.find(r => r.id == formData.rubroId);
-            const isHE = selectedRubro?.nombre?.toLowerCase().includes('horas extras');
-            const isRec = selectedRubro?.nombre?.toLowerCase().includes('recargo');
-            if (isHE || isRec) setFormData(prev => ({ ...prev, precio: Math.round(totalCost).toString() }));
+        const selectedRubro = rubros.find(r => r.id == formData.rubroId);
+        const isHE = selectedRubro?.nombre?.toLowerCase().includes('horas extras');
+        const isRec = selectedRubro?.nombre?.toLowerCase().includes('recargo');
+        if (isHE || isRec) {
+            const safeTotal = Math.max(0, Math.round(totalCost));
+            setFormData(prev => ({ ...prev, precio: safeTotal.toString() }));
         }
     }, [formData.usuarioId, formData.horaInicio, formData.horaFin, formData.fecha, formData.rubroId, usuarios, tiposHora, tiposRecargo, rubros]);
 
@@ -463,7 +527,9 @@ function GastosTab() {
             ...prev,
             rubroId: quote.rubroId.toString(),
             proveedorId: quote.proveedorId.toString(),
-            precio: quote.precioCotizado.toString(),
+            precioBase: quote.precioCotizado != null ? String(quote.precioCotizado) : '',
+            precioIva: '0',
+            precio: quote.precioCotizado != null ? String(quote.precioCotizado) : '',
             nota: quote.descripcion || prev.nota
         }));
         setShowQuoteSelector(false);
@@ -482,6 +548,7 @@ function GastosTab() {
             rubroId: gasto.rubroId?.toString() || '', proveedorId: gasto.proveedorId?.toString() || '',
             usuarioId: gasto.usuarioId?.toString() || '', maquinaId: gasto.maquinaId?.toString() || '',
             tipoHoraId: gasto.tipoHoraId?.toString() || '', tipoRecargoId: gasto.tipoRecargoId?.toString() || '', precio: gasto.precio?.toString() || '',
+            precioBase: gasto.precioBase != null ? String(gasto.precioBase) : '', precioIva: gasto.precioIva != null ? String(gasto.precioIva) : '',
             fecha: gasto.fecha?.split('T')[0] || new Date().toISOString().split('T')[0],
             nota: gasto.nota || '', cantidadHoras: gasto.cantidadHoras?.toString() || '',
             numeroFactura: gasto.numeroFactura || '', facturaPdfUrl: gasto.facturaPdfUrl || '',
@@ -489,10 +556,15 @@ function GastosTab() {
             esPendiente: false, // Force to false
             esSolicitudCredito: gasto.esSolicitudCredito || false
         });
+        setMedioPago(flagsToMedioPago(!!gasto.esSolicitudCredito, !!gasto.esEfectivo));
         setShowModal(true);
     };
 
     const handleEdit = (gasto) => {
+        if (!gastoPermiteEdicionTrasContabilidad(gasto)) {
+            Alert.alert('Acceso Denegado', `No se puede editar un gasto en estado ${gasto.estado} (ya consta como legalizado).`);
+            return;
+        }
         setEditItem(gasto);
         setIsLegalizing(false);
         isLegalizingRef.current = false;
@@ -500,18 +572,22 @@ function GastosTab() {
             rubroId: gasto.rubroId?.toString() || '', proveedorId: gasto.proveedorId?.toString() || '',
             usuarioId: gasto.usuarioId?.toString() || '', maquinaId: gasto.maquinaId?.toString() || '',
             tipoHoraId: gasto.tipoHoraId?.toString() || '', tipoRecargoId: gasto.tipoRecargoId?.toString() || '', precio: gasto.precio?.toString() || '',
+            precioBase: gasto.precioBase != null ? String(gasto.precioBase) : '', precioIva: gasto.precioIva != null ? String(gasto.precioIva) : '',
             fecha: gasto.fecha?.split('T')[0] || new Date().toISOString().split('T')[0],
             nota: gasto.nota || '', cantidadHoras: gasto.cantidadHoras?.toString() || '',
             numeroFactura: gasto.numeroFactura || '', facturaPdfUrl: gasto.facturaPdfUrl || '',
             numeroOP: gasto.numeroOP || '',
             esPendiente: gasto.esPendiente || false,
-            esSolicitudCredito: gasto.esSolicitudCredito || false
+            esSolicitudCredito: gasto.esSolicitudCredito || false,
+            horaInicio: gasto.horaInicio || gasto.HoraInicio || '',
+            horaFin: gasto.horaFin || gasto.HoraFin || ''
         });
+        setMedioPago(flagsToMedioPago(!!gasto.esSolicitudCredito, !!gasto.esEfectivo));
         setShowModal(true);
     };
 
     const handleSubmit = async () => {
-        if (!formData.rubroId) { Alert.alert('Error', 'Seleccione un rubro'); return; }
+        if (!formData.rubroId) { showAppAlert('Error', 'Seleccione un rubro'); return; }
         const selectedRubro = rubros.find(r => r.id == formData.rubroId);
         const rubroName = selectedRubro?.nombre?.toLowerCase() || '';
         const isHorasExtras = rubroName.includes('horas extras') || rubroName.includes('hora extra');
@@ -521,38 +597,58 @@ function GastosTab() {
 
         // Validation for Horas Extras / Recargos
         if ((isHorasExtras || isRecargo) && !formData.usuarioId) {
-            Alert.alert('Error', 'Seleccione un Operario'); return;
+            showAppAlert('Error', 'Seleccione un Operario'); return;
         }
         if ((isHorasExtras || isRecargo) && (!formData.horaInicio || !formData.horaFin)) {
-            Alert.alert('Error', 'Ingrese Hora Inicio y Hora Fin'); return;
+            showAppAlert('Error', 'Ingrese Hora Inicio y Hora Fin'); return;
         }
         if ((isHorasExtras || isRecargo) && breakdown.length === 0) {
-            Alert.alert('Error', 'No se detectaron horas extras/recargos en el intervalo ingresado'); return;
+            showAppAlert('Error', 'No se detectaron horas extras/recargos en el intervalo ingresado'); return;
+        }
+        if (isHorasExtras || isRecargo) {
+            const dupCandidates = buildOvertimeCandidatesFromForm(formData, breakdown, 'usuarioId');
+            if (findDuplicateOvertimeAmongCandidates(gastos, dupCandidates, editItem?.id)) {
+                notifyDuplicateOvertime();
+                return;
+            }
+            setFormOvertimeError('');
         }
         // Validation for OP number (required for Horas Extras, Recargos AND Insumos)
         if ((isHorasExtras || isRecargo || isInsumos) && !formData.numeroOP.trim()) {
-            Alert.alert('Error', isHorasExtras || isRecargo ? 'Ingrese el Número de OP (Orden de Producción)' : 'Para Insumos, el Número de OP es obligatorio'); return;
+            showAppAlert('Error', isHorasExtras || isRecargo ? 'Ingrese el Número de OP (Orden de Producción)' : 'Para Insumos, el Número de OP es obligatorio'); return;
         }
 
         // Validation for Maintenance/Spares: Machine is Mandatory
         if (isMaintenance && !formData.maquinaId) {
-            Alert.alert('Error', 'Seleccione la Máquina (Obligatorio para Mantenimiento/Repuesto)'); return;
+            showAppAlert('Error', 'Seleccione la Máquina (Obligatorio para Mantenimiento/Repuesto)'); return;
         }
 
-        // Validación de factura y precio (Opcional si es pendiente) para NO Horas extras
+        // Medio de pago obligatorio (gastos normales, no nómina HE/recargos)
+        if (!isHorasExtras && !isRecargo && !medioPago) {
+            showAlertMedioPagoRequerido();
+            return;
+        }
+
+        // Validación base + IVA (IVA puede ser 0) y factura para gastos normales
         if (!isHorasExtras && !isRecargo) {
-            // Si NO es pendiente, se requiere precio y factura
-            if (!formData.esPendiente) {
-                // Validamos precio (debe ser mayor a 0 y no estar vacío)
-                if (!formData.precio || parseFloat(formData.precio) <= 0) {
-                    Alert.alert('Error', 'Ingrese el precio'); return;
+            let pb = parseMontoInput(formData.precioBase);
+            let pi = parseMontoInput(formData.precioIva);
+            if (formData.esPendiente) {
+                if (pb === null) pb = 0;
+                if (pi === null) pi = 0;
+            } else {
+                if (pb === null || pi === null) {
+                    Alert.alert('Error', 'Ingrese precio base e IVA (el IVA puede ser 0).'); return;
+                }
+                if (pb < 0 || pi < 0) {
+                    Alert.alert('Error', 'Precio base e IVA no pueden ser negativos.'); return;
+                }
+                if (pb + pi <= 0) {
+                    Alert.alert('Error', 'El total (base + IVA) debe ser mayor a 0.'); return;
                 }
                 if (!formData.numeroFactura || !formData.numeroFactura.trim()) {
                     Alert.alert('Error', 'Número de Factura es obligatorio'); return;
                 }
-            } else {
-                // Si ES pendiente, permitimos guardar aunque no haya precio/factura.
-                // Aseguramos que precio sea 0 si está vacío para evitar error de casteo
             }
         }
 
@@ -571,6 +667,9 @@ function GastosTab() {
                 const promises = breakdown.filter(item => !item.isLunch).map(item => {
                     const list = item.isHe ? tiposHora : tiposRecargo;
                     const tipo = list.find(t => t.id == item.typeId);
+                    if (!tipo) {
+                        throw new Error(`No se encontró el tipo de ${item.isHe ? 'hora extra' : 'recargo'}: ${item.type}`);
+                    }
                     const factor = parseFloat(tipo?.factor) || 1.0;
                     const itemPrecio = Math.round(valorHoraBase * factor * item.hours);
 
@@ -590,13 +689,28 @@ function GastosTab() {
                         numeroFactura: null,
                         facturaPdfUrl: null,
                         numeroOP: formData.numeroOP || null,
-                        esPendiente: false
+                        esPendiente: false,
+                        esSolicitudCredito: false,
+                        esEfectivo: false,
+                        horaInicio: formData.horaInicio || null,
+                        horaFin: formData.horaFin || null
                     };
                     return produccionApi.createGasto(record);
                 });
                 await Promise.all(promises);
             } else {
                 // Lógica estándar de un solo registro
+                let pbSave = parseMontoInput(formData.precioBase);
+                let piSave = parseMontoInput(formData.precioIva);
+                if (!isHorasExtras && !isRecargo) {
+                    if (formData.esPendiente) {
+                        if (pbSave === null) pbSave = 0;
+                        if (piSave === null) piSave = 0;
+                    }
+                }
+                const totalNormal = !isHorasExtras && !isRecargo && pbSave !== null && piSave !== null
+                    ? pbSave + piSave
+                    : parseFloat(formData.precio || 0);
                 const gastoData = {
                     rubroId: parseInt(formData.rubroId),
                     proveedorId: formData.proveedorId ? parseInt(formData.proveedorId) : null,
@@ -604,7 +718,11 @@ function GastosTab() {
                     maquinaId: formData.maquinaId ? parseInt(formData.maquinaId) : null,
                     tipoHoraId: formData.tipoHoraId ? parseInt(formData.tipoHoraId) : null,
                     tipoRecargoId: formData.tipoRecargoId ? parseInt(formData.tipoRecargoId) : null,
-                    precio: parseFloat(formData.precio || 0), fecha: formData.fecha, nota: formData.nota,
+                    precio: totalNormal,
+                    ...(!isHorasExtras && !isRecargo && pbSave !== null && piSave !== null
+                        ? { precioBase: pbSave, precioIva: piSave }
+                        : {}),
+                    fecha: formData.fecha, nota: formData.nota,
                     cantidadHoras: formData.cantidadHoras ? parseFloat(formData.cantidadHoras) : null,
                     anio: parseInt(formData.fecha.split('-')[0]),
                     mes: parseInt(formData.fecha.split('-')[1]),
@@ -612,7 +730,11 @@ function GastosTab() {
                     facturaPdfUrl: (isHorasExtras || isRecargo) ? null : formData.facturaPdfUrl,
                     numeroOP: (isHorasExtras || isRecargo || isInsumos) ? formData.numeroOP : null,
                     esPendiente: formData.esPendiente || false,
-                    esSolicitudCredito: formData.esSolicitudCredito || false
+                    horaInicio: (isHorasExtras || isRecargo) ? (formData.horaInicio || null) : null,
+                    horaFin: (isHorasExtras || isRecargo) ? (formData.horaFin || null) : null,
+                    ...((isHorasExtras || isRecargo)
+                        ? { esSolicitudCredito: false, esEfectivo: false }
+                        : medioPagoToFlags(medioPago))
                 };
 
                 // Si es Edición de Horas Extras/Recargos y hubo un cambio en el intervalo (breakdown)
@@ -631,7 +753,9 @@ function GastosTab() {
                     const quote = cotizaciones.find(c => c.rubroId == gastoData.rubroId && c.proveedorId == gastoData.proveedorId);
                     if (quote) {
                         const quotePrice = parseFloat(quote.precioCotizado);
-                        const currentPrice = gastoData.precio;
+                        const currentPrice = gastoData.precioBase != null && gastoData.precioIva != null
+                            ? gastoData.precioBase + gastoData.precioIva
+                            : gastoData.precio;
                         if (Math.abs(quotePrice - currentPrice) > 1) {
                             const msg = `El precio ingresado (${formatCurrency(currentPrice)}) es diferente a la cotización (${formatCurrency(quotePrice)}).\n\n¿Desea actualizar el precio en la cotización?`;
                             if (Platform.OS === 'web' && window.confirm(msg)) {
@@ -651,14 +775,73 @@ function GastosTab() {
 
             Alert.alert('Éxito', editItem ? 'Gasto actualizado' : 'Gasto registrado');
             setShowModal(false); resetForm(); loadGastos();
-        } catch (error) { Alert.alert('Error', 'No se pudo guardar'); }
-        finally { setSaving(false); }
+        } catch (error) {
+            console.error('Error saving gasto:', error);
+            const fallback = error?.response?.status === 502
+                ? 'El servidor no respondió. Intente de nuevo en unos segundos.'
+                : 'No se pudo guardar el gasto.';
+            const texto = extractApiErrorMessage(error, fallback);
+            if (isOvertimeDuplicateMessage(texto, error?.response?.status)) {
+                setFormOvertimeError(texto);
+                showAppAlert('Registro duplicado', texto);
+            } else {
+                showAppAlert('Error', texto);
+            }
+        } finally { setSaving(false); }
     };
 
     const handleDelete = async (id) => {
+        const gasto = gastos.find(g => g.id === id);
+        if (gasto && !gastoPermiteEdicionTrasContabilidad(gasto)) {
+            Alert.alert('Acceso Denegado', `No se puede eliminar un gasto en estado ${gasto.estado} (ya consta como legalizado).`);
+            return;
+        }
         const doDelete = async () => { try { await produccionApi.deleteGasto(id); loadGastos(); } catch { Alert.alert('Error', 'No se pudo eliminar'); } };
         if (Platform.OS === 'web') { if (window.confirm('¿Eliminar gasto?')) doDelete(); }
         else { Alert.alert('Confirmar', '¿Eliminar este gasto?', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Eliminar', style: 'destructive', onPress: doDelete }]); }
+    };
+
+    const handleUpdateEstado = async (gasto) => {
+        const estados = ['Montado', 'Entregado', 'Pagado'];
+        const currentIdx = estados.indexOf(gasto.estado || 'Montado');
+        const nextEstado = estados[(currentIdx + 1) % estados.length];
+
+        const confirmMsg = `¿Cambiar estado de "${gasto.estado || 'Montado'}" a "${nextEstado}"?`;
+
+        const executeUpdate = async () => {
+            try {
+                setLoading(true);
+                // Clonar objeto y limpiar propiedades de navegación para evitar errores en el backend
+                const updatedGasto = {
+                    ...gasto,
+                    estado: nextEstado,
+                    rubro: undefined,
+                    proveedor: undefined,
+                    usuario: undefined,
+                    maquina: undefined,
+                    tipoHora: undefined,
+                    tipoRecargo: undefined,
+                    creadoPor: undefined
+                };
+                await produccionApi.updateGasto(gasto.id, updatedGasto);
+                await loadGastos();
+                Alert.alert('Éxito', `Estado actualizado a ${nextEstado}`);
+            } catch (error) {
+                console.error('Error updating status:', error);
+                Alert.alert('Error', 'No se pudo actualizar el estado');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        if (Platform.OS === 'web') {
+            if (window.confirm(confirmMsg)) executeUpdate();
+        } else {
+            Alert.alert('Confirmar Cambio', confirmMsg, [
+                { text: 'Cancelar', style: 'cancel' },
+                { text: 'Confirmar', onPress: executeUpdate }
+            ]);
+        }
     };
 
     const selectedRubroName = rubros.find(r => r.id == formData.rubroId)?.nombre?.toLowerCase() || '';
@@ -666,10 +849,6 @@ function GastosTab() {
     const isRecargo = selectedRubroName.includes('recargo');
     const isInsumos = selectedRubroName.includes('insumo');
     const isMaintenance = selectedRubroName.includes('mantenimiento') || selectedRubroName.includes('repuesto');
-
-    console.log('DEBUG: rubroId:', formData.rubroId, 'foundRubro:', rubros.find(r => r.id == formData.rubroId));
-    console.log('DEBUG: selectedRubroName:', selectedRubroName);
-    console.log('DEBUG: isMaintenance:', isMaintenance);
 
     // Calculate totals for summary cards - SST style
     const totalMes = resumen?.total || 0;
@@ -975,9 +1154,19 @@ function GastosTab() {
                                                         <Text style={styles.pendingText}>⏳ Pendiente</Text>
                                                     </View>
                                                 )}
-                                                {gasto.esSolicitudCredito && (
-                                                    <View style={[styles.pendingBadge, { backgroundColor: '#7C3AED' }]}>
-                                                        <Text style={styles.pendingText}>💳 Crédito</Text>
+                                                {(!gasto.tipoHoraId && !gasto.tipoRecargoId) && (
+                                                    <MedioPagoBadge
+                                                        esSolicitudCredito={!!gasto.esSolicitudCredito}
+                                                        esEfectivo={!!gasto.esEfectivo}
+                                                        compact
+                                                    />
+                                                )}
+                                                {gasto.estado && (
+                                                    <View style={[styles.estadoBadge, { backgroundColor: getEstadoColor(gasto.estado) + '20', borderColor: getEstadoColor(gasto.estado) }]}
+                                                    >
+                                                        <Text style={[styles.estadoBadgeText, { color: getEstadoColor(gasto.estado) }]}>
+                                                            {gasto.estado.toUpperCase()}
+                                                        </Text>
                                                     </View>
                                                 )}
                                             </View>
@@ -987,7 +1176,12 @@ function GastosTab() {
                                                 </Text>
                                             )}
                                         </View>
-                                        <Text style={styles.gastoPrecio}>{formatCurrency(gasto.precio)}</Text>
+                                        <GastoListaPrecios
+                                            gasto={gasto}
+                                            singlePriceRow={!!(gasto.tipoHoraId || gasto.tipoRecargoId)}
+                                            formatCurrency={formatCurrency}
+                                            precioStyle={styles.gastoPrecio}
+                                        />
                                     </View>
                                     <Text style={styles.gastoRubro}>
                                         {gasto.tipoHora?.nombre || gasto.tipoRecargo?.nombre || 'General'}
@@ -1034,14 +1228,18 @@ function GastosTab() {
                                                 <Text style={styles.editCardButtonText}>✅ Legalizar</Text>
                                             </TouchableOpacity>
                                         )}
-                                        <TouchableOpacity style={styles.editCardButton} onPress={() => handleEdit(gasto)}>
-                                            <Text style={styles.editCardButtonText}>✏️ Editar</Text>
-                                        </TouchableOpacity>
+                                        {gastoPermiteEdicionTrasContabilidad(gasto) && (
+                                            <>
+                                                <TouchableOpacity style={styles.editCardButton} onPress={() => handleEdit(gasto)}>
+                                                    <Text style={styles.editCardButtonText}>✏️ Editar</Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(gasto.id)}>
+                                                    <Text style={styles.deleteButtonText}>🗑️ Eliminar</Text>
+                                                </TouchableOpacity>
+                                            </>
+                                        )}
                                         <TouchableOpacity style={styles.historyButton} onPress={() => { setSelectedHistoryGasto(gasto); setShowHistoryModal(true); }}>
                                             <Text style={styles.historyButtonText}>🕒 Historial</Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(gasto.id)}>
-                                            <Text style={styles.deleteButtonText}>🗑️ Eliminar</Text>
                                         </TouchableOpacity>
                                     </View>
                                 </View>
@@ -1097,7 +1295,10 @@ function GastosTab() {
                                 <View style={{ marginBottom: 15 }}>
                                     <Text style={styles.label}>Rubro *</Text>
                                     <View style={styles.pickerContainer}>
-                                        <Picker selectedValue={formData.rubroId} onValueChange={(v) => setFormData(p => ({ ...p, rubroId: v }))}>
+                                        <Picker selectedValue={formData.rubroId} onValueChange={(v) => {
+                                            setMedioPago(null);
+                                            setFormData(p => ({ ...p, rubroId: v }));
+                                        }}>
                                             <Picker.Item label="Seleccione un rubro..." value="" />
                                             {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
                                         </Picker>
@@ -1107,29 +1308,22 @@ function GastosTab() {
 
                             {formData.rubroId ? (
                                 <>
-                                    {/* Solicitud de Crédito Checkbox */}
                                     {!isHorasExtras && !isRecargo && (
-                                        <TouchableOpacity
-                                            style={{
-                                                flexDirection: 'row',
-                                                alignItems: 'center',
-                                                marginBottom: 15,
-                                                padding: 10,
-                                                backgroundColor: '#F5F3FF',
-                                                borderRadius: 8,
-                                                borderWidth: 1,
-                                                borderColor: '#DDD6FE'
+                                        <MedioPagoGastoControls
+                                            value={medioPago}
+                                            onChange={(v) => {
+                                                setMedioPago(v);
+                                                const f = medioPagoToFlags(v);
+                                                setFormData(p => ({ ...p, esSolicitudCredito: f.esSolicitudCredito }));
                                             }}
-                                            onPress={() => setFormData(p => ({ ...p, esSolicitudCredito: !p.esSolicitudCredito }))}
-                                        >
-                                            <View style={[styles.checkbox, formData.esSolicitudCredito && { backgroundColor: '#7C3AED', borderColor: '#7C3AED' }]}>
-                                                {formData.esSolicitudCredito && <Text style={styles.checkboxCheck}>✓</Text>}
-                                            </View>
-                                            <View>
-                                                <Text style={[styles.checkboxLabel, { color: '#5B21B6' }]}>Solicitud de Crédito</Text>
-                                                <Text style={{ fontSize: 10, color: '#6D28D9', marginLeft: 10 }}>Marcar para trámite de crédito</Text>
-                                            </View>
-                                        </TouchableOpacity>
+                                            colors={{
+                                                text: themeColors.text,
+                                                subText: themeColors.subText,
+                                                primary: themeColors.primary || '#7C3AED',
+                                                border: themeColors.border,
+                                                card: themeColors.card || themeColors.background
+                                            }}
+                                        />
                                     )}
 
                                     {isMaintenance && (
@@ -1170,7 +1364,7 @@ function GastosTab() {
                                                 }}>
                                                     <Picker.Item label="Seleccione..." value="" />
                                                     {proveedores
-                                                        .filter(p => !formData.rubroId || p.rubroId?.toString() === formData.rubroId)
+                                                        .filter(p => proveedorMatchesRubro(p, formData.rubroId))
                                                         .map(p => <Picker.Item key={p.id} label={`${p.nombre}${p.precioCotizado ? ` - ${formatCurrency(p.precioCotizado)}` : ''}`} value={p.id.toString()} />)
                                                     }
                                                 </Picker>
@@ -1239,6 +1433,11 @@ function GastosTab() {
                                                     ))}
                                                 </View>
                                             )}
+                                            {!!formOvertimeError && (
+                                                <View style={{ backgroundColor: '#FEE2E2', borderColor: '#DC2626', borderWidth: 1, padding: 12, borderRadius: 8, marginBottom: 15 }}>
+                                                    <Text style={{ color: '#B91C1C', fontWeight: 'bold', fontSize: 13 }}>{formOvertimeError}</Text>
+                                                </View>
+                                            )}
                                         </>
                                     )}
 
@@ -1299,15 +1498,43 @@ function GastosTab() {
                                     )}
 
                                     <View style={{ marginBottom: 15 }}>
-                                        <Text style={styles.label}>Precio * {(isHorasExtras || isRecargo) ? (formData.numeroOP.trim() ? '(editable con OP)' : '(ingrese OP primero)') : (!formData.esPendiente && !formData.numeroFactura.trim() ? '(ingrese factura primero)' : '')}</Text>
-                                        <TextInput
-                                            style={[styles.input, ((isHorasExtras || isRecargo) ? !formData.numeroOP.trim() : (!formData.esPendiente && !formData.numeroFactura.trim())) && styles.inputDisabled]}
-                                            value={formData.precio}
-                                            onChangeText={(t) => setFormData(p => ({ ...p, precio: t }))}
-                                            keyboardType="numeric"
-                                            placeholder="$ 0"
-                                            editable={(isHorasExtras || isRecargo) ? !!formData.numeroOP.trim() : (formData.esPendiente || !!formData.numeroFactura.trim())}
-                                        />
+                                        {(isHorasExtras || isRecargo) ? (
+                                            <>
+                                                <Text style={styles.label}>Precio * {formData.numeroOP.trim() ? '(editable con OP)' : '(ingrese OP primero)'}</Text>
+                                                <TextInput
+                                                    style={[styles.input, !formData.numeroOP.trim() && styles.inputDisabled]}
+                                                    value={formData.precio}
+                                                    onChangeText={(t) => setFormData(p => ({ ...p, precio: t }))}
+                                                    keyboardType="numeric"
+                                                    placeholder="$ 0"
+                                                    editable={!!formData.numeroOP.trim()}
+                                                />
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Text style={styles.label}>Precio base * {!formData.esPendiente && !formData.numeroFactura.trim() ? '(ingrese factura primero)' : ''}</Text>
+                                                <TextInput
+                                                    style={[styles.input, !formData.esPendiente && !formData.numeroFactura.trim() && styles.inputDisabled]}
+                                                    value={formData.precioBase}
+                                                    onChangeText={(t) => setFormData(p => ({ ...p, precioBase: t }))}
+                                                    keyboardType="numeric"
+                                                    placeholder="$ 0"
+                                                    editable={formData.esPendiente || !!formData.numeroFactura.trim()}
+                                                />
+                                                <Text style={[styles.label, { marginTop: 10 }]}>IVA * (puede ser 0)</Text>
+                                                <TextInput
+                                                    style={[styles.input, !formData.esPendiente && !formData.numeroFactura.trim() && styles.inputDisabled]}
+                                                    value={formData.precioIva}
+                                                    onChangeText={(t) => setFormData(p => ({ ...p, precioIva: t }))}
+                                                    keyboardType="numeric"
+                                                    placeholder="0"
+                                                    editable={formData.esPendiente || !!formData.numeroFactura.trim()}
+                                                />
+                                                <Text style={{ marginTop: 8, fontSize: 14, fontWeight: 'bold', color: '#059669' }}>
+                                                    Total: {formatCurrency((parseMontoInput(formData.precioBase) ?? 0) + (parseMontoInput(formData.precioIva) ?? 0))}
+                                                </Text>
+                                            </>
+                                        )}
                                     </View>
 
                                     {/* Cuadro de presupuesto estilo SST - DEBAJO DEL PRECIO */}
@@ -1320,7 +1547,11 @@ function GastosTab() {
                                             </View>
                                             {(() => {
                                                 // Live calculation like SST
-                                                const currentPrice = parseFloat(formData.precio) || 0;
+                                                const pbLive = parseMontoInput(formData.precioBase);
+                                                const piLive = parseMontoInput(formData.precioIva);
+                                                const currentPrice = (isHorasExtras || isRecargo)
+                                                    ? (parseFloat(formData.precio) || 0)
+                                                    : (pbLive !== null && piLive !== null ? pbLive + piLive : (parseFloat(formData.precio) || 0));
                                                 const originalPrice = editItem ? (editItem.precio || 0) : 0;
                                                 const adjustedGastadoMes = (presupuestoInfo.gastadoMes || 0) - originalPrice;
                                                 const liveGastado = adjustedGastadoMes + currentPrice;
@@ -2230,7 +2461,7 @@ function ProveedoresTab() {
     const [nombre, setNombre] = useState('');
     const [nit, setNit] = useState('');
     const [telefono, setTelefono] = useState('');
-    const [rubroId, setRubroId] = useState('');
+    const [rubroIds, setRubroIds] = useState([]);
     const [precioCotizado, setPrecioCotizado] = useState('');
     const [saving, setSaving] = useState(false);
 
@@ -2251,7 +2482,7 @@ function ProveedoresTab() {
         setNombre('');
         setNit('');
         setTelefono('');
-        setRubroId('');
+        setRubroIds([]);
         setPrecioCotizado('');
         setShowModal(true);
     };
@@ -2261,7 +2492,7 @@ function ProveedoresTab() {
         setNombre(item.nombre);
         setNit(item.nit || '');
         setTelefono(item.telefono || '');
-        setRubroId(item.rubroId?.toString() || '');
+        setRubroIds(getProveedorRubroIds(item).map(String));
         setPrecioCotizado(item.precioCotizado?.toString() || '');
         setShowModal(true);
     };
@@ -2274,7 +2505,8 @@ function ProveedoresTab() {
                 nombre,
                 nit,
                 telefono,
-                rubroId: rubroId ? parseInt(rubroId) : null
+                rubroIds: rubroIds.map(id => parseInt(id, 10)).filter(id => id > 0),
+                rubroId: rubroIds[0] ? parseInt(rubroIds[0], 10) : null
             };
             if (editItem) {
                 await produccionApi.updateProveedor(editItem.id, provData);
@@ -2328,7 +2560,7 @@ function ProveedoresTab() {
                         <View style={styles.gastoHeader}>
                             <Text style={styles.gastoTipo}>{item.nombre}</Text>
                         </View>
-                        <Text style={styles.gastoRubro}>{item.rubro?.nombre || 'Sin rubro asignado'}</Text>
+                        <Text style={styles.gastoRubro}>{getProveedorRubrosLabel(item)}</Text>
                         <View style={styles.gastoDetails}>
                             {item.nit && <Text style={styles.gastoDetail}>📄 NIT: {item.nit}</Text>}
                             {item.telefono && <Text style={styles.gastoDetail}>📞 Tel: {item.telefono}</Text>}
@@ -2357,13 +2589,7 @@ function ProveedoresTab() {
                         <Text style={styles.label}>Teléfono</Text>
                         <TextInput style={styles.input} value={telefono} onChangeText={setTelefono} placeholder="Teléfono" keyboardType="phone-pad" />
 
-                        <Text style={styles.label}>Rubro</Text>
-                        <View style={styles.pickerContainer}>
-                            <Picker selectedValue={rubroId} onValueChange={setRubroId}>
-                                <Picker.Item label="Seleccione un rubro..." value="" />
-                                {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
-                            </Picker>
-                        </View>
+                        <MultiRubroPicker rubros={rubros} selectedIds={rubroIds} onChange={setRubroIds} />
                     </ScrollView>
                     <View style={styles.modalActions}>
                         <TouchableOpacity style={styles.cancelButton} onPress={() => setShowModal(false)}><Text style={styles.cancelButtonText}>Cancelar</Text></TouchableOpacity>
@@ -2490,19 +2716,23 @@ function TiposHoraTab() {
             const XLSX = await import('xlsx');
 
             // Prepare data for Excel
-            const excelData = combinedData.map(item => ({
+            const excelData = combinedData.map(item => {
+                const salario = parseNumeroLabor(item.salario);
+                const valorHora = calcValorHoraLabor(salario);
+                return {
                 'Fecha': new Date(item.fecha).toLocaleDateString('es-CO'),
                 'Nombre Operario': item.usuarioNombre,
                 'Identificacion': item.usuarioDocumento || '',
                 'OP': item.numeroOP,
-                'Salario': item.salario ? `$ ${new Intl.NumberFormat('es-CO').format(item.salario)}` : '$ 0',
-                'Valor Hora': item.valorHora ? `$ ${new Intl.NumberFormat('es-CO').format(Math.round(item.valorHora))}` : '$ 0',
+                'Salario': salario ? `$ ${new Intl.NumberFormat('es-CO').format(salario)}` : '$ 0',
+                'Valor Hora': valorHora ? `$ ${new Intl.NumberFormat('es-CO').format(Math.round(valorHora))}` : '$ 0',
                 'Tipo': item.tipoHoraNombre, // Changed header to 'Tipo'
                 'Numero Horas': item.cantidadHoras,
                 'Factor': item.factor,
-                'Valor a Pagar': item.precio, // Keep number for Sum calculation
+                'Valor a Pagar': calcValorAPagarLabor(item),
                 'Comentarios': item.nota || ''
-            }));
+            };
+            });
 
             // Calculate Total
 
@@ -2817,7 +3047,7 @@ function TiposRecargoTab() {
                 'Tipo Recargo': item.tipoRecargoNombre,
                 'Factor': item.factor,
                 'Horas': item.cantidadHoras,
-                'Valor': `$ ${Math.round(item.precio).toLocaleString('es-CO')}`,
+                'Valor': `$ ${calcValorAPagarLabor(item).toLocaleString('es-CO')}`,
                 'Comentario (Días)': item.nota || ''
             }));
 
@@ -3040,18 +3270,14 @@ function SalariosTab() {
         try {
             setSaving(true);
             // Update salario AND documento via PUT /api/usuarios/:id
-            const response = await fetch(`${apiBaseUrl}/usuarios/${editItem.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    nombre: editItem.nombre,
-                    salario: parseFloat(salario),
-                    documento: documento.trim(),
-                    activo: true,
-                    esPorHoras: editItem.esPorHoras || false
-                })
+            await api.put(`/usuarios/${editItem.id}`, {
+                nombre: editItem.nombre,
+                salario: parseFloat(salario),
+                documento: documento.trim(),
+                activo: true,
+                esPorHoras: editItem.esPorHoras || false
             });
-            if (!response.ok) throw new Error('Error updating');
+
             Alert.alert('Éxito', 'Operario actualizado');
             setShowModal(false);
             loadData();
@@ -3076,18 +3302,14 @@ function SalariosTab() {
         try {
             setSaving(true);
             // Use existing createUsuario API
-            const response = await fetch(`${apiBaseUrl}/usuarios`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    nombre: newNombre.trim(),
-                    salario: parseFloat(newSalario),
-                    documento: newDocumento.trim(),
-                    estado: true,
-                    activo: true
-                })
+            await api.post('/usuarios', {
+                nombre: newNombre.trim(),
+                salario: parseFloat(newSalario),
+                documento: newDocumento.trim(),
+                estado: true,
+                activo: true
             });
-            if (!response.ok) throw new Error('Error creating operario');
+
 
             if (Platform.OS === 'web') alert('✅ Operario agregado correctamente');
             else Alert.alert('Éxito', 'Operario agregado correctamente');
@@ -3222,6 +3444,29 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#F3F4F6',
+    },
+    estadoBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 4,
+        borderWidth: 1,
+        alignSelf: 'flex-start',
+    },
+    estadoBadgeText: {
+        fontSize: 10,
+        fontWeight: 'bold',
+    },
+    pendingBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 4,
+        alignSelf: 'flex-start',
+        marginRight: 5,
+    },
+    pendingText: {
+        fontSize: 10,
+        fontWeight: 'bold',
+        color: '#FFF',
     },
     loadingContainer: {
         flex: 1,
@@ -3482,6 +3727,17 @@ const styles = StyleSheet.create({
         color: '#4B5563',
         fontSize: 13,
         fontWeight: '500',
+    },
+    estadoBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 6,
+        borderWidth: 1,
+        marginLeft: 10,
+    },
+    estadoBadgeText: {
+        fontSize: 10,
+        fontWeight: '900',
     },
     deleteButton: {
         paddingHorizontal: 14,
@@ -4325,3 +4581,5 @@ function CotizacionesTab() {
         </View>
     );
 }
+
+

@@ -13,10 +13,25 @@ import {
 import { Picker } from '@react-native-picker/picker';
 import * as planeacionApi from '../services/planeacionApi';
 import { ExpenseHistoryModal } from '../components/ExpenseHistoryModal';
+import MultiRubroPicker from '../components/MultiRubroPicker';
+import { getProveedorRubroIds, proveedorMatchesRubro, getProveedorRubrosLabel } from '../utils/proveedorRubros';
+import MedioPagoGastoControls, {
+    medioPagoToFlags,
+    flagsToMedioPago,
+    MedioPagoBadge,
+    ALERT_MEDIO_PAGO_TITULO,
+    ALERT_MEDIO_PAGO_MENSAJE
+} from '../components/MedioPagoGastoControls';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { Asset } from 'expo-asset';
+import * as DocumentPicker from 'expo-document-picker';
 import PlaneacionPersonalScreen from './PlaneacionPersonalScreen';
+import PlaneacionAdjuntosTab from '../components/PlaneacionAdjuntosTab';
+import { parseMontoInput, GastoListaPrecios } from '../utils/gastoPrecioForm';
+import { gastoPermiteEdicionTrasContabilidad } from '../utils/gastoEditPermission';
+import { anioMesFromFecha } from '../utils/gastoPeriodo';
+import { resolveOvertimeShiftContext, applyLegacyLunchDiscount } from '../utils/overtimeLunch';
 
 const TABS = [
     { key: 'gastos', label: 'Captura de Gastos', icon: '💰' },
@@ -26,6 +41,7 @@ const TABS = [
     { key: 'cotizaciones', label: 'Cotizaciones', icon: '📝' },
     { key: 'proveedores', label: 'Proveedores', icon: '🏢' },
     { key: 'personal', label: 'Personal', icon: '👥' },
+    { key: 'adjuntos', label: 'Adjuntos', icon: '📎' },
 ];
 
 const MESES = [
@@ -66,6 +82,15 @@ const COLOMBIAN_HOLIDAYS = [
     '2026-08-17', '2026-10-12', '2026-11-02', '2026-11-16', '2026-12-08', '2026-12-25'
 ];
 
+const getEstadoColor = (estado) => {
+    switch (estado) {
+        case 'Pagado': return '#10B981';
+        case 'Entregado': return '#3B82F6';
+        case 'Montado': return '#6B7280';
+        default: return '#6B7280';
+    }
+};
+
 // ===================== MAIN COMPONENT =====================
 export default function PlaneacionGastosScreen({ navigation }) {
     const { colors } = useTheme();
@@ -73,7 +98,12 @@ export default function PlaneacionGastosScreen({ navigation }) {
 
     return (
         <View style={styles.container}>
-            <View style={styles.tabsContainer}>
+            <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.tabsScroll}
+                contentContainerStyle={styles.tabsContainer}
+            >
                 {TABS.map(tab => (
                     <TouchableOpacity
                         key={tab.key}
@@ -86,7 +116,7 @@ export default function PlaneacionGastosScreen({ navigation }) {
                         </Text>
                     </TouchableOpacity>
                 ))}
-            </View>
+            </ScrollView>
 
             {activeTab === 'gastos' && <GastosTab />}
             {activeTab === 'graficas' && <GraficasTab />}
@@ -95,12 +125,14 @@ export default function PlaneacionGastosScreen({ navigation }) {
             {activeTab === 'cotizaciones' && <CotizacionesTab />}
             {activeTab === 'proveedores' && <ProveedoresTab />}
             {activeTab === 'personal' && <PlaneacionPersonalScreen />}
+            {activeTab === 'adjuntos' && <PlaneacionAdjuntosTab />}
         </View>
     );
 }
 
 // ===================== GASTOS TAB =====================
 function GastosTab() {
+    const { colors: themeColors } = useTheme();
     const [loading, setLoading] = useState(true);
     const [anio, setAnio] = useState(new Date().getFullYear());
     const [mes, setMes] = useState(new Date().getMonth() + 1);
@@ -133,6 +165,8 @@ function GastosTab() {
         proveedorId: '',
         numeroFactura: '',
         precio: '',
+        precioBase: '',
+        precioIva: '',
         fecha: new Date().toISOString().split('T')[0],
         observaciones: '',
         facturaPdfUrl: '',
@@ -153,8 +187,22 @@ function GastosTab() {
     const [filterNumeroFactura, setFilterNumeroFactura] = useState('');
     const [isLegalizing, setIsLegalizing] = useState(false);
     const [filterCredit, setFilterCredit] = useState(false);
+    const [medioPago, setMedioPago] = useState(null);
     const [saving, setSaving] = useState(false);
+    const [uploadingFactura, setUploadingFactura] = useState(false);
+    const [facturaArchivoNombre, setFacturaArchivoNombre] = useState('');
     const anios = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
+
+    const getFileNameFromUrl = (url) => {
+        if (!url) return '';
+        try {
+            const clean = String(url).split('?')[0];
+            const name = clean.split('/').pop();
+            return name || '';
+        } catch {
+            return '';
+        }
+    };
 
     const filteredGastos = useMemo(() => {
         return gastos.filter(g => {
@@ -237,7 +285,8 @@ function GastosTab() {
             c.rubroId.toString() === formData.rubroId && c.proveedorId.toString() === formData.proveedorId
         );
         if (quote && !formData.numeroFactura) {
-            setFormData(prev => ({ ...prev, precio: quote.precioCotizado.toString() }));
+            const q = quote.precioCotizado != null ? String(quote.precioCotizado) : '';
+            setFormData(prev => ({ ...prev, precioBase: q, precioIva: '0', precio: q }));
         }
     }, [formData.rubroId, formData.proveedorId, cotizaciones, formData.numeroFactura]);
 
@@ -297,7 +346,7 @@ function GastosTab() {
     const resetForm = () => {
         setEditItem(null);
         setFormData({
-            rubroId: '', proveedorId: '', numeroFactura: '', precio: '',
+            rubroId: '', proveedorId: '', numeroFactura: '', precio: '', precioBase: '', precioIva: '',
             fecha: new Date().toISOString().split('T')[0], observaciones: '', facturaPdfUrl: '', numeroOP: '',
             esPendiente: false,
             esSolicitudCredito: false,
@@ -306,9 +355,63 @@ function GastosTab() {
         });
         setBreakdown([]);
         setIsLegalizing(false);
+        setFacturaArchivoNombre('');
+        setMedioPago(null);
+    };
+
+    const handleUpdateEstado = async (gasto) => {
+        let nuevoEstado = '';
+        if (gasto.estado === 'Montado') nuevoEstado = 'Entregado';
+        else if (gasto.estado === 'Entregado') nuevoEstado = 'Pagado';
+        else if (gasto.estado === 'Pagado') nuevoEstado = 'Montado';
+        else nuevoEstado = 'Montado';
+
+        const confirmMsg = `¿Cambiar estado de "${gasto.estado}" a "${nuevoEstado}"?`;
+
+        const executeUpdate = async () => {
+            try {
+                setLoading(true);
+                // Clonamos el gasto y actualizamos el estado
+                const updatedGasto = { ...gasto, estado: nuevoEstado };
+                // Limpiamos propiedades de navegación para evitar problemas de serialización
+                delete updatedGasto.rubroNombre;
+                delete updatedGasto.proveedorNombre;
+                delete updatedGasto.proveedorNit;
+                delete updatedGasto.personalNombre;
+                delete updatedGasto.personalCedula;
+                delete updatedGasto.personalSalario;
+                delete updatedGasto.tipoHoraNombre;
+                delete updatedGasto.tipoHoraFactor;
+                delete updatedGasto.tipoRecargoNombre;
+                delete updatedGasto.tipoRecargoFactor;
+                delete updatedGasto.creadoPorNombre;
+
+                await planeacionApi.updateGasto(gasto.id, updatedGasto);
+                await loadData();
+                showAlert('Éxito', `Estado actualizado a ${nuevoEstado}`);
+            } catch (error) {
+                console.error('Error updating estado:', error);
+                showAlert('Error', 'No se pudo actualizar el estado');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        if (Platform.OS === 'web') {
+            if (window.confirm(confirmMsg)) executeUpdate();
+        } else {
+            Alert.alert('Confirmar Cambio', confirmMsg, [
+                { text: 'Cancelar', style: 'cancel' },
+                { text: 'Confirmar', onPress: executeUpdate }
+            ]);
+        }
     };
 
     const handleEdit = (gasto) => {
+        if (!gastoPermiteEdicionTrasContabilidad(gasto)) {
+            showAlert('Acceso Denegado', `No se puede editar un gasto en estado ${gasto.estado} (ya consta como legalizado).`);
+            return;
+        }
         setEditItem(gasto);
         let tipoGasto = 'normal';
         if (gasto.tipoHoraId) tipoGasto = 'extra';
@@ -319,6 +422,8 @@ function GastosTab() {
             proveedorId: gasto.proveedorId?.toString() || '',
             numeroFactura: gasto.numeroFactura || '',
             precio: gasto.precio?.toString() || '',
+            precioBase: gasto.precioBase != null ? String(gasto.precioBase) : '',
+            precioIva: gasto.precioIva != null ? String(gasto.precioIva) : '',
             fecha: gasto.fecha?.split('T')[0] || new Date().toISOString().split('T')[0],
             observaciones: gasto.observaciones || '',
             facturaPdfUrl: gasto.facturaPdfUrl || '',
@@ -330,8 +435,12 @@ function GastosTab() {
             tipoRecargoId: gasto.tipoRecargoId?.toString() || '',
             cantidadHoras: gasto.cantidadHoras?.toString() || '',
             esSolicitudCredito: gasto.esSolicitudCredito || false,
+            horaInicio: gasto.horaInicio || gasto.HoraInicio || '',
+            horaFin: gasto.horaFin || gasto.HoraFin || '',
         });
+        setMedioPago(tipoGasto === 'normal' ? flagsToMedioPago(!!gasto.esSolicitudCredito, !!gasto.esEfectivo) : null);
         setIsLegalizing(false);
+        setFacturaArchivoNombre(getFileNameFromUrl(gasto.facturaPdfUrl));
         setShowModal(true);
     };
 
@@ -342,6 +451,8 @@ function GastosTab() {
             proveedorId: gasto.proveedorId?.toString() || '',
             numeroFactura: '', // Obligar a ponerla
             precio: '', // Obligar a ponerlo
+            precioBase: '',
+            precioIva: '',
             fecha: gasto.fecha?.split('T')[0] || new Date().toISOString().split('T')[0],
             observaciones: gasto.observaciones || '',
             facturaPdfUrl: null,
@@ -350,8 +461,48 @@ function GastosTab() {
             esSolicitudCredito: gasto.esSolicitudCredito || false,
             tipoGasto: 'normal', personalId: '', tipoHoraId: '', tipoRecargoId: '', cantidadHoras: ''
         });
+        setMedioPago(flagsToMedioPago(!!gasto.esSolicitudCredito, !!gasto.esEfectivo));
         setIsLegalizing(true);
+        setFacturaArchivoNombre('');
         setShowModal(true);
+    };
+
+    const handlePickFacturaPdf = async () => {
+        try {
+            setUploadingFactura(true);
+            const result = await DocumentPicker.getDocumentAsync({
+                type: 'application/pdf',
+                copyToCacheDirectory: true
+            });
+
+            if (result.canceled) return;
+
+            const file = result.assets?.[0];
+            if (!file) return;
+
+            let uploadFile = null;
+            if (Platform.OS === 'web') {
+                const response = await fetch(file.uri);
+                const blob = await response.blob();
+                uploadFile = new File([blob], file.name || `factura-${Date.now()}.pdf`, { type: 'application/pdf' });
+            } else {
+                uploadFile = {
+                    uri: file.uri,
+                    name: file.name || `factura-${Date.now()}.pdf`,
+                    type: 'application/pdf'
+                };
+            }
+
+            const uploaded = await planeacionApi.uploadFactura(uploadFile);
+            const url = uploaded?.url || '';
+            setFormData(prev => ({ ...prev, facturaPdfUrl: url }));
+            setFacturaArchivoNombre(file.name || getFileNameFromUrl(url));
+        } catch (error) {
+            console.error('Error uploading factura PDF:', error);
+            showAlert('Error', 'No se pudo subir el documento PDF');
+        } finally {
+            setUploadingFactura(false);
+        }
     };
 
     // ========== SMART BREAKDOWN (Turno base desde horaInicio) ==========
@@ -392,8 +543,10 @@ function GastosTab() {
         const isSpecialDayStart = isSunday || isHoliday;
         const isSaturday = date.getDay() === 6;
 
-        const baseShiftMinutes = isSpecialDayStart ? 0 : (isSaturday ? 4 * 60 : 8 * 60);
-        const shiftEndMin = startFull + baseShiftMinutes;
+        const { shiftEndMin, lunchWindow: lunchWindowCtx, usesScheduledShift } = resolveOvertimeShiftContext(startFull, endFull, {
+            isSpecialDay: isSpecialDayStart,
+            isSaturday,
+        });
 
         const breakdownItems = [];
 
@@ -415,6 +568,10 @@ function GastosTab() {
         [NIGHT_END, NIGHT_START, 1440, NIGHT_END + 1440, NIGHT_START + 1440].forEach(boundary => {
             if (boundary > startFull && boundary < endFull) cutPoints.add(boundary);
         });
+        if (lunchWindowCtx) {
+            cutPoints.add(lunchWindowCtx.lunchStart);
+            cutPoints.add(lunchWindowCtx.lunchEnd);
+        }
         const sortedCuts = [...cutPoints].sort((a, b) => a - b);
 
         // Procesar cada sub-intervalo
@@ -422,12 +579,14 @@ function GastosTab() {
             const s = sortedCuts[i];
             const e = sortedCuts[i + 1];
             if (e <= s) continue;
+            if (lunchWindowCtx && s >= lunchWindowCtx.lunchStart && e <= lunchWindowCtx.lunchEnd) continue;
 
             const mid = (s + e) / 2;
             const actualDate = new Date(date);
             if (mid >= 1440) actualDate.setDate(actualDate.getDate() + 1);
             const actualDateISO = formatISO(actualDate);
-            const isSpecialDay = actualDate.getDay() === 0 || COLOMBIAN_HOLIDAYS.includes(actualDateISO);
+            // Para turnos que cruzan medianoche, se respeta la regla del día de inicio del turno.
+            const isSpecialDay = isSpecialDayStart;
 
             const isWithinShift = s < shiftEndMin;
             const timeInDay = mid % 1440;
@@ -452,45 +611,43 @@ function GastosTab() {
 
         // --- LÓGICA DE DESCUENTO DE COMIDA (-1 HORA) ---
         const totalDurationMin = endFull - startFull;
-        if (totalDurationMin >= 6 * 60) {
-            const extraItem = breakdownItems.find(item => item.isHe);
-            if (extraItem && extraItem.hours > 1) {
-                extraItem.hours -= 1.0;
-            } else if (extraItem) {
-                const recargoItem = breakdownItems.find(item => !item.isHe);
-                if (recargoItem) recargoItem.hours = Math.max(0, recargoItem.hours - 1.0);
-            } else {
-                const recargoItem = breakdownItems.find(item => !item.isHe);
-                if (recargoItem) recargoItem.hours = Math.max(0, recargoItem.hours - 1.0);
-            }
-            // Agregar línea informativa de COMIDA (solo visual)
-            breakdownItems.push({ 
-                type: '- COMIDA (Descuento)', 
-                typeId: 0, 
-                hours: -1.0, 
-                isHe: false,
-                isLunch: true 
-            });
+        const lunchDiscountApplied = lunchWindowCtx || usesScheduledShift
+            ? 0
+            : (totalDurationMin >= 6 * 60 && !isSaturday
+                ? applyLegacyLunchDiscount(breakdownItems, 1.0)
+                : 0);
+        if (lunchDiscountApplied > 0 && breakdownItems.some(item => item.hours > 0)) {
+                // Agregar línea informativa de COMIDA (solo visual)
+                breakdownItems.push({ 
+                    type: '- COMIDA (Descuento)', 
+                    typeId: 0, 
+                    hours: -lunchDiscountApplied, 
+                    isHe: false,
+                    isLunch: true 
+                });
         }
 
-        setBreakdown(breakdownItems.map(item => ({ ...item, formattedHours: formatHours(item.hours) })));
+        const cleanedBreakdownItems = breakdownItems.filter(item => item.isLunch || item.hours > 0);
+        setBreakdown(cleanedBreakdownItems.map(item => ({ ...item, formattedHours: formatHours(item.hours) })));
 
         // Calcular costo total (EXCLUYE COMIDA, ya restado de extras)
         let totalCost = 0;
         const salario = parseFloat(worker.salario) || 0;
         const valorHoraBase = salario / 220;
-        breakdownItems.filter(item => !item.isLunch).forEach(item => {
+        cleanedBreakdownItems.filter(item => !item.isLunch).forEach(item => {
             const list = item.isHe ? tiposHora : tiposRecargo;
             const tipo = list.find(t => t.id == item.typeId);
             if (tipo) totalCost += valorHoraBase * (parseFloat(tipo.factor) || 1.0) * item.hours;
         });
-        if (totalCost > 0) setFormData(prev => ({ ...prev, precio: Math.round(totalCost).toString() }));
+        const safeTotal = Math.max(0, Math.round(totalCost));
+        setFormData(prev => ({ ...prev, precio: safeTotal.toString() }));
     }, [formData.tipoGasto, formData.personalId, formData.horaInicio, formData.horaFin, formData.fecha, personal, tiposHorasRecargos]);
 
     useEffect(() => { calculateSmartBreakdown(); }, [calculateSmartBreakdown]);
 
     const handleSubmit = async () => {
         if (!formData.rubroId) { showAlert('Error', 'Seleccione un Rubro'); return; }
+        if (formData.tipoGasto === 'normal' && !medioPago) { showAlert(ALERT_MEDIO_PAGO_TITULO, ALERT_MEDIO_PAGO_MENSAJE); return; }
         if (formData.tipoGasto === 'normal' && !formData.esPendiente && !formData.proveedorId) { showAlert('Error', 'Seleccione un Proveedor (Obligatorio para legalizar)'); return; }
 
         if (formData.tipoGasto !== 'normal' && (!formData.observaciones || !formData.observaciones.trim())) { showAlert('Error', 'El Detalle es obligatorio para horas extras/recargos'); return; }
@@ -504,9 +661,20 @@ function GastosTab() {
 
         if (!formData.esPendiente && formData.tipoGasto === 'normal') {
             if (!formData.numeroFactura || !formData.numeroFactura.trim()) { showAlert('Error', 'El Número de factura es obligatorio'); return; }
-            if (!formData.precio || isNaN(parseFloat(formData.precio))) { showAlert('Error', 'El Precio debe ser un número válido'); return; }
+            let pb = parseMontoInput(formData.precioBase);
+            let pi = parseMontoInput(formData.precioIva);
+            if (pb === null || pi === null) { showAlert('Error', 'Ingrese precio base e IVA (el IVA puede ser 0).'); return; }
+            if (pb < 0 || pi < 0) { showAlert('Error', 'Precio base e IVA no pueden ser negativos.'); return; }
+            if (pb + pi <= 0) { showAlert('Error', 'El total (base + IVA) debe ser mayor a 0.'); return; }
         } else if (formData.tipoGasto !== 'normal') {
             if (!formData.precio || isNaN(parseFloat(formData.precio))) { showAlert('Error', 'El Precio debe ser un número válido'); return; }
+        }
+        if (formData.esPendiente && formData.tipoGasto === 'normal') {
+            let pb = parseMontoInput(formData.precioBase);
+            let pi = parseMontoInput(formData.precioIva);
+            if (pb === null) pb = 0;
+            if (pi === null) pi = 0;
+            if (pb < 0 || pi < 0) { showAlert('Error', 'Precio base e IVA no pueden ser negativos.'); return; }
         }
 
         try {
@@ -535,36 +703,61 @@ function GastosTab() {
                         observaciones: `Auto-generado (${item.type}): ${formData.observaciones || ''}`,
                         facturaPdfUrl: null,
                         numeroOP: formData.numeroOP || null,
-                        anio: new Date(formData.fecha).getFullYear(),
-                        mes: new Date(formData.fecha).getMonth() + 1,
+                        ...anioMesFromFecha(formData.fecha),
                         esPendiente: false,
                         personalId: parseInt(formData.personalId),
                         tipoHoraId: item.isHe ? parseInt(item.typeId) : null,
                         tipoRecargoId: !item.isHe ? parseInt(item.typeId) : null,
-                        cantidadHoras: parseFloat(item.hours.toFixed(2))
+                        cantidadHoras: parseFloat(item.hours.toFixed(2)),
+                        horaInicio: formData.horaInicio || null,
+                        horaFin: formData.horaFin || null,
+                        esSolicitudCredito: false,
+                        esEfectivo: false
                     });
                 });
                 await Promise.all(promises);
             } else {
                 // Lógica estándar de un solo registro
+                let pbSave = parseMontoInput(formData.precioBase);
+                let piSave = parseMontoInput(formData.precioIva);
+                if (formData.tipoGasto === 'normal' && formData.esPendiente) {
+                    if (pbSave === null) pbSave = 0;
+                    if (piSave === null) piSave = 0;
+                }
+                const totalNormal = formData.tipoGasto === 'normal' && pbSave !== null && piSave !== null
+                    ? pbSave + piSave
+                    : (formData.precio ? parseFloat(formData.precio) : 0);
                 const gastoData = {
                     rubroId: parseInt(formData.rubroId),
                     proveedorId: formData.proveedorId ? parseInt(formData.proveedorId) : null,
                     numeroFactura: formData.numeroFactura || '',
-                    precio: formData.precio ? parseFloat(formData.precio) : 0,
+                    precio: totalNormal,
+                    ...(formData.tipoGasto === 'normal' && pbSave !== null && piSave !== null
+                        ? { precioBase: pbSave, precioIva: piSave }
+                        : {}),
                     fecha: new Date(formData.fecha).toISOString(),
                     observaciones: formData.observaciones,
                     facturaPdfUrl: formData.facturaPdfUrl,
                     numeroOP: isInsumos ? formData.numeroOP : null,
-                    anio: new Date(formData.fecha).getFullYear(),
-                    mes: new Date(formData.fecha).getMonth() + 1,
+                    ...anioMesFromFecha(formData.fecha),
                     esPendiente: formData.esPendiente,
-                    esSolicitudCredito: formData.esSolicitudCredito,
+                    horaInicio: formData.tipoGasto !== 'normal' ? (formData.horaInicio || null) : null,
+                    horaFin: formData.tipoGasto !== 'normal' ? (formData.horaFin || null) : null,
+                    ...(formData.tipoGasto === 'normal' ? medioPagoToFlags(medioPago) : { esSolicitudCredito: false, esEfectivo: false }),
                     personalId: formData.personalId ? parseInt(formData.personalId) : null,
                     tipoHoraId: formData.tipoGasto === 'extra' ? parseInt(formData.tipoHoraId) : null,
                     tipoRecargoId: formData.tipoGasto === 'recargo' ? parseInt(formData.tipoRecargoId) : null,
                     cantidadHoras: formData.cantidadHoras ? parseFloat(formData.cantidadHoras) : null
                 };
+
+                if (editItem && formData.tipoGasto !== 'normal' && breakdown.length > 0) {
+                    const first = breakdown.find(item => !item.isLunch);
+                    if (first) {
+                        gastoData.tipoHoraId = first.isHe ? parseInt(first.typeId) : null;
+                        gastoData.tipoRecargoId = !first.isHe ? parseInt(first.typeId) : null;
+                        gastoData.cantidadHoras = parseFloat(first.hours.toFixed(2));
+                    }
+                }
 
                 // Check quotes
                 const quote = cotizaciones.find(c => c.rubroId == gastoData.rubroId && c.proveedorId == gastoData.proveedorId);
@@ -589,6 +782,11 @@ function GastosTab() {
     };
 
     const handleDelete = async (id) => {
+        const gasto = gastos.find(g => g.id === id);
+        if (gasto && !gastoPermiteEdicionTrasContabilidad(gasto)) {
+            showAlert('Acceso Denegado', `No se puede eliminar un gasto en estado ${gasto.estado} (ya consta como legalizado).`);
+            return;
+        }
         const doDelete = async () => {
             try { await planeacionApi.deleteGasto(id); await loadData(); showAlert('Éxito', 'Gasto eliminado'); }
             catch { showAlert('Error', 'No se pudo eliminar'); }
@@ -748,9 +946,19 @@ function GastosTab() {
                                                         <Text style={{ fontSize: 10, color: isOverdue ? '#FFF' : '#B45309', fontWeight: 'bold' }}>⏳ Pendiente</Text>
                                                     </View>
                                                 )}
-                                                {gasto.esSolicitudCredito && (
-                                                    <View style={{ backgroundColor: '#F5F3FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#7C3AED' }}>
-                                                        <Text style={{ fontSize: 10, color: '#7C3AED', fontWeight: 'bold' }}>💳 CRÉDITO</Text>
+                                                {!gasto.tipoHoraId && !gasto.tipoRecargoId && (
+                                                    <MedioPagoBadge
+                                                        esSolicitudCredito={!!gasto.esSolicitudCredito}
+                                                        esEfectivo={!!gasto.esEfectivo}
+                                                        compact
+                                                    />
+                                                )}
+                                                {gasto.estado && (
+                                                    <View style={[styles.estadoBadge, { backgroundColor: getEstadoColor(gasto.estado) + '20', borderColor: getEstadoColor(gasto.estado) }]}
+                                                    >
+                                                        <Text style={[styles.estadoBadgeText, { color: getEstadoColor(gasto.estado) }]}>
+                                                            {gasto.estado.toUpperCase()}
+                                                        </Text>
                                                     </View>
                                                 )}
                                             </View>
@@ -760,7 +968,12 @@ function GastosTab() {
                                                 </Text>
                                             )}
                                         </View>
-                                        <Text style={styles.gastoPrecio}>{formatCurrency(gasto.precio)}</Text>
+                                        <GastoListaPrecios
+                                            gasto={gasto}
+                                            singlePriceRow={!!(gasto.tipoHoraId || gasto.tipoRecargoId)}
+                                            formatCurrency={formatCurrency}
+                                            precioStyle={styles.gastoPrecio}
+                                        />
                                     </View>
                                     <Text style={styles.gastoRubro}>{gasto.proveedorNombre || gasto.personalNombre}</Text>
                                     <View style={styles.gastoDetails}>
@@ -792,9 +1005,19 @@ function GastosTab() {
                                                 <Text style={styles.editCardButtonText}>✅ Legalizar</Text>
                                             </TouchableOpacity>
                                         )}
-                                        <TouchableOpacity style={styles.editCardButton} onPress={() => handleEdit(gasto)}><Text style={styles.editCardButtonText}>✏️ Editar</Text></TouchableOpacity>
-                                        <TouchableOpacity style={styles.historyButton} onPress={() => { setSelectedHistoryGasto(gasto); setShowHistoryModal(true); }}><Text style={styles.historyButtonText}>🕒 Historial</Text></TouchableOpacity>
-                                        <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(gasto.id)}><Text style={styles.deleteButtonText}>🗑️ Eliminar</Text></TouchableOpacity>
+                                        {gastoPermiteEdicionTrasContabilidad(gasto) && (
+                                            <>
+                                                <TouchableOpacity style={styles.editCardButton} onPress={() => handleEdit(gasto)}>
+                                                    <Text style={styles.editCardButtonText}>✏️ Editar</Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(gasto.id)}>
+                                                    <Text style={styles.deleteButtonText}>🗑️ Eliminar</Text>
+                                                </TouchableOpacity>
+                                            </>
+                                        )}
+                                        <TouchableOpacity style={styles.historyButton} onPress={() => { setSelectedHistoryGasto(gasto); setShowHistoryModal(true); }}>
+                                            <Text style={styles.historyButtonText}>🕒 Historial</Text>
+                                        </TouchableOpacity>
                                     </View>
                                 </View>
                             )
@@ -835,6 +1058,7 @@ function GastosTab() {
                                                 const name = selectedRubro?.nombre?.toLowerCase() || '';
                                                 const isHE = name.includes('horas extras') || name.includes('hora extra') || name.includes('horas adiccionales') || name.includes('horas adicionales');
                                                 const isRec = name.includes('recargo');
+                                                setMedioPago(null);
                                                 setFormData(p => ({
                                                     ...p,
                                                     rubroId: v,
@@ -857,81 +1081,56 @@ function GastosTab() {
 
                             {formData.rubroId ? (
                                 <>
-                                    {/* Checkboxes Row: Pendiente & Solicitud de Crédito */}
                                     {!isLegalizing && !isHorasExtras && !isRecargo && (
-                                        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
-                                            <TouchableOpacity
-                                                style={{
-                                                    flex: 1,
-                                                    flexDirection: 'row',
-                                                    alignItems: 'center',
-                                                    padding: 10,
-                                                    backgroundColor: '#FFF7ED',
-                                                    borderRadius: 8,
-                                                    borderWidth: 1,
-                                                    borderColor: '#FFEDD5'
-                                                }}
-                                                onPress={() => setFormData(p => ({ 
-                                                    ...p, 
-                                                    esPendiente: !p.esPendiente,
-                                                    esSolicitudCredito: !p.esPendiente ? false : p.esSolicitudCredito 
-                                                }))}
-                                            >
-                                                <View style={{
-                                                    width: 20,
-                                                    height: 20,
-                                                    borderWidth: 2,
-                                                    borderColor: '#F97316',
-                                                    borderRadius: 4,
-                                                    justifyContent: 'center',
-                                                    alignItems: 'center',
-                                                    marginRight: 10,
-                                                    backgroundColor: formData.esPendiente ? '#F97316' : 'white'
-                                                }}>
-                                                    {formData.esPendiente && <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>✓</Text>}
-                                                </View>
-                                                <View>
-                                                    <Text style={{ fontWeight: 'bold', color: '#9A3412' }}>Gasto Pendiente</Text>
-                                                    <Text style={{ fontSize: 10, color: '#C2410C' }}>Sin factura aún</Text>
-                                                </View>
-                                            </TouchableOpacity>
+                                        <TouchableOpacity
+                                            style={{
+                                                flexDirection: 'row',
+                                                alignItems: 'center',
+                                                marginBottom: 12,
+                                                padding: 10,
+                                                backgroundColor: '#FFF7ED',
+                                                borderRadius: 8,
+                                                borderWidth: 1,
+                                                borderColor: '#FFEDD5'
+                                            }}
+                                            onPress={() => setFormData(p => ({ ...p, esPendiente: !p.esPendiente }))}
+                                        >
+                                            <View style={{
+                                                width: 20,
+                                                height: 20,
+                                                borderWidth: 2,
+                                                borderColor: '#F97316',
+                                                borderRadius: 4,
+                                                justifyContent: 'center',
+                                                alignItems: 'center',
+                                                marginRight: 10,
+                                                backgroundColor: formData.esPendiente ? '#F97316' : 'white'
+                                            }}>
+                                                {formData.esPendiente && <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>✓</Text>}
+                                            </View>
+                                            <View>
+                                                <Text style={{ fontWeight: 'bold', color: '#9A3412' }}>Gasto Pendiente</Text>
+                                                <Text style={{ fontSize: 10, color: '#C2410C' }}>Sin factura aún</Text>
+                                            </View>
+                                        </TouchableOpacity>
+                                    )}
 
-                                            <TouchableOpacity
-                                                style={{
-                                                    flex: 1,
-                                                    flexDirection: 'row',
-                                                    alignItems: 'center',
-                                                    padding: 10,
-                                                    backgroundColor: '#F5F3FF',
-                                                    borderRadius: 8,
-                                                    borderWidth: 1,
-                                                    borderColor: '#DDD6FE'
-                                                }}
-                                                onPress={() => setFormData(p => ({ 
-                                                    ...p, 
-                                                    esSolicitudCredito: !p.esSolicitudCredito,
-                                                    esPendiente: !p.esSolicitudCredito ? false : p.esPendiente
-                                                }))}
-                                            >
-                                                <View style={{
-                                                    width: 20,
-                                                    height: 20,
-                                                    borderWidth: 2,
-                                                    borderColor: '#7C3AED',
-                                                    borderRadius: 4,
-                                                    justifyContent: 'center',
-                                                    alignItems: 'center',
-                                                    marginRight: 10,
-                                                    backgroundColor: formData.esSolicitudCredito ? '#7C3AED' : 'white'
-                                                }}>
-                                                    {formData.esSolicitudCredito && <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>✓</Text>}
-                                                </View>
-                                                <View>
-                                                    <Text style={{ fontWeight: 'bold', color: '#5B21B6' }}>Solicitud de Crédito</Text>
-                                                    <Text style={{ fontSize: 10, color: '#6D28D9' }}>Trámite de crédito</Text>
-                                                </View>
-                                            </TouchableOpacity>
-                                        </View>
+                                    {!isHorasExtras && !isRecargo && (
+                                        <MedioPagoGastoControls
+                                            value={medioPago}
+                                            onChange={(v) => {
+                                                setMedioPago(v);
+                                                const f = medioPagoToFlags(v);
+                                                setFormData(p => ({ ...p, esSolicitudCredito: f.esSolicitudCredito }));
+                                            }}
+                                            colors={{
+                                                text: themeColors.text,
+                                                subText: themeColors.subText,
+                                                primary: themeColors.primary || '#7C3AED',
+                                                border: themeColors.border,
+                                                card: themeColors.card || themeColors.background
+                                            }}
+                                        />
                                     )}
 
                                     {formData.tipoGasto === 'normal' ? (
@@ -940,7 +1139,7 @@ function GastosTab() {
                                             <View style={styles.pickerContainer}>
                                                 <Picker selectedValue={formData.proveedorId} onValueChange={(v) => setFormData(p => ({ ...p, proveedorId: v }))}>
                                                     <Picker.Item label="Seleccione..." value="" />
-                                                    {proveedores.filter(p => p.rubroId == formData.rubroId).map(p => (
+                                                    {proveedores.filter(p => proveedorMatchesRubro(p, formData.rubroId)).map(p => (
                                                         <Picker.Item key={p.id} label={`${p.nombre} (${p.nitCedula})`} value={p.id.toString()} />
                                                     ))}
                                                 </Picker>
@@ -949,16 +1148,61 @@ function GastosTab() {
                                             <Text style={styles.label}>Número de Factura {formData.esPendiente ? '(Opcional por ahora)' : '*'}</Text>
                                             <TextInput style={styles.input} value={formData.numeroFactura} onChangeText={(t) => setFormData(p => ({ ...p, numeroFactura: t }))} placeholder={formData.esPendiente ? "Opcional" : "Obligatorio para habilitar precio"} />
 
-                                            {(formData.esPendiente || formData.esSolicitudCredito || formData.numeroFactura.trim() !== '') && (
+                                            {(medioPago && (formData.esPendiente || formData.numeroFactura.trim() !== '')) && (
                                                 <>
-                                                    <Text style={styles.label}>Precio (Sin puntos ni comas) *</Text>
+                                                    <Text style={styles.label}>Precio base *</Text>
                                                     <TextInput
                                                         style={styles.input}
-                                                        keyboardType="numeric"
-                                                        value={formData.precio.toString()}
-                                                        onChangeText={(t) => setFormData(p => ({ ...p, precio: t.replace(/[^0-9]/g, '') }))}
+                                                        keyboardType="decimal-pad"
+                                                        value={formData.precioBase}
+                                                        onChangeText={(t) => setFormData(p => ({ ...p, precioBase: t }))}
                                                         placeholder="0"
                                                     />
+                                                    <Text style={[styles.label, { marginTop: 10 }]}>IVA * (puede ser 0)</Text>
+                                                    <TextInput
+                                                        style={styles.input}
+                                                        keyboardType="decimal-pad"
+                                                        value={formData.precioIva}
+                                                        onChangeText={(t) => setFormData(p => ({ ...p, precioIva: t }))}
+                                                        placeholder="0"
+                                                    />
+                                                    <Text style={{ marginTop: 8, fontSize: 14, fontWeight: 'bold', color: '#059669' }}>
+                                                        Total: {formatCurrency((parseMontoInput(formData.precioBase) ?? 0) + (parseMontoInput(formData.precioIva) ?? 0))}
+                                                    </Text>
+                                                </>
+                                            )}
+
+                                            {!formData.esPendiente && (
+                                                <>
+                                                    <Text style={styles.label}>Documento soporte (PDF)</Text>
+                                                    <TouchableOpacity
+                                                        style={[styles.submitButton, { marginBottom: 8, backgroundColor: '#DC2626' }, uploadingFactura && { opacity: 0.7 }]}
+                                                        onPress={handlePickFacturaPdf}
+                                                        disabled={uploadingFactura}
+                                                    >
+                                                        <Text style={styles.submitButtonText}>
+                                                            {uploadingFactura ? 'Subiendo PDF...' : (facturaArchivoNombre ? 'Cambiar PDF' : 'Subir PDF')}
+                                                        </Text>
+                                                    </TouchableOpacity>
+                                                    {facturaArchivoNombre ? (
+                                                        <Text style={{ fontSize: 12, color: '#065F46', marginBottom: 6 }}>
+                                                            Archivo: {facturaArchivoNombre}
+                                                        </Text>
+                                                    ) : null}
+                                                    {formData.facturaPdfUrl ? (
+                                                        <TouchableOpacity
+                                                            onPress={() => {
+                                                                if (Platform.OS === 'web') {
+                                                                    const full = `${fileServerUrl}${formData.facturaPdfUrl}`;
+                                                                    window.open(full, '_blank');
+                                                                }
+                                                            }}
+                                                        >
+                                                            <Text style={{ fontSize: 12, color: '#2563EB', textDecorationLine: 'underline', marginBottom: 8 }}>
+                                                                Ver PDF cargado
+                                                            </Text>
+                                                        </TouchableOpacity>
+                                                    ) : null}
                                                 </>
                                             )}
                                         </>
@@ -1426,8 +1670,9 @@ function ProveedoresTab() {
     const [showModal, setShowModal] = useState(false);
     const [editItem, setEditItem] = useState(null);
     const [formData, setFormData] = useState({
-        nombre: '', nitCedula: '', telefono: '', rubroId: ''
+        nombre: '', nitCedula: '', telefono: ''
     });
+    const [rubroIds, setRubroIds] = useState([]);
     const [saving, setSaving] = useState(false);
 
     const loadData = async () => {
@@ -1445,7 +1690,8 @@ function ProveedoresTab() {
 
     const handleAdd = () => {
         setEditItem(null);
-        setFormData({ nombre: '', nitCedula: '', telefono: '', rubroId: '' });
+        setFormData({ nombre: '', nitCedula: '', telefono: '' });
+        setRubroIds([]);
         setShowModal(true);
     };
 
@@ -1454,23 +1700,25 @@ function ProveedoresTab() {
         setFormData({
             nombre: item.nombre,
             nitCedula: item.nitCedula || '',
-            telefono: item.telefono || '',
-            rubroId: item.rubroId?.toString() || ''
+            telefono: item.telefono || ''
         });
+        setRubroIds(getProveedorRubroIds(item).map(String));
         setShowModal(true);
     };
 
     const handleSave = async () => {
         if (!formData.nombre.trim()) { showAlert('Error', 'Nombre obligatorio'); return; }
         if (!formData.nitCedula.trim()) { showAlert('Error', 'NIT/Cédula obligatorio'); return; }
-        if (!formData.rubroId) { showAlert('Error', 'Rubro obligatorio'); return; }
+        if (rubroIds.length === 0) { showAlert('Error', 'Seleccione al menos un rubro'); return; }
         try {
             setSaving(true);
+            const ids = rubroIds.map(id => parseInt(id, 10)).filter(id => id > 0);
             const data = {
                 nombre: formData.nombre,
                 nitCedula: formData.nitCedula,
                 telefono: formData.telefono,
-                rubroId: parseInt(formData.rubroId),
+                rubroIds: ids,
+                rubroId: ids[0],
                 activo: true
             };
             if (editItem) await planeacionApi.updateProveedor(editItem.id, data);
@@ -1493,7 +1741,7 @@ function ProveedoresTab() {
                     <View key={item.id} style={styles.itemCard}>
                         <View style={styles.itemInfo}>
                             <Text style={styles.itemName}>{item.nombre}</Text>
-                            <Text style={styles.itemSubtitle}>{item.rubroNombre}</Text>
+                            <Text style={styles.itemSubtitle}>{getProveedorRubrosLabel(item)}</Text>
                             <Text style={styles.itemParent}>NIT/CC: {item.nitCedula}</Text>
                             {item.telefono && <Text style={styles.itemParent}>📞 {item.telefono}</Text>}
                         </View>
@@ -1508,13 +1756,7 @@ function ProveedoresTab() {
                 <View style={styles.modalOverlay}><View style={styles.modalContentSmall}>
                     <Text style={styles.modalTitle}>{editItem ? 'Editar' : 'Agregar'} Proveedor</Text>
 
-                    <Text style={styles.label}>Rubro *</Text>
-                    <View style={styles.pickerContainer}>
-                        <Picker selectedValue={formData.rubroId} onValueChange={(v) => setFormData(p => ({ ...p, rubroId: v }))}>
-                            <Picker.Item label="Seleccione..." value="" />
-                            {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
-                        </Picker>
-                    </View>
+                    <MultiRubroPicker rubros={rubros} selectedIds={rubroIds} onChange={setRubroIds} required />
 
                     <Text style={styles.label}>Nombre *</Text>
                     <TextInput style={styles.input} value={formData.nombre} onChangeText={(t) => setFormData(p => ({ ...p, nombre: t }))} placeholder="Nombre" />
@@ -1642,7 +1884,7 @@ function CotizacionesTab() {
                 <View style={styles.pickerContainer}>
                     <Picker selectedValue={formData.proveedorId} onValueChange={(v) => setFormData(p => ({ ...p, proveedorId: v }))}>
                         <Picker.Item label="Seleccione..." value="" />
-                        {proveedores.filter(p => p.rubroId == formData.rubroId).map(p => (
+                        {proveedores.filter(p => proveedorMatchesRubro(p, formData.rubroId)).map(p => (
                             <Picker.Item key={p.id} label={p.nombre} value={p.id.toString()} />
                         ))}
                     </Picker>
@@ -1660,9 +1902,36 @@ function CotizacionesTab() {
 
 // ===================== STYLES =====================
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F3F4F6' },
+    container: {
+        flex: 1,
+        backgroundColor: '#F3F4F6',
+    },
+    estadoBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 4,
+        borderWidth: 1,
+        alignSelf: 'flex-start',
+    },
+    estadoBadgeText: {
+        fontSize: 10,
+        fontWeight: 'bold',
+    },
+    pendingBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 4,
+        alignSelf: 'flex-start',
+        marginRight: 5,
+    },
+    pendingText: {
+        fontSize: 10,
+        fontWeight: 'bold',
+        color: '#FFF',
+    },
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    tabsContainer: { flexDirection: 'row', backgroundColor: '#1E3A5F', paddingHorizontal: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#152A45' },
+    tabsScroll: { backgroundColor: '#1E3A5F', borderBottomWidth: 1, borderBottomColor: '#152A45', flexGrow: 0 },
+    tabsContainer: { flexDirection: 'row', paddingHorizontal: 10, paddingVertical: 10 },
     advancedFilters: { flexDirection: 'row', alignItems: 'center', gap: 10 },
     filterLabel: { fontWeight: 'bold', color: '#4B5563', marginRight: 5, fontSize: 13 },
     filterItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 4, borderWidth: 1, borderColor: '#D1D5DB', overflow: 'hidden' },
@@ -1711,6 +1980,17 @@ const styles = StyleSheet.create({
     historyButtonText: { color: '#4B5563', fontSize: 13, fontWeight: '500' },
     deleteButton: { paddingHorizontal: 14, paddingVertical: 8 },
     deleteButtonText: { color: '#DC2626', fontSize: 13 },
+    estadoBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 6,
+        borderWidth: 1,
+        marginLeft: 6,
+    },
+    estadoBadgeText: {
+        fontSize: 10,
+        fontWeight: '900',
+    },
     itemCard: { backgroundColor: '#FFF', padding: 16, borderRadius: 8, marginBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     itemInfo: { flex: 1 },
     itemName: { fontSize: 14, fontWeight: '500', color: '#1F2937' },
@@ -1749,3 +2029,5 @@ const grafStyles = StyleSheet.create({
     reportButton: { backgroundColor: '#059669', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 },
     reportButtonText: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
 });
+
+

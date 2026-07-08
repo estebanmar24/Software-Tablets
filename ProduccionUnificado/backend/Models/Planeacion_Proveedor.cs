@@ -38,6 +38,8 @@ public class Planeacion_Proveedor
     [ForeignKey("RubroId")]
     public virtual Planeacion_Rubro? Rubro { get; set; }
 
+    public virtual ICollection<Planeacion_ProveedorRubro> ProveedorRubros { get; set; } = new List<Planeacion_ProveedorRubro>();
+
     public bool Activo { get; set; } = true;
 
     // Navigation property

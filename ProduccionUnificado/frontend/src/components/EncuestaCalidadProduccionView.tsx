@@ -103,7 +103,7 @@ export default function EncuestaCalidadProduccionView() {
 
             // Procesos que deben estar sí o sí
             const requiredProcesos = [
-                "Diseño", "Facturación", "Despachos", "Comercial", "Almacén"
+                "Producción", "Barniz", "Diseño", "Facturación", "Despachos", "Comercial", "Almacén"
             ];
 
             // Combinar y eliminar duplicados, manteniendo el orden original de la API al principio
@@ -113,7 +113,7 @@ export default function EncuestaCalidadProduccionView() {
             console.error('Error cargando procesos:', e);
             // Fallback en caso de error de API
             setProcesosDisponibles([
-                "Conversión", "Corrugadora", "Guillotina", "Impresión", "Laminado",
+                "Producción", "Conversión", "Corrugadora", "Guillotina", "Impresión", "Laminado", "Barniz",
                 "Estampado", "Troquelado", "Screen", "Colaminadora", "Despique",
                 "Pegadora", "Terminados", "Taller Externo", "Tejedora",
                 "Diseño", "Facturación", "Despachos", "Comercial", "Almacén"

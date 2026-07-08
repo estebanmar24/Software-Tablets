@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
+using TiempoProcesos.API.Helpers;
+using TiempoProcesos.API.DTOs;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using System.IO;
@@ -89,42 +91,33 @@ public class PlaneacionController : ControllerBase
     [HttpGet("proveedores")]
     public async Task<ActionResult<List<object>>> GetProveedores([FromQuery] int? rubroId)
     {
-        var query = _context.Planeacion_Proveedores
-            .Include(p => p.Rubro)
-            .Where(p => p.Activo);
-
-        if (rubroId.HasValue)
-            query = query.Where(p => p.RubroId == rubroId.Value);
-
-        var proveedores = await query
-            .OrderBy(p => p.Nombre)
-            .Select(p => new
-            {
-                p.Id,
-                p.Nombre,
-                p.RubroId,
-                RubroNombre = p.Rubro != null ? p.Rubro.Nombre : "",
-                p.NitCedula,
-                p.Telefono,
-                p.PrecioCotizado,
-                p.Activo
-            })
-            .ToListAsync();
-
-        return Ok(proveedores);
+        return Ok(await ProveedorRubroHelper.ListPlaneacionProveedoresAsync(_context, rubroId));
     }
 
     /// <summary>
     /// Create a new proveedor
     /// </summary>
     [HttpPost("proveedores")]
-    public async Task<ActionResult<Planeacion_Proveedor>> CreateProveedor(Planeacion_Proveedor proveedor)
+    public async Task<ActionResult<Planeacion_Proveedor>> CreateProveedor([FromBody] ProveedorWriteDto dto)
     {
-        if (string.IsNullOrWhiteSpace(proveedor.NitCedula))
-        {
+        var nit = dto.NitCedula ?? dto.Nit;
+        if (string.IsNullOrWhiteSpace(nit))
             return BadRequest("El NIT o Cédula es obligatorio");
-        }
+        var rubroIds = dto.ResolveRubroIds();
+        if (rubroIds.Count == 0)
+            return BadRequest("Seleccione al menos un rubro");
+        var proveedor = new Planeacion_Proveedor
+        {
+            Nombre = dto.Nombre,
+            NitCedula = nit,
+            Telefono = dto.Telefono,
+            PrecioCotizado = dto.PrecioCotizado,
+            RubroId = rubroIds[0],
+            Activo = true
+        };
         _context.Planeacion_Proveedores.Add(proveedor);
+        await _context.SaveChangesAsync();
+        await ProveedorRubroHelper.SyncPlaneacionAsync(_context, proveedor.Id, rubroIds);
         await _context.SaveChangesAsync();
         return Ok(new { id = proveedor.Id });
     }
@@ -133,14 +126,22 @@ public class PlaneacionController : ControllerBase
     /// Update a proveedor
     /// </summary>
     [HttpPut("proveedores/{id}")]
-    public async Task<IActionResult> UpdateProveedor(int id, Planeacion_Proveedor proveedor)
+    public async Task<IActionResult> UpdateProveedor(int id, [FromBody] ProveedorWriteDto dto)
     {
-        if (id != proveedor.Id) return BadRequest();
-        if (string.IsNullOrWhiteSpace(proveedor.NitCedula))
-        {
+        var nit = dto.NitCedula ?? dto.Nit;
+        if (string.IsNullOrWhiteSpace(nit))
             return BadRequest("El NIT o Cédula es obligatorio");
-        }
-        _context.Entry(proveedor).State = EntityState.Modified;
+        var rubroIds = dto.ResolveRubroIds();
+        if (rubroIds.Count == 0)
+            return BadRequest("Seleccione al menos un rubro");
+        var proveedor = await _context.Planeacion_Proveedores.FindAsync(id);
+        if (proveedor == null) return NotFound();
+        proveedor.Nombre = dto.Nombre;
+        proveedor.NitCedula = nit;
+        proveedor.Telefono = dto.Telefono;
+        proveedor.PrecioCotizado = dto.PrecioCotizado;
+        proveedor.RubroId = rubroIds[0];
+        await ProveedorRubroHelper.SyncPlaneacionAsync(_context, id, rubroIds);
         await _context.SaveChangesAsync();
         return NoContent();
     }
@@ -221,17 +222,26 @@ public class PlaneacionController : ControllerBase
     [HttpGet("gastos")]
     public async Task<ActionResult<IEnumerable<object>>> GetGastos(int anio, int? mes)
     {
-        var query = _context.Planeacion_Gastos
+        IQueryable<Planeacion_Gasto> query = _context.Planeacion_Gastos
             .Include(g => g.Proveedor)
             .Include(g => g.Rubro)
             .Include(g => g.CreadoPor)
             .Include(g => g.Personal)
             .Include(g => g.TipoHora)
-            .Include(g => g.TipoRecargo)
-            .Where(g => g.Anio == anio);
+            .Include(g => g.TipoRecargo);
 
         if (mes.HasValue && mes.Value > 0)
-            query = query.Where(g => g.Mes == mes.Value);
+        {
+            var m = mes.Value;
+            query = query.Where(g =>
+                (g.Anio == anio && g.Mes == m)
+                || ((g.Anio <= 0 || g.Mes < 1 || g.Mes > 12) && g.Fecha.Year == anio && g.Fecha.Month == m));
+        }
+        else
+        {
+            query = query.Where(g =>
+                g.Anio == anio || ((g.Anio <= 0 || g.Mes < 1 || g.Mes > 12) && g.Fecha.Year == anio));
+        }
 
         var gastos = await query
             .OrderByDescending(g => g.Fecha)
@@ -247,6 +257,8 @@ public class PlaneacionController : ControllerBase
                 g.Mes,
                 g.NumeroFactura,
                 g.Precio,
+                g.PrecioBase,
+                g.PrecioIva,
                 g.Fecha,
                 g.Observaciones,
                 g.FacturaPdfUrl,
@@ -256,6 +268,7 @@ public class PlaneacionController : ControllerBase
                 CreadoPorNombre = g.CreadoPor != null ? g.CreadoPor.NombreMostrar : "",
                 g.EsPendiente,
                 g.EsSolicitudCredito,
+                g.EsEfectivo,
                 g.PersonalId,
                 PersonalNombre = g.Personal != null ? g.Personal.Nombre : "",
                 PersonalCedula = g.Personal != null ? g.Personal.Cedula : "",
@@ -267,7 +280,8 @@ public class PlaneacionController : ControllerBase
                 TipoRecargoNombre = g.TipoRecargo != null ? g.TipoRecargo.Nombre : "",
                 TipoRecargoFactor = g.TipoRecargo != null ? g.TipoRecargo.Factor : (decimal?)null,
                 g.CantidadHoras,
-                g.NumeroOP
+                g.NumeroOP,
+                Estado = g.Estado ?? "Montado"
             })
             .ToListAsync();
 
@@ -281,8 +295,19 @@ public class PlaneacionController : ControllerBase
     public async Task<ActionResult<object>> GetGastosResumen([FromQuery] int anio, [FromQuery] int? mes)
     {
         // 1. Get Expenses
-        var queryGastos = _context.Planeacion_Gastos.Where(g => g.Anio == anio);
-        if (mes.HasValue && mes.Value > 0) queryGastos = queryGastos.Where(g => g.Mes == mes.Value);
+        var queryGastos = _context.Planeacion_Gastos.AsQueryable();
+        if (mes.HasValue && mes.Value > 0)
+        {
+            var m = mes.Value;
+            queryGastos = queryGastos.Where(g =>
+                (g.Anio == anio && g.Mes == m)
+                || ((g.Anio <= 0 || g.Mes < 1 || g.Mes > 12) && g.Fecha.Year == anio && g.Fecha.Month == m));
+        }
+        else
+        {
+            queryGastos = queryGastos.Where(g =>
+                g.Anio == anio || ((g.Anio <= 0 || g.Mes < 1 || g.Mes > 12) && g.Fecha.Year == anio));
+        }
         var gastos = await queryGastos.ToListAsync();
 
         // 2. Get Budgets
@@ -330,12 +355,31 @@ public class PlaneacionController : ControllerBase
     [HttpPost("gastos")]
     public async Task<ActionResult<Planeacion_Gasto>> CreateGasto(Planeacion_Gasto gasto)
     {
+        var esLaborP = GastoMedioPagoHelper.EsGastoLaborHorasExtrasORecargo(gasto.TipoHoraId, gasto.TipoRecargoId);
+        var mpP = GastoMedioPagoHelper.ValidateCreditoOExclusivoEfectivo(esLaborP, gasto.EsSolicitudCredito, gasto.EsEfectivo);
+        if (mpP != null) return (ActionResult<Planeacion_Gasto>)(object)mpP;
+
+        if (!esLaborP && !gasto.EsPendiente && string.IsNullOrWhiteSpace(gasto.NumeroFactura))
+            return BadRequest(new { message = "El número de factura es obligatorio para legalizar el gasto." });
+
+        var rubroP = await _context.Planeacion_Rubros.FindAsync(gasto.RubroId);
+        var pP = gasto.Precio;
+        var pbP = gasto.PrecioBase;
+        var piP = gasto.PrecioIva;
+        var errIvP = GastoPrecioIvaHelper.AplicarSegunRubroYTipo(false, gasto.TipoHoraId, gasto.TipoRecargoId, rubroP?.Nombre, ref pP, ref pbP, ref piP);
+        if (errIvP != null) return (ActionResult<Planeacion_Gasto>)(object)errIvP;
+        gasto.Precio = pP;
+        gasto.PrecioBase = pbP;
+        gasto.PrecioIva = piP;
+
         // Set Creator
         var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == "Id");
         if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int adminId))
         {
             gasto.CreadoPorId = adminId;
         }
+
+        GastoPeriodoHelper.AplicarAnioMesDesdeFecha(gasto.Fecha, (a, m) => { gasto.Anio = a; gasto.Mes = m; });
 
         gasto.FechaCreacion = DateTime.UtcNow;
         _context.Planeacion_Gastos.Add(gasto);
@@ -350,6 +394,25 @@ public class PlaneacionController : ControllerBase
     public async Task<IActionResult> UpdateGasto(int id, Planeacion_Gasto gasto)
     {
         if (id != gasto.Id) return BadRequest("ID mismatch");
+
+        GastoPeriodoHelper.AplicarAnioMesDesdeFecha(gasto.Fecha, (a, m) => { gasto.Anio = a; gasto.Mes = m; });
+
+        var esLaborPu = GastoMedioPagoHelper.EsGastoLaborHorasExtrasORecargo(gasto.TipoHoraId, gasto.TipoRecargoId);
+        var mpPu = GastoMedioPagoHelper.ValidateCreditoOExclusivoEfectivo(esLaborPu, gasto.EsSolicitudCredito, gasto.EsEfectivo);
+        if (mpPu != null) return mpPu;
+
+        if (!esLaborPu && !gasto.EsPendiente && string.IsNullOrWhiteSpace(gasto.NumeroFactura))
+            return BadRequest(new { message = "El número de factura es obligatorio para legalizar el gasto." });
+
+        var rubroPu = await _context.Planeacion_Rubros.FindAsync(gasto.RubroId);
+        var pPu = gasto.Precio;
+        var pbPu = gasto.PrecioBase;
+        var piPu = gasto.PrecioIva;
+        var errIvPu = GastoPrecioIvaHelper.AplicarSegunRubroYTipo(false, gasto.TipoHoraId, gasto.TipoRecargoId, rubroPu?.Nombre, ref pPu, ref pbPu, ref piPu);
+        if (errIvPu != null) return errIvPu;
+        gasto.Precio = pPu;
+        gasto.PrecioBase = pbPu;
+        gasto.PrecioIva = piPu;
 
         // Preserve FechaCreacion
         var existingEntry = await _context.Planeacion_Gastos.AsNoTracking().FirstOrDefaultAsync(g => g.Id == id);
@@ -622,9 +685,19 @@ public class PlaneacionController : ControllerBase
         if (mes > 0) queryPresupuestos = queryPresupuestos.Where(p => p.Mes == mes);
         var presupuestos = await queryPresupuestos.ToListAsync();
 
-        var queryGastos = _context.Planeacion_Gastos.Where(g => g.Anio == anio);
-        if (mes > 0) queryGastos = queryGastos.Where(g => g.Mes == mes);
-        
+        IQueryable<Planeacion_Gasto> queryGastos = _context.Planeacion_Gastos;
+        if (mes > 0)
+        {
+            queryGastos = queryGastos.Where(g =>
+                (g.Anio == anio && g.Mes == mes)
+                || ((g.Anio <= 0 || g.Mes < 1 || g.Mes > 12) && g.Fecha.Year == anio && g.Fecha.Month == mes));
+        }
+        else
+        {
+            queryGastos = queryGastos.Where(g =>
+                g.Anio == anio || ((g.Anio <= 0 || g.Mes < 1 || g.Mes > 12) && g.Fecha.Year == anio));
+        }
+
         var gastos = await queryGastos
             .GroupBy(g => g.RubroId)
             .Select(g => new { RubroId = g.Key, Total = g.Sum(x => x.Precio) })

@@ -11,6 +11,8 @@ using TiempoProcesos.API.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using System.IO;
+using TiempoProcesos.API.Helpers;
+using TiempoProcesos.API.DTOs;
 
 namespace TiempoProcesos.API.Controllers;
 
@@ -35,7 +37,7 @@ public class ProduccionController : ControllerBase
     public async Task<ActionResult> GetMaestros()
     {
         var rubros = await _context.Produccion_Rubros.Where(r => r.Activo).ToListAsync();
-        var proveedores = await _context.Produccion_Proveedores.Where(p => p.Activo).ToListAsync();
+        var proveedores = await ProveedorRubroHelper.ListProduccionProveedoresAsync(_context);
         var tiposHora = await _context.Produccion_TiposHora.Where(t => t.Activo).ToListAsync();
         var tiposRecargo = await _context.Produccion_TiposRecargo.Where(t => t.Activo).ToListAsync();
         
@@ -131,6 +133,107 @@ public class ProduccionController : ControllerBase
     }
 
     /// <summary>
+    /// Exportación mensual consolidada para todas las máquinas.
+    /// Incluye: resumen de ProduccionDiaria y detalle de TiempoProceso (con subcódigos).
+    /// </summary>
+    [HttpGet("export-mensual")]
+    public async Task<ActionResult> GetExportMensual([FromQuery] int mes, [FromQuery] int anio)
+    {
+        if (mes < 1 || mes > 12)
+            return BadRequest("Mes inválido");
+
+        if (anio < 2000 || anio > 2100)
+            return BadRequest("Año inválido");
+
+        var resumen = await _context.ProduccionDiaria
+            .Include(p => p.Usuario)
+            .Include(p => p.Maquina)
+            .Include(p => p.Horario)
+            .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio)
+            .OrderBy(p => p.Maquina != null ? p.Maquina.Nombre : "")
+            .ThenBy(p => p.Fecha)
+            .ThenBy(p => p.Usuario != null ? p.Usuario.Nombre : "")
+            .Select(p => new
+            {
+                p.Id,
+                Fecha = p.Fecha.ToString("yyyy-MM-dd"),
+                MaquinaId = p.MaquinaId,
+                Maquina = p.Maquina != null ? p.Maquina.Nombre : "",
+                UsuarioId = p.UsuarioId,
+                Operario = p.Usuario != null ? p.Usuario.Nombre : "",
+                Horario = p.Horario != null ? p.Horario.Nombre : "",
+                HoraInicio = p.HoraInicio.HasValue ? p.HoraInicio.Value.ToString(@"hh\:mm") : "",
+                HoraFin = p.HoraFin.HasValue ? p.HoraFin.Value.ToString(@"hh\:mm") : "",
+                p.RendimientoFinal,
+                p.HorasOperativas,
+                p.Cambios,
+                p.TiempoPuestaPunto,
+                p.TirosDiarios,
+                TirosConEquivalencia = p.TirosConEquivalencia,
+                p.TotalHorasProductivas,
+                p.PromedioHoraProductiva,
+                p.TirosBonificables,
+                p.ValorTiroSnapshot,
+                p.ValorAPagar,
+                p.ValorAPagarBonificable,
+                p.HorasMantenimiento,
+                p.HorasDescanso,
+                p.HorasOtrosAux,
+                p.TotalHorasAuxiliares,
+                p.TiempoFaltaTrabajo,
+                p.TiempoReparacion,
+                p.TiempoOtroMuerto,
+                p.TotalTiemposMuertos,
+                p.TotalHoras,
+                p.Desperdicio,
+                p.ReferenciaOP,
+                p.Novedades
+            })
+            .ToListAsync();
+
+        var detalleTiempos = await _context.TiemposProceso
+            .Include(t => t.Usuario)
+            .Include(t => t.Maquina)
+            .Include(t => t.Actividad)
+            .Include(t => t.OrdenProduccion)
+            .Where(t => t.Fecha.Month == mes && t.Fecha.Year == anio)
+            .OrderBy(t => t.Maquina != null ? t.Maquina.Nombre : "")
+            .ThenBy(t => t.Fecha)
+            .ThenBy(t => t.HoraInicio)
+            .Select(t => new
+            {
+                t.Id,
+                Fecha = t.Fecha.ToString("yyyy-MM-dd"),
+                MaquinaId = t.MaquinaId,
+                Maquina = t.Maquina != null ? t.Maquina.Nombre : "",
+                UsuarioId = t.UsuarioId,
+                Operario = t.Usuario != null ? t.Usuario.Nombre : "",
+                ActividadCodigo = t.Actividad != null ? t.Actividad.Codigo : "",
+                Actividad = t.Actividad != null ? t.Actividad.Nombre : "",
+                SubCodigoActividad = t.SubCodigoActividad ?? "",
+                SubCodigoDetalle = t.SubCodigoDetalle ?? "",
+                HoraInicio = t.HoraInicio.ToString("HH:mm:ss"),
+                HoraFin = t.HoraFin.ToString("HH:mm:ss"),
+                DuracionHoras = Math.Round(TimeSpan.FromTicks(t.Duracion).TotalHours, 2),
+                t.Tiros,
+                t.Desperdicio,
+                ReferenciaOP = t.OrdenProduccion != null ? t.OrdenProduccion.Numero : "",
+                Observaciones = t.Observaciones ?? ""
+            })
+            .ToListAsync();
+
+        return Ok(new
+        {
+            mes,
+            anio,
+            totalRegistrosResumen = resumen.Count,
+            totalRegistrosDetalle = detalleTiempos.Count,
+            resumen,
+            detalleTiempos
+        });
+    }
+
+    /// <summary>
     /// Get operators that have production data for a given month/year
     /// Returns grouped by usuario+maquina with days count for CaptureGridScreen modal
     /// </summary>
@@ -206,6 +309,100 @@ public class ProduccionController : ControllerBase
         return Ok(detalles);
     }
 
+    /// <summary>
+    /// Get detailed daily production records for a specific operator (all machines)
+    /// Used by Dashboard report to build OP traceability and machine usage.
+    /// </summary>
+    [HttpGet("detalles-operario")]
+    public async Task<ActionResult> GetDetallesOperario(int mes, int anio, int usuarioId)
+    {
+        var detalles = await _context.ProduccionDiaria
+            .Include(p => p.Maquina)
+            .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio && p.UsuarioId == usuarioId)
+            .OrderBy(p => p.Fecha)
+            .ThenBy(p => p.MaquinaId)
+            .Select(p => new
+            {
+                p.Id,
+                p.Fecha,
+                p.UsuarioId,
+                p.MaquinaId,
+                MaquinaNombre = p.Maquina != null ? p.Maquina.Nombre : "Desconocida",
+                p.HoraInicio,
+                p.HoraFin,
+                p.HorasOperativas,
+                p.TirosDiarios,
+                TirosConEquivalencia = p.TirosConEquivalencia,
+                p.Cambios,
+                p.TiempoPuestaPunto,
+                p.TotalHorasProductivas,
+                p.HorasMantenimiento,
+                p.HorasDescanso,
+                p.HorasOtrosAux,
+                p.TotalTiemposMuertos,
+                p.TotalHoras,
+                p.ValorAPagar,
+                p.ValorAPagarBonificable,
+                p.ValorTiroSnapshot,
+                p.ReferenciaOP,
+                p.Desperdicio
+            })
+            .ToListAsync();
+        return Ok(detalles);
+    }
+
+    /// <summary>
+    /// Obtiene detalle de tiempos para una actividad específica (ej: Reparación),
+    /// incluyendo subcódigos registrados, para modal de consulta en cuadro master.
+    /// </summary>
+    [HttpGet("detalle-tiempo")]
+    public async Task<ActionResult> GetDetalleTiempo(
+        [FromQuery] int mes,
+        [FromQuery] int anio,
+        [FromQuery] int maquinaId,
+        [FromQuery] string actividadCodigo)
+    {
+        if (string.IsNullOrWhiteSpace(actividadCodigo))
+            return BadRequest("actividadCodigo es requerido");
+
+        var codigo = actividadCodigo.Trim();
+
+        var data = await _context.TiemposProceso
+            .Include(t => t.Usuario)
+            .Include(t => t.Maquina)
+            .Include(t => t.Actividad)
+            .Include(t => t.OrdenProduccion)
+            .Where(t =>
+                t.Fecha.Month == mes &&
+                t.Fecha.Year == anio &&
+                t.MaquinaId == maquinaId &&
+                t.Actividad != null &&
+                t.Actividad.Codigo == codigo)
+            .OrderByDescending(t => t.Fecha)
+            .ThenByDescending(t => t.HoraInicio)
+            .Select(t => new
+            {
+                t.Id,
+                Fecha = t.Fecha.ToString("yyyy-MM-dd"),
+                HoraInicio = t.HoraInicio.ToString("HH:mm:ss"),
+                HoraFin = t.HoraFin.ToString("HH:mm:ss"),
+                DuracionHoras = Math.Round(TimeSpan.FromTicks(t.Duracion).TotalHours, 2),
+                Operario = t.Usuario != null ? t.Usuario.Nombre : "",
+                Maquina = t.Maquina != null ? t.Maquina.Nombre : "",
+                Actividad = t.Actividad != null ? t.Actividad.Nombre : "",
+                ActividadCodigo = t.Actividad != null ? t.Actividad.Codigo : "",
+                SubCodigoActividad = t.SubCodigoActividad,
+                SubCodigoDetalle = t.SubCodigoDetalle,
+                ReferenciaOP = t.OrdenProduccion != null ? t.OrdenProduccion.Numero : "",
+                t.Tiros,
+                t.Desperdicio,
+                t.Observaciones
+            })
+            .ToListAsync();
+
+        return Ok(data);
+    }
+
 
     /// <summary>
     /// Delete production data for a specific period, optionally filtered by user or machine
@@ -245,11 +442,11 @@ public class ProduccionController : ControllerBase
 
         _context.ProduccionDiaria.RemoveRange(records);
         _context.TiemposProceso.RemoveRange(tiempos);
-        _context.RegistrosDesperdicio.RemoveRange(desperdicios);
+        // _context.RegistrosDesperdicio.RemoveRange(desperdicios); // Preservar desperdicios manuales
 
         await _context.SaveChangesAsync();
 
-        return Ok(new { message = $"Se eliminaron {records.Count} de resumen, {tiempos.Count} detalles y {desperdicios.Count} desperdicios." });
+        return Ok(new { message = $"Se eliminaron {records.Count} de resumen y {tiempos.Count} detalles. Los desperdicios ({desperdicios.Count}) se mantuvieron intactos." });
     }
 
     [HttpPost("importar-excel")]
@@ -315,7 +512,7 @@ public class ProduccionController : ControllerBase
                             if (fechaVal is DateTime dt) fecha = dt;
                             else if (!DateTime.TryParse(fechaVal.ToString(), out fecha)) continue;
 
-                             // Obtener Máquina
+                            // Obtener Máquina
                             var maquina = maquinas.FirstOrDefault(m => m.Id == maquinaId); // Prioridad al fallback si se pasa explícitamente y no hay columna
                             
                             if (hasMaquina)
@@ -375,7 +572,10 @@ public class ProduccionController : ControllerBase
                                 actividad = actividades.FirstOrDefault(a => a.Nombre == "Producción" || a.Codigo == "02");
                             }
 
-                            // Crear Detalle
+                            var comentarioRaw = GetComentarioFromRow(worksheet, row, headers);
+                            var subcodigoExplicito = GetStringFromCell(worksheet, row, headers, "subcodigo")
+                                ?? GetStringFromCell(worksheet, row, headers, "subc");
+
                             var detalle = new ProduccionDiariaDetalleDto
                             {
                                 HoraInicio = GetStringFromCell(worksheet, row, headers, "inicio") ?? "",
@@ -383,17 +583,29 @@ public class ProduccionController : ControllerBase
                                 ActividadId = actividad?.Id ?? 2,
                                 ReferenciaOP = GetStringFromCell(worksheet, row, headers, "orden"),
                                 Tiros = (int)(GetDecimalFromCell(worksheet, row, headers, "tiros") ?? 0),
-                                Observaciones = GetStringFromCell(worksheet, row, headers, "observacio")
+                                Observaciones = comentarioRaw
                             };
+
+                            var actCod = actividad?.Codigo;
+                            var parsedSub = !string.IsNullOrWhiteSpace(subcodigoExplicito)
+                                ? SubcodigoActividadHelper.TryParseFromText(subcodigoExplicito, actCod)
+                                : null;
+                            parsedSub ??= SubcodigoActividadHelper.TryParseFromText(comentarioRaw, actCod);
+                            if (parsedSub != null)
+                            {
+                                detalle.SubCodigoActividad = parsedSub.SubCodigoActividad;
+                                detalle.SubCodigoDetalle = parsedSub.SubCodigoDetalle;
+                                detalle.Observaciones = parsedSub.Observaciones;
+                            }
 
                             // Agrupar por Fecha, Máquina y Usuario
                             string key = $"{fecha:yyyy-MM-dd}_{maquina.Id}_{usuario?.Id}";
                             if (!agrupaciones.ContainsKey(key))
                             {
                                 agrupaciones[key] = new ProduccionDiariaDto
-                                {
-                                    Fecha = fecha.ToString("yyyy-MM-dd"),
-                                    MaquinaId = maquina.Id,
+                            {
+                                Fecha = fecha.ToString("yyyy-MM-dd"),
+                                MaquinaId = maquina.Id,
                                     UsuarioId = usuario?.Id ?? 0,
                                     DiaLaborado = 1,
                                     Detalles = new List<ProduccionDiariaDetalleDto>(),
@@ -494,7 +706,7 @@ public class ProduccionController : ControllerBase
                             Console.WriteLine($"Error procesando fila {row}: {exRow.Message}");
                         }
                     }
-
+                    
                     if (agrupaciones.Any())
                     {
                         // Retornar para previsualización
@@ -640,6 +852,43 @@ public class ProduccionController : ControllerBase
                 .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio && p.MaquinaId == maquinaId)
                 .ToListAsync();
 
+            // Catálogo de máquinas para cálculo backend de ValorAPagar cuando el DTO venga en 0.
+            var maquinaIds = registros.Select(r => r.MaquinaId).Distinct().ToList();
+            var maquinasMap = await _context.Maquinas
+                .Where(m => maquinaIds.Contains(m.Id))
+                .ToDictionaryAsync(m => m.Id, m => m);
+
+            var metaSnapshotsGuardar = await _context.MetasMensuales
+                .Where(s => s.Mes == mes && s.Anio == anio)
+                .ToListAsync();
+
+            decimal CalcularValorAPagarFallback(ProduccionDiariaDto dto, Maquina? maq, decimal valorTiroSnapshotActual)
+            {
+                if (maq == null) return 0;
+                var valorTiro = valorTiroSnapshotActual > 0 ? valorTiroSnapshotActual : maq.ValorPorTiro;
+                if (valorTiro <= 0) return 0;
+
+                var fecha = DateTime.Parse(dto.Fecha).Date;
+                if (fecha.DayOfWeek == DayOfWeek.Sunday || HorarioLaboralHelper.EsFestivoColombia(fecha))
+                    return 0;
+
+                var snap = metaSnapshotsGuardar.FirstOrDefault(s => s.MaquinaId == maq.Id);
+                var metaBaseInt = MetaResolver.ResolverMetaBaseTirosObjetivo100(maq, snap, 0);
+                var metaBase = metaBaseInt > 0 ? (decimal)metaBaseInt
+                    : (maq.Meta100Porciento > 0 ? (decimal)maq.Meta100Porciento : (decimal)maq.MetaRendimiento);
+                var totalHorasProd = dto.TotalHorasProductivas > 0 ? dto.TotalHorasProductivas : (dto.HorasOperativas + dto.TiempoPuestaPunto);
+                // Horas para meta: productivas + mantenimiento + otros aux (sin descanso ni tiempos muertos)
+                var totalHorasMeta = totalHorasProd + dto.HorasMantenimiento + dto.HorasOtrosAux;
+                var metaRendimiento = (metaBase > 0 ? (metaBase / 8m) : 0m) * totalHorasMeta;
+                var meta75 = Math.Round(metaRendimiento * 0.75m, 0, MidpointRounding.AwayFromZero);
+
+                var tirosBase = dto.TirosDiarios > 0 ? dto.TirosDiarios : dto.RendimientoFinal;
+                var tirosEquivalentes = Math.Round((dto.Cambios * maq.TirosReferencia) + tirosBase, 0, MidpointRounding.AwayFromZero);
+                var meta75Diff = tirosEquivalentes - meta75;
+                var vrPagar = Math.Max(0m, meta75Diff * valorTiro);
+                return Math.Round(vrPagar, 2, MidpointRounding.AwayFromZero);
+            }
+
             // Lista para seguimiento de procesados (para saber cuáles borrar si no es partial)
             var procesadosIds = new HashSet<long>();
             var processedEntities = new List<ProduccionDiaria>();
@@ -715,8 +964,15 @@ public class ProduccionController : ControllerBase
                     produccion.TirosDiarios = (int)dto.TirosDiarios;
                     produccion.TotalHorasProductivas = dto.TotalHorasProductivas;
                     produccion.PromedioHoraProductiva = dto.PromedioHoraProductiva;
-                    produccion.ValorTiroSnapshot = dto.ValorTiroSnapshot;
+                    maquinasMap.TryGetValue(dto.MaquinaId, out var maqDto);
+                    produccion.ValorTiroSnapshot = dto.ValorTiroSnapshot > 0
+                        ? dto.ValorTiroSnapshot
+                        : (maqDto?.ValorPorTiro ?? produccion.ValorTiroSnapshot);
                     produccion.ValorAPagar = dto.ValorAPagar;
+                    if (produccion.ValorAPagar <= 0)
+                    {
+                        produccion.ValorAPagar = CalcularValorAPagarFallback(dto, maqDto, produccion.ValorTiroSnapshot);
+                    }
                     produccion.ValorAPagarBonificable = dto.ValorAPagarBonificable;
                     produccion.HorasMantenimiento = dto.HorasMantenimiento;
                     produccion.HorasDescanso = dto.HorasDescanso;
@@ -726,7 +982,13 @@ public class ProduccionController : ControllerBase
                     produccion.TiempoOtroMuerto = dto.TiempoOtroMuerto;
                     produccion.ReferenciaOP = dto.ReferenciaOP ?? "";
                     produccion.Novedades = dto.Novedades ?? "";
-                    produccion.Desperdicio = dto.Desperdicio;
+                    
+                    // Salvaguarda: No sobrescribir desperdicio con 0 si es una carga parcial (Excel)
+                    if (!isPartial || dto.Desperdicio > 0)
+                    {
+                        produccion.Desperdicio = dto.Desperdicio;
+                    }
+
                     produccion.DiaLaborado = dto.DiaLaborado;
                     produccion.HorarioId = dto.HorarioId;
 
@@ -767,38 +1029,48 @@ public class ProduccionController : ControllerBase
                 {
                     // INSERT
                     var nueva = new ProduccionDiaria
-                    {
-                        Fecha = fechaRegistro,
-                        UsuarioId = dto.UsuarioId,
-                        MaquinaId = dto.MaquinaId,
-                        HoraInicio = horaInicio,
-                        HoraFin = horaFin,
-                        HorasOperativas = dto.HorasOperativas,
-                        RendimientoFinal = dto.RendimientoFinal,
-                        Cambios = dto.Cambios,
-                        TiempoPuestaPunto = dto.TiempoPuestaPunto,
-                        TirosDiarios = (int)dto.TirosDiarios,
-                        TotalHorasProductivas = dto.TotalHorasProductivas,
-                        PromedioHoraProductiva = dto.PromedioHoraProductiva,
-                        ValorTiroSnapshot = dto.ValorTiroSnapshot,
-                        ValorAPagar = dto.ValorAPagar,
-                        ValorAPagarBonificable = dto.ValorAPagarBonificable,
-                        HorasMantenimiento = dto.HorasMantenimiento,
-                        HorasDescanso = dto.HorasDescanso,
-                        HorasOtrosAux = dto.HorasOtrosAux,
-                        TiempoFaltaTrabajo = dto.TiempoFaltaTrabajo,
-                        TiempoReparacion = dto.TiempoReparacion,
-                        TiempoOtroMuerto = dto.TiempoOtroMuerto,
-                        ReferenciaOP = dto.ReferenciaOP ?? "",
-                        Novedades = dto.Novedades ?? "",
-                        Desperdicio = dto.Desperdicio,
-                        DiaLaborado = dto.DiaLaborado,
+                {
+                    Fecha = fechaRegistro,
+                    UsuarioId = dto.UsuarioId,
+                    MaquinaId = dto.MaquinaId,
+                    HoraInicio = horaInicio,
+                    HoraFin = horaFin,
+                    HorasOperativas = dto.HorasOperativas,
+                    RendimientoFinal = dto.RendimientoFinal,
+                    Cambios = dto.Cambios,
+                    TiempoPuestaPunto = dto.TiempoPuestaPunto,
+                    TirosDiarios = (int)dto.TirosDiarios,
+                    TotalHorasProductivas = dto.TotalHorasProductivas,
+                    PromedioHoraProductiva = dto.PromedioHoraProductiva,
+                    ValorTiroSnapshot = dto.ValorTiroSnapshot,
+                    ValorAPagar = dto.ValorAPagar,
+                    ValorAPagarBonificable = dto.ValorAPagarBonificable,
+                    HorasMantenimiento = dto.HorasMantenimiento,
+                    HorasDescanso = dto.HorasDescanso,
+                    HorasOtrosAux = dto.HorasOtrosAux,
+                    TiempoFaltaTrabajo = dto.TiempoFaltaTrabajo,
+                    TiempoReparacion = dto.TiempoReparacion,
+                    TiempoOtroMuerto = dto.TiempoOtroMuerto,
+                    ReferenciaOP = dto.ReferenciaOP ?? "",
+                    Novedades = dto.Novedades ?? "",
+                    Desperdicio = dto.Desperdicio,
+                    DiaLaborado = dto.DiaLaborado,
                         HorarioId = dto.HorarioId,
                         // Totales
-                        TotalHorasAuxiliares = dto.HorasMantenimiento + dto.HorasDescanso + dto.HorasOtrosAux,
-                        TotalTiemposMuertos = dto.TiempoFaltaTrabajo + dto.TiempoReparacion + dto.TiempoOtroMuerto,
+                    TotalHorasAuxiliares = dto.HorasMantenimiento + dto.HorasDescanso + dto.HorasOtrosAux,
+                    TotalTiemposMuertos = dto.TiempoFaltaTrabajo + dto.TiempoReparacion + dto.TiempoOtroMuerto,
                         TotalHoras = dto.TotalHorasProductivas + dto.HorasMantenimiento + dto.HorasDescanso + dto.HorasOtrosAux + dto.TiempoFaltaTrabajo + dto.TiempoReparacion + dto.TiempoOtroMuerto
                     };
+
+                    maquinasMap.TryGetValue(dto.MaquinaId, out var maqInsert);
+                    if (nueva.ValorTiroSnapshot <= 0 && maqInsert != null)
+                    {
+                        nueva.ValorTiroSnapshot = maqInsert.ValorPorTiro;
+                    }
+                    if (nueva.ValorAPagar <= 0)
+                    {
+                        nueva.ValorAPagar = CalcularValorAPagarFallback(dto, maqInsert, nueva.ValorTiroSnapshot);
+                    }
 
                     Console.WriteLine($"[SAVE DEBUG] Inserting NEW record. Date: {nueva.Fecha}, User: {nueva.UsuarioId}, Inicio: {nueva.HoraInicio}, RFinal: {nueva.RendimientoFinal}");
                     
@@ -881,6 +1153,19 @@ public class ProduccionController : ControllerBase
             Console.WriteLine($"[DEBUG] GuardarProduccionMensual: Processing {registros.Count} records. isPartial: {isPartial}");
             await _context.SaveChangesAsync();
 
+            // Sincronizar TiemposProceso (subcódigos) para registros nuevos con detalle granular
+            foreach (var dto in registros.Where(r => r.Detalles != null && r.Detalles.Count > 0))
+            {
+                var fechaRegistro = DateTime.Parse(dto.Fecha).Date;
+                var prod = processedEntities.FirstOrDefault(p =>
+                    p.Fecha.Date == fechaRegistro &&
+                    p.MaquinaId == dto.MaquinaId &&
+                    p.UsuarioId == dto.UsuarioId);
+                if (prod != null)
+                    await SincronizarTiemposProcesoDesdeDetallesAsync(prod, dto.Detalles, dto.HorarioId);
+            }
+            await _context.SaveChangesAsync();
+
             var results = processedEntities.Select(p => new {
                 id = p.Id,
                 fecha = p.Fecha.ToString("yyyy-MM-dd"),
@@ -946,6 +1231,9 @@ public class ProduccionController : ControllerBase
                 .OrderByDescending(g => g.Fecha)
                 .ToListAsync();
 
+            // Ensure Estado is never null
+            foreach (var g in gastos) { if (string.IsNullOrEmpty(g.Estado)) g.Estado = "Montado"; }
+
             // Calculate Summary
             var resumen = new
             {
@@ -969,6 +1257,8 @@ public class ProduccionController : ControllerBase
     [HttpPost("gastos")]
     public async Task<ActionResult<Produccion_Gasto>> CreateGasto(Produccion_Gasto gasto)
     {
+        try
+        {
         // Basic validations
         if (gasto.RubroId <= 0) return BadRequest("Rubro es requerido");
 
@@ -1023,15 +1313,48 @@ public class ProduccionController : ControllerBase
                 if (!gasto.EsPendiente && string.IsNullOrWhiteSpace(gasto.NumeroFactura))
                     return BadRequest("Número de Factura es requerido para este tipo de rubro");
             }
+
+            var esNomina = gasto.TipoHoraId.HasValue || gasto.TipoRecargoId.HasValue
+                || rubro.Nombre == "Horas Extras" || rubro.Nombre == "Recargo";
+            var mpErr = GastoMedioPagoHelper.ValidateCreditoOExclusivoEfectivo(esNomina, gasto.EsSolicitudCredito, gasto.EsEfectivo);
+            if (mpErr != null) return (ActionResult<Produccion_Gasto>)(object)mpErr;
             // Add more if needed
         }
 
+        var precioP = gasto.Precio;
+        var precioBaseP = gasto.PrecioBase;
+        var precioIvaP = gasto.PrecioIva;
+        var errIvaP = GastoPrecioIvaHelper.AplicarSegunRubroYTipo(true, gasto.TipoHoraId, gasto.TipoRecargoId, rubro?.Nombre, ref precioP, ref precioBaseP, ref precioIvaP);
+        if (errIvaP != null) return (ActionResult<Produccion_Gasto>)(object)errIvaP;
+        gasto.Precio = precioP;
+        gasto.PrecioBase = precioBaseP;
+        gasto.PrecioIva = precioIvaP;
+
         gasto.Fecha = gasto.Fecha.ToUniversalTime(); // Postgres timestamp handling
+        GastoPeriodoHelper.AplicarAnioMesDesdeFecha(gasto.Fecha, (a, m) => { gasto.Anio = a; gasto.Mes = m; });
         gasto.FechaCreacion = DateTime.UtcNow;
+
+        if (GastoOvertimeDuplicateHelper.IsOvertimeLabor(gasto.TipoHoraId, gasto.TipoRecargoId))
+        {
+            if (await GastoOvertimeDuplicateHelper.ExistsProduccionDuplicateAsync(_context, gasto))
+                return BadRequest(new { message = GastoOvertimeDuplicateHelper.DuplicateMessage });
+        }
+
         _context.Produccion_Gastos.Add(gasto);
         await _context.SaveChangesAsync();
 
         return Ok(gasto);
+        }
+        catch (DbUpdateException ex)
+        {
+            Console.WriteLine($"[ERROR] CreateGasto DB: {ex.InnerException?.Message ?? ex.Message}");
+            return StatusCode(500, new { message = "Error al guardar el gasto en base de datos.", details = ex.InnerException?.Message ?? ex.Message });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] CreateGasto: {ex.Message}");
+            return StatusCode(500, new { message = ex.Message });
+        }
     }
 
 
@@ -1042,10 +1365,29 @@ public class ProduccionController : ControllerBase
         if (id != gasto.Id) return BadRequest();
 
         gasto.Fecha = gasto.Fecha.ToUniversalTime();
+        GastoPeriodoHelper.AplicarAnioMesDesdeFecha(gasto.Fecha, (a, m) => { gasto.Anio = a; gasto.Mes = m; });
 
         // Preserve FechaCreacion
         var existingEntry = await _context.Produccion_Gastos.AsNoTracking().FirstOrDefaultAsync(g => g.Id == id);
         if (existingEntry != null) gasto.FechaCreacion = existingEntry.FechaCreacion;
+
+        var rubroUp = await _context.Produccion_Rubros.FindAsync(gasto.RubroId);
+        if (rubroUp != null)
+        {
+            var esNominaUp = gasto.TipoHoraId.HasValue || gasto.TipoRecargoId.HasValue
+                || rubroUp.Nombre == "Horas Extras" || rubroUp.Nombre == "Recargo";
+            var mpErrUp = GastoMedioPagoHelper.ValidateCreditoOExclusivoEfectivo(esNominaUp, gasto.EsSolicitudCredito, gasto.EsEfectivo);
+            if (mpErrUp != null) return mpErrUp;
+        }
+
+        var precioU = gasto.Precio;
+        var precioBaseU = gasto.PrecioBase;
+        var precioIvaU = gasto.PrecioIva;
+        var errIvaU = GastoPrecioIvaHelper.AplicarSegunRubroYTipo(true, gasto.TipoHoraId, gasto.TipoRecargoId, rubroUp?.Nombre, ref precioU, ref precioBaseU, ref precioIvaU);
+        if (errIvaU != null) return errIvaU;
+        gasto.Precio = precioU;
+        gasto.PrecioBase = precioBaseU;
+        gasto.PrecioIva = precioIvaU;
 
         gasto.FechaModificacion = DateTime.UtcNow;
         _context.Entry(gasto).State = EntityState.Modified;
@@ -1097,23 +1439,31 @@ public class ProduccionController : ControllerBase
             .Include(g => g.Usuario)
             .Include(g => g.TipoHora)
             .OrderByDescending(g => g.Fecha)
-            .Select(g => new {
-                Id = g.Id,
-                Fecha = g.Fecha,
-                UsuarioNombre = g.Usuario != null ? g.Usuario.Nombre : "N/A",
-                UsuarioDocumento = g.Usuario != null ? g.Usuario.Documento : "",
-                Salario = g.Usuario != null ? g.Usuario.Salario : 0,
-                ValorHora = g.Usuario != null ? (g.Usuario.Salario / 220m) : 0,
-                NumeroOP = g.NumeroOP ?? "",
-                TipoHoraNombre = g.TipoHora != null ? g.TipoHora.Nombre : "N/A",
-                Factor = g.TipoHora != null ? g.TipoHora.Factor : 0,
-                CantidadHoras = g.CantidadHoras ?? 0,
-                Precio = g.Precio,
-                Nota = g.Nota ?? ""
-            })
             .ToListAsync();
 
-        return Ok(gastos);
+        var result = gastos.Select(g =>
+        {
+            var salario = g.Usuario?.Salario ?? 0;
+            var factor = g.TipoHora?.Factor ?? 0;
+            var horas = g.CantidadHoras ?? 0;
+            return new
+            {
+                Id = g.Id,
+                Fecha = g.Fecha,
+                UsuarioNombre = g.Usuario?.Nombre ?? "N/A",
+                UsuarioDocumento = g.Usuario?.Documento ?? "",
+                Salario = salario,
+                ValorHora = LaborHorasExtrasHelper.ValorHora(salario),
+                NumeroOP = g.NumeroOP ?? "",
+                TipoHoraNombre = g.TipoHora?.Nombre ?? "N/A",
+                Factor = factor,
+                CantidadHoras = horas,
+                Precio = LaborHorasExtrasHelper.CalcularValorAPagar(salario, factor, horas),
+                Nota = g.Nota ?? ""
+            };
+        }).ToList();
+
+        return Ok(result);
     }
 
     // ===================== RECARGOS REPORT =====================
@@ -1136,28 +1486,31 @@ public class ProduccionController : ControllerBase
             .Include(g => g.Usuario)
             .Include(g => g.TipoRecargo)
             .OrderByDescending(g => g.Fecha)
-            .Select(g => new {
+            .ToListAsync();
+
+        var result = gastos.Select(g =>
+        {
+            var salario = g.Usuario?.Salario ?? 0;
+            var factor = g.TipoRecargo?.Factor ?? 0;
+            var horas = g.CantidadHoras ?? 0;
+            return new
+            {
                 Id = g.Id,
                 Fecha = g.Fecha,
-                UsuarioNombre = g.Usuario != null ? g.Usuario.Nombre : "N/A",
-                UsuarioDocumento = g.Usuario != null ? g.Usuario.Documento : "",
-                Salario = g.Usuario != null ? g.Usuario.Salario : 0,
-                ValorHora = g.Usuario != null ? (g.Usuario.Salario / 220m) : 0,
+                UsuarioNombre = g.Usuario?.Nombre ?? "N/A",
+                UsuarioDocumento = g.Usuario?.Documento ?? "",
+                Salario = salario,
+                ValorHora = LaborHorasExtrasHelper.ValorHora(salario),
                 NumeroOP = g.NumeroOP ?? "",
-                TipoRecargoNombre = g.TipoRecargo != null ? g.TipoRecargo.Nombre : "N/A",
-                Factor = g.TipoRecargo != null ? g.TipoRecargo.Factor : 0,
-                CantidadHoras = g.CantidadHoras ?? 0,
-                Precio = g.Precio,
+                TipoRecargoNombre = g.TipoRecargo?.Nombre ?? "N/A",
+                Factor = factor,
+                CantidadHoras = horas,
+                Precio = LaborHorasExtrasHelper.CalcularValorAPagar(salario, factor, horas),
                 Nota = g.Nota ?? ""
-            })
-            .ToListAsync();
-        
-        Console.WriteLine($"[DEBUG] Found {gastos.Count} recargos records");
-        foreach(var g in gastos) {
-             Console.WriteLine($"[DEBUG] Recargo User: {g.UsuarioNombre}, ID: '{g.UsuarioDocumento}'");
-        }
+            };
+        }).ToList();
 
-        return Ok(gastos);
+        return Ok(result);
     }
 
 
@@ -1290,11 +1643,106 @@ public class ProduccionController : ControllerBase
     }
 
     /// <summary>
+    /// Totales de bonificación para reportes PDF (sin aplicar regla del 75%).
+    /// Suma ValorAPagar diario por Operario + Máquina para el periodo.
+    /// </summary>
+    [HttpGet("resumen-bonificacion-reporte")]
+    public async Task<ActionResult> GetResumenBonificacionReporte(int mes, int anio)
+    {
+        // Backfill defensivo: si hay filas antiguas con ValorAPagar=0, se recalculan y se persisten.
+        var filasMes = await _context.ProduccionDiaria
+            .Include(p => p.Maquina)
+            .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio)
+            .ToListAsync();
+
+        var huboCambios = false;
+        foreach (var p in filasMes)
+        {
+            if (p.ValorAPagar > 0) continue;
+            if (p.Maquina == null) continue;
+
+            var valorTiro = p.ValorTiroSnapshot > 0 ? p.ValorTiroSnapshot : p.Maquina.ValorPorTiro;
+            if (valorTiro <= 0) continue;
+
+            if (p.Fecha.DayOfWeek == DayOfWeek.Sunday || HorarioLaboralHelper.EsFestivoColombia(p.Fecha.Date))
+                continue;
+
+            var metaBase = p.Maquina.Meta100Porciento > 0 ? (decimal)p.Maquina.Meta100Porciento : (decimal)p.Maquina.MetaRendimiento;
+            var totalHorasProd = p.TotalHorasProductivas > 0 ? p.TotalHorasProductivas : (p.HorasOperativas + p.TiempoPuestaPunto);
+            var totalHorasMeta = totalHorasProd + p.HorasMantenimiento + p.HorasOtrosAux;
+            var metaRendimiento = (metaBase > 0 ? (metaBase / 8m) : 0m) * totalHorasMeta;
+            var meta75 = Math.Round(metaRendimiento * 0.75m, 0, MidpointRounding.AwayFromZero);
+
+            var tirosBase = p.TirosDiarios > 0 ? p.TirosDiarios : p.RendimientoFinal;
+            var tirosEquivalentes = Math.Round((p.Cambios * p.Maquina.TirosReferencia) + tirosBase, 0, MidpointRounding.AwayFromZero);
+            var meta75Diff = tirosEquivalentes - meta75;
+            var valorCalculado = Math.Round(Math.Max(0m, meta75Diff * valorTiro), 2, MidpointRounding.AwayFromZero);
+
+            if (valorCalculado > 0)
+            {
+                p.ValorTiroSnapshot = valorTiro;
+                p.ValorAPagar = valorCalculado;
+                huboCambios = true;
+            }
+        }
+
+        if (huboCambios)
+        {
+            await _context.SaveChangesAsync();
+        }
+
+        var data = await _context.ProduccionDiaria
+            .Include(p => p.Usuario)
+            .Include(p => p.Maquina)
+            .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio)
+            .GroupBy(p => new { p.UsuarioId, p.MaquinaId })
+            .Select(g => new
+            {
+                UsuarioId = g.Key.UsuarioId,
+                MaquinaId = g.Key.MaquinaId,
+                Operario = g.First().Usuario != null ? g.First().Usuario.Nombre : "Desconocido",
+                Maquina = g.First().Maquina != null ? g.First().Maquina.Nombre : "Desconocida",
+                ValorAPagar = g.Sum(x => x.ValorAPagar),
+                ValorAPagarBonificable = g.Sum(x => x.ValorAPagarBonificable)
+            })
+            .ToListAsync();
+
+        return Ok(data);
+    }
+
+    /// <summary>
+    /// Snapshot de metas por máquina para el mes (importancia, tarifa, etc.). La meta base numérica en resumen prioriza el catálogo de máquina vía <c>MetaResolver</c>.
+    /// Permite que Captura mensual calcule el mismo objetivo que el Tablero Semáforos.
+    /// </summary>
+    [HttpGet("metas-mensuales")]
+    public async Task<ActionResult> GetMetasMensuales(int mes, int anio)
+    {
+        var list = await _context.MetasMensuales
+            .AsNoTracking()
+            .Where(s => s.Mes == mes && s.Anio == anio)
+            .Select(s => new
+            {
+                s.MaquinaId,
+                s.Meta100Porciento,
+                s.MetaRendimiento,
+                s.Importancia,
+                s.TirosReferencia,
+                s.ValorPorTiro,
+                s.Tarifa
+            })
+            .ToListAsync();
+
+        return Ok(list);
+    }
+
+    /// <summary>
     /// Get production summary with operators and machines data for a month
     /// </summary>
     [HttpGet("resumen")]
     public async Task<ActionResult> GetResumen(int mes, int anio, int? diaInicio = null, int? diaFin = null)
     {
+        try
+        {
         // Get all production data for the month
         var query = _context.ProduccionDiaria
             .Include(p => p.Usuario)
@@ -1316,6 +1764,14 @@ public class ProduccionController : ControllerBase
         var metaSnapshots = await _context.MetasMensuales
             .Where(s => s.Mes == mes && s.Anio == anio)
             .ToListAsync();
+
+        var horasTurnoPorMaquina = HorasTurnoMetaHelper.CalcularHorasTurnoPorMaquina(
+            produccion,
+            maquinas.Select(m => m.Id),
+            mes,
+            anio,
+            diaInicio,
+            diaFin);
 
         // Count working days in period
         var diasLaborados = produccion
@@ -1342,22 +1798,23 @@ public class ProduccionController : ControllerBase
                     (p.TotalHoras > 0 || p.RendimientoFinal > 0 || p.Cambios > 0)
                 ).Select(p => p.Fecha.Date).Distinct().Count();
                 
-                // Use Meta100Porciento like CalificacionController
-                var meta100PorcientoBase = maq?.Meta100Porciento ?? maq?.MetaRendimiento ?? 7500;
-                
-                // REVERTED: Use TotalHoras to prorate Meta100 for general dashboard
-                // Meta100 = (TotalHoras - Descansos) * (Meta100PorcientoBase / 8)
-                // EXCLUDE DAYS WITH NO PRODUCTION (Repairs, etc.)
+                // Misma base de meta que resumen por máquina: snapshot mensual si existe
+                var snapshotOp = metaSnapshots.FirstOrDefault(s => s.MaquinaId == g.Key.MaquinaId);
+                // Objetivo tiros al 100% (Meta100/snapshot) y % eficiencia: mismo denominador en UI, tablero y cartas.
+                var metaBaseTiros100 = MetaResolver.ResolverMetaBaseTirosObjetivo100(maq, snapshotOp, 7500);
+
                 decimal totalHorasOp = filteredGroup
                     .Where(p => (p.Cambios * tirosReferencia) + (int)Math.Round(p.RendimientoFinal) > 0)
-                    .Sum(p => p.TotalHoras - p.HorasDescanso);
-                decimal metaPorHora = (decimal)meta100PorcientoBase / 8;
-                decimal meta100 = totalHorasOp * metaPorHora;
+                    .Sum(p => p.TotalHoras - p.HorasDescanso - p.TiempoFaltaTrabajo - p.TiempoReparacion - p.TiempoOtroMuerto);
 
-                var meta75 = meta100 * 0.75m;
-                
+                decimal metaPorHoraTiros100 = (decimal)metaBaseTiros100 / 8;
+                decimal meta100MesDisplay = totalHorasOp * metaPorHoraTiros100;
+
+                var meta75 = meta100MesDisplay * 0.75m;
+
                 var pct75 = meta75 > 0 ? (decimal)totalTiros / meta75 * 100 : 0;
-                var pct100 = meta100 > 0 ? (decimal)totalTiros / meta100 * 100 : 0;
+                // % "Meta 100%" = tiros / objetivo al 100% (Meta100/snapshot), mismo denominador que meta100Porciento en UI y cartas.
+                var pct100 = meta100MesDisplay > 0 ? (decimal)totalTiros / meta100MesDisplay * 100 : 0;
                 
                 string sem75 = pct75 >= 100 ? "Verde" : pct75 >= 75 ? "Amarillo" : "Rojo";
                 string sem100 = pct100 >= 100 ? "Verde" : pct100 >= 75 ? "Amarillo" : "Rojo";
@@ -1365,7 +1822,7 @@ public class ProduccionController : ControllerBase
                 // Apply 75% threshold: Only pay bonificación if operario achieved >= 75% of Meta100
                 var valorBonifSum = filteredGroup.Sum(p => p.ValorAPagarBonificable);
                 var valorAPagarBonificableFinal = pct100 >= 75 ? valorBonifSum : 0;
-                
+
                 // Bonif Potencial: Es el valor ganado ANTES de aplicar el filtro del 75% (lo que podría haber ganado)
                 // O mejor dicho, sumamos el ValorAPagar completo (total bonus earned) para reporte
                 var valorTotalGanado = filteredGroup.Sum(p => p.ValorAPagar);
@@ -1384,12 +1841,13 @@ public class ProduccionController : ControllerBase
                     TotalHorasAuxiliares = filteredGroup.Sum(p => p.HorasMantenimiento + p.HorasOtrosAux),
                     PromedioHoraProductiva = filteredGroup.Any() ? filteredGroup.Average(p => p.PromedioHoraProductiva) : 0,
                     TotalHoras = filteredGroup.Sum(p => p.TotalHoras),
+                    TotalHorasEfectivasMeta = totalHorasOp,
                     ValorAPagar = valorTotalGanado,
                     ValorAPagarBonificable = valorAPagarBonificableFinal,
                     ValorBonifPotencial = valorBonifSum, 
                     DiasLaborados = diasOp,
                     MetaBonificacion = meta75,
-                    Meta100Porciento = meta100,
+                    Meta100Porciento = meta100MesDisplay,
                     Eficiencia = pct100 / 100,
                     PorcentajeRendimiento75 = pct75,
                     PorcentajeRendimiento100 = pct100,
@@ -1424,22 +1882,18 @@ public class ProduccionController : ControllerBase
                 
                 // Use monthly meta snapshot if available, otherwise fallback to current machine values
                 var snapshot = metaSnapshots.FirstOrDefault(s => s.MaquinaId == maq.Id);
-                var meta100PorcientoBase = snapshot != null 
-                    ? (snapshot.Meta100Porciento > 0 ? snapshot.Meta100Porciento.Value : (snapshot.MetaRendimiento ?? 0))
-                    : (maq.Meta100Porciento > 0 ? maq.Meta100Porciento : maq.MetaRendimiento);
-                
-                // REVERTED: Use TotalHoras to prorate Meta100 for general dashboard
-                // Meta100 = (TotalHoras - Descansos) * (Meta100PorcientoBase / 8)
-                // EXCLUDE DAYS WITH NO PRODUCTION (Repairs, etc.)
+                var metaBaseTiros100 = MetaResolver.ResolverMetaBaseTirosObjetivo100(maq, snapshot, 0);
+
                 decimal totalHorasMaq = filteredGroup
                     .Where(p => (p.Cambios * tirosReferencia) + (int)Math.Round(p.RendimientoFinal) > 0)
-                    .Sum(p => p.TotalHoras - p.HorasDescanso);
-                decimal metaPorHora = (decimal)meta100PorcientoBase / 8;
-                decimal meta100 = totalHorasMaq * metaPorHora;
+                    .Sum(p => p.TotalHoras - p.HorasDescanso - p.TiempoFaltaTrabajo - p.TiempoReparacion - p.TiempoOtroMuerto);
 
-                var meta75 = meta100 * 0.75m;
-                
-                var pct = meta100 > 0 ? (decimal)tirosTotales / meta100 * 100 : 0;
+                decimal metaPorHoraTiros100 = (decimal)metaBaseTiros100 / 8;
+                decimal meta100MesDisplay = totalHorasMaq * metaPorHoraTiros100;
+
+                var meta75 = meta100MesDisplay * 0.75m;
+
+                var pct = meta100MesDisplay > 0 ? (decimal)tirosTotales / meta100MesDisplay * 100 : 0;
                 string sem = pct >= 100 ? "Verde" : pct >= 75 ? "Amarillo" : "Rojo";
                 
                 var importancia = snapshot?.Importancia ?? maq.Importancia;
@@ -1457,9 +1911,9 @@ public class ProduccionController : ControllerBase
                     TotalHorasProductivas = filteredGroup.Sum(p => p.TotalHorasProductivas),
                     TotalHorasAuxiliares = filteredGroup.Sum(p => p.HorasMantenimiento + p.HorasOtrosAux),
                     TirosTotales = tirosTotales,
-                    RendimientoEsperado = meta100,
+                    RendimientoEsperado = meta100MesDisplay,
                     Meta75Porciento = meta75,
-                    Meta100Porciento = meta100,
+                    Meta100Porciento = meta100MesDisplay,
                     PorcentajeRendimiento = pct / 100,
                     PorcentajeRendimiento100 = pct,
                     SemaforoColor = sem,
@@ -1468,12 +1922,14 @@ public class ProduccionController : ControllerBase
                     TotalTiempoFaltaTrabajo = g.Sum(p => p.TiempoFaltaTrabajo),
                     TotalTiempoOtro = g.Sum(p => p.TiempoOtroMuerto),
                     TotalHoras = g.Sum(p => p.TotalHoras),
+                    TotalHorasEfectivasMeta = totalHorasMaq,
                     Importancia = importancia,
                     Calificacion = Math.Round(calificacion, 2),
                     DiasLaborados = diasMaq,
                     UltimaFecha = g.Max(p => p.Fecha).ToString("dd/MM/yyyy"),
                     Tarifa = tarifaVal,
-                    MetaDiariaBase = meta100PorcientoBase
+                    MetaDiariaBase = metaBaseTiros100,
+                    HorasTurnoMes = horasTurnoPorMaquina.GetValueOrDefault(maq.Id, 0)
                 };
             }
             else
@@ -1501,12 +1957,14 @@ public class ProduccionController : ControllerBase
                     TotalTiempoFaltaTrabajo = 0m,
                     TotalTiempoOtro = 0m,
                     TotalHoras = 0m,
+                    TotalHorasEfectivasMeta = 0m,
                     Importancia = maq.Importancia,
                     Calificacion = 0m,
                     DiasLaborados = 0,
                     UltimaFecha = "",
                     Tarifa = maq.Tarifa,
-                    MetaDiariaBase = maq.Meta100Porciento > 0 ? maq.Meta100Porciento : maq.MetaRendimiento
+                    MetaDiariaBase = MetaResolver.ResolverMetaBaseTirosObjetivo100(maq, null, 0),
+                    HorasTurnoMes = horasTurnoPorMaquina.GetValueOrDefault(maq.Id, 0)
                 };
             }
         })
@@ -1533,6 +1991,14 @@ public class ProduccionController : ControllerBase
             tendenciaDiaria,
             calificacionTotalPlanta
         });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[CRITICAL ERROR] GetResumen failure: {ex.Message}");
+            Console.WriteLine(ex.StackTrace);
+            if (ex.InnerException != null) Console.WriteLine($"[INNER] {ex.InnerException.Message}");
+            return StatusCode(500, new { message = "Error interno del servidor", details = ex.Message });
+        }
     }
 
     /// <summary>
@@ -1541,6 +2007,8 @@ public class ProduccionController : ControllerBase
     [HttpGet("resumen-gastos")]
     public async Task<ActionResult> GetResumenGastos(int anio, int mes)
     {
+        try
+        {
         var gastos = await _context.Produccion_Gastos
             .Where(g => g.Anio == anio && g.Mes == mes)
             .Include(g => g.Rubro)
@@ -1577,6 +2045,14 @@ public class ProduccionController : ControllerBase
             totalRestante = totalPresupuesto - totalGastado,
             porRubro
         });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[CRITICAL ERROR] GetResumenGastos failure: {ex.Message}");
+            Console.WriteLine(ex.StackTrace);
+            if (ex.InnerException != null) Console.WriteLine($"[INNER] {ex.InnerException.Message}");
+            return StatusCode(500, new { message = "Error interno del servidor", details = ex.Message });
+        }
     }
 
     /// <summary>
@@ -1646,7 +2122,7 @@ public class ProduccionController : ControllerBase
 
     // ===================== SALARIOS CRUD =====================
     [HttpPut("usuarios/{id}/salario")]
-    public async Task<ActionResult> UpdateSalario(int id, [FromBody] SalarioUpdateDto dto)
+    public async Task<ActionResult> UpdateSalario(int id, [FromBody] Models.SalarioUpdateDto dto)
     {
         var usuario = await _context.Usuarios.FindAsync(id);
         if (usuario == null) return NotFound();
@@ -1657,26 +2133,39 @@ public class ProduccionController : ControllerBase
 
     // ===================== PROVEEDORES CRUD =====================
     [HttpPost("proveedores")]
-    public async Task<ActionResult> CreateProveedor([FromBody] Produccion_Proveedor proveedor)
+    public async Task<ActionResult> CreateProveedor([FromBody] ProveedorWriteDto dto)
     {
-        proveedor.Activo = true;
+        var rubroIds = dto.ResolveRubroIds();
+        var proveedor = new Produccion_Proveedor
+        {
+            Nombre = dto.Nombre,
+            Nit = dto.Nit ?? "",
+            Telefono = dto.Telefono ?? "",
+            RubroId = rubroIds.FirstOrDefault(),
+            PrecioCotizado = dto.PrecioCotizado,
+            Activo = true
+        };
         _context.Produccion_Proveedores.Add(proveedor);
         await _context.SaveChangesAsync();
-        return Ok(proveedor);
+        await ProveedorRubroHelper.SyncProduccionAsync(_context, proveedor.Id, rubroIds);
+        await _context.SaveChangesAsync();
+        return Ok(await ProveedorRubroHelper.GetProduccionProveedorAsync(_context, proveedor.Id));
     }
 
     [HttpPut("proveedores/{id}")]
-    public async Task<ActionResult> UpdateProveedor(int id, [FromBody] Produccion_Proveedor updated)
+    public async Task<ActionResult> UpdateProveedor(int id, [FromBody] ProveedorWriteDto dto)
     {
         var proveedor = await _context.Produccion_Proveedores.FindAsync(id);
         if (proveedor == null) return NotFound();
-        proveedor.Nombre = updated.Nombre;
-        proveedor.Nit = updated.Nit;
-        proveedor.Telefono = updated.Telefono;
-        proveedor.RubroId = updated.RubroId;
-        proveedor.PrecioCotizado = updated.PrecioCotizado;
+        var rubroIds = dto.ResolveRubroIds();
+        proveedor.Nombre = dto.Nombre;
+        proveedor.Nit = dto.Nit ?? proveedor.Nit;
+        proveedor.Telefono = dto.Telefono ?? proveedor.Telefono;
+        proveedor.PrecioCotizado = dto.PrecioCotizado;
+        proveedor.RubroId = rubroIds.FirstOrDefault();
+        await ProveedorRubroHelper.SyncProduccionAsync(_context, id, rubroIds);
         await _context.SaveChangesAsync();
-        return Ok(proveedor);
+        return Ok(await ProveedorRubroHelper.GetProduccionProveedorAsync(_context, id));
     }
 
     [HttpDelete("proveedores/{id}")]
@@ -1981,6 +2470,12 @@ public class ProduccionController : ControllerBase
             .OrderBy(p => p.Fecha)
             .ToListAsync();
 
+        var snapshotDbg = await _context.MetasMensuales
+            .FirstOrDefaultAsync(s => s.MaquinaId == maquina.Id && s.Mes == mes && s.Anio == anio);
+        var metaBaseTiros100 = MetaResolver.ResolverMetaBaseTirosObjetivo100(maquina, snapshotDbg, 0);
+        if (metaBaseTiros100 <= 0)
+            metaBaseTiros100 = maquina.Meta100Porciento > 0 ? maquina.Meta100Porciento : maquina.MetaRendimiento;
+
         var breakdown = new List<object>();
         decimal totalMeta = 0;
 
@@ -1999,15 +2494,15 @@ public class ProduccionController : ControllerBase
             int tirosDiarios = (int)Math.Round(tirosDiariosDecimal);
             int tirosCambios = cambios * maquina.TirosReferencia;
 
-            // AJUSTE: Sum both normal hours and dead time for total hours, excluding breaks (Descansos)
+            // Horas efectivas para meta del día: sin descanso ni tiempos muertos
             // EXCLUDE DAYS WITH NO PRODUCTION (Repairs, etc.)
             decimal horas = ((cambios * maquina.TirosReferencia) + (int)Math.Round(tirosDiariosDecimal) > 0)
-                ? prodDia.Sum(p => p.TotalHoras - p.HorasDescanso)
+                ? prodDia.Sum(p => p.TotalHoras - p.HorasDescanso - p.TiempoFaltaTrabajo - p.TiempoReparacion - p.TiempoOtroMuerto)
                 : 0;
 
             // Hourly Prorated Meta Logic
-            // Meta = TotalHoras * (MetaBase / 8)
-            decimal metaPorHora = (decimal)maquina.Meta100Porciento / 8;
+            // Meta = horas efectivas * (MetaBase / 8)
+            decimal metaPorHora = (decimal)metaBaseTiros100 / 8;
             metaDia = horas * metaPorHora;
             formula = $"{Math.Round(horas, 2)}h * {Math.Round(metaPorHora, 2)}/h";
 
@@ -2213,6 +2708,203 @@ public class ProduccionController : ControllerBase
         return Ok(sortedResults);
     }
 
+    /// <summary>
+    /// Reporte integral por OP: producción, trazabilidad por día/máquina y gastos por módulo.
+    /// </summary>
+    [HttpGet("reporte-op/{op}")]
+    public async Task<IActionResult> GetReportePorOP(string op, [FromQuery] int mes, [FromQuery] int anio)
+    {
+        if (string.IsNullOrWhiteSpace(op))
+            return BadRequest("OP es requerida");
+        if (mes < 1 || mes > 12)
+            return BadRequest("Mes inválido");
+        if (anio < 2000 || anio > 2100)
+            return BadRequest("Año inválido");
+
+        var needle = op.Trim();
+
+        // 1) Producción: detalle granular
+        var detallesRaw = await _context.ProduccionDiariaDetalles
+            .Include(d => d.ProduccionDiaria)
+                .ThenInclude(pd => pd.Maquina)
+            .Include(d => d.ProduccionDiaria)
+                .ThenInclude(pd => pd.Usuario)
+            .Include(d => d.Actividad)
+            .Where(d => d.ProduccionDiaria != null
+                        && d.ProduccionDiaria.Fecha.Month == mes
+                        && d.ProduccionDiaria.Fecha.Year == anio
+                        && (
+                            (!string.IsNullOrEmpty(d.ReferenciaOP) && EF.Functions.ILike(d.ReferenciaOP, $"%{needle}%"))
+                            || (!string.IsNullOrEmpty(d.ProduccionDiaria.ReferenciaOP) && EF.Functions.ILike(d.ProduccionDiaria.ReferenciaOP, $"%{needle}%"))
+                        ))
+            .ToListAsync();
+
+        var detalles = detallesRaw
+            .Select(d => new
+            {
+                Fecha = d.ProduccionDiaria!.Fecha.ToString("yyyy-MM-dd"),
+                MaquinaId = d.ProduccionDiaria.MaquinaId,
+                Maquina = d.ProduccionDiaria.Maquina != null ? d.ProduccionDiaria.Maquina.Nombre : "Desconocida",
+                UsuarioId = d.ProduccionDiaria.UsuarioId,
+                Operario = d.ProduccionDiaria.Usuario != null ? d.ProduccionDiaria.Usuario.Nombre : "N/A",
+                Actividad = d.Actividad != null ? d.Actividad.Nombre : "N/A",
+                ReferenciaOP = d.ReferenciaOP ?? d.ProduccionDiaria.ReferenciaOP ?? "",
+                Tiros = d.Tiros,
+                Desperdicio = d.ProduccionDiaria.Desperdicio,
+                Fuente = "Detalle"
+            })
+            .ToList();
+
+        // 2) Producción: cabeceras (si no hay detalle en la fila)
+        var representedHeaders = detallesRaw.Select(d => d.ProduccionDiariaId).Distinct().ToHashSet();
+        var cabecerasRaw = await _context.ProduccionDiaria
+            .Include(p => p.Maquina)
+            .Include(p => p.Usuario)
+            .Where(p => p.Fecha.Month == mes && p.Fecha.Year == anio
+                        && p.ReferenciaOP != null
+                        && EF.Functions.ILike(p.ReferenciaOP, $"%{needle}%")
+                        && !representedHeaders.Contains(p.Id))
+            .ToListAsync();
+
+        var cabeceras = cabecerasRaw.Select(p => new
+            {
+                Fecha = p.Fecha.ToString("yyyy-MM-dd"),
+                MaquinaId = p.MaquinaId,
+                Maquina = p.Maquina != null ? p.Maquina.Nombre : "Desconocida",
+                UsuarioId = p.UsuarioId,
+                Operario = p.Usuario != null ? p.Usuario.Nombre : "N/A",
+                Actividad = "Consolidado",
+                ReferenciaOP = p.ReferenciaOP ?? "",
+                Tiros = p.TirosConEquivalencia,
+                Desperdicio = p.Desperdicio,
+                Fuente = "Cabecera"
+            })
+            .ToList();
+
+        // 3) Historial tiempo real (TiempoProceso)
+        var histRaw = await _context.TiemposProceso
+            .Include(t => t.Maquina)
+            .Include(t => t.Usuario)
+            .Include(t => t.Actividad)
+            .Include(t => t.OrdenProduccion)
+            .Where(t => t.Fecha.Month == mes && t.Fecha.Year == anio
+                        && t.OrdenProduccion != null
+                        && EF.Functions.ILike(t.OrdenProduccion.Numero, $"%{needle}%"))
+            .ToListAsync();
+
+        var historico = histRaw.Select(t => new
+            {
+                Fecha = t.Fecha.ToString("yyyy-MM-dd"),
+                MaquinaId = t.MaquinaId,
+                Maquina = t.Maquina != null ? t.Maquina.Nombre : "Desconocida",
+                UsuarioId = t.UsuarioId,
+                Operario = t.Usuario != null ? t.Usuario.Nombre : "N/A",
+                Actividad = t.Actividad != null ? t.Actividad.Nombre : "N/A",
+                ReferenciaOP = t.OrdenProduccion != null ? t.OrdenProduccion.Numero : "",
+                Tiros = t.Tiros,
+                Desperdicio = (decimal)t.Desperdicio,
+                Fuente = "TiempoProceso"
+            })
+            .ToList();
+
+        var produccionRows = detalles
+            .Concat(cabeceras)
+            .Concat(historico)
+            .OrderBy(r => r.Fecha)
+            .ThenBy(r => r.Maquina)
+            .ThenBy(r => r.Operario)
+            .ToList();
+
+        if (produccionRows.Count == 0)
+            return NotFound($"No se encontraron datos para la OP {needle} en {mes}/{anio}.");
+
+        var resumenMaquinas = produccionRows
+            .GroupBy(r => new { r.MaquinaId, r.Maquina })
+            .Select(g => new
+            {
+                g.Key.MaquinaId,
+                g.Key.Maquina,
+                Dias = g.Select(x => x.Fecha).Distinct().Count(),
+                Registros = g.Count(),
+                TirosTotales = g.Sum(x => x.Tiros),
+                DesperdicioTotal = g.Sum(x => x.Desperdicio),
+            })
+            .OrderByDescending(x => x.TirosTotales)
+            .ToList();
+
+        var detalleDiario = produccionRows
+            .GroupBy(r => new { r.Fecha, r.MaquinaId, r.Maquina })
+            .Select(g => new
+            {
+                g.Key.Fecha,
+                g.Key.MaquinaId,
+                g.Key.Maquina,
+                Registros = g.Count(),
+                TirosTotales = g.Sum(x => x.Tiros),
+                DesperdicioTotal = g.Sum(x => x.Desperdicio),
+                Operarios = g.Select(x => x.Operario).Distinct().Count(),
+            })
+            .OrderBy(x => x.Fecha)
+            .ThenBy(x => x.Maquina)
+            .ToList();
+
+        // 4) Gastos por módulo relacionados a la OP
+        var prodG = await _context.Produccion_Gastos
+            .Include(g => g.Rubro)
+            .Where(g => g.Anio == anio && g.Mes == mes && g.NumeroOP != null && EF.Functions.ILike(g.NumeroOP, $"%{needle}%"))
+            .ToListAsync();
+        var planG = await _context.Planeacion_Gastos
+            .Include(g => g.Rubro)
+            .Where(g => g.Anio == anio && g.Mes == mes && g.NumeroOP != null && EF.Functions.ILike(g.NumeroOP, $"%{needle}%"))
+            .ToListAsync();
+        var tallG = await _context.Talleres_Gastos
+            .Include(g => g.Rubro)
+            .Where(g => g.Anio == anio && g.Mes == mes && g.NumeroOP != null && EF.Functions.ILike(g.NumeroOP, $"%{needle}%"))
+            .ToListAsync();
+        var mantG = await _context.Mantenimiento_Gastos
+            .Include(g => g.Rubro)
+            .Where(g => g.Anio == anio && g.Mes == mes && g.NumeroOP != null && EF.Functions.ILike(g.NumeroOP, $"%{needle}%"))
+            .ToListAsync();
+        var disG = await _context.Diseno_Gastos
+            .Include(g => g.Rubro)
+            .Where(g => g.Anio == anio && g.Mes == mes && g.OrdenProduccion != null && EF.Functions.ILike(g.OrdenProduccion, $"%{needle}%"))
+            .ToListAsync();
+
+        var gastosDetalle = prodG.Select(g => new { Modulo = "Producción", Fecha = g.Fecha.ToString("yyyy-MM-dd"), Rubro = g.Rubro != null ? g.Rubro.Nombre : "N/A", Valor = g.Precio, Nota = g.Nota ?? "" })
+            .Concat(planG.Select(g => new { Modulo = "Planeación", Fecha = g.Fecha.ToString("yyyy-MM-dd"), Rubro = g.Rubro != null ? g.Rubro.Nombre : "N/A", Valor = g.Precio, Nota = g.Observaciones ?? "" }))
+            .Concat(tallG.Select(g => new { Modulo = "Talleres", Fecha = g.Fecha.ToString("yyyy-MM-dd"), Rubro = g.Rubro != null ? g.Rubro.Nombre : "N/A", Valor = g.Precio, Nota = g.Observaciones ?? "" }))
+            .Concat(mantG.Select(g => new { Modulo = "Mantenimiento", Fecha = g.Fecha.ToString("yyyy-MM-dd"), Rubro = g.Rubro != null ? g.Rubro.Nombre : "N/A", Valor = g.Precio, Nota = g.Nota ?? "" }))
+            .Concat(disG.Select(g => new { Modulo = "Diseño", Fecha = g.Fecha.ToString("yyyy-MM-dd"), Rubro = g.Rubro != null ? g.Rubro.Nombre : "N/A", Valor = g.Precio, Nota = g.Observaciones ?? "" }))
+            .OrderBy(x => x.Fecha)
+            .ThenBy(x => x.Modulo)
+            .ToList();
+
+        var gastosPorModulo = gastosDetalle
+            .GroupBy(g => g.Modulo)
+            .Select(g => new
+            {
+                Modulo = g.Key,
+                Registros = g.Count(),
+                Total = g.Sum(x => x.Valor)
+            })
+            .OrderByDescending(x => x.Total)
+            .ToList();
+
+        return Ok(new
+        {
+            op = needle,
+            mes,
+            anio,
+            totalRegistrosProduccion = produccionRows.Count,
+            totalRegistrosGastos = gastosDetalle.Count,
+            resumenMaquinas,
+            detalleDiario,
+            produccionRows,
+            gastosPorModulo,
+            gastosDetalle
+        });
+    }
+
     // ===================== DÍA DETALLADO =====================
     /// <summary>
     /// Get all detail entries for a specific ProduccionDiaria record
@@ -2221,28 +2913,28 @@ public class ProduccionController : ControllerBase
     public async Task<IActionResult> GetDiaDetalle(long produccionDiariaId)
     {
         try
-        {
-            var detalles = await _context.ProduccionDiariaDetalles
-                .Where(d => d.ProduccionDiariaId == produccionDiariaId)
-                .Include(d => d.Actividad)
-                .OrderBy(d => d.HoraInicio)
-                .Select(d => new {
-                    d.Id,
-                    d.ProduccionDiariaId,
-                    HoraInicio = d.HoraInicio.ToString(@"hh\:mm"),
-                    HoraFin = d.HoraFin.ToString(@"hh\:mm"),
-                    TiempoMinutos = (int)(d.HoraFin - d.HoraInicio).TotalMinutes,
-                    d.ActividadId,
-                    ActividadCodigo = d.Actividad != null ? d.Actividad.Codigo : "",
-                    ActividadNombre = d.Actividad != null ? d.Actividad.Nombre : "",
-                    d.Tiros,
-                    d.ReferenciaOP,
-                    d.Observaciones
-                })
-                .ToListAsync();
+    {
+        var detalles = await _context.ProduccionDiariaDetalles
+            .Where(d => d.ProduccionDiariaId == produccionDiariaId)
+            .Include(d => d.Actividad)
+            .OrderBy(d => d.HoraInicio)
+            .Select(d => new {
+                d.Id,
+                d.ProduccionDiariaId,
+                HoraInicio = d.HoraInicio.ToString(@"hh\:mm"),
+                HoraFin = d.HoraFin.ToString(@"hh\:mm"),
+                TiempoMinutos = (int)(d.HoraFin - d.HoraInicio).TotalMinutes,
+                d.ActividadId,
+                ActividadCodigo = d.Actividad != null ? d.Actividad.Codigo : "",
+                ActividadNombre = d.Actividad != null ? d.Actividad.Nombre : "",
+                d.Tiros,
+                d.ReferenciaOP,
+                d.Observaciones
+            })
+            .ToListAsync();
 
-            return Ok(detalles);
-        }
+        return Ok(detalles);
+    }
         catch (Exception ex)
         {
             return BadRequest($"Error en GetDiaDetalle: {ex.Message} - {ex.InnerException?.Message}");
@@ -2344,40 +3036,40 @@ public class ProduccionController : ControllerBase
     public async Task<IActionResult> SaveDiaDetalle([FromBody] List<DiaDetalleDto> detalles)
     {
         try
+    {
+        if (detalles == null || !detalles.Any())
+            return BadRequest("No se enviaron detalles");
+
+        var produccionDiariaId = detalles.First().ProduccionDiariaId;
+        
+        // Delete existing details
+        var existing = await _context.ProduccionDiariaDetalles
+            .Where(d => d.ProduccionDiariaId == produccionDiariaId)
+            .ToListAsync();
+        _context.ProduccionDiariaDetalles.RemoveRange(existing);
+
+        // Add new details (filter out empty rows)
+        foreach (var dto in detalles.Where(d => !string.IsNullOrEmpty(d.HoraInicio) && !string.IsNullOrEmpty(d.HoraFin)))
         {
-            if (detalles == null || !detalles.Any())
-                return BadRequest("No se enviaron detalles");
-
-            var produccionDiariaId = detalles.First().ProduccionDiariaId;
-            
-            // Delete existing details
-            var existing = await _context.ProduccionDiariaDetalles
-                .Where(d => d.ProduccionDiariaId == produccionDiariaId)
-                .ToListAsync();
-            _context.ProduccionDiariaDetalles.RemoveRange(existing);
-
-            // Add new details (filter out empty rows)
-            foreach (var dto in detalles.Where(d => !string.IsNullOrEmpty(d.HoraInicio) && !string.IsNullOrEmpty(d.HoraFin)))
-            {
                 // Skip rows with unparseable times (e.g. placeholder "HH:MM")
                 if (!TimeSpan.TryParse(dto.HoraInicio, out var horaInicio) ||
                     !TimeSpan.TryParse(dto.HoraFin, out var horaFin))
                     continue;
 
-                var detalle = new ProduccionDiariaDetalle
-                {
-                    ProduccionDiariaId = dto.ProduccionDiariaId,
+            var detalle = new ProduccionDiariaDetalle
+            {
+                ProduccionDiariaId = dto.ProduccionDiariaId,
                     HoraInicio = horaInicio,
                     HoraFin = horaFin,
-                    ActividadId = dto.ActividadId,
-                    Tiros = dto.Tiros,
-                    ReferenciaOP = dto.ReferenciaOP,
-                    Observaciones = dto.Observaciones
-                };
-                _context.ProduccionDiariaDetalles.Add(detalle);
-            }
+                ActividadId = dto.ActividadId,
+                Tiros = dto.Tiros,
+                ReferenciaOP = dto.ReferenciaOP,
+                Observaciones = dto.Observaciones
+            };
+            _context.ProduccionDiariaDetalles.Add(detalle);
+        }
 
-            await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync();
 
             // Recalculate parent ProduccionDiaria summary from saved details
             var parent = await _context.ProduccionDiaria
@@ -2442,7 +3134,7 @@ public class ProduccionController : ControllerBase
                 await _context.SaveChangesAsync();
             }
 
-            return Ok(new { success = true, message = "Detalles guardados correctamente" });
+        return Ok(new { success = true, message = "Detalles guardados correctamente" });
         }
         catch (Exception ex)
         {
@@ -2463,6 +3155,92 @@ public class ProduccionController : ControllerBase
         _context.ProduccionDiariaDetalles.Remove(detalle);
         await _context.SaveChangesAsync();
         return Ok(new { success = true });
+    }
+
+    private string? GetComentarioFromRow(OfficeOpenXml.ExcelWorksheet ws, int row, Dictionary<string, int> headers)
+    {
+        foreach (var key in new[] { "comentario", "comentarios", "observacio", "observaciones", "novedad", "nota", "detalle" })
+        {
+            var val = GetStringFromCell(ws, row, headers, key);
+            if (!string.IsNullOrWhiteSpace(val)) return val.Trim();
+        }
+        return null;
+    }
+
+  /// <summary>
+    /// Crea registros en TiemposProceso desde detalles importados (para modal de subcódigos en cuadro master).
+    /// </summary>
+    private async Task SincronizarTiemposProcesoDesdeDetallesAsync(
+        ProduccionDiaria produccion,
+        List<ProduccionDiariaDetalleDto> detalles,
+        int? horarioId)
+    {
+        if (detalles == null || detalles.Count == 0) return;
+
+        var logsExistentes = await _context.TiemposProceso
+            .Where(t =>
+                t.Fecha.Date == produccion.Fecha.Date &&
+                t.MaquinaId == produccion.MaquinaId &&
+                t.UsuarioId == produccion.UsuarioId)
+            .ToListAsync();
+        if (logsExistentes.Count > 0)
+            _context.TiemposProceso.RemoveRange(logsExistentes);
+
+        foreach (var det in detalles)
+        {
+            var hi = ParseTime(det.HoraInicio);
+            var hf = ParseTime(det.HoraFin);
+            if (hi == TimeSpan.Zero && hf == TimeSpan.Zero) continue;
+
+            var horaInicioDt = produccion.Fecha.Date.Add(hi);
+            var horaFinDt = produccion.Fecha.Date.Add(hf);
+            if (hf <= hi && hf != TimeSpan.Zero)
+                horaFinDt = horaFinDt.AddDays(1);
+
+            var duracion = horaFinDt - horaInicioDt;
+            if (duracion.TotalMinutes <= 0) continue;
+
+            int? ordenId = null;
+            var opNum = (det.ReferenciaOP ?? "").Trim();
+            if (!string.IsNullOrEmpty(opNum) && opNum != "460")
+            {
+                var op = await _context.OrdenesProduccion.FirstOrDefaultAsync(o => o.Numero == opNum);
+                if (op == null)
+                {
+                    op = new OrdenProduccion
+                    {
+                        Numero = opNum,
+                        Descripcion = "Importación Excel",
+                        Estado = "EnProceso",
+                        FechaCreacion = DateTime.UtcNow
+                    };
+                    _context.OrdenesProduccion.Add(op);
+                    await _context.SaveChangesAsync();
+                }
+                ordenId = op.Id;
+            }
+
+            _context.TiemposProceso.Add(new TiempoProceso
+            {
+                Fecha = produccion.Fecha.Date,
+                HoraInicio = horaInicioDt,
+                HoraFin = horaFinDt,
+                Duracion = duracion.Ticks,
+                UsuarioId = produccion.UsuarioId,
+                MaquinaId = produccion.MaquinaId,
+                OrdenProduccionId = ordenId,
+                ActividadId = det.ActividadId,
+                Tiros = det.Tiros,
+                Desperdicio = 0,
+                Observaciones = det.Observaciones,
+                SubCodigoActividad = det.SubCodigoActividad,
+                SubCodigoDetalle = det.SubCodigoDetalle,
+                HorarioId = horarioId ?? produccion.HorarioId,
+                Estado = "Finalizado",
+                TiempoPausadoSegundos = 0,
+                PausadoEn = null
+            });
+        }
     }
 
     private TimeSpan ParseTime(string? timeStr)

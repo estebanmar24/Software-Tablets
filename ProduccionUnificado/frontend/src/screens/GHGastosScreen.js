@@ -27,6 +27,14 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { Asset } from 'expo-asset';
 import { ExpenseHistoryModal } from '../components/ExpenseHistoryModal';
+import MedioPagoGastoControls, {
+    medioPagoToFlags,
+    flagsToMedioPago,
+    MedioPagoBadge,
+    showAlertMedioPagoRequerido
+} from '../components/MedioPagoGastoControls';
+import { parseMontoInput, GastoListaPrecios } from '../utils/gastoPrecioForm';
+import { gastoPermiteEdicionTrasContabilidad } from '../utils/gastoEditPermission';
 
 const TABS = [
     { key: 'gastos', label: 'Captura de Gastos', icon: '💰' },
@@ -36,6 +44,15 @@ const TABS = [
     { key: 'servicios', label: 'Tipos de Servicio', icon: '🔧' },
     { key: 'proveedores', label: 'Proveedores', icon: '🏢' }
 ];
+
+const getEstadoColor = (estado) => {
+    switch (estado) {
+        case 'Pagado': return '#10B981';
+        case 'Entregado': return '#3B82F6';
+        case 'Montado': return '#6B7280';
+        default: return '#6B7280';
+    }
+};
 
 export default function GHGastosScreen({ navigation }) {
     const { colors } = useTheme();
@@ -72,6 +89,7 @@ export default function GHGastosScreen({ navigation }) {
 
 // ===================== GASTOS TAB =====================
 function GastosTab() {
+    const { colors: themeColors } = useTheme();
     const [loading, setLoading] = useState(true);
     const [anio, setAnio] = useState(new Date().getFullYear());
     const [mes, setMes] = useState(new Date().getMonth() + 1);
@@ -104,6 +122,8 @@ function GastosTab() {
         numeroFactura: '',
         precio: '',
         precioDisplay: '',
+        precioBase: '',
+        precioIva: '',
         fechaCompra: new Date().toISOString().split('T')[0],
         nota: '',
         archivoFactura: null,
@@ -111,6 +131,7 @@ function GastosTab() {
         esPendiente: false,
         esSolicitudCredito: false
     });
+    const [medioPago, setMedioPago] = useState(null);
     const [isLegalizing, setIsLegalizing] = useState(false);
     const [saving, setSaving] = useState(false);
 
@@ -119,6 +140,12 @@ function GastosTab() {
     const [selectedHistoryGasto, setSelectedHistoryGasto] = useState(null);
 
     const anios = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
+
+    const selectedTipoNombreLower = useMemo(() => {
+        const t = tiposServicio.find(x => String(x.id) === String(formData.tipoServicioId));
+        return (t?.nombre || '').toLowerCase();
+    }, [formData.tipoServicioId, tiposServicio]);
+    const isNominaHeORecargoTipo = selectedTipoNombreLower.includes('hora extra') || selectedTipoNombreLower.includes('recargo');
 
     // Filters (MATCHING TALLERES/PRODUCCION STYLE)
     const [filterRubro, setFilterRubro] = useState('');
@@ -267,11 +294,14 @@ function GastosTab() {
                 setFormData(prev => ({
                     ...prev,
                     precio: numericValue,
-                    precioDisplay: formatted
+                    precioDisplay: formatted,
+                    ...(isNominaHeORecargoTipo
+                        ? { precioBase: '', precioIva: '' }
+                        : { precioBase: numericValue, precioIva: '0' })
                 }));
             }
         }
-    }, [formData.proveedorId, cotizaciones]);
+    }, [formData.proveedorId, cotizaciones, isNominaHeORecargoTipo]);
 
     // Load budget info when TipoServicio is selected
     useEffect(() => {
@@ -326,24 +356,49 @@ function GastosTab() {
             numeroFactura: '',
             precio: '',
             precioDisplay: '',
+            precioBase: '',
+            precioIva: '',
             fechaCompra: new Date().toISOString().split('T')[0],
             nota: '',
             archivoFactura: null,
             archivoNombre: '',
-            esPendiente: false
+            esPendiente: false,
+            esSolicitudCredito: false
         });
+        setMedioPago(null);
         setIsLegalizing(false);
     };
 
+    const gastoEsHeRecTipo = (g) => {
+        const n = (g?.tipoServicioNombre || '').toLowerCase();
+        return n.includes('hora extra') || n.includes('recargo');
+    };
+
     const handleEdit = (gasto) => {
+        if (!gastoPermiteEdicionTrasContabilidad(gasto)) {
+            Alert.alert('Acceso Denegado', `No se puede editar un gasto en estado ${gasto.estado} (ya consta como legalizado).`);
+            return;
+        }
+        const isHeRec = gastoEsHeRecTipo(gasto);
         setEditItem(gasto);
+        const precioBaseStr = isHeRec
+            ? ''
+            : (gasto.precioBase != null ? String(gasto.precioBase) : (gasto.precio != null ? String(gasto.precio) : ''));
+        const precioIvaStr = isHeRec
+            ? ''
+            : (gasto.precioIva != null ? String(gasto.precioIva) : '0');
+        const totalNum = isHeRec
+            ? (parseFloat(gasto.precio) || 0)
+            : ((parseMontoInput(precioBaseStr) ?? 0) + (parseMontoInput(precioIvaStr) ?? 0));
         setFormData({
             rubroId: gasto.rubroId?.toString() || '',
             tipoServicioId: gasto.tipoServicioId?.toString() || '',
             proveedorId: gasto.proveedorId?.toString() || '',
             numeroFactura: gasto.numeroFactura || '',
-            precio: gasto.precio?.toString() || '',
-            precioDisplay: formatCurrencyInput(gasto.precio?.toString() || ''),
+            precio: isHeRec ? (gasto.precio?.toString() || '') : String(totalNum || gasto.precio || ''),
+            precioDisplay: formatCurrencyInput(String(Math.round(totalNum || parseFloat(gasto.precio) || 0))),
+            precioBase: precioBaseStr,
+            precioIva: precioIvaStr,
             fechaCompra: gasto.fechaCompra?.split('T')[0] || new Date().toISOString().split('T')[0],
             nota: gasto.nota || '',
             archivoFactura: gasto.archivoFactura || null,
@@ -351,6 +406,7 @@ function GastosTab() {
             esPendiente: gasto.esPendiente || false,
             esSolicitudCredito: gasto.esSolicitudCredito || false
         });
+        setMedioPago(gastoEsHeRecTipo(gasto) ? null : flagsToMedioPago(!!gasto.esSolicitudCredito, !!gasto.esEfectivo));
         setIsLegalizing(false);
         setShowModal(true);
     };
@@ -364,6 +420,8 @@ function GastosTab() {
             numeroFactura: '', // Obligar a ponerla
             precio: '', // Obligar a ponerlo o dejar el actual si lo edita
             precioDisplay: '',
+            precioBase: '',
+            precioIva: '',
             fechaCompra: gasto.fechaCompra?.split('T')[0] || new Date().toISOString().split('T')[0],
             nota: gasto.nota || '',
             archivoFactura: null,
@@ -371,6 +429,7 @@ function GastosTab() {
             esPendiente: false, // Al guardar esto ya no será pendiente
             esSolicitudCredito: gasto.esSolicitudCredito || false
         });
+        setMedioPago(gastoEsHeRecTipo(gasto) ? null : flagsToMedioPago(!!gasto.esSolicitudCredito, !!gasto.esEfectivo));
         setIsLegalizing(true);
         setShowModal(true);
     };
@@ -466,14 +525,45 @@ function GastosTab() {
                 Alert.alert('Error', 'El número de factura es obligatorio');
                 return;
             }
-            if (!formData.precio) {
-                Alert.alert('Error', 'El precio es obligatorio');
-                return;
+            if (isNominaHeORecargoTipo) {
+                if (!formData.precio) {
+                    Alert.alert('Error', 'El precio es obligatorio');
+                    return;
+                }
+            } else {
+                let pb = parseMontoInput(formData.precioBase);
+                let pi = parseMontoInput(formData.precioIva);
+                if (pb === null || pi === null) {
+                    Alert.alert('Error', 'Ingrese precio base e IVA (el IVA puede ser 0).');
+                    return;
+                }
+                if (pb < 0 || pi < 0) {
+                    Alert.alert('Error', 'Precio base e IVA no pueden ser negativos.');
+                    return;
+                }
+                if (pb + pi <= 0) {
+                    Alert.alert('Error', 'El total (base + IVA) debe ser mayor a 0.');
+                    return;
+                }
             }
+        }
+
+        if (!isNominaHeORecargoTipo && !medioPago) {
+            showAlertMedioPagoRequerido();
+            return;
         }
 
         try {
             setSaving(true);
+            let pbSave = parseMontoInput(formData.precioBase);
+            let piSave = parseMontoInput(formData.precioIva);
+            if (!isNominaHeORecargoTipo && formData.esPendiente) {
+                if (pbSave === null) pbSave = 0;
+                if (piSave === null) piSave = 0;
+            }
+            const precioTotal = isNominaHeORecargoTipo
+                ? (formData.precio ? parseFloat(formData.precio) : 0)
+                : (pbSave !== null && piSave !== null ? pbSave + piSave : 0);
             const gastoData = {
                 rubroId: parseInt(formData.rubroId),
                 tipoServicioId: parseInt(formData.tipoServicioId),
@@ -481,13 +571,16 @@ function GastosTab() {
                 anio,
                 mes,
                 numeroFactura: formData.numeroFactura || '',
-                precio: formData.precio ? parseFloat(formData.precio) : 0,
+                precio: precioTotal,
+                ...(!isNominaHeORecargoTipo && pbSave !== null && piSave !== null
+                    ? { precioBase: pbSave, precioIva: piSave }
+                    : {}),
                 fechaCompra: formData.fechaCompra,
                 nota: formData.nota,
                 archivoFactura: formData.archivoFactura,
                 archivoFacturaNombre: formData.archivoNombre,
                 esPendiente: formData.esPendiente,
-                esSolicitudCredito: formData.esSolicitudCredito
+                ...(isNominaHeORecargoTipo ? { esSolicitudCredito: false, esEfectivo: false } : medioPagoToFlags(medioPago))
             };
 
             if (editItem) {
@@ -508,7 +601,54 @@ function GastosTab() {
         }
     };
 
+    const handleUpdateEstado = async (gasto) => {
+        let nuevoEstado = '';
+        if (gasto.estado === 'Montado') nuevoEstado = 'Entregado';
+        else if (gasto.estado === 'Entregado') nuevoEstado = 'Pagado';
+        else if (gasto.estado === 'Pagado') nuevoEstado = 'Montado';
+        else nuevoEstado = 'Montado';
+
+        const confirmMsg = `¿Cambiar estado de "${gasto.estado}" a "${nuevoEstado}"?`;
+
+        const executeUpdate = async () => {
+            try {
+                setLoading(true);
+                // Clonamos el gasto y actualizamos el estado
+                const updatedGasto = { ...gasto, estado: nuevoEstado };
+                // Limpiamos propiedades de navegación para evitar problemas de serialización
+                delete updatedGasto.rubroNombre;
+                delete updatedGasto.tipoServicioNombre;
+                delete updatedGasto.proveedorNombre;
+                delete updatedGasto.creadoPorNombre;
+                delete updatedGasto.CreadoPorNombre;
+
+                await ghApi.updateGasto(gasto.id, updatedGasto);
+                await loadGastos();
+                Alert.alert('Éxito', `Estado actualizado a ${nuevoEstado}`);
+            } catch (error) {
+                console.error('Error updating estado:', error);
+                Alert.alert('Error', 'No se pudo actualizar el estado');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        if (Platform.OS === 'web') {
+            if (window.confirm(confirmMsg)) executeUpdate();
+        } else {
+            Alert.alert('Confirmar Cambio', confirmMsg, [
+                { text: 'Cancelar', style: 'cancel' },
+                { text: 'Confirmar', onPress: executeUpdate }
+            ]);
+        }
+    };
+
     const handleDelete = async (id) => {
+        const gasto = gastos.find(g => g.id === id);
+        if (gasto && !gastoPermiteEdicionTrasContabilidad(gasto)) {
+            Alert.alert('Acceso Denegado', `No se puede eliminar un gasto en estado ${gasto.estado} (ya consta como legalizado).`);
+            return;
+        }
         if (Platform.OS === 'web') {
             if (window.confirm('¿Está seguro de eliminar este gasto?')) {
                 try {
@@ -786,9 +926,19 @@ function GastosTab() {
                                                         <Text style={{ fontSize: 10, color: isOverdue ? '#FFF' : '#B45309', fontWeight: 'bold' }}>⏳ Pendiente</Text>
                                                     </View>
                                                 )}
-                                                {gasto.esSolicitudCredito && (
-                                                    <View style={{ backgroundColor: '#F5F3FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#DDD6FE', marginLeft: 4 }}>
-                                                        <Text style={{ fontSize: 10, color: '#7C3AED', fontWeight: 'bold' }}>💳 Crédito</Text>
+                                                {!gastoEsHeRecTipo(gasto) && (
+                                                    <MedioPagoBadge
+                                                        esSolicitudCredito={!!gasto.esSolicitudCredito}
+                                                        esEfectivo={!!gasto.esEfectivo}
+                                                        compact
+                                                    />
+                                                )}
+                                                {gasto.estado && (
+                                                    <View style={[styles.estadoBadge, { backgroundColor: getEstadoColor(gasto.estado) + '20', borderColor: getEstadoColor(gasto.estado) }]}
+                                                    >
+                                                        <Text style={[styles.estadoBadgeText, { color: getEstadoColor(gasto.estado) }]}>
+                                                            {gasto.estado.toUpperCase()}
+                                                        </Text>
                                                     </View>
                                                 )}
                                             </View>
@@ -798,7 +948,12 @@ function GastosTab() {
                                                 </Text>
                                             )}
                                         </View>
-                                        <Text style={styles.gastoPrecio}>{formatCurrency(gasto.precio)}</Text>
+                                        <GastoListaPrecios
+                                            gasto={gasto}
+                                            singlePriceRow={gastoEsHeRecTipo(gasto)}
+                                            formatCurrency={formatCurrency}
+                                            precioStyle={styles.gastoPrecio}
+                                        />
                                     </View>
                                     <Text style={styles.gastoRubro}>{gasto.rubroNombre}</Text>
                                     <View style={styles.gastoDetails}>
@@ -854,23 +1009,27 @@ function GastosTab() {
                                                 <Text style={styles.editCardButtonText}>✅ Legalizar</Text>
                                             </TouchableOpacity>
                                         )}
-                                        <TouchableOpacity
-                                            style={styles.editCardButton}
-                                            onPress={() => handleEdit(gasto)}
-                                        >
-                                            <Text style={styles.editCardButtonText}>✏️ Editar</Text>
-                                        </TouchableOpacity>
+                                        {gastoPermiteEdicionTrasContabilidad(gasto) && (
+                                            <>
+                                                <TouchableOpacity
+                                                    style={styles.editCardButton}
+                                                    onPress={() => handleEdit(gasto)}
+                                                >
+                                                    <Text style={styles.editCardButtonText}>✏️ Editar</Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity
+                                                    style={styles.deleteButton}
+                                                    onPress={() => handleDelete(gasto.id)}
+                                                >
+                                                    <Text style={styles.deleteButtonText}>🗑️ Eliminar</Text>
+                                                </TouchableOpacity>
+                                            </>
+                                        )}
                                         <TouchableOpacity
                                             style={styles.historyButton}
                                             onPress={() => { setSelectedHistoryGasto(gasto); setShowHistoryModal(true); }}
                                         >
                                             <Text style={styles.historyButtonText}>🕒 Historial</Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity
-                                            style={styles.deleteButton}
-                                            onPress={() => handleDelete(gasto.id)}
-                                        >
-                                            <Text style={styles.deleteButtonText}>🗑️ Eliminar</Text>
                                         </TouchableOpacity>
                                     </View>
                                 </View>
@@ -909,7 +1068,10 @@ function GastosTab() {
                                     <View style={styles.pickerContainer}>
                                         <Picker
                                             selectedValue={formData.rubroId}
-                                            onValueChange={(value) => setFormData(prev => ({ ...prev, rubroId: value }))}
+                                            onValueChange={(value) => {
+                                                setMedioPago(null);
+                                                setFormData(prev => ({ ...prev, rubroId: value }));
+                                            }}
                                         >
                                             <Picker.Item label="Seleccione..." value="" />
                                             {rubros.map(r => (
@@ -922,41 +1084,6 @@ function GastosTab() {
 
                             {formData.rubroId ? (
                                 <>
-                                    {/* Solicitud de Crédito Checkbox */}
-                                    {!isLegalizing && (
-                                        <TouchableOpacity
-                                            style={{
-                                                flexDirection: 'row',
-                                                alignItems: 'center',
-                                                marginBottom: 15,
-                                                padding: 10,
-                                                backgroundColor: '#F5F3FF',
-                                                borderRadius: 8,
-                                                borderWidth: 1,
-                                                borderColor: '#DDD6FE'
-                                            }}
-                                            onPress={() => setFormData(p => ({ ...p, esSolicitudCredito: !p.esSolicitudCredito }))}
-                                        >
-                                            <View style={{
-                                                width: 20,
-                                                height: 20,
-                                                borderWidth: 2,
-                                                borderColor: '#7C3AED',
-                                                borderRadius: 4,
-                                                justifyContent: 'center',
-                                                alignItems: 'center',
-                                                marginRight: 10,
-                                                backgroundColor: formData.esSolicitudCredito ? '#7C3AED' : 'white'
-                                            }}>
-                                                {formData.esSolicitudCredito && <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>✓</Text>}
-                                            </View>
-                                            <View>
-                                                <Text style={{ color: '#5B21B6', fontWeight: '600' }}>Solicitud de Crédito</Text>
-                                                <Text style={{ fontSize: 10, color: '#6D28D9' }}>Marcar para trámite de crédito</Text>
-                                            </View>
-                                        </TouchableOpacity>
-                                    )}
-
                                     {!isLegalizing && (
                                         <>
                                             {/* Tipo Servicio */}
@@ -964,7 +1091,10 @@ function GastosTab() {
                                             <View style={styles.pickerContainer}>
                                                 <Picker
                                                     selectedValue={formData.tipoServicioId}
-                                                    onValueChange={(value) => setFormData(prev => ({ ...prev, tipoServicioId: value }))}
+                                                    onValueChange={(value) => {
+                                                        setMedioPago(null);
+                                                        setFormData(prev => ({ ...prev, tipoServicioId: value }));
+                                                    }}
                                                     enabled={filteredTipos.length > 0}
                                                 >
                                                     <Picker.Item label="Seleccione..." value="" />
@@ -974,6 +1104,24 @@ function GastosTab() {
                                                 </Picker>
                                             </View>
                                         </>
+                                    )}
+
+                                    {!isNominaHeORecargoTipo && (
+                                        <MedioPagoGastoControls
+                                            value={medioPago}
+                                            onChange={(v) => {
+                                                setMedioPago(v);
+                                                const f = medioPagoToFlags(v);
+                                                setFormData(p => ({ ...p, esSolicitudCredito: f.esSolicitudCredito }));
+                                            }}
+                                            colors={{
+                                                text: themeColors.text,
+                                                subText: themeColors.subText,
+                                                primary: themeColors.primary || '#7C3AED',
+                                                border: themeColors.border,
+                                                card: themeColors.card || themeColors.background
+                                            }}
+                                        />
                                     )}
 
                                     {/* Proveedor */}
@@ -1018,16 +1166,44 @@ function GastosTab() {
                                         placeholder={formData.esPendiente ? "Opcional" : "Obligatorio para habilitar precio"}
                                     />
 
-                                    {/* Precio with currency formatting */}
-                                    <Text style={styles.label}>Precio {formData.esPendiente ? '(Opcional por ahora)' : '*'} {(!formData.esPendiente && !formData.numeroFactura.trim()) ? '(ingrese factura primero)' : ''}</Text>
-                                    <TextInput
-                                        style={[styles.input, (!formData.esPendiente && !formData.numeroFactura.trim()) && styles.inputDisabled]}
-                                        placeholder="$ 0"
-                                        keyboardType="numeric"
-                                        value={formData.precioDisplay}
-                                        onChangeText={handlePriceChange}
-                                        editable={formData.esPendiente || !!formData.numeroFactura.trim()}
-                                    />
+                                    {/* Precio: nómina HE/recargo un solo monto; resto base + IVA */}
+                                    {isNominaHeORecargoTipo ? (
+                                        <>
+                                            <Text style={styles.label}>Precio {formData.esPendiente ? '(Opcional por ahora)' : '*'} {(!formData.esPendiente && !formData.numeroFactura.trim()) ? '(ingrese factura primero)' : ''}</Text>
+                                            <TextInput
+                                                style={[styles.input, (!formData.esPendiente && !formData.numeroFactura.trim()) && styles.inputDisabled]}
+                                                placeholder="$ 0"
+                                                keyboardType="numeric"
+                                                value={formData.precioDisplay}
+                                                onChangeText={handlePriceChange}
+                                                editable={formData.esPendiente || !!formData.numeroFactura.trim()}
+                                            />
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Text style={styles.label}>Precio base {formData.esPendiente ? '(Opcional por ahora)' : '*'} {(!formData.esPendiente && !formData.numeroFactura.trim()) ? '(ingrese factura primero)' : ''}</Text>
+                                            <TextInput
+                                                style={[styles.input, (!formData.esPendiente && !formData.numeroFactura.trim()) && styles.inputDisabled]}
+                                                value={formData.precioBase}
+                                                onChangeText={(t) => setFormData(p => ({ ...p, precioBase: t }))}
+                                                keyboardType="decimal-pad"
+                                                placeholder="0"
+                                                editable={formData.esPendiente || !!formData.numeroFactura.trim() || !!editItem}
+                                            />
+                                            <Text style={[styles.label, { marginTop: 10 }]}>IVA {formData.esPendiente ? '(Opcional)' : '*'} (puede ser 0)</Text>
+                                            <TextInput
+                                                style={[styles.input, (!formData.esPendiente && !formData.numeroFactura.trim()) && styles.inputDisabled]}
+                                                value={formData.precioIva}
+                                                onChangeText={(t) => setFormData(p => ({ ...p, precioIva: t }))}
+                                                keyboardType="decimal-pad"
+                                                placeholder="0"
+                                                editable={formData.esPendiente || !!formData.numeroFactura.trim() || !!editItem}
+                                            />
+                                            <Text style={{ marginTop: 8, fontSize: 14, fontWeight: 'bold', color: '#059669' }}>
+                                                Total: {formatCurrency((parseMontoInput(formData.precioBase) ?? 0) + (parseMontoInput(formData.precioIva) ?? 0))}
+                                            </Text>
+                                        </>
+                                    )}
 
                                     {/* Budget Info Panel */}
                                     {presupuestoInfo && (
@@ -1036,7 +1212,11 @@ function GastosTab() {
                                                 📊 Presupuesto: {presupuestoInfo.tipoServicioNombre}
                                             </Text>
                                             {(() => {
-                                                const currentPrice = parseFloat(formData.precioDisplay.replace(/[^0-9]/g, '')) || 0;
+                                                const pbLive = parseMontoInput(formData.precioBase);
+                                                const piLive = parseMontoInput(formData.precioIva);
+                                                const currentPrice = isNominaHeORecargoTipo
+                                                    ? (parseFloat(formData.precioDisplay.replace(/[^0-9]/g, '')) || 0)
+                                                    : (pbLive !== null && piLive !== null ? pbLive + piLive : 0);
                                                 const originalPrice = editItem ? (editItem.precio || 0) : 0;
                                                 const adjustedGastadoMes = (presupuestoInfo.gastadoMes || 0) - originalPrice;
                                                 const liveGastado = adjustedGastadoMes + currentPrice;
@@ -2922,6 +3102,29 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#F3F4F6',
     },
+    estadoBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 4,
+        borderWidth: 1,
+        alignSelf: 'flex-start',
+    },
+    estadoBadgeText: {
+        fontSize: 10,
+        fontWeight: 'bold',
+    },
+    pendingBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 4,
+        alignSelf: 'flex-start',
+        marginRight: 5,
+    },
+    pendingText: {
+        fontSize: 10,
+        fontWeight: 'bold',
+        color: '#FFF',
+    },
     contentContainer: {
         flex: 1,
     },
@@ -3185,6 +3388,17 @@ const styles = StyleSheet.create({
         color: '#DC2626',
         fontSize: 13,
     },
+    estadoBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 6,
+        borderWidth: 1,
+        marginLeft: 6,
+    },
+    estadoBadgeText: {
+        fontSize: 10,
+        fontWeight: '900',
+    },
     itemCard: {
         backgroundColor: '#FFF',
         padding: 16,
@@ -3377,3 +3591,5 @@ const styles = StyleSheet.create({
         textAlign: 'center',
     },
 });
+
+

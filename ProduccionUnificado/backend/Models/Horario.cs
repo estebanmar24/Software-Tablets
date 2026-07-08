@@ -2,7 +2,8 @@ namespace TiempoProcesos.API.Models;
 
 /// <summary>
 /// Modelo para los horarios/turnos de trabajo.
-/// El sábado SIEMPRE es 8am-12pm para todos los turnos (horario bonificable).
+/// Cada turno define horario L-V (InicioSemana/FinSemana) y sábado (InicioSabado/FinSabado).
+/// Turno 5: sábado 6am–10am. Turno 6: 1pm–9pm.
 /// </summary>
 public class Horario
 {

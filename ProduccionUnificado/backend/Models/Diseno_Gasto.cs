@@ -12,6 +12,7 @@ public class Diseno_Gasto
     public bool EsPendiente { get; set; } = false;
 
     public bool EsSolicitudCredito { get; set; } = false;
+    public bool EsEfectivo { get; set; } = false;
 
     [Required]
     public int RubroId { get; set; }
@@ -28,6 +29,10 @@ public class Diseno_Gasto
 
     [Column(TypeName = "decimal(18,2)")]
     public decimal Precio { get; set; }
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? PrecioBase { get; set; }
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? PrecioIva { get; set; }
 
     [Required]
     public DateTime Fecha { get; set; }
@@ -56,4 +61,7 @@ public class Diseno_Gasto
     public int? CreadoPorId { get; set; }
     [ForeignKey("CreadoPorId")]
     public virtual AdminUsuario? CreadoPor { get; set; }
+
+    [MaxLength(50)]
+    public string Estado { get; set; } = "Montado";
 }

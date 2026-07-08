@@ -1,0 +1,7 @@
+﻿Compilación iniciada a las 3/05/2026 1:04:41 p. m..
+     1>Proyecto "G:\Proyecto-Tablets\ProduccionUnificado\backend\TiempoProcesos.API.csproj" en el nodo 1 (Restore destinos).
+     1>_GetAllRestoreProjectPathItems:
+         Determinando los proyectos que se van a restaurar...
+       Restore:
+         La validación de la cadena de certificados X.509 utilizará el almacén de confianza predeterminado seleccionado por .NET para la firma de código.
+         La validación de la cadena de certificados X.509 utilizará el almacén de confianza predeterminado seleccionado por .NET para la marca de tiempo.

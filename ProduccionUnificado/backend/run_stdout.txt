@@ -1,0 +1,4 @@
+[STARTUP] Getting DbContext...
+dbug: Microsoft.EntityFrameworkCore.Infrastructure[10401]
+      An 'IServiceProvider' was created for internal use by Entity Framework.
+[STARTUP] DbContext acquired.

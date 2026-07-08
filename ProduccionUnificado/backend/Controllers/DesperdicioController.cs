@@ -238,6 +238,7 @@ public class DesperdicioController : ControllerBase
                 Descripcion = r.CodigoDesperdicio != null ? r.CodigoDesperdicio.Descripcion : "Sin Categoría",
                 r.Cantidad,
                 r.Nota,
+                RegistradoPor = r.RegistradoPor,
                 r.FechaRegistro
             })
             .ToListAsync();
@@ -322,10 +323,173 @@ public class DesperdicioController : ControllerBase
         return Ok(reporte);
     }
 
+    /// <summary>
+    /// Trazabilidad anual de desperdicio:
+    /// - Totales por mes
+    /// - Código más crítico por mes
+    /// - Top códigos por mes
+    /// </summary>
+    [HttpGet("trazabilidad-anual")]
+    public async Task<ActionResult<object>> GetTrazabilidadAnual([FromQuery] int anio, [FromQuery] int? mesHasta)
+    {
+        if (anio < 2000 || anio > 2100)
+            return BadRequest("Año inválido");
+        var mesLimite = mesHasta.HasValue && mesHasta.Value >= 1 && mesHasta.Value <= 12 ? mesHasta.Value : 12;
+
+        var registros = await _context.RegistrosDesperdicio
+            .Include(r => r.CodigoDesperdicio)
+            .Include(r => r.Maquina)
+            .Where(r => r.Fecha.Year == anio && r.Fecha.Month <= mesLimite)
+            .ToListAsync();
+
+        var mesesNombres = new[]
+        {
+            "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+        };
+
+        var totalPorMes = Enumerable.Range(1, mesLimite)
+            .Select(m =>
+            {
+                var total = registros.Where(r => r.Fecha.Month == m).Sum(r => r.Cantidad);
+                return new
+                {
+                    mes = m,
+                    nombreMes = mesesNombres[m],
+                    total
+                };
+            })
+            .ToList();
+
+        var totalAnual = totalPorMes.Sum(x => x.total);
+        var mesMasCritico = totalPorMes.OrderByDescending(x => x.total).FirstOrDefault();
+
+        var codigosPorMes = Enumerable.Range(1, mesLimite)
+            .Select(m =>
+            {
+                var topCodigos = registros
+                    .Where(r => r.Fecha.Month == m)
+                    .GroupBy(r => new
+                    {
+                        Codigo = r.CodigoDesperdicio != null ? r.CodigoDesperdicio.Codigo : "S/C",
+                        Descripcion = r.CodigoDesperdicio != null ? r.CodigoDesperdicio.Descripcion : "Sin Categoría"
+                    })
+                    .Select(g => new
+                    {
+                        codigo = g.Key.Codigo,
+                        descripcion = g.Key.Descripcion,
+                        total = g.Sum(x => x.Cantidad)
+                    })
+                    .OrderByDescending(x => x.total)
+                    .Take(5)
+                    .ToList();
+
+                var codigoMasCritico = topCodigos.FirstOrDefault();
+
+                return new
+                {
+                    mes = m,
+                    nombreMes = mesesNombres[m],
+                    totalMes = totalPorMes.First(x => x.mes == m).total,
+                    codigoMasCritico,
+                    topCodigos
+                };
+            })
+            .ToList();
+
+        var topMaquinasPorMes = Enumerable.Range(1, mesLimite)
+            .Select(m =>
+            {
+                var totalMes = totalPorMes.First(x => x.mes == m).total;
+                var topMaquinas = registros
+                    .Where(r => r.Fecha.Month == m)
+                    .GroupBy(r => new
+                    {
+                        r.MaquinaId,
+                        Nombre = r.EsTallerExterno ? "Taller Externo" : (r.Maquina != null ? r.Maquina.Nombre : "Sin máquina")
+                    })
+                    .Select(g =>
+                    {
+                        var total = g.Sum(x => x.Cantidad);
+                        return new
+                        {
+                            maquinaId = g.Key.MaquinaId,
+                            maquinaNombre = g.Key.Nombre,
+                            total,
+                            porcentaje = totalMes > 0
+                                ? Math.Round(total / totalMes * 100m, 2)
+                                : 0m
+                        };
+                    })
+                    .OrderByDescending(x => x.total)
+                    .Take(5)
+                    .ToList();
+
+                return new
+                {
+                    mes = m,
+                    nombreMes = mesesNombres[m],
+                    totalMes,
+                    topMaquinas
+                };
+            })
+            .ToList();
+
+        var codigosAcumulado = registros
+            .GroupBy(r => new
+            {
+                Codigo = r.CodigoDesperdicio != null ? r.CodigoDesperdicio.Codigo : "S/C",
+                Descripcion = r.CodigoDesperdicio != null ? r.CodigoDesperdicio.Descripcion : "Sin Categoría"
+            })
+            .Select(g => new
+            {
+                codigo = g.Key.Codigo,
+                descripcion = g.Key.Descripcion,
+                total = g.Sum(x => x.Cantidad)
+            })
+            .OrderByDescending(x => x.total)
+            .ToList();
+
+        var codigosTopMatriz = codigosAcumulado.Take(8).ToList();
+        var matrizCodigoMes = codigosTopMatriz
+            .Select(c => new
+            {
+                codigo = c.codigo,
+                descripcion = c.descripcion,
+                valores = Enumerable.Range(1, mesLimite)
+                    .Select(m => registros
+                        .Where(r =>
+                            r.Fecha.Month == m &&
+                            (r.CodigoDesperdicio != null ? r.CodigoDesperdicio.Codigo : "S/C") == c.codigo &&
+                            (r.CodigoDesperdicio != null ? r.CodigoDesperdicio.Descripcion : "Sin Categoría") == c.descripcion)
+                        .Sum(r => r.Cantidad))
+                    .ToList()
+            })
+            .ToList();
+
+        return Ok(new
+        {
+            anio,
+            mesHasta = mesLimite,
+            totalAnual,
+            mesMasCritico,
+            totalPorMes,
+            codigosPorMes,
+            topMaquinasPorMes,
+            codigosAcumulado,
+            meses = Enumerable.Range(1, mesLimite)
+                .Select(m => new { mes = m, nombreMes = mesesNombres[m] })
+                .ToList(),
+            matrizCodigoMes
+        });
+    }
+
     [HttpPost]
     public async Task<ActionResult<RegistroDesperdicio>> CrearRegistro(RegistroDesperdicio registro)
     {
         registro.FechaRegistro = DateTime.Now;
+        if (!string.IsNullOrWhiteSpace(registro.RegistradoPor))
+            registro.RegistradoPor = registro.RegistradoPor.Trim();
         _context.RegistrosDesperdicio.Add(registro);
         await _context.SaveChangesAsync();
 

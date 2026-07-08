@@ -24,8 +24,34 @@ import { Picker } from '@react-native-picker/picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { mantenimientoApi } from '../services/mantenimientoApi';
 import { ExpenseHistoryModal } from '../components/ExpenseHistoryModal';
+import MultiRubroPicker from '../components/MultiRubroPicker';
+import { getProveedorRubroIds, proveedorMatchesRubro, getProveedorRubrosLabel } from '../utils/proveedorRubros';
+import MedioPagoGastoControls, {
+    medioPagoToFlags,
+    flagsToMedioPago,
+    MedioPagoBadge,
+    showAlertMedioPagoRequerido
+} from '../components/MedioPagoGastoControls';
 import { useTheme, lightColors } from '../contexts/ThemeContext';
+import { resolveOvertimeShiftContext, applyLegacyLunchDiscount } from '../utils/overtimeLunch';
+import {
+    MSG_GASTO_HORAS_DUPLICADO,
+    findDuplicateOvertimeAmongCandidates,
+    buildOvertimeCandidatesFromForm,
+} from '../utils/duplicateOvertimeGasto';
+import { showAppAlert, extractApiErrorMessage, isOvertimeDuplicateMessage } from '../utils/appAlert';
 import { getFileServerUrl, getApiBaseUrl } from '../services/apiConfig';
+import { parseMontoInput, GastoListaPrecios } from '../utils/gastoPrecioForm';
+import { gastoPermiteEdicionTrasContabilidad } from '../utils/gastoEditPermission';
+import {
+    esRubroConProductoInventario,
+    esRubroConMaquinaObligatoria,
+    esRubroHerramientas,
+    filtrarProductosParaRubro,
+    medidasParaTipoProducto,
+    esTipoProductoHerramienta,
+    MEDIDAS_INSUMO
+} from '../utils/mantenimientoRubroHelpers';
 
 // TABS - Same structure as SST
 const TABS = [
@@ -54,6 +80,15 @@ const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('es-CO');
 };
 
+
+const getEstadoColor = (estado) => {
+    switch (estado) {
+        case 'Pagado': return '#10B981';
+        case 'Entregado': return '#3B82F6';
+        case 'Montado': return '#6B7280';
+        default: return '#6B7280';
+    }
+};
 
 const getBase64FromUrl = async (url) => {
     const data = await fetch(url);
@@ -120,7 +155,7 @@ export default function MantenimientoGastosScreen({ initialTab = 'gastos' }) {
 
 // ===================== GASTOS TAB =====================
 function GastosTab() {
-    const { colors: _c, isDarkMode: _d } = useTheme(); const colors = lightColors; const isDarkMode = false;
+    const { colors: themeColors, isDarkMode: _d } = useTheme(); const colors = lightColors; const isDarkMode = false;
     const styles = getStyles(isDarkMode, colors);
     const [loading, setLoading] = useState(true);
     const [serverUrl, setServerUrl] = useState('');
@@ -142,7 +177,6 @@ function GastosTab() {
     const [proveedores, setProveedores] = useState([]);
     const [maquinas, setMaquinas] = useState([]);
     const [usuarios, setUsuarios] = useState([]);
-    const [productos, setProductos] = useState([]);
     const [tiposHora, setTiposHora] = useState([]);
     const [tiposRecargo, setTiposRecargo] = useState([]);
 
@@ -171,13 +205,18 @@ function GastosTab() {
     const [editItem, setEditItem] = useState(null);
     const [isLegalizing, setIsLegalizing] = useState(false); // State for UI rendering
     const isLegalizingRef = useRef(false); // Ref for robust state tracking
+    const [productos, setProductos] = useState([]);
     const [formData, setFormData] = useState({
-        rubroId: '', proveedorId: '', maquinaId: '', productoId: '',
+        rubroId: '', proveedorId: '', maquinaId: '',
         usuarioId: '', tipoHoraId: '', tipoRecargoId: '',
-        horaInicio: '', horaFin: '', cantidadHoras: '', cantidad: '',
-        precio: '', precioDisplay: '', fecha: new Date().toISOString().split('T')[0], nota: '',
-        numeroFactura: '', facturaPdfUrl: '', archivoFactura: null, archivoNombre: '', numeroOP: '', esPendiente: false, esSolicitudCredito: false
+        productoId: '', cantidad: '',
+        horaInicio: '', horaFin: '', cantidadHoras: '',
+        precio: '', precioDisplay: '', precioBase: '', precioIva: '', fecha: new Date().toISOString().split('T')[0], nota: '',
+        numeroFactura: '', facturaPdfUrl: '', archivoFactura: null, archivoNombre: '',
+        fechaEntregaFactura: '', fechaVencimientoFactura: '',
+        numeroOP: '', esPendiente: false, esSolicitudCredito: false
     });
+    const [medioPago, setMedioPago] = useState(null);
     const [saving, setSaving] = useState(false);
 
     const [presupuestoInfo, setPresupuestoInfo] = useState(null);
@@ -194,9 +233,9 @@ function GastosTab() {
             setProveedores(data.proveedores || []);
             setMaquinas(data.maquinas || []);
             setUsuarios(data.usuarios || []);
-            setProductos(data.productos || []);
             setTiposHora(data.tiposHora || []);
             setTiposRecargo(data.tiposRecargo || []);
+            setProductos(data.productos || []);
         } catch (error) {
             console.error('Error loading master data:', error);
         }
@@ -243,6 +282,7 @@ function GastosTab() {
 
     // ========== SMART BREAKDOWN (Turno base desde horaInicio) ==========
     const [breakdown, setBreakdown] = useState([]);
+    const [formOvertimeError, setFormOvertimeError] = useState('');
 
     const calculateSmartBreakdown = useCallback(() => {
         if (!formData.usuarioId || !formData.horaInicio || !formData.horaFin || !formData.fecha) {
@@ -278,8 +318,10 @@ function GastosTab() {
         const isSpecialDayStart = isSundayStart || isHolidayStart;
         const isSaturdayStart = startDate.getDay() === 6;
 
-        const baseShiftMinutes = isSpecialDayStart ? 0 : (isSaturdayStart ? 4 * 60 : 8 * 60);
-        const shiftEndMin = startFull + baseShiftMinutes;
+        const { shiftEndMin, lunchWindow: lunchWindowCtx, usesScheduledShift } = resolveOvertimeShiftContext(startFull, endFull, {
+            isSpecialDay: isSpecialDayStart,
+            isSaturday: isSaturdayStart,
+        });
 
         const addBreakdown = (s, e, typeNameMatch, isHe, isSpecialDay) => {
             if (e <= s) return;
@@ -306,11 +348,16 @@ function GastosTab() {
         [NIGHT_END, NIGHT_START, 1440, NIGHT_END + 1440, NIGHT_START + 1440].forEach(boundary => {
             if (boundary > startFull && boundary < endFull) cutPoints.add(boundary);
         });
+        if (lunchWindowCtx) {
+            cutPoints.add(lunchWindowCtx.lunchStart);
+            cutPoints.add(lunchWindowCtx.lunchEnd);
+        }
         const sortedCuts = [...cutPoints].sort((a, b) => a - b);
 
         for (let i = 0; i < sortedCuts.length - 1; i++) {
             const s = sortedCuts[i];
             const e = sortedCuts[i + 1];
+            if (lunchWindowCtx && s >= lunchWindowCtx.lunchStart && e <= lunchWindowCtx.lunchEnd) continue;
             const mid = (s + e) / 2;
             const actualDate = new Date(startDate);
             if (mid >= 1440) actualDate.setDate(actualDate.getDate() + 1);
@@ -338,14 +385,11 @@ function GastosTab() {
         };
 
         const totalDurationMin = endFull - startFull;
-        if (totalDurationMin >= 6 * 60) {
-            const extraItem = breakdownItems.find(item => item.isHe);
-            if (extraItem && extraItem.hours > 1) extraItem.hours -= 1.0;
-            else {
-                const recargoItem = breakdownItems.find(item => !item.isHe);
-                if (recargoItem) recargoItem.hours = Math.max(0, recargoItem.hours - 1.0);
-            }
-            breakdownItems.push({ type: '- COMIDA (Descuento)', typeId: 0, hours: -1.0, isHe: false, isLunch: true });
+        const lunchDiscountApplied = lunchWindowCtx || usesScheduledShift
+            ? 0
+            : (totalDurationMin >= 6 * 60 ? applyLegacyLunchDiscount(breakdownItems, 1.0) : 0);
+        if (lunchDiscountApplied > 0 && breakdownItems.some(item => item.hours > 0)) {
+            breakdownItems.push({ type: '- COMIDA (Descuento)', typeId: 0, hours: -lunchDiscountApplied, isHe: false, isLunch: true });
         }
 
         setBreakdown(breakdownItems.map(item => ({ ...item, formattedHours: formatHours(item.hours) })));
@@ -406,11 +450,12 @@ function GastosTab() {
 
     useEffect(() => {
         if (formData.rubroId) {
-            let filtered = proveedores.filter(p => !p.rubroId || p.rubroId.toString() === formData.rubroId.toString());
-            // Si estamos editando, asegurarnos de que el proveedor actual esté en la lista para que no se borre
+            let filtered = proveedores.filter(p => proveedorMatchesRubro(p, formData.rubroId));
+            // Si estamos editando, asegurar que el proveedor actual aparezca aun con tipos mixtos number/string.
             if (editItem && editItem.proveedorId) {
-                const currentP = proveedores.find(p => p.id === editItem.proveedorId);
-                if (currentP && !filtered.find(p => p.id === currentP.id)) {
+                const editProveedorId = editItem.proveedorId.toString();
+                const currentP = proveedores.find(p => p.id?.toString() === editProveedorId);
+                if (currentP && !filtered.find(p => p.id?.toString() === currentP.id?.toString())) {
                     filtered = [currentP, ...filtered];
                 }
             }
@@ -419,22 +464,6 @@ function GastosTab() {
             setFilteredProveedores(proveedores);
         }
     }, [formData.rubroId, proveedores, editItem]);
-
-    // Autofill Price from Cotizaciones when Proveedor is selected
-    useEffect(() => {
-        if (formData.proveedorId && !isLegalizingRef.current && !editItem) {
-            const cotizacion = cotizaciones.find(c => c.proveedorId.toString() === formData.proveedorId.toString() && (!formData.rubroId || c.rubroId.toString() === formData.rubroId.toString()));
-            if (cotizacion && cotizacion.precioCotizado) {
-                const numericValue = cotizacion.precioCotizado.toString();
-                const formatted = formatCurrencyInput(numericValue);
-                setFormData(prev => ({
-                    ...prev,
-                    precio: numericValue,
-                    precioDisplay: formatted
-                }));
-            }
-        }
-    }, [formData.proveedorId, cotizaciones, formData.rubroId, editItem]);
 
     // Load presupuestoInfo for ANY selected rubro - SST style
     useEffect(() => {
@@ -478,22 +507,35 @@ function GastosTab() {
         setIsLegalizing(false);
         isLegalizingRef.current = false;
         setFormData({
-            rubroId: '', proveedorId: '', maquinaId: '', productoId: '',
-            precio: '', precioDisplay: '', fecha: new Date().toISOString().split('T')[0], nota: '',
-            numeroFactura: '', facturaPdfUrl: '', archivoFactura: null, archivoNombre: '', numeroOP: '', esPendiente: false, esSolicitudCredito: false,
-            esOtraMaquina: false, otraMaquinaNombre: '', cantidad: ''
+            rubroId: '', proveedorId: '', maquinaId: '',
+            productoId: '', cantidad: '',
+            precio: '', precioDisplay: '', precioBase: '', precioIva: '', fecha: new Date().toISOString().split('T')[0], nota: '',
+            numeroFactura: '', facturaPdfUrl: '', archivoFactura: null, archivoNombre: '',
+            fechaEntregaFactura: '', fechaVencimientoFactura: '',
+            numeroOP: '', esPendiente: false, esSolicitudCredito: false,
+            esOtraMaquina: false, otraMaquinaNombre: ''
         });
+        setMedioPago(null);
+        setFormOvertimeError('');
+        setBreakdown([]);
+    };
+
+    const notifyDuplicateOvertime = () => {
+        setFormOvertimeError(MSG_GASTO_HORAS_DUPLICADO);
+        showAppAlert('Registro duplicado', MSG_GASTO_HORAS_DUPLICADO);
     };
 
 
 
     const handleSelectQuote = (quote) => {
-        const numericValue = quote.precioCotizado.toString();
+        const numericValue = String(quote.precioCotizado ?? '').replace(/[^0-9]/g, '');
         const formatted = formatCurrencyInput(numericValue);
         setFormData(prev => ({
             ...prev,
             rubroId: quote.rubroId.toString(),
             proveedorId: quote.proveedorId.toString(),
+            precioBase: numericValue,
+            precioIva: '0',
             precio: numericValue,
             precioDisplay: formatted,
             nota: quote.descripcion || prev.nota
@@ -514,14 +556,20 @@ function GastosTab() {
             rubroId: gasto.rubroId?.toString() || '',
             proveedorId: gasto.proveedorId?.toString() || '',
             maquinaId: gasto.maquinaId?.toString() || '',
+            productoId: gasto.productoId?.toString() || '',
+            cantidad: gasto.cantidad?.toString() || '',
             precio: gasto.precio?.toString() || '',
             precioDisplay: formatCurrencyInput(gasto.precio?.toString() || ''),
+            precioBase: gasto.precioBase != null ? String(gasto.precioBase) : '',
+            precioIva: gasto.precioIva != null ? String(gasto.precioIva) : '',
             fecha: gasto.fecha?.split('T')[0] || new Date().toISOString().split('T')[0],
             nota: gasto.nota || '',
             numeroFactura: gasto.numeroFactura || '',
             facturaPdfUrl: gasto.facturaPdfUrl || '',
             archivoFactura: gasto.archivoFactura || null,
             archivoNombre: gasto.facturaPdfUrl ? 'Archivo adjunto' : '',
+            fechaEntregaFactura: gasto.fechaEntregaFactura?.split('T')[0] || '',
+            fechaVencimientoFactura: gasto.fechaVencimientoFactura?.split('T')[0] || '',
             numeroOP: gasto.numeroOP || '',
             usuarioId: gasto.usuarioId?.toString() || '',
             horaInicio: gasto.horaInicio || '',
@@ -530,14 +578,17 @@ function GastosTab() {
             esPendiente: false,
             esSolicitudCredito: gasto.esSolicitudCredito || false,
             esOtraMaquina: !!gasto.otraMaquinaNombre,
-            otraMaquinaNombre: gasto.otraMaquinaNombre || '',
-            productoId: gasto.productoId?.toString() || '',
-            cantidad: gasto.cantidad?.toString() || ''
+            otraMaquinaNombre: gasto.otraMaquinaNombre || ''
         });
+        setMedioPago(flagsToMedioPago(!!gasto.esSolicitudCredito, !!gasto.esEfectivo));
         setShowModal(true);
     };
 
     const handleEdit = (gasto) => {
+        if (!gastoPermiteEdicionTrasContabilidad(gasto)) {
+            Alert.alert('Acceso Denegado', `No se puede editar un gasto en estado ${gasto.estado} (ya consta como legalizado).`);
+            return;
+        }
         setEditItem(gasto);
         setIsLegalizing(false);
         isLegalizingRef.current = false;
@@ -545,14 +596,20 @@ function GastosTab() {
             rubroId: gasto.rubroId?.toString() || '',
             proveedorId: gasto.proveedorId?.toString() || '',
             maquinaId: gasto.maquinaId?.toString() || '',
+            productoId: gasto.productoId?.toString() || '',
+            cantidad: gasto.cantidad?.toString() || '',
             precio: gasto.precio?.toString() || '',
             precioDisplay: formatCurrencyInput(gasto.precio?.toString() || ''),
+            precioBase: gasto.precioBase != null ? String(gasto.precioBase) : '',
+            precioIva: gasto.precioIva != null ? String(gasto.precioIva) : '',
             fecha: gasto.fecha?.split('T')[0] || new Date().toISOString().split('T')[0],
             nota: gasto.nota || '',
             numeroFactura: gasto.numeroFactura || '',
             facturaPdfUrl: gasto.facturaPdfUrl || '',
             archivoFactura: gasto.archivoFactura || null,
             archivoNombre: gasto.facturaPdfUrl ? 'Archivo adjunto' : '',
+            fechaEntregaFactura: gasto.fechaEntregaFactura?.split('T')[0] || '',
+            fechaVencimientoFactura: gasto.fechaVencimientoFactura?.split('T')[0] || '',
             numeroOP: gasto.numeroOP || '',
             usuarioId: gasto.usuarioId?.toString() || '',
             horaInicio: gasto.horaInicio || '',
@@ -561,10 +618,9 @@ function GastosTab() {
             esPendiente: gasto.esPendiente || false,
             esSolicitudCredito: gasto.esSolicitudCredito || false,
             esOtraMaquina: !!gasto.otraMaquinaNombre,
-            otraMaquinaNombre: gasto.otraMaquinaNombre || '',
-            productoId: gasto.productoId?.toString() || '',
-            cantidad: gasto.cantidad?.toString() || ''
+            otraMaquinaNombre: gasto.otraMaquinaNombre || ''
         });
+        setMedioPago(flagsToMedioPago(!!gasto.esSolicitudCredito, !!gasto.esEfectivo));
         setShowModal(true);
     };
 
@@ -575,7 +631,9 @@ function GastosTab() {
         const isInsumos = rubroName.includes('insumo');
         const isHorasExtras = rubroName.includes('horas extras') || rubroName.includes('hora extra');
         const isRecargo = rubroName.includes('recargo');
-        const isMaintenance = rubroName.includes('mantenimiento') || rubroName.includes('repuesto');
+        const isMaintenance = esRubroConMaquinaObligatoria(rubroName);
+        const isHerramientasRubro = esRubroHerramientas(rubroName);
+        const showProductoInventario = esRubroConProductoInventario(rubroName);
 
         // Validation for Horas Extras / Recargos
         if ((isHorasExtras || isRecargo) && !formData.usuarioId) {
@@ -586,6 +644,14 @@ function GastosTab() {
         }
         if ((isHorasExtras || isRecargo) && breakdown.length === 0) {
             Alert.alert('Error', 'No se detectaron horas extras/recargos en el intervalo ingresado'); return;
+        }
+        if (isHorasExtras || isRecargo) {
+            const dupCandidates = buildOvertimeCandidatesFromForm(formData, breakdown, 'usuarioId');
+            if (findDuplicateOvertimeAmongCandidates(gastos, dupCandidates, editItem?.id)) {
+                notifyDuplicateOvertime();
+                return;
+            }
+            setFormOvertimeError('');
         }
 
         // Validation for OP number (required for Horas Extras, Recargos, and Insumos)
@@ -603,11 +669,47 @@ function GastosTab() {
             }
         }
 
-        // Validación de factura y precio (Opcional si es pendiente) para NO Horas extras
+        if (isHerramientasRubro) {
+            if (!formData.productoId) {
+                Alert.alert('Error', 'Seleccione la herramienta / producto del catálogo'); return;
+            }
+            const cant = parseFloat(formData.cantidad);
+            if (!formData.cantidad?.trim() || Number.isNaN(cant) || cant === 0) {
+                Alert.alert('Error', 'Ingrese la cantidad de la compra de herramienta'); return;
+            }
+        }
+
+        // Validación base + IVA para gastos normales
         if (!isHorasExtras && !isRecargo) {
-            if (!formData.esPendiente) {
-                if (!formData.precio || parseFloat(formData.precio) <= 0) {
-                    Alert.alert('Error', 'Ingrese el precio'); return;
+            if (!medioPago) {
+                showAlertMedioPagoRequerido();
+                return;
+            }
+            if (medioPago === 'credito') {
+                if (!formData.fechaEntregaFactura) {
+                    Alert.alert('Error', 'La fecha de entrega de factura es obligatoria para crédito.'); return;
+                }
+                if (!formData.fechaVencimientoFactura) {
+                    Alert.alert('Error', 'La fecha de vencimiento de factura es obligatoria para crédito.'); return;
+                }
+                if (formData.fechaVencimientoFactura < formData.fechaEntregaFactura) {
+                    Alert.alert('Error', 'La fecha de vencimiento no puede ser anterior a la fecha de entrega.'); return;
+                }
+            }
+            let pb = parseMontoInput(formData.precioBase);
+            let pi = parseMontoInput(formData.precioIva);
+            if (formData.esPendiente) {
+                if (pb === null) pb = 0;
+                if (pi === null) pi = 0;
+            } else {
+                if (pb === null || pi === null) {
+                    Alert.alert('Error', 'Ingrese precio base e IVA (el IVA puede ser 0).'); return;
+                }
+                if (pb < 0 || pi < 0) {
+                    Alert.alert('Error', 'Precio base e IVA no pueden ser negativos.'); return;
+                }
+                if (pb + pi <= 0) {
+                    Alert.alert('Error', 'El total (base + IVA) debe ser mayor a 0.'); return;
                 }
                 if (!formData.numeroFactura || !formData.numeroFactura.trim()) {
                     Alert.alert('Error', 'Número de Factura es obligatorio'); return;
@@ -641,26 +743,49 @@ function GastosTab() {
                 return isNaN(parsed) ? null : parsed;
             };
 
+            let pbSave = parseMontoInput(formData.precioBase);
+            let piSave = parseMontoInput(formData.precioIva);
+            if (!isHorasExtras && !isRecargo && formData.esPendiente) {
+                if (pbSave === null) pbSave = 0;
+                if (piSave === null) piSave = 0;
+            }
+            const totalNormal = !isHorasExtras && !isRecargo && pbSave !== null && piSave !== null
+                ? pbSave + piSave
+                : (parseFloat(formData.precio || 0) || 0);
+
             const gastoData = {
                 id: editItem ? editItem.id : 0,
                 rubroId: safeParseInt(formData.rubroId) || 0,
                 proveedorId: safeParseInt(formData.proveedorId),
                 maquinaId: (!formData.esOtraMaquina && formData.maquinaId) ? safeParseInt(formData.maquinaId) : null,
                 otraMaquinaNombre: formData.esOtraMaquina ? formData.otraMaquinaNombre : null,
-                precio: parseFloat(formData.precio || 0) || 0,
+                precio: totalNormal,
+                ...(!isHorasExtras && !isRecargo && pbSave !== null && piSave !== null
+                    ? { precioBase: pbSave, precioIva: piSave }
+                    : {}),
                 fecha: formData.fecha,
                 nota: formData.nota || '',
                 numeroFactura: formData.numeroFactura || '',
                 facturaPdfUrl: finalFacturaPdfUrl,
+                fechaEntregaFactura: !isHorasExtras && !isRecargo && medioPago === 'credito' && formData.fechaEntregaFactura
+                    ? formData.fechaEntregaFactura
+                    : null,
+                fechaVencimientoFactura: !isHorasExtras && !isRecargo && medioPago === 'credito' && formData.fechaVencimientoFactura
+                    ? formData.fechaVencimientoFactura
+                    : null,
                 esPendiente: !!formData.esPendiente,
-                esSolicitudCredito: !!formData.esSolicitudCredito,
+                ...(isHorasExtras || isRecargo
+                    ? { esSolicitudCredito: false, esEfectivo: false }
+                    : medioPagoToFlags(medioPago)),
                 numeroOP: formData.numeroOP || '',
                 usuarioId: safeParseInt(formData.usuarioId),
-                productoId: safeParseInt(formData.productoId),
-                cantidad: parseFloat(formData.cantidad) || null,
                 tipoHoraId: safeParseInt(formData.tipoHoraId),
                 tipoRecargoId: safeParseInt(formData.tipoRecargoId),
                 cantidadHoras: parseFloat(formData.cantidadHoras) || null,
+                productoId: safeParseInt(formData.productoId),
+                cantidad: formData.cantidad !== '' && formData.cantidad != null
+                    ? parseFloat(formData.cantidad)
+                    : null,
                 horaInicio: formData.horaInicio || null,
                 horaFin: formData.horaFin || null,
                 activo: true,
@@ -669,24 +794,6 @@ function GastosTab() {
             };
 
             // Quote Update Prompt Logic
-            if (gastoData.proveedorId && !gastoData.esPendiente && !isLegalizingRef.current) {
-                const quote = cotizaciones.find(c => c.rubroId == gastoData.rubroId && c.proveedorId == gastoData.proveedorId);
-                if (quote) {
-                    const quotePrice = parseFloat(quote.precioCotizado);
-                    const currentPrice = gastoData.precio;
-                    if (Math.abs(quotePrice - currentPrice) > 1) {
-                        const msg = `El precio ingresado (${formatCurrency(currentPrice)}) es diferente a la cotización (${formatCurrency(quotePrice)}).\n\n¿Desea actualizar el precio en la cotización?`;
-                        if (Platform.OS === 'web' && window.confirm(msg)) {
-                            try {
-                                await mantenimientoApi.updateCotizacion(quote.id, { ...quote, precioCotizado: currentPrice });
-                                const updated = await mantenimientoApi.getCotizaciones(anio, mes);
-                                setCotizaciones(updated);
-                            } catch (e) { console.error('Error auto-updating quote:', e); }
-                        }
-                    }
-                }
-            }
-
             // Si hay breakdown (Horas Extras/Recargos con Hora Inicio/Fin), crear múltiples registros
             if ((isHorasExtras || isRecargo) && breakdown.length > 0 && !editItem) {
                 const worker = usuarios.find(u => u.id == formData.usuarioId);
@@ -717,7 +824,11 @@ function GastosTab() {
                         numeroFactura: null,
                         facturaPdfUrl: null,
                         numeroOP: formData.numeroOP || null,
-                        esPendiente: false
+                        esPendiente: false,
+                        esSolicitudCredito: false,
+                        esEfectivo: false,
+                        horaInicio: formData.horaInicio || null,
+                        horaFin: formData.horaFin || null
                     };
                     return mantenimientoApi.createGasto(record);
                 });
@@ -729,16 +840,52 @@ function GastosTab() {
 
             Alert.alert('Éxito', editItem ? 'Gasto actualizado' : 'Gasto registrado');
             setShowModal(false); resetForm(); loadGastos();
-        } catch (error) { 
+        } catch (error) {
             console.error('Error saving gasto:', error);
-            Alert.alert('Error', 'No se pudo guardar'); 
+            const texto = extractApiErrorMessage(error, 'No se pudo guardar');
+            if (isOvertimeDuplicateMessage(texto, error?.response?.status)) {
+                setFormOvertimeError(texto);
+                showAppAlert('Registro duplicado', texto);
+            } else {
+                showAppAlert('Error', texto);
+            }
         } finally { setSaving(false); }
     };
 
     const handleDelete = async (id) => {
+        const gasto = gastos.find(g => g.id === id);
+        if (gasto && !gastoPermiteEdicionTrasContabilidad(gasto)) {
+            Alert.alert('Acceso Denegado', `No se puede eliminar un gasto en estado ${gasto.estado} (ya consta como legalizado).`);
+            return;
+        }
         const doDelete = async () => { try { await mantenimientoApi.deleteGasto(id); loadGastos(); } catch { Alert.alert('Error', 'No se pudo eliminar'); } };
         if (Platform.OS === 'web') { if (window.confirm('¿Eliminar gasto?')) doDelete(); }
         else { Alert.alert('Confirmar', '¿Eliminar este gasto?', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Eliminar', style: 'destructive', onPress: doDelete }]); }
+    };
+
+    const handleUpdateEstado = async (gasto) => {
+        const estados = ['Montado', 'Entregado', 'Pagado'];
+        const currentIdx = estados.indexOf(gasto.estado || 'Montado');
+        const nextEstado = estados[(currentIdx + 1) % estados.length];
+
+        try {
+            const updatedGasto = {
+                ...gasto,
+                estado: nextEstado,
+                rubro: undefined,
+                proveedor: undefined,
+                usuario: undefined,
+                maquina: undefined,
+                tipoHora: undefined,
+                tipoRecargo: undefined,
+                creadoPor: undefined
+            };
+            await mantenimientoApi.updateGasto(gasto.id, updatedGasto);
+            loadGastos();
+        } catch (error) {
+            console.error('Error updating status:', error);
+            Alert.alert('Error', 'No se pudo actualizar el estado');
+        }
     };
 
     const selectedRubro = rubros.find(r => r.id == formData.rubroId);
@@ -746,10 +893,10 @@ function GastosTab() {
     const isInsumos = selectedRubroName.includes('insumo');
     const isHorasExtras = selectedRubroName.includes('horas extras') || selectedRubroName.includes('hora extra');
     const isRecargo = selectedRubroName.includes('recargo');
-    const isMaintenance = selectedRubroName.includes('mantenimiento') || selectedRubroName.includes('repuesto');
-    const isInventoryRubro = ['ferreteria', 'ferretería', 'lubricacion', 'lubricación', 'repuestos', 'rodamientos', 'sistema aire'].includes(selectedRubroName);
-    
-    const filteredProductos = productos.filter(p => p.rubroId == formData.rubroId);
+    const isMaintenance = esRubroConMaquinaObligatoria(selectedRubroName);
+    const isHerramientasRubro = esRubroHerramientas(selectedRubroName);
+    const showProductoInventario = esRubroConProductoInventario(selectedRubroName);
+    const productosFiltradosGasto = filtrarProductosParaRubro(productos, formData.rubroId, selectedRubro?.nombre);
 
     // Calculate totals for summary cards - SST style
     const totalMes = resumen?.total || 0;
@@ -766,7 +913,7 @@ function GastosTab() {
     // 2. Determinar qué filtros secundarios mostrar según el Rubro seleccionado
     const selectedFilterRubro = rubros.find(r => r.id.toString() === filterRubroId);
     const filterRubroName = (selectedFilterRubro?.nombre || '').toLowerCase().trim();
-    const showMachineFilter = filterRubroName.includes('mantenimiento') || filterRubroName.includes('repuesto');
+    const showMachineFilter = esRubroConMaquinaObligatoria(filterRubroName);
 
     // 3. Obtener opciones para filtros secundarios (solo los que tienen datos)
 
@@ -1036,9 +1183,19 @@ function GastosTab() {
                                                         <Text style={styles.pendingText}>⏳ Pendiente</Text>
                                                     </View>
                                                 )}
-                                                {gasto.esSolicitudCredito && (
-                                                    <View style={[styles.pendingBadge, { backgroundColor: '#7C3AED' }]}>
-                                                        <Text style={styles.pendingText}>💳 Crédito</Text>
+                                                {!gasto.tipoHoraId && !gasto.tipoRecargoId && (
+                                                    <MedioPagoBadge
+                                                        esSolicitudCredito={!!gasto.esSolicitudCredito}
+                                                        esEfectivo={!!gasto.esEfectivo}
+                                                        compact
+                                                    />
+                                                )}
+                                                {gasto.estado && (
+                                                    <View style={[styles.estadoBadge, { backgroundColor: getEstadoColor(gasto.estado) + '20', borderColor: getEstadoColor(gasto.estado) }]}
+                                                    >
+                                                        <Text style={[styles.estadoBadgeText, { color: getEstadoColor(gasto.estado) }]}>
+                                                            {gasto.estado.toUpperCase()}
+                                                        </Text>
                                                     </View>
                                                 )}
                                             </View>
@@ -1048,7 +1205,12 @@ function GastosTab() {
                                                 </Text>
                                             )}
                                         </View>
-                                        <Text style={styles.gastoPrecio}>{formatCurrency(gasto.precio)}</Text>
+                                        <GastoListaPrecios
+                                            gasto={gasto}
+                                            singlePriceRow={!!(gasto.tipoHoraId || gasto.tipoRecargoId)}
+                                            formatCurrency={formatCurrency}
+                                            precioStyle={styles.gastoPrecio}
+                                        />
                                     </View>
                                     <Text style={styles.gastoRubro}>
                                         {gasto.tipoHora?.nombre || gasto.tipoRecargo?.nombre || 'General'}
@@ -1080,6 +1242,8 @@ function GastosTab() {
                                         <Text style={styles.gastoNota}>💬 {gasto.nota}</Text>
                                     )}
                                     {!!gasto.numeroFactura && <Text style={styles.gastoDetail}>📄 Factura: {gasto.numeroFactura}</Text>}
+                                    {!!gasto.fechaEntregaFactura && <Text style={styles.gastoDetail}>🗓️ Entrega factura: {formatDate(gasto.fechaEntregaFactura)}</Text>}
+                                    {!!gasto.fechaVencimientoFactura && <Text style={styles.gastoDetail}>⏳ Vence factura: {formatDate(gasto.fechaVencimientoFactura)}</Text>}
                                     {!!gasto.facturaPdfUrl && Platform.OS === 'web' && (
                                         <a
                                             href={`${serverUrl}${gasto.facturaPdfUrl}`}
@@ -1096,14 +1260,18 @@ function GastosTab() {
                                                 <Text style={styles.editCardButtonText}>✅ Legalizar</Text>
                                             </TouchableOpacity>
                                         )}
-                                        <TouchableOpacity style={styles.editCardButton} onPress={() => handleEdit(gasto)}>
-                                            <Text style={styles.editCardButtonText}>✏️ Editar</Text>
-                                        </TouchableOpacity>
+                                        {gastoPermiteEdicionTrasContabilidad(gasto) && (
+                                            <>
+                                                <TouchableOpacity style={styles.editCardButton} onPress={() => handleEdit(gasto)}>
+                                                    <Text style={styles.editCardButtonText}>✏️ Editar</Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(gasto.id)}>
+                                                    <Text style={styles.deleteButtonText}>🗑️ Eliminar</Text>
+                                                </TouchableOpacity>
+                                            </>
+                                        )}
                                         <TouchableOpacity style={styles.historyButton} onPress={() => { setSelectedHistoryGasto(gasto); setShowHistoryModal(true); }}>
                                             <Text style={styles.historyButtonText}>🕒 Historial</Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(gasto.id)}>
-                                            <Text style={styles.deleteButtonText}>🗑️ Eliminar</Text>
                                         </TouchableOpacity>
                                     </View>
                                 </View>
@@ -1159,7 +1327,10 @@ function GastosTab() {
                                 <View style={{ marginBottom: 15 }}>
                                     <Text style={styles.label}>Rubro *</Text>
                                     <View style={styles.pickerContainer}>
-                                        <Picker selectedValue={formData.rubroId} onValueChange={(v) => setFormData(p => ({ ...p, rubroId: v }))}>
+                                        <Picker selectedValue={formData.rubroId} onValueChange={(v) => {
+                                            setMedioPago(null);
+                                            setFormData(p => ({ ...p, rubroId: v }));
+                                        }}>
                                             <Picker.Item label="Seleccione un rubro..." value="" />
                                             {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
                                         </Picker>
@@ -1169,29 +1340,22 @@ function GastosTab() {
 
                             {formData.rubroId ? (
                                 <>
-                                    {/* Solicitud de Crédito Checkbox */}
-                                    {!isLegalizing && (
-                                        <TouchableOpacity
-                                            style={{
-                                                flexDirection: 'row',
-                                                alignItems: 'center',
-                                                marginBottom: 15,
-                                                padding: 10,
-                                                backgroundColor: '#F5F3FF',
-                                                borderRadius: 8,
-                                                borderWidth: 1,
-                                                borderColor: '#DDD6FE'
+                                    {!isHorasExtras && !isRecargo && (
+                                        <MedioPagoGastoControls
+                                            value={medioPago}
+                                            onChange={(v) => {
+                                                setMedioPago(v);
+                                                const f = medioPagoToFlags(v);
+                                                setFormData(p => ({ ...p, esSolicitudCredito: f.esSolicitudCredito }));
                                             }}
-                                            onPress={() => setFormData(p => ({ ...p, esSolicitudCredito: !p.esSolicitudCredito }))}
-                                        >
-                                            <View style={[styles.checkbox, formData.esSolicitudCredito && { backgroundColor: '#7C3AED', borderColor: '#7C3AED' }]}>
-                                                {formData.esSolicitudCredito && <Text style={styles.checkboxCheck}>✓</Text>}
-                                            </View>
-                                            <View>
-                                                <Text style={[styles.checkboxLabel, { color: '#5B21B6' }]}>Solicitud de Crédito</Text>
-                                                <Text style={{ fontSize: 10, color: '#6D28D9', marginLeft: 10 }}>Marcar para trámite de crédito</Text>
-                                            </View>
-                                        </TouchableOpacity>
+                                            colors={{
+                                                text: themeColors.text,
+                                                subText: themeColors.subText,
+                                                primary: themeColors.primary || '#7C3AED',
+                                                border: themeColors.border,
+                                                card: themeColors.card || themeColors.background
+                                            }}
+                                        />
                                     )}
 
                                     {isMaintenance && (
@@ -1233,38 +1397,6 @@ function GastosTab() {
                                         </View>
                                     )}
 
-                                    {isInventoryRubro && (
-                                        <View style={{ marginBottom: 15 }}>
-                                            <Text style={styles.label}>Producto de Inventario *</Text>
-                                            <View style={styles.pickerContainer}>
-                                                <Picker
-                                                    selectedValue={formData.productoId}
-                                                    onValueChange={(v) => {
-                                                        const prod = productos.find(p => p.id.toString() === v);
-                                                        setFormData(p => ({ ...p, productoId: v, nota: prod ? `${prod.nombre} ${prod.referencia || ''}` : p.nota }));
-                                                    }}
-                                                >
-                                                    <Picker.Item label="Seleccione Producto..." value="" />
-                                                    {filteredProductos.map(p => (
-                                                        <Picker.Item key={p.id} label={`${p.nombre} ${p.referencia ? `(${p.referencia})` : ''}`} value={p.id.toString()} />
-                                                    ))}
-                                                </Picker>
-                                            </View>
-                                            {formData.productoId && (
-                                                <View style={{ flexFull: 1, marginTop: 10 }}>
-                                                    <Text style={styles.label}>Cantidad a Ingresar *</Text>
-                                                    <TextInput
-                                                        style={styles.input}
-                                                        value={formData.cantidad}
-                                                        onChangeText={(t) => setFormData(p => ({ ...p, cantidad: t }))}
-                                                        placeholder="Cantidad"
-                                                        keyboardType="numeric"
-                                                    />
-                                                </View>
-                                            )}
-                                        </View>
-                                    )}
-
                                     {(isHorasExtras || isRecargo) ? (
                                         <View style={{ marginBottom: 15 }}>
                                             <Text style={styles.label}>Personal de Planta *</Text>
@@ -1280,24 +1412,68 @@ function GastosTab() {
                                     ) : (
                                         <View style={{ marginBottom: 15 }}>
                                             <Text style={styles.label}>Proveedor {formData.esPendiente && !isLegalizing ? '(Opcional por ahora)' : ''}</Text>
-                                            <View style={[styles.pickerContainer, (!formData.rubroId || filteredProveedores.length === 0) && { backgroundColor: '#F3F4F6' }]}>
+                                            <View style={[styles.pickerContainer, (!formData.rubroId || ((editItem && filteredProveedores.length === 0 ? proveedores : filteredProveedores).length === 0)) && { backgroundColor: '#F3F4F6' }]}>
                                                 <Picker
                                                     selectedValue={formData.proveedorId}
                                                     onValueChange={(v) => setFormData(p => ({ ...p, proveedorId: v }))}
-                                                    enabled={!!formData.rubroId && filteredProveedores.length > 0}
+                                                    enabled={!!formData.rubroId && (editItem && filteredProveedores.length === 0 ? proveedores : filteredProveedores).length > 0}
                                                 >
                                                     {!formData.rubroId ? (
                                                         <Picker.Item label="Seleccione un rubro primero..." value="" />
-                                                    ) : filteredProveedores.length === 0 ? (
+                                                    ) : (editItem && filteredProveedores.length === 0 ? proveedores : filteredProveedores).length === 0 ? (
                                                         <Picker.Item label="(No hay proveedores para este rubro)" value="" />
                                                     ) : (
                                                         <Picker.Item label="Seleccione..." value="" />
                                                     )}
-                                                    {filteredProveedores.map(p => (
+                                                    {(editItem && filteredProveedores.length === 0 ? proveedores : filteredProveedores).map(p => (
                                                         <Picker.Item key={p.id} label={`${p.nombre}${p.precioCotizado ? ` - ${formatCurrency(p.precioCotizado)}` : ''}`} value={p.id.toString()} />
                                                     ))}
                                                 </Picker>
                                             </View>
+                                        </View>
+                                    )}
+
+                                    {showProductoInventario && (
+                                        <View style={{ marginBottom: 15 }}>
+                                            <Text style={styles.label}>
+                                                {isHerramientasRubro ? 'Herramienta / Producto *' : 'Producto / Repuesto de Inventario'}
+                                            </Text>
+                                            <View style={styles.pickerContainer}>
+                                                <Picker
+                                                    selectedValue={formData.productoId}
+                                                    onValueChange={(v) => {
+                                                        const p = productos.find(x => x.id.toString() === v);
+                                                        setFormData(prev => ({ ...prev, productoId: v, nota: p ? `Compra de ${p.nombre}: ${prev.nota}` : prev.nota }));
+                                                    }}
+                                                >
+                                                    <Picker.Item label="Seleccione un producto..." value="" />
+                                                    {productosFiltradosGasto.map(p => (
+                                                        <Picker.Item key={p.id} label={`${p.nombre} (${p.referencia || p.tipoProducto || 'Sin Ref'})`} value={p.id.toString()} />
+                                                    ))}
+                                                </Picker>
+                                            </View>
+                                            {productosFiltradosGasto.length === 0 ? (
+                                                <Text style={{ fontSize: 12, color: '#B45309', marginTop: 6 }}>
+                                                    No hay herramientas en catálogo. Créelas en la pestaña Productos (tipo Herramienta, rubro Herramientas).
+                                                </Text>
+                                            ) : null}
+                                            
+                                            {formData.productoId ? (
+                                                <View style={{ marginTop: 10 }}>
+                                                    <Text style={styles.label}>Cantidad comprada *</Text>
+                                                    <TextInput
+                                                        style={styles.input}
+                                                        value={formData.cantidad}
+                                                        onChangeText={(v) => setFormData(p => ({ ...p, cantidad: v }))}
+                                                        keyboardType="numeric"
+                                                        placeholder="Ej: 1, 2, 10"
+                                                    />
+                                                    <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 4 }}>
+                                                        Se sumará al inventario al guardar el gasto.
+                                                        Stock actual: {productos.find(x => x.id.toString() === formData.productoId)?.stock ?? 0} unidades.
+                                                    </Text>
+                                                </View>
+                                            ) : null}
                                         </View>
                                     )}
 
@@ -1333,6 +1509,12 @@ function GastosTab() {
                                                             • {item.type}: {item.formattedHours || item.hours.toFixed(2)}
                                                         </Text>
                                                     ))}
+                                                </View>
+                                            )}
+
+                                            {!!formOvertimeError && (
+                                                <View style={{ backgroundColor: '#FEE2E2', borderColor: '#DC2626', borderWidth: 1, padding: 12, borderRadius: 8, marginBottom: 15 }}>
+                                                    <Text style={{ color: '#B91C1C', fontWeight: 'bold', fontSize: 13 }}>{formOvertimeError}</Text>
                                                 </View>
                                             )}
                                         </>
@@ -1407,19 +1589,86 @@ function GastosTab() {
                                         </View>
                                     )}
 
-                                    <View style={{ marginBottom: 15 }}>
-                                        <Text style={styles.label}>Precio * {(!formData.esPendiente && !formData.numeroFactura.trim()) ? '(ingrese factura primero)' : ''}</Text>
-                                        <View style={[styles.input, (!formData.esPendiente && !formData.numeroFactura.trim()) && styles.inputDisabled, { flexDirection: 'row', alignItems: 'center', padding: 0 }]}>
-                                            <Text style={{ paddingLeft: 12, color: '#6B7280', fontSize: 16 }}>$ </Text>
-                                            <TextInput
-                                                style={{ flex: 1, padding: 12, fontSize: 16 }}
-                                                value={formData.precioDisplay}
-                                                onChangeText={handlePriceChange}
-                                                keyboardType="numeric"
-                                                placeholder="0"
-                                                editable={(formData.esPendiente || !!formData.numeroFactura.trim() || !!editItem)}
-                                            />
+                                    {!isHorasExtras && !isRecargo && medioPago === 'credito' && (
+                                        <View style={{ marginBottom: 15 }}>
+                                            <Text style={styles.label}>Fecha entrega factura *</Text>
+                                            {Platform.OS === 'web' ? (
+                                                <input
+                                                    type="date"
+                                                    value={formData.fechaEntregaFactura}
+                                                    onChange={(e) => setFormData(p => ({ ...p, fechaEntregaFactura: e.target.value }))}
+                                                    style={{ padding: 12, fontSize: 16, borderRadius: 8, border: '1px solid #D1D5DB', backgroundColor: '#F9FAFB', width: '100%', boxSizing: 'border-box', marginBottom: 10 }}
+                                                />
+                                            ) : (
+                                                <TextInput
+                                                    style={styles.input}
+                                                    value={formData.fechaEntregaFactura}
+                                                    onChangeText={(t) => setFormData(p => ({ ...p, fechaEntregaFactura: t }))}
+                                                    placeholder="YYYY-MM-DD"
+                                                />
+                                            )}
+
+                                            <Text style={styles.label}>Fecha vencimiento factura *</Text>
+                                            {Platform.OS === 'web' ? (
+                                                <input
+                                                    type="date"
+                                                    value={formData.fechaVencimientoFactura}
+                                                    min={formData.fechaEntregaFactura || undefined}
+                                                    onChange={(e) => setFormData(p => ({ ...p, fechaVencimientoFactura: e.target.value }))}
+                                                    style={{ padding: 12, fontSize: 16, borderRadius: 8, border: '1px solid #D1D5DB', backgroundColor: '#F9FAFB', width: '100%', boxSizing: 'border-box' }}
+                                                />
+                                            ) : (
+                                                <TextInput
+                                                    style={styles.input}
+                                                    value={formData.fechaVencimientoFactura}
+                                                    onChangeText={(t) => setFormData(p => ({ ...p, fechaVencimientoFactura: t }))}
+                                                    placeholder="YYYY-MM-DD"
+                                                />
+                                            )}
                                         </View>
+                                    )}
+
+                                    <View style={{ marginBottom: 15 }}>
+                                        {(isHorasExtras || isRecargo) ? (
+                                            <>
+                                                <Text style={styles.label}>Precio *</Text>
+                                                <View style={[styles.input, styles.inputDisabled, { flexDirection: 'row', alignItems: 'center', padding: 0 }]}>
+                                                    <Text style={{ paddingLeft: 12, color: '#6B7280', fontSize: 16 }}>$ </Text>
+                                                    <TextInput
+                                                        style={{ flex: 1, padding: 12, fontSize: 16 }}
+                                                        value={formData.precioDisplay}
+                                                        onChangeText={handlePriceChange}
+                                                        keyboardType="numeric"
+                                                        placeholder="0"
+                                                        editable={false}
+                                                    />
+                                                </View>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Text style={styles.label}>Precio base * {(!formData.esPendiente && !formData.numeroFactura.trim()) ? '(ingrese factura primero)' : ''}</Text>
+                                                <TextInput
+                                                    style={[styles.input, (!formData.esPendiente && !formData.numeroFactura.trim()) && styles.inputDisabled]}
+                                                    value={formData.precioBase}
+                                                    onChangeText={(t) => setFormData(p => ({ ...p, precioBase: t }))}
+                                                    keyboardType="decimal-pad"
+                                                    placeholder="0"
+                                                    editable={formData.esPendiente || !!formData.numeroFactura.trim() || !!editItem}
+                                                />
+                                                <Text style={[styles.label, { marginTop: 10 }]}>IVA * (puede ser 0)</Text>
+                                                <TextInput
+                                                    style={[styles.input, (!formData.esPendiente && !formData.numeroFactura.trim()) && styles.inputDisabled]}
+                                                    value={formData.precioIva}
+                                                    onChangeText={(t) => setFormData(p => ({ ...p, precioIva: t }))}
+                                                    keyboardType="decimal-pad"
+                                                    placeholder="0"
+                                                    editable={formData.esPendiente || !!formData.numeroFactura.trim() || !!editItem}
+                                                />
+                                                <Text style={{ marginTop: 8, fontSize: 14, fontWeight: 'bold', color: '#059669' }}>
+                                                    Total: {formatCurrency((parseMontoInput(formData.precioBase) ?? 0) + (parseMontoInput(formData.precioIva) ?? 0))}
+                                                </Text>
+                                            </>
+                                        )}
                                     </View>
 
                                     {/* Cuadro de presupuesto estilo SST - DEBAJO DEL PRECIO */}
@@ -1431,8 +1680,11 @@ function GastosTab() {
                                                 </Text>
                                             </View>
                                             {(() => {
-                                                // Live calculation like SST
-                                                const currentPrice = parseFloat(formData.precio) || 0;
+                                                const pbLive = parseMontoInput(formData.precioBase);
+                                                const piLive = parseMontoInput(formData.precioIva);
+                                                const currentPrice = (isHorasExtras || isRecargo)
+                                                    ? (parseFloat(formData.precio) || 0)
+                                                    : (pbLive !== null && piLive !== null ? pbLive + piLive : (parseFloat(formData.precio) || 0));
                                                 const originalPrice = editItem ? (editItem.precio || 0) : 0;
                                                 const adjustedGastadoMes = (presupuestoInfo.gastadoMes || 0) - originalPrice;
                                                 const liveGastado = adjustedGastadoMes + currentPrice;
@@ -2326,7 +2578,7 @@ function ProveedoresTab() {
     const [nombre, setNombre] = useState('');
     const [nit, setNit] = useState('');
     const [telefono, setTelefono] = useState('');
-    const [rubroId, setRubroId] = useState('');
+    const [rubroIds, setRubroIds] = useState([]);
     const [precioCotizado, setPrecioCotizado] = useState('');
     const [saving, setSaving] = useState(false);
 
@@ -2347,7 +2599,7 @@ function ProveedoresTab() {
         setNombre('');
         setNit('');
         setTelefono('');
-        setRubroId('');
+        setRubroIds([]);
         setPrecioCotizado('');
         setShowModal(true);
     };
@@ -2357,7 +2609,7 @@ function ProveedoresTab() {
         setNombre(item.nombre);
         setNit(item.nit || '');
         setTelefono(item.telefono || '');
-        setRubroId(item.rubroId?.toString() || '');
+        setRubroIds(getProveedorRubroIds(item).map(String));
         setPrecioCotizado(item.precioCotizado?.toString() || '');
         setShowModal(true);
     };
@@ -2366,11 +2618,13 @@ function ProveedoresTab() {
         if (!nombre.trim()) { Alert.alert('Error', 'Nombre obligatorio'); return; }
         try {
             setSaving(true);
+            const ids = rubroIds.map(id => parseInt(id, 10)).filter(id => id > 0);
             const provData = {
                 nombre,
                 nit,
                 telefono,
-                rubroId: rubroId ? parseInt(rubroId) : null
+                rubroIds: ids,
+                rubroId: ids[0] || null
             };
             if (editItem) {
                 await mantenimientoApi.updateProveedor(editItem.id, provData);
@@ -2424,7 +2678,7 @@ function ProveedoresTab() {
                         <View style={styles.gastoHeader}>
                             <Text style={styles.gastoTipo}>{item.nombre}</Text>
                         </View>
-                        <Text style={styles.gastoRubro}>{item.rubro?.nombre || 'Sin rubro asignado'}</Text>
+                        <Text style={styles.gastoRubro}>{getProveedorRubrosLabel(item)}</Text>
                         <View style={styles.gastoDetails}>
                             {item.nit && <Text style={styles.gastoDetail}>📄 NIT: {item.nit}</Text>}
                             {item.telefono && <Text style={styles.gastoDetail}>📞 Tel: {item.telefono}</Text>}
@@ -2453,13 +2707,7 @@ function ProveedoresTab() {
                         <Text style={styles.label}>Teléfono</Text>
                         <TextInput style={styles.input} value={telefono} onChangeText={setTelefono} placeholder="Teléfono" keyboardType="phone-pad" />
 
-                        <Text style={styles.label}>Rubro</Text>
-                        <View style={styles.pickerContainer}>
-                            <Picker selectedValue={rubroId} onValueChange={setRubroId}>
-                                <Picker.Item label="Seleccione un rubro..." value="" />
-                                {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
-                            </Picker>
-                        </View>
+                        <MultiRubroPicker rubros={rubros} selectedIds={rubroIds} onChange={setRubroIds} />
                     </ScrollView>
                     <View style={styles.modalActions}>
                         <TouchableOpacity style={styles.cancelButton} onPress={() => setShowModal(false)}><Text style={styles.cancelButtonText}>Cancelar</Text></TouchableOpacity>
@@ -2489,6 +2737,29 @@ const getStyles = (isDarkMode, colors) => StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
+    },
+    estadoBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 4,
+        borderWidth: 1,
+        alignSelf: 'flex-start',
+    },
+    estadoBadgeText: {
+        fontSize: 10,
+        fontWeight: 'bold',
+    },
+    pendingBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 4,
+        alignSelf: 'flex-start',
+        marginRight: 5,
+    },
+    pendingText: {
+        fontSize: 10,
+        fontWeight: 'bold',
+        color: '#FFF',
     },
     tabsContainer: {
         flexDirection: 'row',
@@ -2905,6 +3176,17 @@ const getStyles = (isDarkMode, colors) => StyleSheet.create({
         fontSize: 13,
         fontWeight: '500',
     },
+    estadoBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 6,
+        borderWidth: 1,
+        marginLeft: 6,
+    },
+    estadoBadgeText: {
+        fontSize: 10,
+        fontWeight: '900',
+    },
     itemInfo: {
         flex: 1,
     },
@@ -3122,12 +3404,12 @@ function ProductosTab() {
     const [showModal, setShowModal] = useState(false);
     const [editItem, setEditItem] = useState(null);
     const [nombre, setNombre] = useState('');
+    const [tipoProducto, setTipoProducto] = useState('');
+    const [tipoProductoOtro, setTipoProductoOtro] = useState('');
     const [referencia, setReferencia] = useState('');
     const [descripcion, setDescripcion] = useState('');
     const [medida, setMedida] = useState('');
     const [rubroId, setRubroId] = useState('');
-    const [puntoReorden, setPuntoReorden] = useState('0');
-    const [maxStock, setMaxStock] = useState('0');
     const [saving, setSaving] = useState(false);
 
     const loadData = async () => {
@@ -3142,31 +3424,84 @@ function ProductosTab() {
 
     useEffect(() => { loadData(); }, []);
 
-    const handleAdd = () => { setEditItem(null); setNombre(''); setReferencia(''); setDescripcion(''); setMedida(''); setRubroId(''); setPuntoReorden('0'); setMaxStock('0'); setShowModal(true); };
+    const tiposProducto = useMemo(() => {
+        const base = ['Herramienta', 'Insumo'];
+        const existentes = (items || [])
+            .map(i => (i.tipoProducto || '').trim())
+            .filter(Boolean);
+        return Array.from(new Set([...base, ...existentes]));
+    }, [items]);
+
+    const tipoProductoFinal = tipoProducto === 'Otro' ? tipoProductoOtro.trim() : tipoProducto;
+    const medidasDisponibles = useMemo(
+        () => medidasParaTipoProducto(tipoProductoFinal),
+        [tipoProductoFinal]
+    );
+
+    useEffect(() => {
+        if (!tipoProducto || tipoProducto === 'Otro') return;
+        if (esTipoProductoHerramienta(tipoProducto)) {
+            if (!medida || MEDIDAS_INSUMO.includes(medida)) {
+                setMedida('Und');
+            }
+            const rubroHerramientas = rubros.find((r) => esRubroHerramientas(r.nombre));
+            if (rubroHerramientas) {
+                setRubroId(rubroHerramientas.id.toString());
+            }
+        } else if (tipoProducto === 'Insumo' && (!medida || !MEDIDAS_INSUMO.includes(medida))) {
+            setMedida('Uni');
+        }
+    }, [tipoProducto, rubros]);
+
+    const handleAdd = () => {
+        setEditItem(null);
+        setNombre('');
+        setTipoProducto('');
+        setTipoProductoOtro('');
+        setReferencia('');
+        setDescripcion('');
+        setMedida('');
+        setRubroId('');
+        setShowModal(true);
+    };
     const handleEdit = (item) => { 
         setEditItem(item); 
         setNombre(item.nombre); 
+        const tipoActual = (item.tipoProducto || '').trim();
+        const esBase = tipoActual === 'Herramienta' || tipoActual === 'Insumo';
+        setTipoProducto(esBase ? tipoActual : 'Otro');
+        setTipoProductoOtro(esBase ? '' : tipoActual);
         setReferencia(item.referencia || ''); 
         setDescripcion(item.descripcion || ''); 
         setMedida(item.medida || ''); 
-        setRubroId(item.rubroId?.toString() || ''); 
-        setPuntoReorden(item.puntoReorden?.toString() || '0');
-        setMaxStock(item.maxStock?.toString() || '0');
+        setRubroId(item.rubroId?.toString() || '');
         setShowModal(true); 
     };
 
     const handleSave = async () => {
-        if (!nombre.trim() || !rubroId || !medida) { Alert.alert('Error', 'Complete campos obligatorios (incluyendo Medida)'); return; }
+        if (!tipoProducto || !nombre.trim() || !rubroId) {
+            Alert.alert('Error', 'Complete tipo, nombre y rubro');
+            return;
+        }
+        if (tipoProducto === 'Otro' && !tipoProductoOtro.trim()) {
+            Alert.alert('Error', 'Ingrese el tipo de producto personalizado.');
+            return;
+        }
+        const tipoFinal = tipoProducto === 'Otro' ? tipoProductoOtro.trim() : tipoProducto;
+        const medidaFinal = medida || (esTipoProductoHerramienta(tipoFinal) ? 'Und' : '');
+        if (!medidaFinal) {
+            Alert.alert('Error', 'Seleccione la unidad de medida');
+            return;
+        }
         try {
             setSaving(true);
             const prodData = { 
                 nombre, 
+                tipoProducto: tipoFinal,
                 referencia, 
                 descripcion, 
-                medida, 
+                medida: medidaFinal, 
                 rubroId: parseInt(rubroId), 
-                puntoReorden: parseInt(puntoReorden) || 0,
-                maxStock: parseInt(maxStock) || 0,
                 activo: true 
             };
             if (editItem) {
@@ -3220,9 +3555,9 @@ function ProductosTab() {
                     <View key={item.id} style={styles.itemCard}>
                         <View style={styles.itemInfo}>
                             <Text style={styles.itemName}>{item.nombre} {item.referencia ? `(${item.referencia})` : ''}</Text>
+                            <Text style={styles.itemSubDetail}>Tipo: {item.tipoProducto || 'N/A'}</Text>
                             <Text style={styles.itemSubDetail}>Rubro: {item.rubroNombre || rubros.find(r => r.id === item.rubroId)?.nombre || 'Desconocido'}</Text>
                             <Text style={styles.itemSubDetail}>Medida: {item.medida || 'N/A'}</Text>
-                            <Text style={styles.itemSubDetail}>Stock: Reorden {item.puntoReorden || 0} / Máx {item.maxStock || 0}</Text>
                             {item.descripcion ? <Text style={{fontSize: 12, color: isDarkMode ? '#94a3b8' : '#666', fontStyle: 'italic'}}>{item.descripcion}</Text> : null}
                         </View>
                         <View style={styles.itemActions}>
@@ -3235,35 +3570,51 @@ function ProductosTab() {
             <Modal visible={showModal} transparent animationType="slide" onRequestClose={() => setShowModal(false)}>
                 <View style={styles.modalOverlay}><View style={styles.modalContentSmall}>
                     <Text style={styles.modalTitle}>{editItem ? 'Editar' : 'Agregar'} Producto</Text>
+                    <Text style={styles.label}>Tipo *</Text>
+                    <View style={styles.pickerContainer}>
+                        <Picker selectedValue={tipoProducto} onValueChange={setTipoProducto}>
+                            <Picker.Item label="Seleccione tipo..." value="" />
+                            {tiposProducto.map((tipo) => <Picker.Item key={tipo} label={tipo} value={tipo} />)}
+                            <Picker.Item label="Otro..." value="Otro" />
+                        </Picker>
+                    </View>
+                    {tipoProducto === 'Otro' ? (
+                        <>
+                            <Text style={styles.label}>Nuevo tipo *</Text>
+                            <TextInput
+                                style={styles.input}
+                                value={tipoProductoOtro}
+                                onChangeText={setTipoProductoOtro}
+                                placeholder="Ej: Repuesto especial"
+                            />
+                        </>
+                    ) : null}
                     <Text style={styles.label}>Nombre *</Text>
                     <TextInput style={styles.input} value={nombre} onChangeText={setNombre} placeholder="Nombre del producto" />
                     <Text style={styles.label}>Referencia</Text>
                     <TextInput style={styles.input} value={referencia} onChangeText={setReferencia} placeholder="Ref. única (opcional)" />
                     <Text style={styles.label}>Descripción</Text>
                     <TextInput style={[styles.input, styles.textArea]} value={descripcion} onChangeText={setDescripcion} placeholder="Detalles del producto..." multiline numberOfLines={3} />
-                    <Text style={styles.label}>Medida *</Text>
+                    <Text style={styles.label}>
+                        {esTipoProductoHerramienta(tipoProductoFinal) ? 'Unidad *' : 'Medida *'}
+                    </Text>
                     <View style={styles.pickerContainer}>
                         <Picker selectedValue={medida} onValueChange={setMedida}>
                             <Picker.Item label="Seleccione..." value="" />
-                            {['Cc', 'Grs', 'Gal', 'Uni', 'Kg', 'Mts', 'ml'].map(m => <Picker.Item key={m} label={m} value={m} />)}
+                            {medidasDisponibles.map(m => <Picker.Item key={m} label={m} value={m} />)}
                         </Picker>
                     </View>
+                    {esTipoProductoHerramienta(tipoProductoFinal) ? (
+                        <Text style={{ fontSize: 11, color: '#6B7280', marginBottom: 10 }}>
+                            Para herramientas use Und, Pieza, Set, etc. (no Cc/Kg de insumos).
+                        </Text>
+                    ) : null}
                     <Text style={styles.label}>Rubro *</Text>
                     <View style={styles.pickerContainer}>
                         <Picker selectedValue={rubroId} onValueChange={setRubroId}>
                             <Picker.Item label="Seleccione Rubro..." value="" />
                             {rubros.map(r => <Picker.Item key={r.id} label={r.nombre} value={r.id.toString()} />)}
                         </Picker>
-                    </View>
-                    <View style={{ flexDirection: 'row', gap: 10 }}>
-                        <View style={{ flex: 1 }}>
-                            <Text style={styles.label}>Punto Reorden</Text>
-                            <TextInput style={styles.input} value={puntoReorden} onChangeText={setPuntoReorden} keyboardType="numeric" placeholder="0" />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                            <Text style={styles.label}>Stock Máximo</Text>
-                            <TextInput style={styles.input} value={maxStock} onChangeText={setMaxStock} keyboardType="numeric" placeholder="0" />
-                        </View>
                     </View>
                     <View style={styles.modalActions}>
                         <TouchableOpacity style={styles.cancelButton} onPress={() => setShowModal(false)}><Text style={styles.cancelButtonText}>Cancelar</Text></TouchableOpacity>
@@ -3512,3 +3863,5 @@ function CotizacionesTab() {
         </View>
     );
 }
+
+

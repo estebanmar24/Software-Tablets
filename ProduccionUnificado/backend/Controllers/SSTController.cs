@@ -2,7 +2,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
+using TiempoProcesos.API.Helpers;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Hosting;
 
 namespace TiempoProcesos.API.Controllers;
 
@@ -461,6 +463,10 @@ public class SSTController : ControllerBase
                 g.Mes,
                 g.NumeroFactura,
                 g.Precio,
+                g.PrecioBase,
+                g.PrecioIva,
+                g.EsSolicitudCredito,
+                g.EsEfectivo,
                 g.FechaCompra,
                 g.Nota,
                 g.ArchivoFactura,
@@ -470,7 +476,8 @@ public class SSTController : ControllerBase
                 g.FechaModificacion,
                 g.CreadoPorId,
                 CreadoPorNombre = g.CreadoPor != null ? g.CreadoPor.NombreMostrar : "",
-                g.EsPendiente
+                g.EsPendiente,
+                Estado = g.Estado ?? "Montado"
             })
             .ToListAsync();
 
@@ -553,12 +560,27 @@ public class SSTController : ControllerBase
     [HttpPost("gastos")]
     public async Task<ActionResult<SST_GastoMensual>> CreateGasto([FromBody] SST_GastoMensual gasto)
     {
+        var mpS = GastoMedioPagoHelper.ValidateCreditoOExclusivoEfectivo(false, gasto.EsSolicitudCredito, gasto.EsEfectivo);
+        if (mpS != null) return (ActionResult<SST_GastoMensual>)(object)mpS;
+
+        var rubroS = await _context.SST_Rubros.FindAsync(gasto.RubroId);
+        var pS = gasto.Precio;
+        var pbS = gasto.PrecioBase;
+        var piS = gasto.PrecioIva;
+        var errIvS = GastoPrecioIvaHelper.AplicarSegunRubroYTipo(false, null, null, rubroS?.Nombre, ref pS, ref pbS, ref piS);
+        if (errIvS != null) return (ActionResult<SST_GastoMensual>)(object)errIvS;
+        gasto.Precio = pS;
+        gasto.PrecioBase = pbS;
+        gasto.PrecioIva = piS;
+
         // Set Creator
         var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == "Id");
         if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int adminId))
         {
             gasto.CreadoPorId = adminId;
         }
+
+        GastoPeriodoHelper.AplicarAnioMesDesdeFecha(gasto.FechaCompra, (a, m) => { gasto.Anio = a; gasto.Mes = m; });
 
         gasto.FechaCreacion = DateTime.UtcNow;
         _context.SST_GastosMensuales.Add(gasto);
@@ -573,6 +595,21 @@ public class SSTController : ControllerBase
     public async Task<IActionResult> UpdateGasto(int id, [FromBody] SST_GastoMensual gasto)
     {
         if (id != gasto.Id) return BadRequest();
+
+        GastoPeriodoHelper.AplicarAnioMesDesdeFecha(gasto.FechaCompra, (a, m) => { gasto.Anio = a; gasto.Mes = m; });
+
+        var mpSu = GastoMedioPagoHelper.ValidateCreditoOExclusivoEfectivo(false, gasto.EsSolicitudCredito, gasto.EsEfectivo);
+        if (mpSu != null) return mpSu;
+
+        var rubroSu = await _context.SST_Rubros.FindAsync(gasto.RubroId);
+        var pSu = gasto.Precio;
+        var pbSu = gasto.PrecioBase;
+        var piSu = gasto.PrecioIva;
+        var errIvSu = GastoPrecioIvaHelper.AplicarSegunRubroYTipo(false, null, null, rubroSu?.Nombre, ref pSu, ref pbSu, ref piSu);
+        if (errIvSu != null) return errIvSu;
+        gasto.Precio = pSu;
+        gasto.PrecioBase = pbSu;
+        gasto.PrecioIva = piSu;
 
         // Preserve FechaCreacion
         var existingEntry = await _context.SST_GastosMensuales.AsNoTracking().FirstOrDefaultAsync(g => g.Id == id);

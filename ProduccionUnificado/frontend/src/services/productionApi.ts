@@ -146,6 +146,35 @@ export const post = async (url: string, data?: any) => {
     } catch (e) { throw e; }
 };
 
+export const put = async (url: string, data?: any) => {
+    try {
+        const response = await api.put(url, data);
+        return { data: response.data };
+    } catch (e) { throw e; }
+};
+
+export const ajustarTiempo = (id: number, data: {
+    horaInicio: string;
+    horaFin: string;
+    tiros?: number;
+    desperdicio?: number;
+    observaciones?: string;
+    actividadId?: number;
+    referenciaOP?: string;
+    finalizar: boolean;
+}) => put(`tiempoproceso/ajustar/${id}`, data);
+
+export const repararProcesosAbiertos = (
+    fecha: string,
+    maquinaId?: number,
+    usuarioId?: number
+) => {
+    const params = new URLSearchParams({ fecha });
+    if (maquinaId) params.append('maquinaId', String(maquinaId));
+    if (usuarioId) params.append('usuarioId', String(usuarioId));
+    return post(`tiempoproceso/reparar-abiertos?${params.toString()}`);
+};
+
 export default {
     getMaquinas,
     getMaquinasActivas,
@@ -166,5 +195,8 @@ export default {
     getPeriodosDisponibles,
     get,
     post,
+    put,
+    ajustarTiempo,
+    repararProcesosAbiertos,
     API_URL
 };

@@ -26,12 +26,16 @@ import DisenoGastosScreen from '../screens/DisenoGastosScreen';
 import TicketsScreen from '../screens/TicketsScreen';
 import MantenimientoGastosScreen from '../screens/MantenimientoGastosScreen';
 import CalidadExternaView from './CalidadExternaView';
-// @ts-ignore
-import PlaneadorMaquinasScreen from '../screens/PlaneadorMaquinasScreen';
 import PlanAccionView from './PlanAccionView';
 import UserManagementScreen from '../screens/UserManagementScreen';
 import MaquinasScreen from '../screens/MaquinasScreen';
+import PlaneadorMaquinasScreen from '../screens/PlaneadorMaquinasScreen';
 import InventarioMantenimientoScreen from '../screens/InventarioMantenimientoScreen';
+import ConsumosMantenimientoScreen from '../screens/ConsumosMantenimientoScreen';
+import MantenimientoTrazabilidadScreen from '../screens/MantenimientoTrazabilidadScreen';
+import ContabilidadScreen from '../screens/ContabilidadScreen';
+import EvaluacionAreaScreen from '../screens/EvaluacionAreaScreen';
+import AlmacenScreen from '../screens/AlmacenScreen';
 import { api } from '../services/productionApi';
 
 
@@ -55,7 +59,7 @@ const allTabs: { key: string; label: string; icon: string; roles: string[] }[] =
     { key: 'prod_historial', label: 'Historial', icon: '📋', roles: ['admin', 'master'] },
     { key: 'prod_maquinas', label: 'Config Máquinas', icon: '⚙️', roles: ['admin', 'master', 'talleres'] },
     { key: 'prod_operarios', label: 'Operarios', icon: '👥', roles: ['admin', 'master', 'gh'] },
-    { key: 'prod_calidad', label: 'Novedades de OP y Calidad', icon: '✅', roles: ['admin', 'master', 'calidad'] },
+    { key: 'prod_calidad', label: 'Módulo de Calidad', icon: '✅', roles: ['admin', 'master', 'calidad'] },
     { key: 'prod_cartas', label: 'Cartas', icon: '📄', roles: ['admin', 'master'] },
     { key: 'prod_calidad_ext', label: 'Calidad Externa', icon: '🏭', roles: ['admin', 'calidad', 'modulo_calidad'] },
 ];
@@ -138,14 +142,14 @@ function MaintenanceCard({ disabled, onPress }: { disabled?: boolean, onPress: (
     );
 }
 
-function AdminDashboardContent({ onBack, role = 'admin', displayName, area, permissions }: AdminDashboardProps) {
+function AdminDashboardContent({ onBack, role = '', displayName, area, permissions }: AdminDashboardProps) {
     const { colors, isDarkMode } = useTheme();
     // Mode: 'MENU' | 'CONTENT' ...
-    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'MANTENIMIENTO_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS' | 'TICKETS' | 'CALIDAD_EXTERNA' | 'PLANEADOR_MAQUINAS' | 'PLANES_ACCION' | 'USUARIOS' | 'MAQUINAS' | 'MANTENIMIENTO_SELECTOR' | 'INVENTARIO_MANTENIMIENTO'>(() => {
+    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'MANTENIMIENTO_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS' | 'TICKETS' | 'CALIDAD_EXTERNA' | 'PLANES_ACCION' | 'USUARIOS' | 'MAQUINAS' | 'MANTENIMIENTO_SELECTOR' | 'INVENTARIO_MANTENIMIENTO' | 'CONSUMOS_MANTENIMIENTO' | 'MANTENIMIENTO_TRAZABILIDAD' | 'CONTABILIDAD' | 'EVALUACION_AREA' | 'ALMACEN'>(() => {
 
         if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
             const savedMode = window.localStorage.getItem('adminDashboardMode');
-            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS' || savedMode === 'PRODUCCION_GASTOS' || savedMode === 'MANTENIMIENTO_GASTOS' || savedMode === 'TALLERES_GASTOS' || savedMode === 'CALIDAD' || savedMode === 'PLANEACION_GASTOS' || savedMode === 'DISENO_GASTOS' || savedMode === 'TICKETS' || savedMode === 'CALIDAD_EXTERNA' || savedMode === 'PLANEADOR_MAQUINAS' || savedMode === 'PLANES_ACCION' || savedMode === 'USUARIOS' || savedMode === 'MAQUINAS' || savedMode === 'MANTENIMIENTO_SELECTOR' || savedMode === 'INVENTARIO_MANTENIMIENTO') {
+            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS' || savedMode === 'PRODUCCION_GASTOS' || savedMode === 'MANTENIMIENTO_GASTOS' || savedMode === 'TALLERES_GASTOS' || savedMode === 'CALIDAD' || savedMode === 'PLANEACION_GASTOS' || savedMode === 'DISENO_GASTOS' || savedMode === 'TICKETS' || savedMode === 'CALIDAD_EXTERNA' || savedMode === 'PLANES_ACCION' || savedMode === 'USUARIOS' || savedMode === 'MAQUINAS' || savedMode === 'MANTENIMIENTO_SELECTOR' || savedMode === 'INVENTARIO_MANTENIMIENTO' || savedMode === 'CONSUMOS_MANTENIMIENTO' || savedMode === 'MANTENIMIENTO_TRAZABILIDAD' || savedMode === 'CONTABILIDAD' || savedMode === 'EVALUACION_AREA' || savedMode === 'ALMACEN') {
 
                 return savedMode as any;
             }
@@ -153,7 +157,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area, perm
         return 'MENU';
     });
     const [activeTab, setActiveTab] = useState<string>('prod_captura');
-    const [qualityTitle, setQualityTitle] = useState<string>('Control en Proceso de Calidad y Novedades');
+    const [qualityTitle, setQualityTitle] = useState<string>('Módulo de Calidad');
     const [pendingPlansCount, setPendingPlansCount] = useState(0);
     const [resumen, setResumen] = useState<any>(null);
     const { width } = useWindowDimensions();
@@ -182,6 +186,9 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area, perm
         
         return { userRoles: roles, tabs: filteredTabs, userPermissions: perms };
     }, [role, permissions]);
+
+    const isAdminMantenimiento = userRoles.includes('admin');
+    const modulosMantenimientoCount = 4 + (isAdminMantenimiento ? 1 : 0);
 
     useEffect(() => {
         if (tabs.length > 0 && !tabs.find(t => t.key === activeTab)) {
@@ -267,7 +274,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area, perm
                 return <CaptureGridScreen navigation={mockNavigation} />;
             case 'prod_desperdicio':
             case 'desperdicio':
-                return <DesperdicioScreenComp navigation={mockNavigation} />;
+                return <DesperdicioScreenComp navigation={mockNavigation} registradoPorNombre={displayName || ''} />;
             case 'prod_tablero':
             case 'tablero':
                 return <DashboardScreen navigation={mockNavigation} />;
@@ -276,7 +283,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area, perm
                 return <HistoryScreen navigation={mockNavigation} />;
             case 'prod_maquinas':
             case 'maquinas':
-                return <MaquinasScreen navigation={mockNavigation} />;
+                return <MachineParamsScreen navigation={mockNavigation} />;
             case 'prod_operarios':
             case 'operarios':
                 return <ListsScreen navigation={mockNavigation} />;
@@ -444,31 +451,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area, perm
         );
     }
 
-    // --- VISTA PLANEADOR DE MAQUINAS ---
-    if (mode === 'PLANEADOR_MAQUINAS') {
-        return (
-            <View style={styles.container}>
-                <View style={styles.header}>
-                    <TouchableOpacity style={styles.backButton} onPress={() => {
-                        setMode('MENU');
-                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
-                    }}>
-                        <Text style={styles.backButtonText}>← Volver al Panel</Text>
-                    </TouchableOpacity>
-                    <View style={styles.centeredTitleContainer} pointerEvents="box-none">
-                        <Text style={styles.title}>Planeación de Máquinas</Text>
-                    </View>
-                    <Image
-                        source={require('../../assets/logo_perla.png')}
-                        style={[styles.contentHeaderLogo, isDarkMode && { opacity: 0.95 }]}
-                        resizeMode="contain"
-                    />
-                </View>
-                <PlaneadorMaquinasScreen />
-            </View>
-        );
-    }
-
+    // --- VISTA PLANEADOR DE MAQUINAS (programación OP / horarios; no confundir con Calidad Externa / talleres) ---
     if (mode === 'CALIDAD_EXTERNA') {
         return (
             <View style={styles.container}>
@@ -488,7 +471,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area, perm
                         resizeMode="contain"
                     />
                 </View>
-                <CalidadExternaView />
+                <PlaneadorMaquinasScreen />
             </View>
         );
     }
@@ -569,6 +552,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area, perm
                     navigation={mockNavigation}
                     userArea={area}
                     userRole={role}
+                    displayName={displayName}
                     permissions={permissions}
                 />
             </View>
@@ -649,6 +633,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area, perm
                 <PlanAccionView
                     userArea={area}
                     userRole={role}
+                    displayName={displayName}
                     canCreate={false}
                     onClose={() => {
                         setMode('MENU');
@@ -731,7 +716,9 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area, perm
                         </TouchableOpacity>
 
                         <Text style={[styles.bentoMainTitle, { color: colors.text }]}>Elige un módulo para continuar</Text>
-                        <Text style={[styles.bentoMainSubtitle, { color: colors.subText }]}>3 módulos disponibles</Text>
+                        <Text style={[styles.bentoMainSubtitle, { color: colors.subText }]}>
+                            {modulosMantenimientoCount} módulos disponibles
+                        </Text>
                     </View>
 
                     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
@@ -816,6 +803,58 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area, perm
                                         </View>
                                     </View>
                                 </TouchableOpacity>
+
+                                <TouchableOpacity 
+                                    style={[styles.bentoCard, styles.bentoCardSmall, { backgroundColor: isDarkMode ? '#7C2D12' : '#FFEDD5' }]}
+                                    onPress={() => {
+                                        setMode('CONSUMOS_MANTENIMIENTO');
+                                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'CONSUMOS_MANTENIMIENTO');
+                                    }}
+                                >
+                                    <View style={[styles.bentoTag, { backgroundColor: isDarkMode ? 'rgba(249, 115, 22, 0.25)' : 'rgba(249, 115, 22, 0.15)' }]}>
+                                        <Text style={[styles.bentoTagText, { color: '#F97316' }]}>MOVIMIENTOS</Text>
+                                    </View>
+                                    <View style={[styles.bentoIconBox, { backgroundColor: isDarkMode ? 'rgba(249, 115, 22, 0.2)' : 'rgba(249, 115, 22, 0.1)' }]}>
+                                        <MaterialCommunityIcons name="swap-horizontal" size={24} color="#F97316" />
+                                    </View>
+                                    <View style={styles.bentoCardFooter}>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={[styles.bentoCardTitle, { color: isDarkMode ? '#FFF7ED' : '#7C2D12' }]}>Consumos Mantenimiento</Text>
+                                            <Text style={[styles.bentoCardDesc, { color: isDarkMode ? '#FDBA74' : '#C2410C' }]}>Uso y salida de inventario.</Text>
+                                        </View>
+                                        <View style={[styles.bentoArrowCircle, { backgroundColor: isDarkMode ? 'rgba(249, 115, 22, 0.2)' : 'rgba(249, 115, 22, 0.1)' }]}>
+                                            <MaterialCommunityIcons name="chevron-right" size={18} color="#F97316" />
+                                        </View>
+                                    </View>
+                                </TouchableOpacity>
+
+                                {isAdminMantenimiento ? (
+                                    <TouchableOpacity
+                                        style={[styles.bentoCard, styles.bentoCardSmall, { backgroundColor: isDarkMode ? '#1F2937' : '#F3F4F6' }]}
+                                        onPress={() => {
+                                            setMode('MANTENIMIENTO_TRAZABILIDAD');
+                                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MANTENIMIENTO_TRAZABILIDAD');
+                                        }}
+                                    >
+                                        <View style={[styles.bentoTag, { backgroundColor: isDarkMode ? 'rgba(107,114,128,0.25)' : 'rgba(107,114,128,0.15)' }]}>
+                                            <Text style={[styles.bentoTagText, { color: '#6B7280' }]}>AUDITORÍA</Text>
+                                        </View>
+                                        <View style={[styles.bentoIconBox, { backgroundColor: isDarkMode ? 'rgba(107,114,128,0.2)' : 'rgba(107,114,128,0.1)' }]}>
+                                            <MaterialCommunityIcons name="history" size={24} color="#6B7280" />
+                                        </View>
+                                        <View style={styles.bentoCardFooter}>
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={[styles.bentoCardTitle, { color: isDarkMode ? '#F9FAFB' : '#111827' }]}>Trazabilidad</Text>
+                                                <Text style={[styles.bentoCardDesc, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>
+                                                    Historial de acciones (solo Administrador).
+                                                </Text>
+                                            </View>
+                                            <View style={[styles.bentoArrowCircle, { backgroundColor: isDarkMode ? 'rgba(107,114,128,0.2)' : 'rgba(107,114,128,0.1)' }]}>
+                                                <MaterialCommunityIcons name="chevron-right" size={18} color="#6B7280" />
+                                            </View>
+                                        </View>
+                                    </TouchableOpacity>
+                                ) : null}
                             </View>
                         </View>
                     </ScrollView>
@@ -823,6 +862,57 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area, perm
             </View>
         );
     }
+
+    if (mode === 'MANTENIMIENTO_TRAZABILIDAD') {
+        if (!isAdminMantenimiento) {
+            return (
+                <View style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
+                    <Text style={{ color: colors.text, fontSize: 16, textAlign: 'center' }}>
+                        Solo usuarios con rol Administrador pueden acceder a la trazabilidad.
+                    </Text>
+                    <TouchableOpacity
+                        style={{ marginTop: 16, padding: 12 }}
+                        onPress={() => {
+                            setMode('MANTENIMIENTO_SELECTOR');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MANTENIMIENTO_SELECTOR');
+                        }}
+                    >
+                        <Text style={{ color: colors.primary, fontWeight: '600' }}>← Volver</Text>
+                    </TouchableOpacity>
+                </View>
+            );
+        }
+        return (
+            <View style={[styles.container, { backgroundColor: colors.background }]}>
+                <View style={[styles.header, { backgroundColor: colors.headerBackground }]}>
+                    <TouchableOpacity
+                        style={styles.backButton}
+                        onPress={() => {
+                            setMode('MANTENIMIENTO_SELECTOR');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MANTENIMIENTO_SELECTOR');
+                        }}
+                    >
+                        <Text style={styles.backButtonText}>← Volver</Text>
+                    </TouchableOpacity>
+                    <View style={styles.centeredTitleContainer} pointerEvents="box-none">
+                        <Text style={styles.title}>Trazabilidad de Mantenimiento</Text>
+                    </View>
+                    <Image
+                        source={require('../../assets/logo_perla.png')}
+                        style={[styles.contentHeaderLogo, isDarkMode && { opacity: 0.95 }]}
+                        resizeMode="contain"
+                    />
+                </View>
+                <MantenimientoTrazabilidadScreen
+                    onBack={() => {
+                        setMode('MANTENIMIENTO_SELECTOR');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MANTENIMIENTO_SELECTOR');
+                    }}
+                />
+            </View>
+        );
+    }
+
     // --- VISTA INVENTARIO MANTENIMIENTO ---
     if (mode === 'INVENTARIO_MANTENIMIENTO') {
         return (
@@ -847,6 +937,109 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area, perm
                     setMode('MANTENIMIENTO_SELECTOR');
                     if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MANTENIMIENTO_SELECTOR');
                 }} />
+            </View>
+        );
+    }
+
+    if (mode === 'CONSUMOS_MANTENIMIENTO') {
+        return (
+            <View style={[styles.container, { backgroundColor: colors.background }]}>
+                <View style={[styles.header, { backgroundColor: colors.headerBackground }]}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => {
+                        setMode('MANTENIMIENTO_SELECTOR');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MANTENIMIENTO_SELECTOR');
+                    }}>
+                        <Text style={styles.backButtonText}>← Volver</Text>
+                    </TouchableOpacity>
+                    <View style={styles.centeredTitleContainer} pointerEvents="box-none">
+                        <Text style={styles.title}>Consumos de Mantenimiento</Text>
+                    </View>
+                    <Image
+                        source={require('../../assets/logo_perla.png')}
+                        style={[styles.contentHeaderLogo, isDarkMode && { opacity: 0.95 }]}
+                        resizeMode="contain"
+                    />
+                </View>
+                <ConsumosMantenimientoScreen onBack={() => {
+                    setMode('MANTENIMIENTO_SELECTOR');
+                    if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MANTENIMIENTO_SELECTOR');
+                }} />
+            </View>
+        );
+    }
+
+    if (mode === 'CONTABILIDAD') {
+        return (
+            <View style={[styles.container, { backgroundColor: colors.background }]}>
+                <View style={[styles.header, { backgroundColor: colors.headerBackground }]}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => {
+                        setMode('MENU');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                    }}>
+                        <Text style={styles.backButtonText}>← Volver al Panel</Text>
+                    </TouchableOpacity>
+                    <View style={styles.centeredTitleContainer} pointerEvents="box-none">
+                        <Text style={styles.title}>Módulo de Contabilidad</Text>
+                    </View>
+                    <Image
+                        source={require('../../assets/logo_perla.png')}
+                        style={[styles.contentHeaderLogo, isDarkMode && { opacity: 0.95 }]}
+                        resizeMode="contain"
+                    />
+                </View>
+                <ContabilidadScreen />
+            </View>
+        );
+    }
+
+    if (mode === 'EVALUACION_AREA') {
+        return (
+            <View style={[styles.container, { backgroundColor: colors.background }]}>
+                <View style={[styles.header, { backgroundColor: colors.headerBackground }]}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => {
+                        setMode('MENU');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                    }}>
+                        <Text style={styles.backButtonText}>← Volver al Panel</Text>
+                    </TouchableOpacity>
+                    <View style={styles.centeredTitleContainer} pointerEvents="box-none">
+                        <Text style={styles.title}>Evaluación de Actividades</Text>
+                    </View>
+                    <Image
+                        source={require('../../assets/logo_perla.png')}
+                        style={[styles.contentHeaderLogo, isDarkMode && { opacity: 0.95 }]}
+                        resizeMode="contain"
+                    />
+                </View>
+                <EvaluacionAreaScreen
+                    userRole={role}
+                    userArea={area}
+                    displayName={displayName}
+                />
+            </View>
+        );
+    }
+
+    if (mode === 'ALMACEN') {
+        return (
+            <View style={[styles.container, { backgroundColor: colors.background }]}>
+                <View style={[styles.header, { backgroundColor: colors.headerBackground }]}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => {
+                        setMode('MENU');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                    }}>
+                        <Text style={styles.backButtonText}>← Volver al Panel</Text>
+                    </TouchableOpacity>
+                    <View style={styles.centeredTitleContainer} pointerEvents="box-none">
+                        <Text style={styles.title}>Almacén</Text>
+                    </View>
+                    <Image
+                        source={require('../../assets/logo_perla.png')}
+                        style={[styles.contentHeaderLogo, isDarkMode && { opacity: 0.95 }]}
+                        resizeMode="contain"
+                    />
+                </View>
+                <AlmacenScreen />
             </View>
         );
     }
@@ -919,14 +1112,14 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area, perm
     };
 
     const isMasterEnabled = (userRoles.includes('admin') || userRoles.includes('master')) && (hasPerm('prod_captura') || hasPerm('prod_desperdicio') || hasPerm('prod_tablero') || hasPerm('prod_historial'));
-    const isCalidadEnabled = (userRoles.includes('admin') || userRoles.includes('modulo_calidad')) && (hasPerm('calidad_encuestas') || hasPerm('calidad_prod') || hasPerm('calidad_consolidado') || hasPerm('calidad_planes') || hasPerm('calidad_ext') || hasPerm('calidad_actas'));
+    const isCalidadEnabled = (userRoles.includes('admin') || userRoles.includes('modulo_calidad')) && (hasPerm('calidad_encuestas') || hasPerm('calidad_prod') || hasPerm('calidad_consolidado') || hasPerm('calidad_planes') || hasPerm('calidad_ext') || hasPerm('calidad_actas') || hasPerm('calidad_informe_semanal'));
     const isProduccionEnabled = (userRoles.includes('admin') || userRoles.includes('produccion')) && hasPerm('prod_gastos_raw');
     const isTalleresEnabled = (userRoles.includes('admin') || userRoles.includes('talleres')) && hasPerm('talleres_gastos');
     const isPresupuestoEnabled = (userRoles.includes('admin') || userRoles.includes('presupuesto')) && hasPerm('sst_presupuesto');
     const isGHEnabled = (userRoles.includes('admin') || userRoles.includes('gh')) && hasPerm('gh_gastos');
     const isSSTEnabled = (userRoles.includes('admin') || userRoles.includes('sst')) && hasPerm('sst_gastos');
     const isEquiposEnabled = (userRoles.includes('admin') || userRoles.includes('equipos')) && hasPerm('mant_maquinas');
-    const isMantenimientoEnabled = (userRoles.includes('admin') || userRoles.includes('mantenimiento') || userRoles.includes('talleres')) && (hasPerm('mant_maquinas') || hasPerm('mant_gastos') || hasPerm('mant_inventario'));
+    const isMantenimientoEnabled = (userRoles.includes('admin') || userRoles.includes('mantenimiento') || userRoles.includes('talleres')) && (hasPerm('mant_maquinas') || hasPerm('mant_gastos') || hasPerm('mant_inventario') || hasPerm('mant_consumos'));
     const isPlaneacionEnabled = (userRoles.includes('admin') || userRoles.includes('planeacion')) && hasPerm('plan_gastos');
     const isDisenoEnabled = (userRoles.includes('admin') || userRoles.includes('diseno')) && hasPerm('diseno_gastos');
     const isPlaneadorEnabled = (userRoles.includes('admin') || userRoles.includes('calidad') || userRoles.includes('modulo_calidad') || userRoles.includes('planeador')) && hasPerm('prod_calidad_ext');
@@ -939,13 +1132,15 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area, perm
         'produccion': 'Producción',
         'talleres': 'Talleres y Despachos',
         'presupuesto': 'Presupuesto General',
-        'calidad': 'Control en proceso de Novedades de OP y Calidad',
-        'modulo_calidad': 'Módulo Novedades de OP y Calidad',
+        'calidad': 'Módulo de Calidad',
+        'modulo_calidad': 'Módulo de Calidad',
         'equipos': 'Mantenimiento Equipos',
         'planeacion': 'Planeación',
         'planeador': 'Planeador de Máquinas',
         'maquinas': 'Maquinas',
-        'diseno': 'Diseño'
+        'diseno': 'Diseño',
+        'contabilidad': 'Contabilidad',
+        'almacen': 'Almacén'
     };
 
     return (
@@ -1096,7 +1291,7 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area, perm
                         disabled={!isEquiposEnabled}
                     />
                     <DashboardCard
-                        title="Novedades de OP y Calidad"
+                        title="Módulo de Calidad"
                         description="Control en proceso y NC"
                         icon="✅"
                         onPress={() => {
@@ -1133,10 +1328,47 @@ function AdminDashboardContent({ onBack, role = 'admin', displayName, area, perm
                         description="Programación de OPs por Horarios"
                         icon="🏭"
                         onPress={() => {
-                            setMode('PLANEADOR_MAQUINAS');
-                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'PLANEADOR_MAQUINAS');
+                            setMode('CALIDAD_EXTERNA');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'CALIDAD_EXTERNA');
                         }}
                         disabled={!isPlaneadorEnabled}
+                    />
+
+                    <DashboardCard
+                        title="Contabilidad"
+                        description="Centralización de Gastos de todos los Módulos"
+                        icon="💰"
+                        onPress={() => {
+                            setMode('CONTABILIDAD');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'CONTABILIDAD');
+                        }}
+                        disabled={!userRoles.includes('admin') && !userRoles.includes('master') && !userRoles.includes('contabilidad')}
+                    />
+
+                    <DashboardCard
+                        title="Evaluación de Actividades"
+                        description="Evaluación de porcentaje de cumplimiento de actividades"
+                        icon="📋"
+                        onPress={() => {
+                            setMode('EVALUACION_AREA');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'EVALUACION_AREA');
+                        }}
+                        disabled={false}
+                    />
+
+                    <DashboardCard
+                        title="Almacén"
+                        description="Requisición de insumos, pedidos y recepción de materiales"
+                        icon="📦"
+                        onPress={() => {
+                            setMode('ALMACEN');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'ALMACEN');
+                        }}
+                        disabled={
+                            !userRoles.includes('admin') &&
+                            !userRoles.includes('master') &&
+                            !userRoles.includes('almacen')
+                        }
                     />
 
                 </ScrollView>

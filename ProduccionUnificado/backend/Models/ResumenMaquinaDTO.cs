@@ -23,11 +23,15 @@ namespace TiempoProcesos.API.Models
         public decimal TotalTiempoFaltaTrabajo { get; set; }
         public decimal TotalTiempoOtro { get; set; }
         public decimal TotalHoras { get; set; }
+        /// <summary>Suma de horas base para meta del mes (total − descanso − T.Muertos), alineado con Captura / T.H. neto.</summary>
+        public decimal TotalHorasEfectivasMeta { get; set; }
         public decimal Importancia { get; set; }
         public decimal Calificacion { get; set; }
         public int DiasLaborados { get; set; }
         public string UltimaFecha { get; set; } = string.Empty;
         public decimal Tarifa { get; set; }
         public decimal MetaDiariaBase { get; set; }
+        /// <summary>Horas de turno meta del mes (L-V 8h, Sáb 4h; x2 si hubo turno doble ese día).</summary>
+        public decimal HorasTurnoMes { get; set; }
     }
 }

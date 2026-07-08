@@ -45,7 +45,7 @@ interface ActaDetalle {
 }
 
 const PROCESOS = [
-    "Conversión", "Corrugadora", "Guillotina", "Impresión", "Laminado",
+    "Conversión", "Corrugadora", "Guillotina", "Impresión", "Laminado", "Barniz",
     "Estampado", "Troquelado", "Screen", "Colaminadora", "Despique",
     "Pegadora", "Terminados", "Taller Externo", "Tejedora",
     "Diseño", "Facturación", "Despachos", "Comercial"

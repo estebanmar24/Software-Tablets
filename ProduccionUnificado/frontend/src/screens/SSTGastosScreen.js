@@ -28,6 +28,14 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { Asset } from 'expo-asset';
 import { ExpenseHistoryModal } from '../components/ExpenseHistoryModal';
+import MedioPagoGastoControls, {
+    medioPagoToFlags,
+    flagsToMedioPago,
+    MedioPagoBadge,
+    showAlertMedioPagoRequerido
+} from '../components/MedioPagoGastoControls';
+import { parseMontoInput, GastoListaPrecios } from '../utils/gastoPrecioForm';
+import { gastoPermiteEdicionTrasContabilidad } from '../utils/gastoEditPermission';
 import { getApiBaseUrl, getFileServerUrl } from '../services/apiConfig';
 
 const TABS = [
@@ -89,8 +97,27 @@ export default function SSTGastosScreen({ navigation }) {
     );
 }
 
+const getEstadoColor = (estado) => {
+    switch (estado) {
+        case 'Pagado': return '#10B981';
+        case 'Entregado': return '#3B82F6';
+        case 'Montado': return '#6B7280';
+        default: return '#6B7280';
+    }
+};
+
 // ===================== GASTOS TAB =====================
+function resolveFacturaUrl(fileServerUrl, archivoFactura) {
+    if (!archivoFactura) return '';
+    if (archivoFactura.startsWith('data:') || archivoFactura.startsWith('http')) {
+        return archivoFactura;
+    }
+    const path = archivoFactura.startsWith('/') ? archivoFactura : `/${archivoFactura}`;
+    return `${fileServerUrl || ''}${path}`;
+}
+
 function GastosTab({ fileServerUrl }) {
+    const { colors: themeColors } = useTheme();
     const [loading, setLoading] = useState(true);
     const [anio, setAnio] = useState(new Date().getFullYear());
     const [mes, setMes] = useState(new Date().getMonth() + 1); // v2.1 Fixed imports
@@ -123,6 +150,8 @@ function GastosTab({ fileServerUrl }) {
         numeroFactura: '',
         precio: '',
         precioDisplay: '',
+        precioBase: '',
+        precioIva: '',
         fechaCompra: new Date().toISOString().split('T')[0],
         nota: '',
         archivoFactura: null,
@@ -130,7 +159,9 @@ function GastosTab({ fileServerUrl }) {
         esPendiente: false,
         esSolicitudCredito: false
     });
+    const [medioPago, setMedioPago] = useState(null);
     const [saving, setSaving] = useState(false);
+    const [uploadingFactura, setUploadingFactura] = useState(false);
 
     const [isLegalizing, setIsLegalizing] = useState(false);
 
@@ -147,6 +178,12 @@ function GastosTab({ fileServerUrl }) {
     const [filterCredit, setFilterCredit] = useState(false);
 
     const anios = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
+
+    const selectedTipoNombreLower = useMemo(() => {
+        const t = tiposServicio.find(x => String(x.id) === String(formData.tipoServicioId));
+        return (t?.nombre || '').toLowerCase();
+    }, [formData.tipoServicioId, tiposServicio]);
+    const isNominaHeORecargoTipo = selectedTipoNombreLower.includes('hora extra') || selectedTipoNombreLower.includes('recargo');
 
     // FILTERED LIST LOGIC
     const filteredGastos = useMemo(() => {
@@ -294,14 +331,18 @@ function GastosTab({ fileServerUrl }) {
             );
             if (cotizacion) {
                 const precio = cotizacion.precioCotizado.toString();
+                const formatted = new Intl.NumberFormat('es-CO').format(parseInt(precio.replace(/[^0-9]/g, '') || '0', 10));
                 setFormData(prev => ({
                     ...prev,
                     precio: precio,
-                    precioDisplay: new Intl.NumberFormat('es-CO').format(parseInt(precio))
+                    precioDisplay: formatted,
+                    ...(isNominaHeORecargoTipo
+                        ? { precioBase: '', precioIva: '' }
+                        : { precioBase: precio.replace(/[^0-9.]/g, ''), precioIva: '0' })
                 }));
             }
         }
-    }, [formData.proveedorId, cotizaciones, anio, mes]);
+    }, [formData.proveedorId, cotizaciones, anio, mes, isNominaHeORecargoTipo]);
 
     // Load budget info when TipoServicio is selected
     useEffect(() => {
@@ -356,6 +397,8 @@ function GastosTab({ fileServerUrl }) {
             numeroFactura: '',
             precio: '',
             precioDisplay: '',
+            precioBase: '',
+            precioIva: '',
             fechaCompra: new Date().toISOString().split('T')[0],
             nota: '',
             archivoFactura: null,
@@ -363,25 +406,48 @@ function GastosTab({ fileServerUrl }) {
             esPendiente: false,
             esSolicitudCredito: false
         });
+        setMedioPago(null);
         setIsLegalizing(false);
     };
 
+    const gastoEsHeRecTipo = (g) => {
+        const n = (g?.tipoServicioNombre || '').toLowerCase();
+        return n.includes('hora extra') || n.includes('recargo');
+    };
+
     const handleEdit = (gasto) => {
+        if (!gastoPermiteEdicionTrasContabilidad(gasto)) {
+            Alert.alert('Acceso Denegado', `No se puede editar un gasto en estado ${gasto.estado} (ya consta como legalizado).`);
+            return;
+        }
         setEditItem(gasto);
+        const isHeRec = gastoEsHeRecTipo(gasto);
+        const precioBaseStr = isHeRec
+            ? ''
+            : (gasto.precioBase != null ? String(gasto.precioBase) : (gasto.precio != null ? String(gasto.precio) : ''));
+        const precioIvaStr = isHeRec
+            ? ''
+            : (gasto.precioIva != null ? String(gasto.precioIva) : '0');
+        const totalNum = isHeRec
+            ? (parseFloat(gasto.precio) || 0)
+            : ((parseMontoInput(precioBaseStr) ?? 0) + (parseMontoInput(precioIvaStr) ?? 0));
         setFormData({
             rubroId: gasto.rubroId?.toString() || '',
             tipoServicioId: gasto.tipoServicioId?.toString() || '',
             proveedorId: gasto.proveedorId?.toString() || '',
             numeroFactura: gasto.numeroFactura || '',
-            precio: gasto.precio?.toString() || '',
-            precioDisplay: formatCurrencyInput(gasto.precio?.toString() || ''),
+            precio: isHeRec ? (gasto.precio?.toString() || '') : String(totalNum || gasto.precio || ''),
+            precioDisplay: formatCurrencyInput(String(Math.round(totalNum || parseFloat(gasto.precio) || 0))),
+            precioBase: precioBaseStr,
+            precioIva: precioIvaStr,
             fechaCompra: gasto.fechaCompra?.split('T')[0] || new Date().toISOString().split('T')[0],
             nota: (gasto.nota || gasto.Nota) || '',
             archivoFactura: gasto.archivoFactura || null,
-            archivoNombre: gasto.archivoFactura ? 'Archivo adjunto' : '',
+            archivoNombre: gasto.archivoFacturaNombre || (gasto.archivoFactura ? 'Archivo adjunto' : ''),
             esPendiente: gasto.esPendiente || false,
             esSolicitudCredito: gasto.esSolicitudCredito || false
         });
+        setMedioPago(gastoEsHeRecTipo(gasto) ? null : flagsToMedioPago(!!gasto.esSolicitudCredito, !!gasto.esEfectivo));
         setIsLegalizing(false);
         setShowModal(true);
     };
@@ -395,6 +461,8 @@ function GastosTab({ fileServerUrl }) {
             numeroFactura: '',
             precio: '',
             precioDisplay: '',
+            precioBase: '',
+            precioIva: '',
             fechaCompra: gasto.fechaCompra?.split('T')[0] || new Date().toISOString().split('T')[0],
             nota: (gasto.nota || gasto.Nota) || '',
             archivoFactura: null,
@@ -402,6 +470,7 @@ function GastosTab({ fileServerUrl }) {
             esPendiente: false, // Al legalizar, deja de ser pendiente
             esSolicitudCredito: gasto.esSolicitudCredito || false
         });
+        setMedioPago(gastoEsHeRecTipo(gasto) ? null : flagsToMedioPago(!!gasto.esSolicitudCredito, !!gasto.esEfectivo));
         setIsLegalizing(true);
         setShowModal(true);
     };
@@ -498,14 +567,45 @@ function GastosTab({ fileServerUrl }) {
                 Alert.alert('Error', 'El número de factura es obligatorio');
                 return;
             }
-            if (!formData.precio) {
-                Alert.alert('Error', 'El precio es obligatorio');
-                return;
+            if (isNominaHeORecargoTipo) {
+                if (!formData.precio) {
+                    Alert.alert('Error', 'El precio es obligatorio');
+                    return;
+                }
+            } else {
+                let pb = parseMontoInput(formData.precioBase);
+                let pi = parseMontoInput(formData.precioIva);
+                if (pb === null || pi === null) {
+                    Alert.alert('Error', 'Ingrese precio base e IVA (el IVA puede ser 0).');
+                    return;
+                }
+                if (pb < 0 || pi < 0) {
+                    Alert.alert('Error', 'Precio base e IVA no pueden ser negativos.');
+                    return;
+                }
+                if (pb + pi <= 0) {
+                    Alert.alert('Error', 'El total (base + IVA) debe ser mayor a 0.');
+                    return;
+                }
             }
+        }
+
+        if (!isNominaHeORecargoTipo && !medioPago) {
+            showAlertMedioPagoRequerido();
+            return;
         }
 
         try {
             setSaving(true);
+            let pbSave = parseMontoInput(formData.precioBase);
+            let piSave = parseMontoInput(formData.precioIva);
+            if (!isNominaHeORecargoTipo && formData.esPendiente) {
+                if (pbSave === null) pbSave = 0;
+                if (piSave === null) piSave = 0;
+            }
+            const precioTotal = isNominaHeORecargoTipo
+                ? (formData.precio ? parseFloat(formData.precio) : 0)
+                : (pbSave !== null && piSave !== null ? pbSave + piSave : 0);
             const gastoData = {
                 rubroId: parseInt(formData.rubroId),
                 tipoServicioId: parseInt(formData.tipoServicioId),
@@ -513,13 +613,16 @@ function GastosTab({ fileServerUrl }) {
                 anio,
                 mes,
                 numeroFactura: formData.numeroFactura || '',
-                precio: formData.precio ? parseFloat(formData.precio) : 0,
+                precio: precioTotal,
+                ...(!isNominaHeORecargoTipo && pbSave !== null && piSave !== null
+                    ? { precioBase: pbSave, precioIva: piSave }
+                    : {}),
                 fechaCompra: formData.fechaCompra,
                 nota: formData.nota,
                 archivoFactura: formData.archivoFactura,
                 archivoFacturaNombre: formData.archivoNombre,
                 esPendiente: formData.esPendiente,
-                esSolicitudCredito: formData.esSolicitudCredito
+                ...(isNominaHeORecargoTipo ? { esSolicitudCredito: false, esEfectivo: false } : medioPagoToFlags(medioPago))
             };
 
             if (editItem) {
@@ -541,6 +644,11 @@ function GastosTab({ fileServerUrl }) {
     };
 
     const handleDelete = async (id) => {
+        const gasto = gastos.find(g => g.id === id);
+        if (gasto && !gastoPermiteEdicionTrasContabilidad(gasto)) {
+            Alert.alert('Acceso Denegado', `No se puede eliminar un gasto en estado ${gasto.estado} (ya consta como legalizado).`);
+            return;
+        }
         if (Platform.OS === 'web') {
             if (window.confirm('¿Está seguro de eliminar este gasto?')) {
                 try {
@@ -806,9 +914,19 @@ function GastosTab({ fileServerUrl }) {
                                                             <Text style={{ fontSize: 10, color: isOverdue ? '#FFF' : '#B45309', fontWeight: 'bold' }}>⏳ Pendiente</Text>
                                                         </View>
                                                     )}
-                                                    {gasto.esSolicitudCredito && (
-                                                        <View style={{ backgroundColor: '#F5F3FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#DDD6FE', marginLeft: 4 }}>
-                                                            <Text style={{ fontSize: 10, color: '#7C3AED', fontWeight: 'bold' }}>💳 Crédito</Text>
+                                                    {!gastoEsHeRecTipo(gasto) && (
+                                                        <MedioPagoBadge
+                                                            esSolicitudCredito={!!gasto.esSolicitudCredito}
+                                                            esEfectivo={!!gasto.esEfectivo}
+                                                            compact
+                                                        />
+                                                    )}
+                                                    {gasto.estado && (
+                                                        <View style={[styles.estadoBadge, { backgroundColor: getEstadoColor(gasto.estado) + '20', borderColor: getEstadoColor(gasto.estado) }]}
+                                                        >
+                                                            <Text style={[styles.estadoBadgeText, { color: getEstadoColor(gasto.estado) }]}>
+                                                                {gasto.estado.toUpperCase()}
+                                                            </Text>
                                                         </View>
                                                     )}
                                                 </View>
@@ -818,7 +936,12 @@ function GastosTab({ fileServerUrl }) {
                                                     </Text>
                                                 )}
                                             </View>
-                                            <Text style={styles.gastoPrecio}>{formatCurrency(gasto.precio)}</Text>
+                                            <GastoListaPrecios
+                                                gasto={gasto}
+                                                singlePriceRow={gastoEsHeRecTipo(gasto)}
+                                                formatCurrency={formatCurrency}
+                                                precioStyle={styles.gastoPrecio}
+                                            />
                                         </View>
                                         <Text style={styles.gastoRubro}>{gasto.rubroNombre}</Text>
                                         {(gasto.nota || gasto.Nota) ? (
@@ -846,27 +969,33 @@ function GastosTab({ fileServerUrl }) {
                                                 </View>
                                             );
                                         })()}
+                                        {!!gasto.archivoFactura && Platform.OS === 'web' && (
+                                            <a
+                                                href={resolveFacturaUrl(fileServerUrl, gasto.archivoFactura)}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                style={{
+                                                    color: '#2563EB',
+                                                    textDecoration: 'none',
+                                                    marginTop: 6,
+                                                    marginBottom: 4,
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: 4,
+                                                    fontSize: 13,
+                                                    fontWeight: 'bold'
+                                                }}
+                                            >
+                                                📄 Ver PDF Factura{gasto.archivoFacturaNombre ? ` (${gasto.archivoFacturaNombre})` : ''}
+                                            </a>
+                                        )}
                                         <View style={styles.cardActions}>
-                                            {gasto.archivoFactura && (
+                                            {gasto.archivoFactura && Platform.OS !== 'web' && (
                                                 <TouchableOpacity
                                                     style={styles.downloadButton}
-                                                    onPress={() => {
-                                                        if (Platform.OS === 'web') {
-                                                            const link = document.createElement('a');
-                                                            // Resolve full URL
-                                                            const invoiceUrl = gasto.archivoFactura;
-                                                            link.href = `${fileServerUrl}${invoiceUrl.startsWith('/') ? '' : '/'}${invoiceUrl}`;
-                                                            link.target = '_blank';
-                                                            link.download = gasto.archivoFacturaNombre || `factura_${gasto.numeroFactura || gasto.id}.pdf`;
-                                                            document.body.appendChild(link);
-                                                            link.click();
-                                                            document.body.removeChild(link);
-                                                        } else {
-                                                            Alert.alert('Info', 'Descarga disponible solo en web');
-                                                        }
-                                                    }}
+                                                    onPress={() => Alert.alert('Info', 'Ver factura PDF disponible solo en web')}
                                                 >
-                                                    <Text style={styles.downloadButtonText}>📥 Descargar Factura</Text>
+                                                    <Text style={styles.downloadButtonText}>📥 Factura PDF</Text>
                                                 </TouchableOpacity>
                                             )}
                                             {gasto.esPendiente && (
@@ -874,23 +1003,27 @@ function GastosTab({ fileServerUrl }) {
                                                     <Text style={styles.editCardButtonText}>✅ Legalizar</Text>
                                                 </TouchableOpacity>
                                             )}
-                                            <TouchableOpacity
-                                                style={styles.editCardButton}
-                                                onPress={() => handleEdit(gasto)}
-                                            >
-                                                <Text style={styles.editCardButtonText}>✏️ Editar</Text>
-                                            </TouchableOpacity>
+                                            {gastoPermiteEdicionTrasContabilidad(gasto) && (
+                                                <>
+                                                    <TouchableOpacity
+                                                        style={styles.editCardButton}
+                                                        onPress={() => handleEdit(gasto)}
+                                                    >
+                                                        <Text style={styles.editCardButtonText}>✏️ Editar</Text>
+                                                    </TouchableOpacity>
+                                                    <TouchableOpacity
+                                                        style={styles.deleteButton}
+                                                        onPress={() => handleDelete(gasto.id)}
+                                                    >
+                                                        <Text style={styles.deleteButtonText}>🗑️ Eliminar</Text>
+                                                    </TouchableOpacity>
+                                                </>
+                                            )}
                                             <TouchableOpacity
                                                 style={styles.historyButton}
                                                 onPress={() => { setSelectedHistoryGasto(gasto); setShowHistoryModal(true); }}
                                             >
                                                 <Text style={styles.historyButtonText}>🕒 Historial</Text>
-                                            </TouchableOpacity>
-                                            <TouchableOpacity
-                                                style={styles.deleteButton}
-                                                onPress={() => handleDelete(gasto.id)}
-                                            >
-                                                <Text style={styles.deleteButtonText}>🗑️ Eliminar</Text>
                                             </TouchableOpacity>
                                         </View>
                                     </View>
@@ -930,7 +1063,10 @@ function GastosTab({ fileServerUrl }) {
                                     <View style={styles.pickerContainer}>
                                         <Picker
                                             selectedValue={formData.rubroId}
-                                            onValueChange={(value) => setFormData(prev => ({ ...prev, rubroId: value }))}
+                                            onValueChange={(value) => {
+                                                setMedioPago(null);
+                                                setFormData(prev => ({ ...prev, rubroId: value }));
+                                            }}
                                         >
                                             <Picker.Item label="Seleccione..." value="" />
                                             {rubros.map(r => (
@@ -944,41 +1080,6 @@ function GastosTab({ fileServerUrl }) {
                             {/* Conditional Rendering: Only show fields if Rubro is selected */}
                             {formData.rubroId ? (
                                 <>
-                                    {/* Solicitud de Crédito Checkbox */}
-                                    {!isLegalizing && (
-                                        <TouchableOpacity
-                                            style={{
-                                                flexDirection: 'row',
-                                                alignItems: 'center',
-                                                padding: 10,
-                                                backgroundColor: '#F5F3FF',
-                                                borderRadius: 8,
-                                                marginBottom: 15,
-                                                borderWidth: 1,
-                                                borderColor: '#DDD6FE'
-                                            }}
-                                            onPress={() => setFormData(p => ({ ...p, esSolicitudCredito: !p.esSolicitudCredito }))}
-                                        >
-                                            <View style={{
-                                                width: 20,
-                                                height: 20,
-                                                borderRadius: 4,
-                                                borderWidth: 2,
-                                                borderColor: formData.esSolicitudCredito ? '#7C3AED' : '#D1D5DB',
-                                                backgroundColor: formData.esSolicitudCredito ? '#7C3AED' : '#FFF',
-                                                justifyContent: 'center',
-                                                alignItems: 'center',
-                                                marginRight: 10
-                                            }}>
-                                                {formData.esSolicitudCredito && <Text style={{ color: '#FFF', fontSize: 12, fontWeight: 'bold' }}>✓</Text>}
-                                            </View>
-                                            <View>
-                                                <Text style={{ fontWeight: 'bold', color: '#5B21B6' }}>Solicitud de Crédito</Text>
-                                                <Text style={{ fontSize: 11, color: '#6D28D9' }}>Marcar para trámite de crédito</Text>
-                                            </View>
-                                        </TouchableOpacity>
-                                    )}
-
                                     {!isLegalizing && (
                                         <>
                                             {/* Tipo Servicio */}
@@ -986,7 +1087,10 @@ function GastosTab({ fileServerUrl }) {
                                             <View style={styles.pickerContainer}>
                                                 <Picker
                                                     selectedValue={formData.tipoServicioId}
-                                                    onValueChange={(value) => setFormData(prev => ({ ...prev, tipoServicioId: value }))}
+                                                    onValueChange={(value) => {
+                                                        setMedioPago(null);
+                                                        setFormData(prev => ({ ...prev, tipoServicioId: value }));
+                                                    }}
                                                     enabled={filteredTipos.length > 0}
                                                 >
                                                     <Picker.Item label="Seleccione..." value="" />
@@ -996,6 +1100,24 @@ function GastosTab({ fileServerUrl }) {
                                                 </Picker>
                                             </View>
                                         </>
+                                    )}
+
+                                    {!isNominaHeORecargoTipo && (
+                                        <MedioPagoGastoControls
+                                            value={medioPago}
+                                            onChange={(v) => {
+                                                setMedioPago(v);
+                                                const f = medioPagoToFlags(v);
+                                                setFormData(p => ({ ...p, esSolicitudCredito: f.esSolicitudCredito }));
+                                            }}
+                                            colors={{
+                                                text: themeColors.text,
+                                                subText: themeColors.subText,
+                                                primary: themeColors.primary || '#7C3AED',
+                                                border: themeColors.border,
+                                                card: themeColors.card || themeColors.background
+                                            }}
+                                        />
                                     )}
 
                                     {/* Proveedor */}
@@ -1041,23 +1163,80 @@ function GastosTab({ fileServerUrl }) {
 
                                     <Text style={styles.label}>Factura PDF</Text>
                                     {Platform.OS === 'web' && (
-                                        <input
-                                            type="file"
-                                            accept=".pdf"
-                                            onChange={async (e) => {
-                                                const file = e.target.files[0];
-                                                if (file) {
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+                                            <input
+                                                type="file"
+                                                accept=".pdf"
+                                                disabled={uploadingFactura}
+                                                onChange={async (e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (!file) return;
                                                     try {
+                                                        setUploadingFactura(true);
                                                         const result = await sstApi.uploadFactura(file);
-                                                        setFormData(p => ({ ...p, facturaPdfUrl: result.url }));
+                                                        const url = result?.url || '';
+                                                        if (!url) {
+                                                            throw new Error('El servidor no devolvió la URL del archivo');
+                                                        }
+                                                        setFormData(p => ({
+                                                            ...p,
+                                                            archivoFactura: url,
+                                                            archivoNombre: file.name || 'factura.pdf'
+                                                        }));
                                                         Alert.alert('Éxito', 'PDF subido correctamente');
                                                     } catch (err) {
-                                                        Alert.alert('Error', 'No se pudo subir el PDF');
+                                                        console.error('[SST] Error subiendo PDF:', err);
+                                                        const status = err?.response?.status;
+                                                        const msg = status === 401
+                                                            ? 'Sesión expirada. Recargue la página e intente de nuevo.'
+                                                            : (err?.response?.data?.message || err?.message || 'No se pudo subir el PDF');
+                                                        Alert.alert('Error', msg);
+                                                    } finally {
+                                                        setUploadingFactura(false);
+                                                        e.target.value = '';
                                                     }
-                                                }
-                                            }}
-                                            style={{ marginBottom: 10, display: 'block', width: '100%' }}
-                                        />
+                                                }}
+                                                style={{ padding: 8 }}
+                                            />
+                                            {uploadingFactura && <ActivityIndicator size="small" color="#2563EB" />}
+                                            {!!formData.archivoFactura && !uploadingFactura && (
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                                    <a
+                                                        href={resolveFacturaUrl(fileServerUrl, formData.archivoFactura)}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        style={{ color: '#2563EB', textDecoration: 'none', fontWeight: 'bold' }}
+                                                    >
+                                                        📄 {formData.archivoNombre || 'Ver PDF'}
+                                                    </a>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const ok = window.confirm(
+                                                                '¿Quitar el archivo PDF de este gasto? Debe guardar para aplicar el cambio.'
+                                                            );
+                                                            if (!ok) return;
+                                                            setFormData(p => ({
+                                                                ...p,
+                                                                archivoFactura: null,
+                                                                archivoNombre: ''
+                                                            }));
+                                                        }}
+                                                        style={{
+                                                            border: 'none',
+                                                            background: 'none',
+                                                            color: '#DC2626',
+                                                            fontSize: 12,
+                                                            fontWeight: 'bold',
+                                                            cursor: 'pointer',
+                                                            padding: '4px 0'
+                                                        }}
+                                                    >
+                                                        ✕ Quitar archivo
+                                                    </button>
+                                                </View>
+                                            )}
+                                        </View>
                                     )}
 
                                     <Text style={styles.label}>Fecha</Text>
@@ -1077,14 +1256,40 @@ function GastosTab({ fileServerUrl }) {
                                         />
                                     )}
 
-                                    <Text style={styles.label}>Precio {formData.esPendiente && !isLegalizing ? '(Opcional por ahora)' : '*'}</Text>
-                                    <TextInput
-                                        style={styles.input}
-                                        value={formData.precio}
-                                        onChangeText={(t) => setFormData(p => ({ ...p, precio: t }))}
-                                        keyboardType="numeric"
-                                        placeholder="$ 0"
-                                    />
+                                    {isNominaHeORecargoTipo ? (
+                                        <>
+                                            <Text style={styles.label}>Precio {formData.esPendiente && !isLegalizing ? '(Opcional por ahora)' : '*'}</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                value={formData.precioDisplay}
+                                                onChangeText={handlePriceChange}
+                                                keyboardType="numeric"
+                                                placeholder="$ 0"
+                                            />
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Text style={styles.label}>Precio base {formData.esPendiente && !isLegalizing ? '(Opcional por ahora)' : '*'}</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                value={formData.precioBase}
+                                                onChangeText={(t) => setFormData(p => ({ ...p, precioBase: t }))}
+                                                keyboardType="decimal-pad"
+                                                placeholder="0"
+                                            />
+                                            <Text style={[styles.label, { marginTop: 10 }]}>IVA {formData.esPendiente && !isLegalizing ? '(Opcional)' : '*'} (puede ser 0)</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                value={formData.precioIva}
+                                                onChangeText={(t) => setFormData(p => ({ ...p, precioIva: t }))}
+                                                keyboardType="decimal-pad"
+                                                placeholder="0"
+                                            />
+                                            <Text style={{ marginTop: 8, fontSize: 14, fontWeight: 'bold', color: '#059669' }}>
+                                                Total: {formatCurrency((parseMontoInput(formData.precioBase) ?? 0) + (parseMontoInput(formData.precioIva) ?? 0))}
+                                            </Text>
+                                        </>
+                                    )}
 
                                     {/* Presupuesto SST Style */}
                                     {presupuestoInfo && (
@@ -1093,7 +1298,11 @@ function GastosTab({ fileServerUrl }) {
                                                 <Text style={styles.budgetTitle}>📊 Presupuesto: {presupuestoInfo.rubroNombre}</Text>
                                             </View>
                                             {(() => {
-                                                const currentPrice = parseFloat(formData.precio) || 0;
+                                                const pbLive = parseMontoInput(formData.precioBase);
+                                                const piLive = parseMontoInput(formData.precioIva);
+                                                const currentPrice = isNominaHeORecargoTipo
+                                                    ? (parseFloat(formData.precio) || 0)
+                                                    : (pbLive !== null && piLive !== null ? pbLive + piLive : (parseFloat(formData.precio) || 0));
                                                 const originalPrice = editItem ? (editItem.precio || 0) : 0;
                                                 const adjustedGastadoMes = (presupuestoInfo.gastadoMes || 0) - originalPrice;
                                                 const liveGastado = adjustedGastadoMes + currentPrice;
@@ -2888,6 +3097,25 @@ const grafStyles = StyleSheet.create({
 
 // ===================== ORDEN Y ASEO TAB =====================
 
+function OrdenAseoEvidenceImage({ uri, style }) {
+    const [failed, setFailed] = useState(false);
+    if (failed) {
+        return (
+            <Text style={{ fontSize: 12, color: '#DC2626', fontStyle: 'italic', marginBottom: 8 }}>
+                Evidencia no disponible en el servidor (archivo perdido). Debe volver a capturar la foto en una encuesta nueva.
+            </Text>
+        );
+    }
+    return (
+        <Image
+            source={{ uri }}
+            style={style}
+            resizeMode="contain"
+            onError={() => setFailed(true)}
+        />
+    );
+}
+
 const PREGUNTAS_ASEO = [
     { key: 'ImplementosAseo', label: '¿Los implementos de aseo se encuentran en su respectivo soporte y bien ubicados?' },
     { key: 'HerramientasLugar', label: '¿Las herramientas en el lugar de trabajo están acomodadas, limpias y se encuentran en su sitio?' },
@@ -3526,19 +3754,17 @@ function OrdenAseoTab({ apiBaseUrl }) {
                                                         {photoVal.includes('|') ? (
                                                             <View>
                                                                 {photoVal.split('|').map((photo, idx) => (
-                                                                    <Image
+                                                                    <OrdenAseoEvidenceImage
                                                                         key={idx}
-                                                                        source={{ uri: ordenAseoApi.getFotoUrl(photo, apiBaseUrl) }}
+                                                                        uri={ordenAseoApi.getFotoUrl(photo, apiBaseUrl)}
                                                                         style={{ width: '100%', height: 300, borderRadius: 8, backgroundColor: '#F3F4F6', marginBottom: 12 }}
-                                                                        resizeMode="contain"
                                                                     />
                                                                 ))}
                                                             </View>
                                                         ) : (
-                                                            <Image
-                                                                source={{ uri: ordenAseoApi.getFotoUrl(photoVal, apiBaseUrl) }}
+                                                            <OrdenAseoEvidenceImage
+                                                                uri={ordenAseoApi.getFotoUrl(photoVal, apiBaseUrl)}
                                                                 style={{ width: '100%', height: 250, borderRadius: 8, backgroundColor: '#F3F4F6' }}
-                                                                resizeMode="contain"
                                                             />
                                                         )}
                                                     </View>
@@ -3678,6 +3904,29 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#F3F4F6',
+    },
+    estadoBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 4,
+        borderWidth: 1,
+        alignSelf: 'flex-start',
+    },
+    estadoBadgeText: {
+        fontSize: 10,
+        fontWeight: 'bold',
+    },
+    pendingBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 4,
+        alignSelf: 'flex-start',
+        marginRight: 5,
+    },
+    pendingText: {
+        fontSize: 10,
+        fontWeight: 'bold',
+        color: '#FFF',
     },
     contentContainer: {
         flex: 1,
@@ -3972,6 +4221,17 @@ const styles = StyleSheet.create({
         color: '#DC2626',
         fontSize: 13,
     },
+    estadoBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 6,
+        borderWidth: 1,
+        marginLeft: 6,
+    },
+    estadoBadgeText: {
+        fontSize: 10,
+        fontWeight: '900',
+    },
     itemCard: {
         backgroundColor: '#FFF',
         padding: 16,
@@ -4164,3 +4424,5 @@ const styles = StyleSheet.create({
         textAlign: 'center',
     },
 });
+
+

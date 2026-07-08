@@ -1,17 +1,26 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, FlatList, TextInput, Modal, Image, Platform, Dimensions } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { api } from '../services/productionApi';
+import BitacoraMantenimientoTab from '../components/BitacoraMantenimientoTab';
 import { getFileServerUrl, getApiBaseUrl } from '../services/apiConfig';
 import * as ImagePicker from 'expo-image-picker';
 
 const { width } = Dimensions.get('window');
 // Eliminamos el SERVER_URL estático y usaremos un estado para cargarlo dinámicamente
 
-type SubModule = 'HOJA_VIDA' | 'CRONOGRAMA' | 'TICKETS_DANOS' | 'MANTENIMIENTOS';
+type SubModule = 'HOJA_VIDA' | 'CRONOGRAMA' | 'TICKETS_DANOS' | 'MANTENIMIENTOS' | 'BITACORA';
+
+const TIPOS_MANTENIMIENTO_FILTRO = ['Preventivo', 'Correctivo', 'Limpieza', 'Ajuste', 'Calibración'] as const;
+
+const getMantTipo = (item: MantenimientoEntry & Record<string, unknown>) =>
+    String(item.tipoMantenimiento ?? item.tipo ?? '').trim();
+
+const getMantPersonal = (item: MantenimientoEntry & Record<string, unknown>) =>
+    String(item.tipoPersonal ?? item.TipoPersonal ?? 'Interno').trim();
 
 interface BitacoraEntry {
     id?: number;
@@ -67,6 +76,93 @@ interface HojaVida {
     fotos?: { id?: number; url: string }[];
 }
 
+const todayInputValue = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+};
+
+const firstDayOfCurrentMonth = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+};
+
+const normalizeYmd = (value?: string) => {
+    if (!value) return '';
+    const raw = String(value).trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+    const d = new Date(raw);
+    if (!Number.isNaN(d.getTime())) {
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+    return raw.slice(0, 10);
+};
+
+const isInDateRange = (fecha: string, inicio: string, fin: string) => {
+    const d = normalizeYmd(fecha);
+    return Boolean(d) && d >= inicio && d <= fin;
+};
+
+const toDateInputValue = (value?: string) => {
+    if (!value) return todayInputValue();
+    return String(value).slice(0, 10);
+};
+
+const toMiddayIso = (dateValue?: string) => {
+    const safeDate = toDateInputValue(dateValue);
+    return new Date(`${safeDate}T12:00:00`).toISOString();
+};
+
+interface ConsumosResumen {
+    mantenimientoHojaVidaId?: number;
+    mantenimientoConsecutivo?: number;
+    items?: Array<{
+        codigo?: string;
+        productoNombre?: string;
+        cantidad?: number;
+        medida?: string;
+        precioUnitario?: number;
+        subtotal?: number;
+        categoriaRecurso?: string;
+    }>;
+    valorTotal?: number;
+    equiposTexto?: string;
+    materialesTexto?: string;
+    repuestosTexto?: string;
+}
+
+const formatCOP = (value: number) =>
+    new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(value || 0);
+
+const normalizarConsumosResumen = (raw: any): ConsumosResumen => {
+    if (!raw) return {};
+    return {
+        mantenimientoHojaVidaId: raw.mantenimientoHojaVidaId ?? raw.MantenimientoHojaVidaId,
+        mantenimientoConsecutivo: raw.mantenimientoConsecutivo ?? raw.MantenimientoConsecutivo,
+        items: raw.items ?? raw.Items,
+        valorTotal: raw.valorTotal ?? raw.ValorTotal ?? 0,
+        equiposTexto: raw.equiposTexto ?? raw.EquiposTexto ?? '',
+        materialesTexto: raw.materialesTexto ?? raw.MaterialesTexto ?? '',
+        repuestosTexto: raw.repuestosTexto ?? raw.RepuestosTexto ?? '',
+    };
+};
+
+const obtenerResumenMantenimiento = async (
+    mantenimientoId: number | undefined,
+    mapa: Record<string, ConsumosResumen>
+): Promise<ConsumosResumen | null> => {
+    if (!mantenimientoId) return null;
+    const cached = mapa[String(mantenimientoId)] ?? mapa[mantenimientoId as any];
+    if (cached) return normalizarConsumosResumen(cached);
+    try {
+        const resp = await api.get('mantenimiento/consumos-resumen', {
+            params: { mantenimientoHojaVidaId: mantenimientoId },
+        });
+        return normalizarConsumosResumen(resp.data);
+    } catch {
+        return null;
+    }
+};
+
 
 const FormInput = ({ label, value, onChangeText, placeholder, multiline = false, colors, isDarkMode, styles }: any) => (
     <View style={styles.formGroup}>
@@ -98,6 +194,7 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
     const [hojasVida, setHojasVida] = useState<HojaVida[]>([]);
     const [bitacoras, setBitacoras] = useState<BitacoraEntry[]>([]);
     const [mantenimientos, setMantenimientos] = useState<MantenimientoEntry[]>([]);
+    const [consumosResumenMap, setConsumosResumenMap] = useState<Record<string, ConsumosResumen>>({});
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
@@ -107,9 +204,19 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
     const [selectedMaqName, setSelectedMaqName] = useState('');
     const [selectedMaqId, setSelectedMaqId] = useState<number | null>(null);
     const [bitacoraModalVisible, setBitacoraModalVisible] = useState(false);
+    const [ticketFilter, setTicketFilter] = useState<'ALL' | 'OPEN' | 'RESOLVED'>('ALL');
+    const [mantFilterMaquina, setMantFilterMaquina] = useState<number | 'ALL'>('ALL');
+    const [mantFilterTipo, setMantFilterTipo] = useState<string>('ALL');
+    const [mantFilterPersonal, setMantFilterPersonal] = useState<'ALL' | 'Interno' | 'Externo'>('ALL');
+    const [mantFilterTicket, setMantFilterTicket] = useState<'ALL' | 'CON' | 'SIN'>('ALL');
+    const [mantSearchText, setMantSearchText] = useState('');
     const [generatingPdf, setGeneratingPdf] = useState(false);
     const [pdfReadyUrl, setPdfReadyUrl] = useState<string | null>(null);
     const [isEditingBitacora, setIsEditingBitacora] = useState(false);
+    const [exportExcelModalVisible, setExportExcelModalVisible] = useState(false);
+    const [exportFechaInicio, setExportFechaInicio] = useState(firstDayOfCurrentMonth());
+    const [exportFechaFin, setExportFechaFin] = useState(todayInputValue());
+    const [exportingExcel, setExportingExcel] = useState(false);
     
     // ScrollView ref for machine tabs
     const maqScrollRef = useRef<ScrollView>(null);
@@ -133,7 +240,7 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
     const [isEditingMantenimiento, setIsEditingMantenimiento] = useState(false);
     const [mantenimientoForm, setMantenimientoForm] = useState<MantenimientoEntry>({
         hojaVidaId: 0,
-        fecha: new Date().toISOString(),
+        fecha: todayInputValue(),
         tipo: 'Preventivo',
         ejecutadoPor: '',
         tipoPersonal: 'Interno',
@@ -153,6 +260,159 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
     const [imageModalVisible, setImageModalVisible] = useState(false);
 
+    const isBitacoraResuelta = (item: BitacoraEntry) => {
+        return Boolean(item.resuelto ?? (item as any).Resuelto);
+    };
+
+    const filteredBitacoras = bitacoras.filter((item) => {
+        const resuelto = isBitacoraResuelta(item);
+        if (ticketFilter === 'RESOLVED') return resuelto;
+        if (ticketFilter === 'OPEN') return !resuelto;
+        return true;
+    });
+
+    const mantFiltrosActivos =
+        mantFilterMaquina !== 'ALL' ||
+        mantFilterTipo !== 'ALL' ||
+        mantFilterPersonal !== 'ALL' ||
+        mantFilterTicket !== 'ALL' ||
+        mantSearchText.trim().length > 0;
+
+    const filteredMantenimientos = useMemo(() => {
+        const q = mantSearchText.trim().toLowerCase();
+        return mantenimientos.filter((item) => {
+            if (mantFilterMaquina !== 'ALL' && item.hojaVidaId !== mantFilterMaquina) return false;
+
+            if (mantFilterTipo !== 'ALL') {
+                if (getMantTipo(item).toLowerCase() !== mantFilterTipo.toLowerCase()) return false;
+            }
+
+            if (mantFilterPersonal !== 'ALL') {
+                if (getMantPersonal(item).toLowerCase() !== mantFilterPersonal.toLowerCase()) return false;
+            }
+
+            if (mantFilterTicket === 'CON' && !(item.ticketId || (item as any).TicketId)) return false;
+            if (mantFilterTicket === 'SIN' && (item.ticketId || (item as any).TicketId)) return false;
+
+            if (q) {
+                const maq = hojasVida.find((h) => h.id === item.hojaVidaId);
+                const haystack = [
+                    maq?.nombre,
+                    maq?.numeroInventario,
+                    getMantTipo(item),
+                    getMantPersonal(item),
+                    item.ejecutadoPor,
+                    item.observacion,
+                    String(item.consecutivo ?? (item as any).Consecutivo ?? ''),
+                ]
+                    .filter(Boolean)
+                    .join(' ')
+                    .toLowerCase();
+                if (!haystack.includes(q)) return false;
+            }
+
+            return true;
+        });
+    }, [
+        mantenimientos,
+        hojasVida,
+        mantFilterMaquina,
+        mantFilterTipo,
+        mantFilterPersonal,
+        mantFilterTicket,
+        mantSearchText,
+    ]);
+
+    const limpiarFiltrosMantenimiento = () => {
+        setMantFilterMaquina('ALL');
+        setMantFilterTipo('ALL');
+        setMantFilterPersonal('ALL');
+        setMantFilterTicket('ALL');
+        setMantSearchText('');
+    };
+
+    const getTicketForMantenimiento = (item: MantenimientoEntry) => {
+        const ticketId = item.ticketId ?? (item as Record<string, unknown>).TicketId;
+        if (!ticketId) return null;
+        return bitacoras.find((b) => b.id === Number(ticketId)) || null;
+    };
+
+    const handleExportMantenimientosExcel = async () => {
+        if (!exportFechaInicio || !exportFechaFin) {
+            Alert.alert('Error', 'Seleccione fecha inicio y fecha fin.');
+            return;
+        }
+        if (exportFechaInicio > exportFechaFin) {
+            Alert.alert('Error', 'La fecha inicio no puede ser posterior a la fecha fin.');
+            return;
+        }
+
+        const registros = mantenimientos
+            .filter((item) => isInDateRange(item.fecha, exportFechaInicio, exportFechaFin))
+            .sort((a, b) => {
+                const fa = normalizeYmd(a.fecha);
+                const fb = normalizeYmd(b.fecha);
+                if (fa !== fb) return fb.localeCompare(fa);
+                const maqA = hojasVida.find((h) => h.id === a.hojaVidaId)?.nombre || '';
+                const maqB = hojasVida.find((h) => h.id === b.hojaVidaId)?.nombre || '';
+                return maqA.localeCompare(maqB, 'es');
+            });
+
+        if (registros.length === 0) {
+            Alert.alert('Sin datos', 'No hay mantenimientos en el rango de fechas seleccionado.');
+            return;
+        }
+
+        setExportingExcel(true);
+        try {
+            const XLSX = await import('xlsx');
+            const excelData = registros.map((item) => {
+                const maq = hojasVida.find((h) => h.id === item.hojaVidaId);
+                const ticket = getTicketForMantenimiento(item);
+                const turno = ticket?.turno || '—';
+                const estado = ticket
+                    ? `${ticket.estadoMaquina || '—'}${ticket.resuelto ? ' · Resuelto' : ' · Pendiente'}`
+                    : 'Completado';
+
+                return {
+                    'Máquina': maq?.nombre || '—',
+                    'N° Inventario': maq?.numeroInventario || '—',
+                    'Tipo de mantenimiento': getMantTipo(item) || '—',
+                    'Fecha': new Date(item.fecha).toLocaleDateString('es-CO'),
+                    'Qué se hizo': (item.observacion || '').trim() || '—',
+                    'Turno': turno,
+                    'Estado': estado,
+                    'Quien hizo el arreglo': item.ejecutadoPor || '—',
+                    'Tipo personal': getMantPersonal(item),
+                    'N° Mantenimiento': item.consecutivo ?? (item as Record<string, unknown>).Consecutivo ?? '—',
+                };
+            });
+
+            const ws = XLSX.utils.json_to_sheet(excelData);
+            ws['!cols'] = [
+                { wch: 28 }, { wch: 14 }, { wch: 18 }, { wch: 12 }, { wch: 50 },
+                { wch: 12 }, { wch: 22 }, { wch: 24 }, { wch: 12 }, { wch: 14 },
+            ];
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Mantenimientos');
+            const fileName = `Mantenimientos_Maquinas_${exportFechaInicio}_${exportFechaFin}.xlsx`;
+
+            if (Platform.OS === 'web') {
+                XLSX.writeFile(wb, fileName);
+            } else {
+                Alert.alert('Exportar', 'La descarga de Excel está disponible en la versión web.');
+                return;
+            }
+
+            setExportExcelModalVisible(false);
+        } catch (error) {
+            console.error('Error exportando mantenimientos:', error);
+            Alert.alert('Error', 'No se pudo generar el archivo Excel.');
+        } finally {
+            setExportingExcel(false);
+        }
+    };
+
     const openImage = (url: string) => {
         const fullUrl = url.startsWith('http') ? url : (SERVER_URL + url);
         setSelectedImage(fullUrl);
@@ -169,12 +429,29 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
         }
     };
 
+    const loadConsumosResumen = async () => {
+        if (publicMode) return;
+        try {
+            const resp = await api.get('mantenimiento/consumos-resumen');
+            setConsumosResumenMap(resp.data || {});
+        } catch (error) {
+            console.error('Error cargando resumen de consumos:', error);
+        }
+    };
+
+    useEffect(() => {
+        if (!publicMode && activeTab === 'MANTENIMIENTOS') {
+            loadConsumosResumen();
+        }
+    }, [activeTab, publicMode]);
+
     useEffect(() => {
         // Bloqueamos la carga de datos privados si estamos en el modo QR público
         if (!publicMode) {
             loadHojasVida();
             loadBitacoras();
             loadMantenimientos();
+            loadConsumosResumen();
         }
     }, [publicMode]);
 
@@ -236,7 +513,7 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                 consecutivo: mantenimientoForm.consecutivo || 0,
                 ticketId: mantenimientoForm.ticketId || null,
                 tipoPersonal: mantenimientoForm.tipoPersonal || 'Interno',
-                fecha: new Date().toISOString(),
+                fecha: toMiddayIso(mantenimientoForm.fecha),
                 tipoMantenimiento: mantenimientoForm.tipo,
                 ejecutadoPor: mantenimientoForm.ejecutadoPor,
                 observacion: `${mantenimientoForm.observacion}\n\nActividades realizadas:\n${cronogramaActividades.filter(a => selectedActsForMantenimiento.includes(a.id)).map(a => `- ${a.operacion}`).join('\n')}`.trim(),
@@ -251,10 +528,10 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
 
             // --- SINCRONIZACIÓN AUTOMÁTICA CON CRONOGRAMA ---
             if (selectedActsForMantenimiento.length > 0) {
-                const now = new Date();
-                const d = now.getDate();
-                const m = now.getMonth() + 1;
-                const a = now.getFullYear();
+                const selectedDate = new Date(`${toDateInputValue(mantenimientoForm.fecha)}T12:00:00`);
+                const d = selectedDate.getDate();
+                const m = selectedDate.getMonth() + 1;
+                const a = selectedDate.getFullYear();
 
                 try {
                     await Promise.all(selectedActsForMantenimiento.map(actId => 
@@ -286,9 +563,10 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
             setSelectedActsForMantenimiento([]);
             setMantenimientoForm({
                 hojaVidaId: 0,
-                fecha: new Date().toISOString(),
+                fecha: todayInputValue(),
                 tipo: 'Preventivo',
                 ejecutadoPor: '',
+                tipoPersonal: 'Interno',
                 observacion: '',
                 fotos: []
             });
@@ -914,6 +1192,12 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
     const handleExportMaintenancePdf = async (maint: MantenimientoEntry, machine: HojaVida) => {
         const doc = new jsPDF();
         const logoB64 = await urlToBase64(window.location.origin + '/empresa-logo.jpeg');
+        const resumen = await obtenerResumenMantenimiento(maint.id, consumosResumenMap);
+        const equiposTxt = resumen?.equiposTexto?.trim() || ' ';
+        const materialesTxt = resumen?.materialesTexto?.trim() || ' ';
+        const repuestosTxt = resumen?.repuestosTexto?.trim() || ' ';
+        const valorTotal = resumen?.valorTotal ?? 0;
+        const valorTxt = valorTotal > 0 ? formatCOP(valorTotal) : ' ';
         
         // Buscar ticket asociado si existe
         const ticketId = maint.ticketId || maint.TicketId;
@@ -1082,9 +1366,9 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                     { content: 'REPUESTOS', styles: { fontStyle: 'bold', halign: 'center', cellWidth: 50 } }
                 ],
                 [
-                    { content: ' ', styles: { minHeight: 15 } },
-                    { content: ' ' },
-                    { content: ' ' }
+                    { content: equiposTxt, styles: { minHeight: 15, overflow: 'linebreak' } },
+                    { content: materialesTxt, styles: { overflow: 'linebreak' } },
+                    { content: repuestosTxt, styles: { overflow: 'linebreak' } }
                 ],
                 [
                     { content: 'DESCRIPCION DE LA ACTIVIDAD A EJECUTAR', colSpan: 4, styles: { fontStyle: 'bold', halign: 'center' } }
@@ -1094,7 +1378,7 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                 ],
                 [
                     { content: 'VALOR TOTAL DEL MANTENIMIENTO', colSpan: 3, styles: { fontStyle: 'bold', halign: 'center' } },
-                    { content: ' ', styles: { halign: 'right' } }
+                    { content: valorTxt, styles: { halign: 'right', fontStyle: 'bold' } }
                 ],
                 [
                     { content: 'NOMBRE DE QUIEN RECIBE Y VERIFICA', colSpan: 2, styles: { fontStyle: 'bold', halign: 'center' } },
@@ -1141,6 +1425,14 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
             // Cargar Mantenimientos
             const mantenResp = await api.get('MantenimientosMaquinas', { params: { hojaVidaId: item.id } });
             const listMantenimientos = mantenResp.data;
+
+            let consumosPorMantenimiento: Record<string, ConsumosResumen> = {};
+            try {
+                const consumosResp = await api.get('mantenimiento/consumos-resumen', { params: { hojaVidaId: item.id } });
+                consumosPorMantenimiento = consumosResp.data || {};
+            } catch {
+                consumosPorMantenimiento = {};
+            }
 
             const doc = new jsPDF();
             const margin = 15;
@@ -1454,16 +1746,27 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                     // Verificar espacio para el encabezado del mantenimiento
                     checkNewPage(25);
 
+                    const resumenM = normalizarConsumosResumen(
+                        consumosPorMantenimiento[String(m.id)] ?? consumosPorMantenimiento[m.id]
+                    );
+                    const materialesResumen = [
+                        resumenM.equiposTexto,
+                        resumenM.materialesTexto,
+                        resumenM.repuestosTexto,
+                    ].filter(Boolean).join(' · ');
+                    const valorM = (resumenM.valorTotal ?? 0) > 0 ? formatCOP(resumenM.valorTotal!) : '-';
+
                     // Pequeña tabla/fila para el resumen del mantenimiento
                     autoTable(doc, {
                         startY: currentY,
-                        head: [['#', 'Fecha', 'Tipo', 'Ejecutado Por', 'Ticket', 'Observación']],
+                        head: [['#', 'Fecha', 'Tipo', 'Ejecutado Por', 'Ticket', 'Valor materiales', 'Observación']],
                         body: [[
                             m.consecutivo || '-',
                             new Date(m.fecha).toLocaleDateString(),
                             m.tipoMantenimiento || m.tipo,
                             m.ejecutadoPor,
                             (m.ticketId || m.TicketId) ? `#${m.ticketId || m.TicketId}` : '-',
+                            valorM,
                             m.observacion
                         ]],
                         margin: { left: margin },
@@ -1473,9 +1776,24 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                         styles: { fontSize: 8 }
                     });
 
-                    currentY = (doc as any).lastAutoTable.finalY + 5;
+                    currentY = (doc as any).lastAutoTable.finalY + 3;
 
-                    currentY += 5; // Espacio entre mantenimientos
+                    if (materialesResumen) {
+                        checkNewPage(20);
+                        autoTable(doc, {
+                            startY: currentY,
+                            head: [['Recursos utilizados (consumos de inventario)']],
+                            body: [[materialesResumen]],
+                            margin: { left: margin },
+                            tableWidth: tableWidth,
+                            theme: 'grid',
+                            headStyles: { fillColor: [120, 120, 120] },
+                            styles: { fontSize: 7, overflow: 'linebreak' }
+                        });
+                        currentY = (doc as any).lastAutoTable.finalY + 5;
+                    } else {
+                        currentY += 5;
+                    }
                 }
             }
 
@@ -1957,7 +2275,26 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                     <MaterialCommunityIcons name="wrench-outline" size={20} color={activeTab === 'MANTENIMIENTOS' ? colors.primary : colors.subText} />
                     <Text style={[styles.tabText, { color: activeTab === 'MANTENIMIENTOS' ? colors.primary : colors.subText }]}>Mantenimientos</Text>
                 </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.tabButton, activeTab === 'BITACORA' && [styles.activeTabButton, { borderBottomColor: colors.primary }]]}
+                    onPress={() => setActiveTab('BITACORA')}
+                >
+                    <MaterialCommunityIcons name="notebook-outline" size={20} color={activeTab === 'BITACORA' ? colors.primary : colors.subText} />
+                    <Text style={[styles.tabText, { color: activeTab === 'BITACORA' ? colors.primary : colors.subText }]}>Bitácora</Text>
+                </TouchableOpacity>
             </ScrollView>
+            <View style={[styles.exportToolbar, { borderTopColor: colors.border }]}>
+                <Text style={{ fontSize: 12, color: colors.subText, flex: 1 }}>
+                    Exportar mantenimientos de todas las máquinas
+                </Text>
+                <TouchableOpacity
+                    style={[styles.exportExcelBtn, { borderColor: '#16a34a' }]}
+                    onPress={() => setExportExcelModalVisible(true)}
+                >
+                    <MaterialCommunityIcons name="microsoft-excel" size={18} color="#16a34a" />
+                    <Text style={styles.exportExcelBtnText}>Excel</Text>
+                </TouchableOpacity>
+            </View>
         </View>
     );
 
@@ -2117,14 +2454,52 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                         {activeTab === 'CRONOGRAMA' && renderCronograma()}
                         {activeTab === 'TICKETS_DANOS' && (
                             <View style={styles.listContainer}>
+                                <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 15, paddingTop: 10 }}>
+                                    <TouchableOpacity
+                                        onPress={() => setTicketFilter('ALL')}
+                                        style={[
+                                            styles.turnoBtn,
+                                            { borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 6 },
+                                            ticketFilter === 'ALL' && { backgroundColor: '#3B82F6', borderColor: '#3B82F6' }
+                                        ]}
+                                    >
+                                        <Text style={[styles.turnoText, { fontSize: 11, color: ticketFilter === 'ALL' ? 'white' : colors.text }]}>Todos</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        onPress={() => setTicketFilter('OPEN')}
+                                        style={[
+                                            styles.turnoBtn,
+                                            { borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 6 },
+                                            ticketFilter === 'OPEN' && { backgroundColor: '#F59E0B', borderColor: '#F59E0B' }
+                                        ]}
+                                    >
+                                        <Text style={[styles.turnoText, { fontSize: 11, color: ticketFilter === 'OPEN' ? 'white' : colors.text }]}>No resueltos</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        onPress={() => setTicketFilter('RESOLVED')}
+                                        style={[
+                                            styles.turnoBtn,
+                                            { borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 6 },
+                                            ticketFilter === 'RESOLVED' && { backgroundColor: '#10B981', borderColor: '#10B981' }
+                                        ]}
+                                    >
+                                        <Text style={[styles.turnoText, { fontSize: 11, color: ticketFilter === 'RESOLVED' ? 'white' : colors.text }]}>Resueltos</Text>
+                                    </TouchableOpacity>
+                                </View>
                                 <FlatList
-                                    data={bitacoras}
+                                    data={filteredBitacoras}
                                     keyExtractor={(item) => item.id?.toString() || Math.random().toString()}
                                     contentContainerStyle={{ padding: 15 }}
                                     ListEmptyComponent={() => (
                                         <View style={styles.emptyView}>
                                             <MaterialCommunityIcons name="alert-box-outline" size={80} color={colors.subText} opacity={0.3} />
-                                            <Text style={[styles.emptySubtitle, { color: colors.subText }]}>No hay tickets de daños registrados.</Text>
+                                            <Text style={[styles.emptySubtitle, { color: colors.subText }]}>
+                                                {ticketFilter === 'ALL'
+                                                    ? 'No hay tickets de daños registrados.'
+                                                    : ticketFilter === 'OPEN'
+                                                        ? 'No hay tickets no resueltos.'
+                                                        : 'No hay tickets resueltos.'}
+                                            </Text>
                                         </View>
                                     )}
                                     renderItem={({ item }) => {
@@ -2135,9 +2510,9 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                                 <View style={{ flex: 1 }}>
                                                     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
                                                         <Text style={[styles.bitacoraTitle, { color: colors.text, marginBottom: 0 }]}>{maq?.nombre || 'Máquina'} - Ticket #{tNum}</Text>
-                                                        <View style={[styles.badge, { backgroundColor: item.resuelto ? '#10B98120' : '#F59E0B20', marginLeft: 10, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }]}>
-                                                            <Text style={[styles.badgeText, { color: item.resuelto ? '#10B981' : '#F59E0B', fontSize: 10 }]}>
-                                                                {item.resuelto ? 'RESUELTO' : 'NO RESUELTO'}
+                                                        <View style={[styles.badge, { backgroundColor: isBitacoraResuelta(item) ? '#10B98120' : '#F59E0B20', marginLeft: 10, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }]}>
+                                                            <Text style={[styles.badgeText, { color: isBitacoraResuelta(item) ? '#10B981' : '#F59E0B', fontSize: 10 }]}>
+                                                                {isBitacoraResuelta(item) ? 'RESUELTO' : 'NO RESUELTO'}
                                                             </Text>
                                                         </View>
                                                     </View>
@@ -2181,20 +2556,161 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                 </TouchableOpacity>
                             </View>
                         )}
+                        {activeTab === 'BITACORA' && <BitacoraMantenimientoTab />}
                         {activeTab === 'MANTENIMIENTOS' && (
                             <View style={styles.listContainer}>
+                                <View style={[styles.mantFilterPanel, { backgroundColor: isDarkMode ? '#111827' : '#f8fafc', borderBottomColor: colors.border }]}>
+                                    <View style={styles.mantSearchRow}>
+                                        <MaterialCommunityIcons name="magnify" size={20} color={colors.subText} />
+                                        <TextInput
+                                            style={[styles.mantSearchInput, { color: colors.text, backgroundColor: isDarkMode ? '#1e293b' : '#fff', borderColor: colors.border }]}
+                                            value={mantSearchText}
+                                            onChangeText={setMantSearchText}
+                                            placeholder="Buscar máquina, responsable, observación..."
+                                            placeholderTextColor={colors.subText}
+                                        />
+                                        {mantFiltrosActivos && (
+                                            <TouchableOpacity onPress={limpiarFiltrosMantenimiento} style={styles.mantClearBtn}>
+                                                <MaterialCommunityIcons name="filter-off-outline" size={18} color={colors.primary} />
+                                                <Text style={{ fontSize: 11, color: colors.primary, fontWeight: '600' }}>Limpiar</Text>
+                                            </TouchableOpacity>
+                                        )}
+                                    </View>
+
+                                    <Text style={[styles.mantFilterLabel, { color: colors.subText }]}>Máquina</Text>
+                                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mantFilterScroll}>
+                                        <TouchableOpacity
+                                            onPress={() => setMantFilterMaquina('ALL')}
+                                            style={[
+                                                styles.turnoBtn,
+                                                { borderColor: colors.border, paddingHorizontal: 12, marginRight: 8, marginBottom: 6 },
+                                                mantFilterMaquina === 'ALL' && { backgroundColor: colors.primary, borderColor: colors.primary },
+                                            ]}
+                                        >
+                                            <Text style={[styles.turnoText, { fontSize: 11, color: mantFilterMaquina === 'ALL' ? 'white' : colors.text }]}>Todas</Text>
+                                        </TouchableOpacity>
+                                        {hojasVida.map((h) => (
+                                            <TouchableOpacity
+                                                key={h.id}
+                                                onPress={() => setMantFilterMaquina(h.id!)}
+                                                style={[
+                                                    styles.turnoBtn,
+                                                    { borderColor: colors.border, paddingHorizontal: 12, marginRight: 8, marginBottom: 6 },
+                                                    mantFilterMaquina === h.id && { backgroundColor: colors.primary, borderColor: colors.primary },
+                                                ]}
+                                            >
+                                                <Text
+                                                    style={[styles.turnoText, { fontSize: 11, color: mantFilterMaquina === h.id ? 'white' : colors.text }]}
+                                                    numberOfLines={1}
+                                                >
+                                                    {h.nombre}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </ScrollView>
+
+                                    <Text style={[styles.mantFilterLabel, { color: colors.subText }]}>Tipo</Text>
+                                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mantFilterScroll}>
+                                        <TouchableOpacity
+                                            onPress={() => setMantFilterTipo('ALL')}
+                                            style={[
+                                                styles.turnoBtn,
+                                                { borderColor: colors.border, paddingHorizontal: 10, marginRight: 8, marginBottom: 6 },
+                                                mantFilterTipo === 'ALL' && { backgroundColor: '#3B82F6', borderColor: '#3B82F6' },
+                                            ]}
+                                        >
+                                            <Text style={[styles.turnoText, { fontSize: 11, color: mantFilterTipo === 'ALL' ? 'white' : colors.text }]}>Todos</Text>
+                                        </TouchableOpacity>
+                                        {TIPOS_MANTENIMIENTO_FILTRO.map((t) => (
+                                            <TouchableOpacity
+                                                key={t}
+                                                onPress={() => setMantFilterTipo(t)}
+                                                style={[
+                                                    styles.turnoBtn,
+                                                    { borderColor: colors.border, paddingHorizontal: 10, marginRight: 8, marginBottom: 6 },
+                                                    mantFilterTipo === t && { backgroundColor: '#3B82F6', borderColor: '#3B82F6' },
+                                                ]}
+                                            >
+                                                <Text style={[styles.turnoText, { fontSize: 11, color: mantFilterTipo === t ? 'white' : colors.text }]}>{t}</Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </ScrollView>
+
+                                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
+                                        <View style={{ flex: 1, minWidth: 140 }}>
+                                            <Text style={[styles.mantFilterLabel, { color: colors.subText }]}>Ejecutado por</Text>
+                                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                                                {(['ALL', 'Interno', 'Externo'] as const).map((tp) => (
+                                                    <TouchableOpacity
+                                                        key={tp}
+                                                        onPress={() => setMantFilterPersonal(tp)}
+                                                        style={[
+                                                            styles.turnoBtn,
+                                                            { borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 6 },
+                                                            mantFilterPersonal === tp && {
+                                                                backgroundColor: tp === 'Externo' ? '#F59E0B' : tp === 'Interno' ? '#10B981' : colors.primary,
+                                                                borderColor: mantFilterPersonal === tp ? (tp === 'ALL' ? colors.primary : tp === 'Externo' ? '#F59E0B' : '#10B981') : colors.border,
+                                                            },
+                                                        ]}
+                                                    >
+                                                        <Text style={[styles.turnoText, { fontSize: 11, color: mantFilterPersonal === tp ? 'white' : colors.text }]}>
+                                                            {tp === 'ALL' ? 'Todos' : tp}
+                                                        </Text>
+                                                    </TouchableOpacity>
+                                                ))}
+                                            </View>
+                                        </View>
+                                        <View style={{ flex: 1, minWidth: 140 }}>
+                                            <Text style={[styles.mantFilterLabel, { color: colors.subText }]}>Ticket asociado</Text>
+                                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                                                {([
+                                                    { id: 'ALL' as const, label: 'Todos' },
+                                                    { id: 'CON' as const, label: 'Con ticket' },
+                                                    { id: 'SIN' as const, label: 'Sin ticket' },
+                                                ]).map((opt) => (
+                                                    <TouchableOpacity
+                                                        key={opt.id}
+                                                        onPress={() => setMantFilterTicket(opt.id)}
+                                                        style={[
+                                                            styles.turnoBtn,
+                                                            { borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 6 },
+                                                            mantFilterTicket === opt.id && { backgroundColor: '#6366F1', borderColor: '#6366F1' },
+                                                        ]}
+                                                    >
+                                                        <Text style={[styles.turnoText, { fontSize: 11, color: mantFilterTicket === opt.id ? 'white' : colors.text }]}>
+                                                            {opt.label}
+                                                        </Text>
+                                                    </TouchableOpacity>
+                                                ))}
+                                            </View>
+                                        </View>
+                                    </View>
+
+                                    <Text style={{ fontSize: 12, color: colors.subText, marginTop: 4, marginBottom: 2 }}>
+                                        {filteredMantenimientos.length} de {mantenimientos.length} mantenimiento(s)
+                                    </Text>
+                                </View>
+
                                 <FlatList
-                                    data={mantenimientos}
+                                    data={filteredMantenimientos}
                                     keyExtractor={(item) => item.id?.toString() || Math.random().toString()}
-                                    contentContainerStyle={{ padding: 15 }}
+                                    contentContainerStyle={{ padding: 15, paddingTop: 8 }}
                                     ListEmptyComponent={() => (
                                         <View style={styles.emptyView}>
                                             <MaterialCommunityIcons name="wrench-clock" size={80} color={colors.subText} opacity={0.3} />
-                                            <Text style={[styles.emptySubtitle, { color: colors.subText }]}>No hay mantenimientos registrados.</Text>
+                                            <Text style={[styles.emptySubtitle, { color: colors.subText }]}>
+                                                {mantenimientos.length === 0
+                                                    ? 'No hay mantenimientos registrados.'
+                                                    : 'No hay mantenimientos con los filtros seleccionados.'}
+                                            </Text>
                                         </View>
                                     )}
                                     renderItem={({ item }) => {
                                         const maq = hojasVida.find(h => h.id === item.hojaVidaId);
+                                        const resumen = normalizarConsumosResumen(
+                                            consumosResumenMap[String(item.id!)] ?? consumosResumenMap[item.id! as any]
+                                        );
+                                        const tieneConsumos = (resumen.items?.length ?? 0) > 0;
                                         return (
                                             <View style={[styles.bitacoraCard, { backgroundColor: isDarkMode ? '#1e293b' : 'white', borderLeftColor: '#3B82F6' }]}>
                                                 <View style={{ flex: 1 }}>
@@ -2235,6 +2751,25 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                                     )}
                                                     
                                                     <Text style={[styles.bitacoraUser, { color: colors.primary }]}>Por: {item.ejecutadoPor}</Text>
+
+                                                    {tieneConsumos && (
+                                                        <View style={{ marginTop: 8, padding: 8, borderRadius: 8, backgroundColor: isDarkMode ? '#0f172a' : '#f1f5f9' }}>
+                                                            <Text style={{ fontSize: 11, fontWeight: 'bold', color: colors.text, marginBottom: 4 }}>
+                                                                Materiales / herramientas utilizados
+                                                            </Text>
+                                                            {(resumen.items || []).map((c, idx) => (
+                                                                <Text key={idx} style={{ fontSize: 11, color: colors.subText }}>
+                                                                    · {c.codigo} {c.productoNombre} ({c.cantidad} {c.medida || 'Und'})
+                                                                    {(c.subtotal ?? 0) > 0 ? ` — ${formatCOP(c.subtotal!)}` : ''}
+                                                                </Text>
+                                                            ))}
+                                                            {(resumen.valorTotal ?? 0) > 0 && (
+                                                                <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#059669', marginTop: 6 }}>
+                                                                    Valor total: {formatCOP(resumen.valorTotal!)}
+                                                                </Text>
+                                                            )}
+                                                        </View>
+                                                    )}
                                                 </View>
                                                 <View style={{ justifyContent: 'space-around', marginLeft: 15 }}>
                                                     <TouchableOpacity 
@@ -2247,6 +2782,7 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                                     <TouchableOpacity onPress={() => {
                                                         setMantenimientoForm({
                                                             ...item,
+                                                            fecha: toDateInputValue(item.fecha),
                                                             tipo: item.tipoMantenimiento || item.tipo || 'Preventivo',
                                                             tipoPersonal: item.tipoPersonal || 'Interno',
                                                             ticketId: item.ticketId
@@ -2270,7 +2806,7 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                     onPress={() => {
                                         setMantenimientoForm({
                                             hojaVidaId: 0,
-                                            fecha: new Date().toISOString(),
+                                            fecha: todayInputValue(),
                                             tipo: 'Preventivo',
                                             ejecutadoPor: '',
                                             tipoPersonal: 'Interno',
@@ -2421,6 +2957,37 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                                     })}
                                 </ScrollView>
                             </View>
+
+                            <Text style={[styles.label, { color: colors.text, marginTop: 15 }]}>Fecha del mantenimiento *</Text>
+                            {Platform.OS === 'web' ? (
+                                <input
+                                    type="date"
+                                    value={toDateInputValue(mantenimientoForm.fecha)}
+                                    onChange={(e: any) => setMantenimientoForm({ ...mantenimientoForm, fecha: e.target.value })}
+                                    style={{
+                                        width: '100%',
+                                        padding: 12,
+                                        borderRadius: 10,
+                                        border: `1px solid ${colors.border}`,
+                                        background: isDarkMode ? '#1e293b' : '#f8fafc',
+                                        color: isDarkMode ? '#e2e8f0' : '#111827',
+                                        fontSize: 14,
+                                        boxSizing: 'border-box',
+                                        marginBottom: 10
+                                    }}
+                                />
+                            ) : (
+                                <TextInput
+                                    style={[
+                                        styles.input,
+                                        { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', color: colors.text, borderColor: colors.border }
+                                    ]}
+                                    value={toDateInputValue(mantenimientoForm.fecha)}
+                                    onChangeText={(t) => setMantenimientoForm({ ...mantenimientoForm, fecha: t })}
+                                    placeholder="YYYY-MM-DD"
+                                    placeholderTextColor={colors.subText}
+                                />
+                            )}
 
                             <Text style={[styles.label, { color: colors.text, marginTop: 15 }]}>Tipo de Mantenimiento</Text>
                             <View style={[styles.turnosContainer, { flexWrap: 'wrap' }]}>
@@ -2888,6 +3455,102 @@ export default function MaquinasScreen({ onBack, publicId, publicMode }: { onBac
                     </View>
                 </View>
             </Modal>
+
+            <Modal visible={exportExcelModalVisible} animationType="fade" transparent onRequestClose={() => setExportExcelModalVisible(false)}>
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { backgroundColor: colors.background, maxWidth: 480, padding: 24 }]}>
+                        <View style={[styles.modalHeader, { paddingHorizontal: 0, paddingTop: 0 }]}>
+                            <Text style={[styles.modalTitle, { color: colors.text }]}>Exportar mantenimientos</Text>
+                            <TouchableOpacity onPress={() => setExportExcelModalVisible(false)}>
+                                <MaterialCommunityIcons name="close" size={24} color={colors.text} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <Text style={{ fontSize: 13, color: colors.subText, marginBottom: 16, lineHeight: 20 }}>
+                            Se exportarán los mantenimientos de todas las máquinas en el rango seleccionado.
+                        </Text>
+
+                        <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.label, { color: colors.text, marginBottom: 6 }]}>Fecha inicio</Text>
+                                {Platform.OS === 'web' ? (
+                                    <input
+                                        type="date"
+                                        value={exportFechaInicio}
+                                        onChange={(e) => setExportFechaInicio(e.target.value)}
+                                        style={{
+                                            padding: 12,
+                                            fontSize: 15,
+                                            borderRadius: 8,
+                                            border: `1px solid ${colors.border}`,
+                                            backgroundColor: isDarkMode ? '#1e293b' : '#fff',
+                                            color: colors.text,
+                                            width: '100%',
+                                            boxSizing: 'border-box',
+                                        }}
+                                    />
+                                ) : (
+                                    <TextInput
+                                        style={[styles.input, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', color: colors.text, borderColor: colors.border }]}
+                                        value={exportFechaInicio}
+                                        onChangeText={setExportFechaInicio}
+                                        placeholder="YYYY-MM-DD"
+                                        placeholderTextColor={colors.subText}
+                                    />
+                                )}
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.label, { color: colors.text, marginBottom: 6 }]}>Fecha fin</Text>
+                                {Platform.OS === 'web' ? (
+                                    <input
+                                        type="date"
+                                        value={exportFechaFin}
+                                        onChange={(e) => setExportFechaFin(e.target.value)}
+                                        style={{
+                                            padding: 12,
+                                            fontSize: 15,
+                                            borderRadius: 8,
+                                            border: `1px solid ${colors.border}`,
+                                            backgroundColor: isDarkMode ? '#1e293b' : '#fff',
+                                            color: colors.text,
+                                            width: '100%',
+                                            boxSizing: 'border-box',
+                                        }}
+                                    />
+                                ) : (
+                                    <TextInput
+                                        style={[styles.input, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', color: colors.text, borderColor: colors.border }]}
+                                        value={exportFechaFin}
+                                        onChangeText={setExportFechaFin}
+                                        placeholder="YYYY-MM-DD"
+                                        placeholderTextColor={colors.subText}
+                                    />
+                                )}
+                            </View>
+                        </View>
+
+                        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }}>
+                            <TouchableOpacity style={styles.btnCancel} onPress={() => setExportExcelModalVisible(false)}>
+                                <Text style={styles.btnCancelText}>Cancelar</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.btnSave, { flex: 0, backgroundColor: '#16a34a' }]}
+                                onPress={handleExportMantenimientosExcel}
+                                disabled={exportingExcel}
+                            >
+                                {exportingExcel ? (
+                                    <ActivityIndicator size="small" color="white" />
+                                ) : (
+                                    <>
+                                        <MaterialCommunityIcons name="microsoft-excel" size={20} color="white" />
+                                        <Text style={styles.btnSaveText}>Descargar Excel</Text>
+                                    </>
+                                )}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 }
@@ -2898,12 +3561,69 @@ const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
     badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
     badgeText: { fontSize: 11, fontWeight: 'bold' },
     headerContainer: { backgroundColor: 'transparent', borderBottomWidth: 1, borderBottomColor: colors.border },
+    exportToolbar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 15,
+        paddingVertical: 8,
+        borderTopWidth: 1,
+        gap: 10,
+    },
+    exportExcelBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 12,
+        paddingVertical: 7,
+        borderRadius: 8,
+        borderWidth: 1,
+        backgroundColor: isDarkMode ? '#052e1620' : '#f0fdf4',
+    },
+    exportExcelBtnText: { color: '#16a34a', fontWeight: '700', fontSize: 13 },
     tabsScroll: { paddingHorizontal: 10, paddingVertical: 10 },
     tabButton: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 10, borderBottomWidth: 3, borderBottomColor: 'transparent', marginRight: 10 },
     activeTabButton: { borderBottomWidth: 3, borderBottomColor: colors.primary },
     tabText: { marginLeft: 8, fontWeight: 'bold', fontSize: 13, color: colors.text },
     
     listContainer: { flex: 1 },
+    mantFilterPanel: {
+        paddingHorizontal: 15,
+        paddingTop: 10,
+        paddingBottom: 8,
+        borderBottomWidth: 1,
+    },
+    mantSearchRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 10,
+    },
+    mantSearchInput: {
+        flex: 1,
+        borderWidth: 1,
+        borderRadius: 10,
+        paddingHorizontal: 12,
+        paddingVertical: Platform.OS === 'web' ? 8 : 6,
+        fontSize: 14,
+    },
+    mantClearBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 8,
+        paddingVertical: 6,
+    },
+    mantFilterLabel: {
+        fontSize: 11,
+        fontWeight: '700',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+        marginBottom: 6,
+    },
+    mantFilterScroll: {
+        marginBottom: 8,
+        maxHeight: 44,
+    },
     maquinaCard: { 
         flexDirection: 'row', 
         alignItems: 'center', 

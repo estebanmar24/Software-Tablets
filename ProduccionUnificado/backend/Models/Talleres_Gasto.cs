@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 
@@ -40,6 +41,10 @@ public class Talleres_Gasto
     [Column(TypeName = "decimal(18,2)")]
     [JsonPropertyName("precio")]
     public decimal Precio { get; set; }
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? PrecioBase { get; set; }
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? PrecioIva { get; set; }
 
     [Required]
     [JsonPropertyName("fecha")]
@@ -79,6 +84,14 @@ public class Talleres_Gasto
     [JsonPropertyName("cantidadHoras")]
     public decimal? CantidadHoras { get; set; }
 
+    [MaxLength(8)]
+    [JsonPropertyName("horaInicio")]
+    public string? HoraInicio { get; set; }
+
+    [MaxLength(8)]
+    [JsonPropertyName("horaFin")]
+    public string? HoraFin { get; set; }
+
     [JsonPropertyName("numeroOP")]
     public string? NumeroOP { get; set; }
 
@@ -87,6 +100,7 @@ public class Talleres_Gasto
 
     [JsonPropertyName("esSolicitudCredito")]
     public bool EsSolicitudCredito { get; set; } = false;
+    public bool EsEfectivo { get; set; } = false;
 
     [ForeignKey("PersonalId")]
     [JsonIgnore]
@@ -114,4 +128,8 @@ public class Talleres_Gasto
     [ForeignKey("CreadoPorId")]
     [JsonIgnore]
     public virtual AdminUsuario? CreadoPor { get; set; }
+
+    [MaxLength(50)]
+    [JsonPropertyName("estado")]
+    public string Estado { get; set; } = "Montado";
 }

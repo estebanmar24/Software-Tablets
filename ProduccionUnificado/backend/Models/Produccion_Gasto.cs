@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace TiempoProcesos.API.Models;
@@ -22,7 +23,7 @@ public class Produccion_Gasto
 
     public int? UsuarioId { get; set; } // For Overtime (Operario)
     [ForeignKey("UsuarioId")]
-    public Usuario? Usuario { get; set; }
+    public TiempoProcesos.API.Models.Usuario? Usuario { get; set; }
 
     public int? MaquinaId { get; set; } // For Maintenance
     [ForeignKey("MaquinaId")]
@@ -39,11 +40,20 @@ public class Produccion_Gasto
     public int Anio { get; set; }
     public int Mes { get; set; }
     public decimal Precio { get; set; }
+    /// <summary>Base sin IVA (gastos normales). Null = legado antes del desglose.</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? PrecioBase { get; set; }
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? PrecioIva { get; set; }
     public DateTime Fecha { get; set; }
     public string? Nota { get; set; }
     
     // Optional: store hours for history
     public decimal? CantidadHoras { get; set; }
+
+    /// <summary>Horario capturado (HH:mm) para horas extras / recargos.</summary>
+    public string? HoraInicio { get; set; }
+    public string? HoraFin { get; set; }
     
     // OP Number for Horas Extras and Recargos
     public string? NumeroOP { get; set; }
@@ -55,8 +65,13 @@ public class Produccion_Gasto
     // Status
     public bool EsPendiente { get; set; }
     public bool EsSolicitudCredito { get; set; } = false;
+    /// <summary>Pago en efectivo (mutuamente excluyente con solicitud de crédito para gastos normales).</summary>
+    public bool EsEfectivo { get; set; } = false;
     
     // History tracking
     public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;
     public DateTime? FechaModificacion { get; set; }
+
+    [MaxLength(50)]
+    public string Estado { get; set; } = "Montado";
 }

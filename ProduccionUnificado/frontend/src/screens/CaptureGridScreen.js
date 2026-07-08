@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Modal, Image, FlatList, Platform, Dimensions } from 'react-native';
+import Svg, { Circle, G } from 'react-native-svg';
 import { Picker } from '@react-native-picker/picker';
 import axios from 'axios';
-import { api, getMaquinasActivas, getUsuarios, saveProduccion, getProduccionDetalles, getOperariosConDatos, getMaquinasConDatos, getProduccionPorMaquina, API_URL } from '../services/productionApi';
+import { api, getMaquinasActivas, getUsuarios, saveProduccion, getProduccionDetalles, getOperariosConDatos, getMaquinasConDatos, getProduccionPorMaquina, getResumen, getMetasMensuales, API_URL } from '../services/productionApi';
 import { useTheme } from '../contexts/ThemeContext';
 import DayDetailModal from '../components/DayDetailModal';
 import * as DocumentPicker from 'expo-document-picker';
@@ -10,10 +11,51 @@ import * as DocumentPicker from 'expo-document-picker';
 const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 let rowIdCounter = 100;
 
+/** Anillo circular de rendimiento: mismo tamaño visual en todas las tarjetas. */
+function RendimientoRing({ size = 100, pct, accentColor = '#2563eb', trackColor = '#e2e8f0', textColor = '#0f172a' }) {
+    const stroke = Math.max(7, Math.round(size * 0.1));
+    const r = (size - stroke) / 2;
+    const cx = size / 2;
+    const cy = size / 2;
+    const circumference = 2 * Math.PI * r;
+    const raw = pct == null || Number.isNaN(pct) ? null : Number(pct);
+    const ringFill = raw == null ? 0 : Math.max(0, Math.min(100, raw));
+    const dashOffset = circumference * (1 - ringFill / 100);
+    const centerText = raw == null ? '—' : `${Math.abs(raw - Math.round(raw)) < 0.05 ? Math.round(raw) : raw.toFixed(1)}%`;
+    const fontSize = Math.max(14, Math.round(size * 0.2));
+
+    return (
+        <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+            <Svg width={size} height={size}>
+                <Circle cx={cx} cy={cy} r={r} stroke={trackColor} strokeWidth={stroke} fill="none" />
+                <G transform={`rotate(-90 ${cx} ${cy})`}>
+                    <Circle
+                        cx={cx}
+                        cy={cy}
+                        r={r}
+                        stroke={accentColor}
+                        strokeWidth={stroke}
+                        fill="none"
+                        strokeLinecap="round"
+                        strokeDasharray={circumference}
+                        strokeDashoffset={dashOffset}
+                    />
+                </G>
+            </Svg>
+            <View style={[StyleSheet.absoluteFillObject, { justifyContent: 'center', alignItems: 'center' }]} pointerEvents="none">
+                <Text style={{ color: textColor, fontWeight: '700', fontSize, textAlign: 'center' }}>
+                    {centerText}
+                </Text>
+            </View>
+        </View>
+    );
+}
+
 export default function CaptureGridScreen({ navigation }) {
     const { colors } = useTheme();
     // Selectors
     const [selectedOperario, setSelectedOperario] = useState(null);
+    const [loadScope, setLoadScope] = useState('maquina'); // maquina | operario
     const [selectedMaquina, setSelectedMaquina] = useState(null);
     const [mes, setMes] = useState(new Date().getMonth() + 1);
     const [anio, setAnio] = useState(new Date().getFullYear());
@@ -80,10 +122,58 @@ export default function CaptureGridScreen({ navigation }) {
     const [importPreviewData, setImportPreviewData] = useState([]);
     const [detailedPreviewVisible, setDetailedPreviewVisible] = useState(false);
     const [detailedPreviewData, setDetailedPreviewData] = useState(null);
+    const [detalleTiempoModalVisible, setDetalleTiempoModalVisible] = useState(false);
+    const [detalleTiempoLoading, setDetalleTiempoLoading] = useState(false);
+    const [detalleTiempoRows, setDetalleTiempoRows] = useState([]);
+    const [detalleTiempoActividadCodigo, setDetalleTiempoActividadCodigo] = useState('03');
+    const [detalleTiempoActividadTitulo, setDetalleTiempoActividadTitulo] = useState('Reparación');
+
+    /** Mismo `/produccion/resumen` que Tablero Semáforos (porcentajes viven en servidor). */
+    const [resumenTablero, setResumenTablero] = useState(null);
+    const [resumenTableroLoading, setResumenTableroLoading] = useState(false);
+    const [resumenTableroError, setResumenTableroError] = useState(null);
+
+    /** Snapshot MetasMensuales del mes (misma MetaBase que GetResumen). */
+    const [metasMensuales, setMetasMensuales] = useState([]);
+
+    const cargarResumenTablero = useCallback(async () => {
+        if (!mes || !anio) return;
+        setResumenTableroLoading(true);
+        setResumenTableroError(null);
+        try {
+            const { data } = await getResumen(mes, anio);
+            setResumenTablero(data);
+        } catch (e) {
+            console.error('Error cargando resumen Tablero', e);
+            setResumenTablero(null);
+            setResumenTableroError('No se pudieron cargar los porcentajes del Tablero.');
+        } finally {
+            setResumenTableroLoading(false);
+        }
+    }, [mes, anio]);
+
+    const cargarMetasMensuales = useCallback(async () => {
+        if (!mes || !anio) return;
+        try {
+            const { data } = await getMetasMensuales(mes, anio);
+            setMetasMensuales(Array.isArray(data) ? data : []);
+        } catch (e) {
+            console.warn('No se pudieron cargar metas mensuales (se usa catálogo de máquinas):', e?.message || e);
+            setMetasMensuales([]);
+        }
+    }, [mes, anio]);
 
     useEffect(() => {
         loadLists();
     }, []);
+
+    useEffect(() => {
+        cargarResumenTablero();
+    }, [cargarResumenTablero]);
+
+    useEffect(() => {
+        cargarMetasMensuales();
+    }, [cargarMetasMensuales]);
 
     useEffect(() => {
         const unsubscribe = navigation.addListener('focus', () => {
@@ -159,7 +249,7 @@ export default function CaptureGridScreen({ navigation }) {
     };
 
     const handleLoadData = async (maquinaIdToLoad = null, operarioOverride = null) => {
-        const opToLoad = operarioOverride || selectedOperario;
+        const opToLoad = operarioOverride ?? null;
 
         if (!maquinaIdToLoad) {
             console.log("No machine specified for loading");
@@ -167,6 +257,7 @@ export default function CaptureGridScreen({ navigation }) {
         }
 
         setSelectedMaquina(maquinaIdToLoad);
+        setLoadScope(opToLoad ? 'operario' : 'maquina');
 
         try {
             console.log(`Cargando datos Maq:${maquinaIdToLoad} Op:${opToLoad}`);
@@ -341,7 +432,45 @@ export default function CaptureGridScreen({ navigation }) {
     const handleConfirmImport = async () => {
         try {
             setLoading(true);
-            const dataToSave = importPreviewData.map(item => item.data);
+            const toIntSafe = (v) => {
+                const n = Number(v);
+                return Number.isFinite(n) ? n : 0;
+            };
+            const parseDaySafe = (fechaRaw) => {
+                const s = String(fechaRaw || '').trim();
+                const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                if (iso) return Math.max(1, Math.min(31, parseInt(iso[3], 10)));
+                const d = new Date(s);
+                return Number.isFinite(d.getTime()) ? Math.max(1, Math.min(31, d.getDate())) : 1;
+            };
+
+            // IMPORTANTE: Captura Mensual trabaja por periodo seleccionado (mes/año en pantalla).
+            // Forzamos fecha + IDs normalizados para evitar que una fila quede en otro mes
+            // o con usuario inválido y desaparezca del cargue por operario/máquina.
+            const dataToSave = importPreviewData
+                .map((item) => {
+                    const raw = item?.data || {};
+                    const day = parseDaySafe(raw.fecha ?? raw.Fecha ?? item?.fecha);
+                    const fechaNormalizada = `${anio}-${String(mes).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    const usuarioId = toIntSafe(raw.usuarioId ?? raw.UsuarioId ?? item?.usuarioId);
+                    const maquinaId = toIntSafe(raw.maquinaId ?? raw.MaquinaId ?? item?.maquinaId ?? selectedMaquina);
+
+                    return {
+                        ...raw,
+                        fecha: fechaNormalizada,
+                        Fecha: fechaNormalizada,
+                        usuarioId: usuarioId,
+                        UsuarioId: usuarioId,
+                        maquinaId: maquinaId,
+                        MaquinaId: maquinaId,
+                    };
+                })
+                .filter((r) => r.UsuarioId > 0 && r.MaquinaId > 0);
+
+            if (dataToSave.length === 0) {
+                Alert.alert("Error", "No hay filas válidas para guardar. Verifica operario y máquina en la previsualización.");
+                return;
+            }
 
             // Usamos el endpoint mensual que ahora soporta detalles
             await api.post('produccion/mensual?isPartial=true', dataToSave);
@@ -350,6 +479,9 @@ export default function CaptureGridScreen({ navigation }) {
             setImportPreviewData([]);
             Alert.alert("Éxito", "Los datos se han guardado correctamente.");
             loadLists();
+            if (selectedMaquina) {
+                await handleLoadByMachine(selectedMaquina);
+            }
         } catch (e) {
             console.error("Error confirming import:", e);
             Alert.alert("Error", "No se pudieron guardar los datos importados.");
@@ -371,6 +503,8 @@ export default function CaptureGridScreen({ navigation }) {
     const handleLoadByMachine = async (maquinaId) => {
         setModalVisible(false);
         setSelectedMaquina(maquinaId);
+        setSelectedOperario(null);
+        setLoadScope('maquina');
 
         try {
             const [res, resDesp] = await Promise.all([
@@ -1068,21 +1202,37 @@ export default function CaptureGridScreen({ navigation }) {
 
         // Calcular Meta Rendimiento (Por Hora)
 
-        // Obtener Meta Base (preferir Meta100Porciento si está disponible, sino MetaRendimiento, sino default)
-        // Nota: en getMaquinas, la propiedad suele ser metaRendimiento. Si existe meta100Porciento, usarla.
-        let MetaBase = rowMaquina.meta100Porciento || rowMaquina.metaRendimiento || 0;
+        const snap = (metasMensuales || []).find(
+            (s) => Number(s.maquinaId ?? s.MaquinaId) === Number(maquinaId)
+        );
+        const c100 = Number(rowMaquina.meta100Porciento ?? rowMaquina.Meta100Porciento ?? 0);
+        const cR = Number(rowMaquina.metaRendimiento ?? rowMaquina.MetaRendimiento ?? 0);
+        // Objetivo tiros al 100% y 75% Bonif: prioriza Meta100Porciento (evita aplicar 75% dos veces sobre meta operativa).
+        let metaBaseTiros100 = 0;
+        if (c100 > 0) metaBaseTiros100 = c100;
+        else if (cR > 0) metaBaseTiros100 = cR;
+        else if (snap) {
+            const m100 = Number(snap.meta100Porciento ?? snap.Meta100Porciento ?? 0);
+            const mR = Number(snap.metaRendimiento ?? snap.MetaRendimiento ?? 0);
+            if (m100 > 0) metaBaseTiros100 = m100;
+            else if (mR > 0) metaBaseTiros100 = mR;
+        }
 
         // Calcular Total Horas (Productivas + Aux + Muertos) - Consolidados para uso global
         const TotalHorasProd = HorasOp + PuestaPunto;
         const TotalAux = MantAseo + Descansos + OtrosAux;
         const TotalMuertos = FaltaTrabajo + Reparacion + OtroMuerto;
         const TotalHoras = TotalHorasProd + TotalAux + TotalMuertos;
-        
-        // Excluir descansos para calcular la meta
-        const TotalHorasMeta = TotalHoras - Descansos;
 
-        let MetaPorHora = MetaBase > 0 ? (MetaBase / 8) : 0;
-        let MetaRendimiento = MetaPorHora * TotalHorasMeta;
+        // Meta diaria y T.H. neto: misma columna "T. Horas" menos descanso y los tres tiempos muertos (explícito para cuadro y export web)
+        const TotalHorasMeta =
+            TotalHoras - Descansos - FaltaTrabajo - Reparacion - OtroMuerto;
+
+        const MetaPorHoraTiros100 = metaBaseTiros100 > 0 ? (metaBaseTiros100 / 8) : 0;
+        const metaTirosObjetivo100Dia = MetaPorHoraTiros100 * TotalHorasMeta;
+
+        /** Objetivo tiros al 100% del día (mismo criterio que resumen API y cartas). */
+        const meta100Dia = metaTirosObjetivo100Dia;
 
         // Si Horas son 0, Meta es 0 (correcto)
 
@@ -1092,8 +1242,8 @@ export default function CaptureGridScreen({ navigation }) {
         // Promedio Productivo (Tiros / Horas PRODUCTIVAS)
         const Promedio = TotalHorasProd > 0 ? (TirosEquivalentes / TotalHorasProd) : 0;
 
-        // Calcular diferencia de meta
-        const Meta75 = Math.round(MetaRendimiento * 0.75); // Redondeo previo para concordancia Matemática
+        // Umbral 75% bonificación = 75% del objetivo tiros al 100% (Meta100 si existe; no doble 75%).
+        const Meta75 = Math.round(metaTirosObjetivo100Dia * 0.75);
         const Meta75Diff = TirosEquivalentes - Meta75; // Excedente sobre el 75%
 
         // *** NUEVO: Verificar si es festivo o domingo ***
@@ -1125,6 +1275,7 @@ export default function CaptureGridScreen({ navigation }) {
         return {
             TirosEquivalentes, TotalHorasProd, Promedio, Meta75Diff, VrPagar,
             TotalAux, TotalMuertos, TotalHoras, TotalHorasMeta,
+            meta100Dia,
             // Nuevos campos bonificables
             PorcentajeBonif: porcentajeBonif,
             TirosBonificables,
@@ -1135,6 +1286,68 @@ export default function CaptureGridScreen({ navigation }) {
             esNoLaborable
         };
     };
+
+    /**
+     * Rendimiento desde la grilla visible (misma lógica que T.H. neto y meta diaria).
+     * Suma por operario y total máquina; solo filas con tiros equivalentes > 0 (como `/produccion/resumen`).
+     */
+    const rendimientoDesdeGrilla = useMemo(() => {
+        if (selectedMaquina == null || selectedMaquina === '' || !Array.isArray(gridData) || gridData.length === 0) {
+            return null;
+        }
+        const maqId = Number(selectedMaquina);
+        if (Number.isNaN(maqId)) return null;
+        if (!getMaquinaById(selectedMaquina)) return null;
+
+        const byOp = new Map();
+        let machineTiros = 0;
+        let machineMeta100 = 0;
+
+        for (const day of gridData) {
+            const mid = day.maquinaId != null && day.maquinaId !== '' ? Number(day.maquinaId) : maqId;
+            if (Number.isNaN(mid) || mid !== maqId) continue;
+
+            const calcs = calculateRow(day);
+            const tiros = calcs.TirosEquivalentes != null ? Number(calcs.TirosEquivalentes) : 0;
+            const meta100Dia = calcs.meta100Dia != null ? Number(calcs.meta100Dia) : 0;
+            if (tiros <= 0) continue;
+
+            machineTiros += tiros;
+            machineMeta100 += meta100Dia;
+
+            const opId = day.operarioId != null && day.operarioId !== '' ? Number(day.operarioId) : null;
+            if (opId == null || Number.isNaN(opId)) continue;
+
+            const cur = byOp.get(opId) || { tiros: 0, meta100: 0 };
+            cur.tiros += tiros;
+            cur.meta100 += meta100Dia;
+            byOp.set(opId, cur);
+        }
+
+        const operarios = Array.from(byOp.entries())
+            .map(([id, v]) => {
+                const u = usuarios.find((x) => x.id === id);
+                const pct = v.meta100 > 0 ? (v.tiros / v.meta100) * 100 : null;
+                return {
+                    id,
+                    nombre: u?.nombre || `Usuario ${id}`,
+                    pct,
+                    tirosHechos: v.tiros,
+                    tirosMeta: v.meta100,
+                };
+            })
+            .sort((a, b) => String(a.nombre).localeCompare(b.nombre, 'es'));
+
+        const pctMaquina = machineMeta100 > 0 ? (machineTiros / machineMeta100) * 100 : null;
+
+        return {
+            operarios,
+            pctMaquina,
+            machineTiros,
+            machineMeta100,
+            tieneDatos: machineTiros > 0 || operarios.length > 0,
+        };
+    }, [gridData, selectedMaquina, mes, anio, maquinas, usuarios, metasMensuales]);
 
     const handleSaveMonth = async () => {
         const dataToSave = [];
@@ -1233,17 +1446,25 @@ export default function CaptureGridScreen({ navigation }) {
         try {
             setLoading(true);
 
-            // Enviar todos los datos juntos para reemplazo total (sincronización)
-            // Esto asegura que si se borraron días en el grid, se borren en BD
-            console.log("[DEBUG] Sending payload to /produccion/mensual:", JSON.stringify(dataToSave, null, 2));
-            await api.post(`produccion/mensual`, dataToSave);
+            // Si se cargó por operario, guardamos parcial para no tocar otros operarios de la máquina.
+            // Si se cargó por máquina, mantenemos sincronización total del mes.
+            const isPartialSave = loadScope === 'operario';
+            console.log("[DEBUG] Sending payload to /produccion/mensual. isPartial:", isPartialSave);
+            console.log("[DEBUG] Payload:", JSON.stringify(dataToSave, null, 2));
+            await api.post(`produccion/mensual${isPartialSave ? '?isPartial=true' : ''}`, dataToSave);
             console.log("[DEBUG] Save successful");
 
             setLoading(false);
-            Alert.alert("Éxito", "Toda la información ha sido guardada y sincronizada.");
+            Alert.alert(
+                "Éxito",
+                isPartialSave
+                    ? "Se guardaron cambios del operario sin afectar otros operarios."
+                    : "Toda la información ha sido guardada y sincronizada."
+            );
 
             // Opcional: Recargar datos para verificar (pero resetGrid limpia todo)
             resetGrid();
+            cargarResumenTablero();
 
         } catch (error) {
             setLoading(false);
@@ -1277,19 +1498,121 @@ export default function CaptureGridScreen({ navigation }) {
 
     const handleExport = async () => {
         try {
-            const response = await api.get(`produccion/historial`, {
-                params: {
-                    fechaInicio: `${exportAnio}-${String(exportMes).padStart(2, '0')}-01`,
-                    fechaFin: `${exportAnio}-${String(exportMes).padStart(2, '0')}-31`
-                }
+            const response = await api.get(`produccion/export-mensual`, {
+                params: { mes: exportMes, anio: exportAnio }
             });
-            const data = response.data;
-            if (!data || data.length === 0) {
+
+            const resumen = response.data?.resumen || [];
+            const detalleTiempos = response.data?.detalleTiempos || [];
+
+            if (resumen.length === 0 && detalleTiempos.length === 0) {
                 Alert.alert("Aviso", "No hay datos para exportar");
                 return;
             }
-            // Add platform specific download logic if needed. keeping it simple for now.
-            Alert.alert("Info", "Funcionalidad de exportación limitada en móvil. Verifica en web si no descarga.");
+
+            const XLSX = await import('xlsx');
+            const wb = XLSX.utils.book_new();
+
+            const resumenSheetData = resumen.map((r) => ({
+                Fecha: r.fecha,
+                Maquina: r.maquina,
+                Operario: r.operario,
+                Horario: r.horario,
+                HoraInicio: r.horaInicio,
+                HoraFin: r.horaFin,
+                RendimientoFinal: r.rendimientoFinal,
+                HorasOperativas: r.horasOperativas,
+                Cambios: r.cambios,
+                TiempoPuestaPunto: r.tiempoPuestaPunto,
+                TirosDiarios: r.tirosDiarios,
+                TirosConEquivalencia: r.tirosConEquivalencia,
+                TotalHorasProductivas: r.totalHorasProductivas,
+                PromedioHoraProductiva: r.promedioHoraProductiva,
+                TirosBonificables: r.tirosBonificables,
+                ValorTiroSnapshot: r.valorTiroSnapshot,
+                ValorAPagar: r.valorAPagar,
+                ValorAPagarBonificable: r.valorAPagarBonificable,
+                HorasMantenimiento: r.horasMantenimiento,
+                HorasDescanso: r.horasDescanso,
+                HorasOtrosAux: r.horasOtrosAux,
+                TotalHorasAuxiliares: r.totalHorasAuxiliares,
+                TiempoFaltaTrabajo: r.tiempoFaltaTrabajo,
+                TiempoReparacion: r.tiempoReparacion,
+                TiempoOtroMuerto: r.tiempoOtroMuerto,
+                TotalTiemposMuertos: r.totalTiemposMuertos,
+                TotalHoras: r.totalHoras,
+                Desperdicio: r.desperdicio,
+                ReferenciaOP: r.referenciaOP || '',
+                Novedades: r.novedades || ''
+            }));
+
+            const normalizeSubcodigoExport = (subCodigoActividad, actividadCodigo, observaciones) => {
+                const actividadNum = String(actividadCodigo || '').replace(/\D/g, '');
+                const rawSub = String(subCodigoActividad || '').trim();
+                const numericSub = rawSub.replace(/\D/g, '');
+
+                if (numericSub) {
+                    if (actividadNum && numericSub.startsWith(actividadNum) && numericSub.length > actividadNum.length) {
+                        return numericSub;
+                    }
+                    return numericSub;
+                }
+
+                const obs = String(observaciones || '');
+                const match = obs.match(/Subc[oó]digo\s*\d+\s*:\s*(\d+)/i);
+                return match?.[1]?.replace(/\D/g, '') || '';
+            };
+
+            const normalizeDetalleExport = (subCodigoDetalle, observaciones) => {
+                const rawDetalle = String(subCodigoDetalle || '').trim();
+                if (rawDetalle) return rawDetalle;
+                const obs = String(observaciones || '');
+                const match = obs.match(/Subc[oó]digo\s*\d+\s*:\s*\d+\s*-\s*([^|]+)/i);
+                return match?.[1]?.trim() || '';
+            };
+
+            const detalleSheetData = detalleTiempos.map((d) => {
+                const subCodigoNormalizado = normalizeSubcodigoExport(d.subCodigoActividad, d.actividadCodigo, d.observaciones);
+                const subDetalleNormalizado = normalizeDetalleExport(d.subCodigoDetalle, d.observaciones);
+                const actividadNum = String(d.actividadCodigo || '').replace(/\D/g, '');
+                const subgrupo = actividadNum && subCodigoNormalizado.startsWith(actividadNum) && subCodigoNormalizado.length > actividadNum.length
+                    ? subCodigoNormalizado.slice(actividadNum.length)
+                    : '';
+
+                return {
+                    Fecha: d.fecha,
+                    Maquina: d.maquina,
+                    Operario: d.operario,
+                    ActividadCodigo: d.actividadCodigo,
+                    Actividad: d.actividad,
+                    Subgrupo: subgrupo,
+                    CodigoCompleto: actividadNum && subgrupo ? `${actividadNum}${subgrupo}` : subCodigoNormalizado,
+                    SubCodigoActividad: subCodigoNormalizado,
+                    SubCodigoDetalle: subDetalleNormalizado,
+                    DetalleSubCodigo: subDetalleNormalizado,
+                    HoraInicio: d.horaInicio,
+                    HoraFin: d.horaFin,
+                    DuracionHoras: d.duracionHoras,
+                    Tiros: d.tiros,
+                    Desperdicio: d.desperdicio,
+                    ReferenciaOP: d.referenciaOP || '',
+                    Observaciones: d.observaciones || ''
+                };
+            });
+
+            const wsResumen = XLSX.utils.json_to_sheet(resumenSheetData);
+            const wsDetalle = XLSX.utils.json_to_sheet(detalleSheetData);
+            XLSX.utils.book_append_sheet(wb, wsResumen, 'ResumenMensual');
+            XLSX.utils.book_append_sheet(wb, wsDetalle, 'DetalleTiempos');
+
+            const fileName = `CapturaMensual_${exportAnio}_${String(exportMes).padStart(2, '0')}_TodasMaquinas.xlsx`;
+
+            if (Platform.OS === 'web') {
+                XLSX.writeFile(wb, fileName);
+            } else {
+                Alert.alert("Info", "La descarga directa de Excel está disponible en web.");
+            }
+
             setExportModalVisible(false);
         } catch (e) {
             console.error("Error exportando", e);
@@ -1362,6 +1685,86 @@ export default function CaptureGridScreen({ navigation }) {
         setCleanConfirmVisible(false);
     };
 
+    const handleOpenDetalleTiempoActividad = async (actividadCodigo, actividadTitulo) => {
+        if (!selectedMaquina) {
+            Alert.alert("Información", "Seleccione una máquina para ver el detalle de tiempos.");
+            return;
+        }
+        try {
+            setDetalleTiempoLoading(true);
+            setDetalleTiempoActividadCodigo(actividadCodigo);
+            setDetalleTiempoActividadTitulo(actividadTitulo);
+            const response = await api.get(`produccion/detalle-tiempo`, {
+                params: {
+                    mes,
+                    anio,
+                    maquinaId: selectedMaquina,
+                    actividadCodigo
+                }
+            });
+            const normalizeSubcodigo = (subCodigoActividad, actividadCodigo, observaciones) => {
+                const actividadNum = String(actividadCodigo || '').replace(/\D/g, '');
+                const rawSub = String(subCodigoActividad || '').trim();
+                const numericSub = rawSub.replace(/\D/g, '');
+
+                if (numericSub) {
+                    if (actividadNum && numericSub.startsWith(actividadNum) && numericSub.length > actividadNum.length) {
+                        return numericSub.slice(actividadNum.length);
+                    }
+                    return numericSub.length > 2 ? numericSub.slice(-2) : numericSub;
+                }
+
+                const obs = String(observaciones || '');
+                const match = obs.match(/Subc[oó]digo\s*\d+\s*:\s*(\d+)/i);
+                if (!match?.[1]) return '';
+                const parsed = match[1].replace(/\D/g, '');
+                if (!parsed) return '';
+                if (actividadNum && parsed.startsWith(actividadNum) && parsed.length > actividadNum.length) {
+                    return parsed.slice(actividadNum.length);
+                }
+                return parsed.length > 2 ? parsed.slice(-2) : parsed;
+            };
+
+            const normalizeDetalle = (subCodigoDetalle, observaciones) => {
+                if (subCodigoDetalle && String(subCodigoDetalle).trim()) return String(subCodigoDetalle).trim();
+                const obs = String(observaciones || '');
+                const match = obs.match(/Subc[oó]digo\s*\d+\s*:\s*\d+\s*-\s*([^|]+)/i);
+                return match?.[1]?.trim() || '';
+            };
+
+            const cleanObservaciones = (observaciones) => {
+                const obs = String(observaciones || '');
+                const cleaned = obs
+                    .replace(/Subc[oó]digo\s*\d+\s*:\s*\d+\s*-\s*[^|]*\|?\s*/i, '')
+                    .trim();
+                return cleaned;
+            };
+
+            const normalizedRows = (response.data || []).map((item) => {
+                const subCodigoNormalizado = normalizeSubcodigo(item.subCodigoActividad, item.actividadCodigo, item.observaciones);
+                const subDetalleNormalizado = normalizeDetalle(item.subCodigoDetalle, item.observaciones);
+                const observacionesLimpias = cleanObservaciones(item.observaciones);
+
+                return {
+                    ...item,
+                    subCodigoActividad: subCodigoNormalizado || '-',
+                    subCodigoDetalle: subDetalleNormalizado || '-',
+                    observaciones: observacionesLimpias || '-'
+                };
+            });
+
+            setDetalleTiempoRows(normalizedRows);
+            setDetalleTiempoModalVisible(true);
+        } catch (e) {
+            console.error(`Error cargando detalle de ${actividadCodigo}`, e);
+            Alert.alert("Error", `No se pudo cargar el detalle de tiempos del código ${actividadCodigo}.`);
+        } finally {
+            setDetalleTiempoLoading(false);
+        }
+    };
+
+    const handleOpenDetalleTiempoRepar = async () => handleOpenDetalleTiempoActividad('03', 'Reparación');
+
     return (
         <View style={styles.container} onTouchEnd={closeContextMenu}>
             <View style={styles.header}>
@@ -1387,7 +1790,7 @@ export default function CaptureGridScreen({ navigation }) {
                     <View style={styles.row}>
                         <Text style={{ marginRight: 5 }}>Máquina:</Text>
                         <View style={[styles.pickerContainerLarge, { flex: 1, width: undefined }]}>
-                            <Picker selectedValue={selectedMaquina || ''} onValueChange={(v) => { if (v) { setSelectedMaquina(v); handleLoadData(v); } }} style={styles.picker} mode="dropdown">
+                            <Picker selectedValue={selectedMaquina || ''} onValueChange={(v) => { if (v) { setSelectedMaquina(v); handleLoadByMachine(v); } }} style={styles.picker} mode="dropdown">
                                 <Picker.Item label="-- Seleccionar Máquina --" value="" style={{ fontSize: 12 }} />
                                 {maquinas.map(m => <Picker.Item key={m.id} label={m.nombre} value={m.id} style={{ fontSize: 12 }} />)}
                             </Picker>
@@ -1462,11 +1865,31 @@ export default function CaptureGridScreen({ navigation }) {
                         <Text style={[styles.cell, styles.calc]}>Vr Pagar</Text>
                         <Text style={[styles.cell]}>Mant/Aseo</Text>
                         <Text style={[styles.cell]}>Descanso</Text>
-                        <Text style={[styles.cell]}>Otros</Text>
+                        <TouchableOpacity
+                            style={[styles.cell, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#e8f5e9' }]}
+                            onPress={() => handleOpenDetalleTiempoActividad('14', 'Otros tiempos')}
+                        >
+                            <Text style={{ color: '#1b5e20', fontWeight: '700', fontSize: 9, textAlign: 'center' }}>Otros{'\n'}Detalle</Text>
+                        </TouchableOpacity>
                         <Text style={[styles.cell, styles.calc]}>T.H.Aux</Text>
-                        <Text style={[styles.cell]}>F. Trab</Text>
-                        <Text style={[styles.cell]}>Repar</Text>
-                        <Text style={[styles.cell]}>Otros M.</Text>
+                        <TouchableOpacity
+                            style={[styles.cell, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#e8f5e9' }]}
+                            onPress={() => handleOpenDetalleTiempoActividad('13', 'Falta de Trabajo')}
+                        >
+                            <Text style={{ color: '#1b5e20', fontWeight: '700', fontSize: 9, textAlign: 'center' }}>F.Trab{'\n'}Detalle</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.cell, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#e8f5e9' }]}
+                            onPress={handleOpenDetalleTiempoRepar}
+                        >
+                            <Text style={{ color: '#1b5e20', fontWeight: '700', fontSize: 9, textAlign: 'center' }}>Repar{'\n'}Detalle</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.cell, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#e8f5e9' }]}
+                            onPress={() => handleOpenDetalleTiempoActividad('08', 'Otro Tiempo Muerto')}
+                        >
+                            <Text style={{ color: '#1b5e20', fontWeight: '700', fontSize: 9, textAlign: 'center' }}>Otros M.{'\n'}Detalle</Text>
+                        </TouchableOpacity>
                         <Text style={[styles.cell, styles.calc]}>T.Muer</Text>
                         <Text style={[styles.cell, styles.total]}>T. Horas</Text>
                         <Text style={[styles.cell, styles.total, { backgroundColor: '#e3f2fd' }]}>T.H. Neto</Text>
@@ -1659,7 +2082,156 @@ export default function CaptureGridScreen({ navigation }) {
                                         <Text style={[styles.cell, { width: 100, color: 'black' }]}>--</Text>
                                         <Text style={[styles.cell, { width: 100, color: 'black' }]}>--</Text>
                                     </View>
-                                    <View style={{ height: 100 }} />
+
+                                    {/* Rendimiento: preferir grilla (T.H. neto + meta diaria); si no hay datos en grilla, API resumen */}
+                                    {(() => {
+                                        const maqId = selectedMaquina != null && selectedMaquina !== '' ? Number(selectedMaquina) : NaN;
+                                        const rowMaqRend = getMaquinaById(selectedMaquina);
+                                        const ringSize = 100;
+
+                                        const opsSrv = resumenTablero?.resumenOperarios ?? [];
+                                        const maqsSrv = resumenTablero?.resumenMaquinas ?? [];
+
+                                        const desdeGrilla = !!(rendimientoDesdeGrilla && rendimientoDesdeGrilla.tieneDatos);
+
+                                        let operariosRend;
+                                        let machineRow;
+                                        let pctMaquina;
+
+                                        if (desdeGrilla) {
+                                            operariosRend = rendimientoDesdeGrilla.operarios;
+                                            pctMaquina = rendimientoDesdeGrilla.pctMaquina;
+                                            machineRow = {
+                                                maquina: rowMaqRend?.nombre,
+                                                tirosTotales: rendimientoDesdeGrilla.machineTiros,
+                                                meta100Porciento: rendimientoDesdeGrilla.machineMeta100,
+                                            };
+                                        } else {
+                                            operariosRend = opsSrv
+                                                .filter((o) => Number(o.maquinaId) === maqId)
+                                                .map((o) => ({
+                                                    id: Number(o.usuarioId),
+                                                    nombre: o.operario || `Usuario ${o.usuarioId}`,
+                                                    pct: o.porcentajeRendimiento100 != null ? Number(o.porcentajeRendimiento100) : null,
+                                                    tirosHechos: o.totalTiros != null ? Number(o.totalTiros) : null,
+                                                    tirosMeta: o.meta100Porciento != null ? Number(o.meta100Porciento) : null,
+                                                }))
+                                                .sort((a, b) => String(a.nombre).localeCompare(b.nombre, 'es'));
+
+                                            machineRow = maqsSrv.find((m) => Number(m.maquinaId) === maqId);
+                                            pctMaquina =
+                                                machineRow && machineRow.porcentajeRendimiento100 != null
+                                                    ? Number(machineRow.porcentajeRendimiento100)
+                                                    : null;
+                                        }
+
+                                        const tieneResumenParaEstaMaquina =
+                                            desdeGrilla || machineRow != null || operariosRend.length > 0;
+
+                                        return (
+                                            <View style={styles.rendimientoSectionWrap}>
+                                                <Text style={styles.rendimientoSectionTitle}>
+                                                    Rendimiento ({getMesNombre(mes)} {anio})
+                                                    {desdeGrilla ? ' — según grilla actual' : ' — Tablero (API)'}
+                                                </Text>
+                                                {!selectedMaquina ? (
+                                                    <Text style={styles.rendimientoHint}>Seleccione una máquina para ver los indicadores.</Text>
+                                                ) : resumenTableroLoading && !desdeGrilla ? (
+                                                    <View style={styles.rendimientoLoadingRow}>
+                                                        <ActivityIndicator size="small" color="#2563eb" />
+                                                        <Text style={styles.rendimientoHintInline}> Actualizando porcentajes…</Text>
+                                                    </View>
+                                                ) : resumenTableroError && !desdeGrilla ? (
+                                                    <Text style={styles.rendimientoHint}>{resumenTableroError}</Text>
+                                                ) : !resumenTablero && !desdeGrilla ? (
+                                                    <Text style={styles.rendimientoHint}>No hay resumen cargado para este mes.</Text>
+                                                ) : !tieneResumenParaEstaMaquina ? (
+                                                    <Text style={styles.rendimientoHint}>
+                                                        No aparece esta máquina en el resumen del mes (compruebe que esté activa y tenga registros).
+                                                    </Text>
+                                                ) : (
+                                                    <>
+                                                        <Text style={styles.rendimientoLegendaMini}>
+                                                            {desdeGrilla
+                                                                ? 'Calculado con la misma base que T.H. neto y la meta diaria (horas sin descanso ni tiempos muertos). Se actualiza al editar la grilla; al guardar, el Tablero Semáforos usará los mismos datos en servidor.'
+                                                                : 'Datos ya guardados (tiros vs meta del mes vía /produccion/resumen). Tras cargar la máquina en la grilla verá el cálculo alineado con las horas efectivas. Por encima de 100%, el anillo se muestra lleno y el valor es el real.'}
+                                                        </Text>
+                                                        <ScrollView
+                                                            horizontal
+                                                            showsHorizontalScrollIndicator
+                                                            style={styles.rendimientoScroll}
+                                                            contentContainerStyle={styles.rendimientoScrollInner}
+                                                            nestedScrollEnabled
+                                                        >
+                                                            {operariosRend.map((o) => (
+                                                                <View key={`op-rend-${o.id}`} style={styles.rendimientoCard}>
+                                                                    <View style={[styles.rendimientoCardBadge, styles.rendimientoCardBadgeBlue]}>
+                                                                        <Text style={styles.rendimientoCardBadgeLabelBlue}>Operario</Text>
+                                                                    </View>
+                                                                    <View style={styles.rendimientoCardTitleBox}>
+                                                                        <Text style={styles.rendimientoCardTitleText} numberOfLines={2}>
+                                                                            {o.nombre}
+                                                                        </Text>
+                                                                    </View>
+                                                                    <View style={styles.rendimientoStatsBox}>
+                                                                        <Text style={styles.rendimientoStatsText}>
+                                                                            Hechos: {o.tirosHechos != null ? formatNumber(o.tirosHechos.toFixed(0)) : '--'}
+                                                                        </Text>
+                                                                        <Text style={styles.rendimientoStatsText}>
+                                                                            Objetivo: {o.tirosMeta != null ? formatNumber(o.tirosMeta.toFixed(0)) : '--'}
+                                                                        </Text>
+                                                                    </View>
+                                                                    <View style={styles.rendimientoRingWrap}>
+                                                                        <RendimientoRing size={ringSize} pct={o.pct} />
+                                                                    </View>
+                                                                    <Text style={styles.rendimientoCardFooter}>Meta 100%</Text>
+                                                                </View>
+                                                            ))}
+                                                            {(machineRow != null || pctMaquina != null) && (
+                                                                <View style={[styles.rendimientoCard, styles.rendimientoCardMaquina]}>
+                                                                    <View style={[styles.rendimientoCardBadge, styles.rendimientoCardBadgeGreen]}>
+                                                                        <Text style={styles.rendimientoCardBadgeLabelGreen}>Máquina</Text>
+                                                                    </View>
+                                                                    <View style={styles.rendimientoCardTitleBox}>
+                                                                        <Text style={styles.rendimientoCardTitleText} numberOfLines={2}>
+                                                                            {rowMaqRend?.nombre || machineRow?.maquina || '—'}
+                                                                        </Text>
+                                                                    </View>
+                                                                    <View style={styles.rendimientoStatsBox}>
+                                                                        <Text style={styles.rendimientoStatsText}>
+                                                                            Hechos:{' '}
+                                                                            {machineRow?.tirosTotales != null
+                                                                                ? formatNumber(Number(machineRow.tirosTotales).toFixed(0))
+                                                                                : '--'}
+                                                                        </Text>
+                                                                        <Text style={styles.rendimientoStatsText}>
+                                                                            Objetivo:{' '}
+                                                                            {machineRow?.meta100Porciento != null
+                                                                                ? formatNumber(Number(machineRow.meta100Porciento).toFixed(0))
+                                                                                : '--'}
+                                                                        </Text>
+                                                                    </View>
+                                                                    <View style={styles.rendimientoRingWrap}>
+                                                                        <RendimientoRing
+                                                                            size={ringSize}
+                                                                            pct={pctMaquina}
+                                                                            accentColor="#16a34a"
+                                                                            trackColor="#e2e8f0"
+                                                                            textColor="#0f172a"
+                                                                        />
+                                                                    </View>
+                                                                    <Text style={styles.rendimientoCardFooter}>Eficiencia mes</Text>
+                                                                </View>
+                                                            )}
+                                                            <View style={{ width: 28 }} />
+                                                        </ScrollView>
+                                                    </>
+                                                )}
+                                            </View>
+                                        );
+                                    })()}
+
+                                    <View style={{ height: 96 }} />
                                 </View>
                             );
                         }}
@@ -2075,9 +2647,10 @@ export default function CaptureGridScreen({ navigation }) {
                         <View style={[styles.previewHeader, { backgroundColor: '#e9ecef' }]}>
                             <Text style={[styles.previewHeaderText, { flex: 1 }]}>Inicio</Text>
                             <Text style={[styles.previewHeaderText, { flex: 1 }]}>Fin</Text>
-                            <Text style={[styles.previewHeaderText, { flex: 1.5 }]}>Actividad</Text>
-                            <Text style={[styles.previewHeaderText, { flex: 1.5 }]}>OP</Text>
-                            <Text style={[styles.previewHeaderText, { flex: 1, textAlign: 'right' }]}>Tiros</Text>
+                            <Text style={[styles.previewHeaderText, { flex: 1.2 }]}>Actividad</Text>
+                            <Text style={[styles.previewHeaderText, { flex: 1 }]}>Subcód.</Text>
+                            <Text style={[styles.previewHeaderText, { flex: 1.2 }]}>OP</Text>
+                            <Text style={[styles.previewHeaderText, { flex: 0.8, textAlign: 'right' }]}>Tiros</Text>
                         </View>
 
                         <FlatList
@@ -2087,9 +2660,14 @@ export default function CaptureGridScreen({ navigation }) {
                                 <View style={[styles.previewRow, { paddingVertical: 8 }]}>
                                     <Text style={[styles.previewCell, { flex: 1 }]}>{item.horaInicio}</Text>
                                     <Text style={[styles.previewCell, { flex: 1 }]}>{item.horaFin}</Text>
-                                    <Text style={[styles.previewCell, { flex: 1.5 }]}>{actividades.find(a => a.id === item.actividadId)?.nombre || 'Producción'}</Text>
-                                    <Text style={[styles.previewCell, { flex: 1.5 }]}>{item.referenciaOP || '-'}</Text>
-                                    <Text style={[styles.previewCell, { flex: 1, textAlign: 'right' }]}>{item.tiros || 0}</Text>
+                                    <Text style={[styles.previewCell, { flex: 1.2 }]}>{actividades.find(a => a.id === item.actividadId)?.nombre || 'Producción'}</Text>
+                                    <Text style={[styles.previewCell, { flex: 1 }]}>
+                                        {item.subCodigoActividad
+                                            ? `${item.subCodigoActividad}${item.subCodigoDetalle ? ` · ${item.subCodigoDetalle}` : ''}`
+                                            : '-'}
+                                    </Text>
+                                    <Text style={[styles.previewCell, { flex: 1.2 }]}>{item.referenciaOP || '-'}</Text>
+                                    <Text style={[styles.previewCell, { flex: 0.8, textAlign: 'right' }]}>{item.tiros || 0}</Text>
                                 </View>
                             )}
                         />
@@ -2106,6 +2684,74 @@ export default function CaptureGridScreen({ navigation }) {
                             onPress={() => setDetailedPreviewVisible(false)}
                         >
                             <Text style={styles.btnText}>Cerrar Detalle</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            <Modal visible={detalleTiempoModalVisible} transparent animationType="slide">
+                <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.65)' }]}>
+                    <View style={[styles.modalContent, { width: '95%', maxWidth: 1100, maxHeight: '88%', padding: 12 }]}>
+                        <Text style={styles.modalTitle}>Detalle Tiempo - {detalleTiempoActividadTitulo}</Text>
+                        <Text style={{ textAlign: 'center', marginBottom: 8, color: '#555', fontSize: 12 }}>
+                            Mes: {getMesNombre(mes)} {anio} | Máquina ID: {selectedMaquina || '-'} | Código: {detalleTiempoActividadCodigo}
+                        </Text>
+
+                        {detalleTiempoLoading ? (
+                            <ActivityIndicator size="large" color="#007bff" style={{ marginVertical: 30 }} />
+                        ) : (
+                            <ScrollView horizontal>
+                                <View>
+                                    <View style={[styles.previewHeader, { backgroundColor: '#e9ecef' }]}>
+                                        <Text style={[styles.previewHeaderText, { width: 95 }]}>Fecha</Text>
+                                        <Text style={[styles.previewHeaderText, { width: 90 }]}>Inicio</Text>
+                                        <Text style={[styles.previewHeaderText, { width: 90 }]}>Fin</Text>
+                                        <Text style={[styles.previewHeaderText, { width: 90 }]}>Dur. Horas</Text>
+                                        <Text style={[styles.previewHeaderText, { width: 180 }]}>Operario</Text>
+                                        <Text style={[styles.previewHeaderText, { width: 160 }]}>Máquina</Text>
+                                        <Text style={[styles.previewHeaderText, { width: 75 }]}>Código</Text>
+                                        <Text style={[styles.previewHeaderText, { width: 190 }]}>Subcódigo</Text>
+                                        <Text style={[styles.previewHeaderText, { width: 210 }]}>Detalle Subcódigo</Text>
+                                        <Text style={[styles.previewHeaderText, { width: 120 }]}>OP / Ref</Text>
+                                        <Text style={[styles.previewHeaderText, { width: 260 }]}>OBSERVACION</Text>
+                                    </View>
+
+                                    <FlatList
+                                        data={detalleTiempoRows}
+                                        keyExtractor={(item) => String(item.id)}
+                                        style={{ maxHeight: 420 }}
+                                        renderItem={({ item }) => (
+                                            <View style={[styles.previewRow, { paddingVertical: 7 }]}>
+                                                <Text style={[styles.previewCell, { width: 95 }]}>{item.fecha}</Text>
+                                                <Text style={[styles.previewCell, { width: 90 }]}>{item.horaInicio}</Text>
+                                                <Text style={[styles.previewCell, { width: 90 }]}>{item.horaFin}</Text>
+                                                <Text style={[styles.previewCell, { width: 90 }]}>{item.duracionHoras}</Text>
+                                                <Text style={[styles.previewCell, { width: 180 }]}>{item.operario || '-'}</Text>
+                                                <Text style={[styles.previewCell, { width: 160 }]}>{item.maquina || '-'}</Text>
+                                                <Text style={[styles.previewCell, { width: 75 }]}>{item.actividadCodigo || '-'}</Text>
+                                                <Text style={[styles.previewCell, { width: 190 }]}>{item.subCodigoActividad || '-'}</Text>
+                                                <Text style={[styles.previewCell, { width: 210 }]}>{item.subCodigoDetalle || '-'}</Text>
+                                                <Text style={[styles.previewCell, { width: 120 }]}>{item.referenciaOP || '-'}</Text>
+                                                <Text style={[styles.previewCell, { width: 260 }]}>{item.observaciones || '-'}</Text>
+                                            </View>
+                                        )}
+                                        ListEmptyComponent={
+                                            <View style={{ padding: 20 }}>
+                                                <Text style={{ textAlign: 'center', color: '#777' }}>
+                                                    No hay registros de reparación para este filtro.
+                                                </Text>
+                                            </View>
+                                        }
+                                    />
+                                </View>
+                            </ScrollView>
+                        )}
+
+                        <TouchableOpacity
+                            style={[styles.modalCloseBtn, { marginTop: 12, backgroundColor: '#6c757d' }]}
+                            onPress={() => setDetalleTiempoModalVisible(false)}
+                        >
+                            <Text style={styles.btnText}>Cerrar Detalle Tiempo</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -2157,5 +2803,112 @@ const styles = StyleSheet.create({
     previewHeader: { flexDirection: 'row', backgroundColor: '#f8f9fa', padding: 10, borderBottomWidth: 1, borderColor: '#dee2e6', borderTopLeftRadius: 5, borderTopRightRadius: 5 },
     previewHeaderText: { fontWeight: 'bold', fontSize: 12, color: '#495057' },
     previewRow: { flexDirection: 'row', padding: 10, borderBottomWidth: 1, borderColor: '#eee', alignItems: 'center' },
-    previewCell: { fontSize: 12, color: '#212529' }
+    previewCell: { fontSize: 12, color: '#212529' },
+    rendimientoSectionWrap: {
+        marginTop: 14,
+        marginHorizontal: 6,
+        marginBottom: 6,
+        paddingVertical: 14,
+        paddingHorizontal: 12,
+        backgroundColor: '#f8fafc',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#e2e8f0',
+    },
+    rendimientoLoadingRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 12,
+        paddingHorizontal: 4,
+    },
+    rendimientoHintInline: { fontSize: 12, color: '#64748b', fontStyle: 'italic' },
+    rendimientoSectionTitle: { fontSize: 14, fontWeight: '700', color: '#0f172a', marginBottom: 6 },
+    rendimientoLegendaMini: { fontSize: 11, color: '#64748b', marginBottom: 12, lineHeight: 15 },
+    rendimientoHint: { fontSize: 12, color: '#64748b', fontStyle: 'italic', paddingVertical: 8 },
+    rendimientoScroll: { maxHeight: 310 },
+    rendimientoScrollInner: { paddingVertical: 4, paddingRight: 12, alignItems: 'stretch' },
+    rendimientoCard: {
+        width: 176,
+        height: 292,
+        backgroundColor: '#ffffff',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#e5e7eb',
+        paddingTop: 12,
+        paddingBottom: 10,
+        paddingHorizontal: 10,
+        marginRight: 12,
+        flexDirection: 'column',
+        alignItems: 'stretch',
+        shadowColor: '#0f172a',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.06,
+        shadowRadius: 8,
+        elevation: 3,
+    },
+    rendimientoCardMaquina: {
+        borderColor: '#bbf7d0',
+        backgroundColor: '#f7fef9',
+        borderLeftWidth: 4,
+        borderLeftColor: '#22c55e',
+    },
+    rendimientoCardBadge: { alignSelf: 'center', marginBottom: 8, paddingHorizontal: 11, paddingVertical: 5, borderRadius: 999 },
+    rendimientoCardBadgeBlue: { backgroundColor: '#eff6ff' },
+    rendimientoCardBadgeGreen: { backgroundColor: '#dcfce7' },
+    rendimientoCardBadgeLabelBlue: {
+        fontSize: 10,
+        fontWeight: '700',
+        color: '#1d4ed8',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    rendimientoCardBadgeLabelGreen: {
+        fontSize: 10,
+        fontWeight: '700',
+        color: '#15803d',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    rendimientoCardTitleBox: {
+        height: 44,
+        justifyContent: 'center',
+        marginBottom: 2,
+    },
+    rendimientoCardTitleText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: '#334155',
+        textAlign: 'center',
+        lineHeight: 16,
+    },
+    rendimientoStatsBox: {
+        backgroundColor: '#f1f5f9',
+        borderWidth: 1,
+        borderColor: '#dbeafe',
+        borderRadius: 8,
+        paddingVertical: 6,
+        paddingHorizontal: 8,
+        marginBottom: 6,
+    },
+    rendimientoStatsText: {
+        fontSize: 11,
+        color: '#1e293b',
+        textAlign: 'center',
+        fontWeight: '700',
+        lineHeight: 15,
+    },
+    rendimientoRingWrap: {
+        flex: 1,
+        minHeight: 92,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    rendimientoCardFooter: {
+        fontSize: 10,
+        color: '#94a3b8',
+        textAlign: 'center',
+        textTransform: 'uppercase',
+        letterSpacing: 0.4,
+        marginTop: 4,
+    },
 });

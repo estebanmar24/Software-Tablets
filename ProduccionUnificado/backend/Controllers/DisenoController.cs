@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
+using TiempoProcesos.API.Helpers;
+using TiempoProcesos.API.DTOs;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using System.IO;
@@ -73,47 +75,49 @@ public class DisenoController : ControllerBase
     [HttpGet("proveedores")]
     public async Task<ActionResult<List<object>>> GetProveedores([FromQuery] int? rubroId)
     {
-        var query = _context.Diseno_Proveedores
-            .Include(p => p.Rubro)
-            .Where(p => p.Activo);
-
-        if (rubroId.HasValue)
-            query = query.Where(p => p.RubroId == rubroId.Value);
-
-        var proveedores = await query
-            .OrderBy(p => p.Nombre)
-            .Select(p => new
-            {
-                p.Id,
-                p.Nombre,
-                p.RubroId,
-                RubroNombre = p.Rubro != null ? p.Rubro.Nombre : "",
-                p.NitCedula,
-                p.Telefono,
-                p.Activo
-            })
-            .ToListAsync();
-
-        return Ok(proveedores);
+        return Ok(await ProveedorRubroHelper.ListDisenoProveedoresAsync(_context, rubroId));
     }
 
     [HttpPost("proveedores")]
-    public async Task<ActionResult<Diseno_Proveedor>> CreateProveedor(Diseno_Proveedor proveedor)
+    public async Task<ActionResult<Diseno_Proveedor>> CreateProveedor([FromBody] ProveedorWriteDto dto)
     {
-        if (string.IsNullOrWhiteSpace(proveedor.NitCedula))
+        var nit = dto.NitCedula ?? dto.Nit;
+        if (string.IsNullOrWhiteSpace(nit))
             return BadRequest("El NIT o Cédula es obligatorio");
+        var rubroIds = dto.ResolveRubroIds();
+        if (rubroIds.Count == 0)
+            return BadRequest("Seleccione al menos un rubro");
+        var proveedor = new Diseno_Proveedor
+        {
+            Nombre = dto.Nombre,
+            NitCedula = nit,
+            Telefono = dto.Telefono,
+            RubroId = rubroIds[0],
+            Activo = true
+        };
         _context.Diseno_Proveedores.Add(proveedor);
+        await _context.SaveChangesAsync();
+        await ProveedorRubroHelper.SyncDisenoAsync(_context, proveedor.Id, rubroIds);
         await _context.SaveChangesAsync();
         return Ok(new { id = proveedor.Id });
     }
 
     [HttpPut("proveedores/{id}")]
-    public async Task<IActionResult> UpdateProveedor(int id, Diseno_Proveedor proveedor)
+    public async Task<IActionResult> UpdateProveedor(int id, [FromBody] ProveedorWriteDto dto)
     {
-        if (id != proveedor.Id) return BadRequest();
-        if (string.IsNullOrWhiteSpace(proveedor.NitCedula))
+        var nit = dto.NitCedula ?? dto.Nit;
+        if (string.IsNullOrWhiteSpace(nit))
             return BadRequest("El NIT o Cédula es obligatorio");
-        _context.Entry(proveedor).State = EntityState.Modified;
+        var rubroIds = dto.ResolveRubroIds();
+        if (rubroIds.Count == 0)
+            return BadRequest("Seleccione al menos un rubro");
+        var proveedor = await _context.Diseno_Proveedores.FindAsync(id);
+        if (proveedor == null) return NotFound();
+        proveedor.Nombre = dto.Nombre;
+        proveedor.NitCedula = nit;
+        proveedor.Telefono = dto.Telefono;
+        proveedor.RubroId = rubroIds[0];
+        await ProveedorRubroHelper.SyncDisenoAsync(_context, id, rubroIds);
         await _context.SaveChangesAsync();
         return NoContent();
     }
@@ -158,6 +162,10 @@ public class DisenoController : ControllerBase
                 g.Mes,
                 g.NumeroFactura,
                 g.Precio,
+                g.PrecioBase,
+                g.PrecioIva,
+                g.EsSolicitudCredito,
+                g.EsEfectivo,
                 g.Fecha,
                 g.Observaciones,
                 g.TipoTrabajo,
@@ -167,7 +175,8 @@ public class DisenoController : ControllerBase
                 g.FechaCreacion,
                 g.FechaModificacion,
                 g.CreadoPorId,
-                CreadoPorNombre = g.CreadoPor != null ? g.CreadoPor.NombreMostrar : ""
+                CreadoPorNombre = g.CreadoPor != null ? g.CreadoPor.NombreMostrar : "",
+                Estado = g.Estado ?? "Montado"
             })
             .ToListAsync();
 
@@ -220,9 +229,24 @@ public class DisenoController : ControllerBase
     [HttpPost("gastos")]
     public async Task<ActionResult<Diseno_Gasto>> CreateGasto(Diseno_Gasto gasto)
     {
+        var mpD = GastoMedioPagoHelper.ValidateCreditoOExclusivoEfectivo(false, gasto.EsSolicitudCredito, gasto.EsEfectivo);
+        if (mpD != null) return (ActionResult<Diseno_Gasto>)(object)mpD;
+
+        var rubroD = await _context.Diseno_Rubros.FindAsync(gasto.RubroId);
+        var pD = gasto.Precio;
+        var pbD = gasto.PrecioBase;
+        var piD = gasto.PrecioIva;
+        var errIvD = GastoPrecioIvaHelper.AplicarSegunRubroYTipo(false, null, null, rubroD?.Nombre, ref pD, ref pbD, ref piD);
+        if (errIvD != null) return (ActionResult<Diseno_Gasto>)(object)errIvD;
+        gasto.Precio = pD;
+        gasto.PrecioBase = pbD;
+        gasto.PrecioIva = piD;
+
         var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == "Id");
         if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int adminId))
             gasto.CreadoPorId = adminId;
+
+        GastoPeriodoHelper.AplicarAnioMesDesdeFecha(gasto.Fecha, (a, m) => { gasto.Anio = a; gasto.Mes = m; });
 
         gasto.FechaCreacion = DateTime.UtcNow;
         _context.Diseno_Gastos.Add(gasto);
@@ -234,6 +258,24 @@ public class DisenoController : ControllerBase
     public async Task<IActionResult> UpdateGasto(int id, Diseno_Gasto gasto)
     {
         if (id != gasto.Id) return BadRequest();
+
+        GastoPeriodoHelper.AplicarAnioMesDesdeFecha(gasto.Fecha, (a, m) => { gasto.Anio = a; gasto.Mes = m; });
+
+        var mpDu = GastoMedioPagoHelper.ValidateCreditoOExclusivoEfectivo(false, gasto.EsSolicitudCredito, gasto.EsEfectivo);
+        if (mpDu != null) return mpDu;
+
+        var rubroDu = await _context.Diseno_Rubros.FindAsync(gasto.RubroId);
+        var pDu = gasto.Precio;
+        var pbDu = gasto.PrecioBase;
+        var piDu = gasto.PrecioIva;
+        var errIvDu = GastoPrecioIvaHelper.AplicarSegunRubroYTipo(false, null, null, rubroDu?.Nombre, ref pDu, ref pbDu, ref piDu);
+        if (errIvDu != null) return errIvDu;
+        gasto.Precio = pDu;
+        gasto.PrecioBase = pbDu;
+        gasto.PrecioIva = piDu;
+
+        GastoPeriodoHelper.AplicarAnioMesDesdeFecha(gasto.Fecha, (a, m) => { gasto.Anio = a; gasto.Mes = m; });
+
         var existingEntry = await _context.Diseno_Gastos.AsNoTracking().FirstOrDefaultAsync(g => g.Id == id);
         if (existingEntry != null) gasto.FechaCreacion = existingEntry.FechaCreacion;
 

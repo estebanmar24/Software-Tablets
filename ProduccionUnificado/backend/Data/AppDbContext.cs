@@ -40,6 +40,7 @@ public class AppDbContext : DbContext
     public DbSet<SST_GastoMensual> SST_GastosMensuales { get; set; }
     public DbSet<PlanAccion> PlanesAccion { get; set; }
     public DbSet<PlanAccionEvidencia> PlanAccionEvidencias { get; set; }
+    public DbSet<PlanAccionObservacion> PlanAccionObservaciones { get; set; }
 
     // GH Management
     public DbSet<GH_Rubro> GH_Rubros { get; set; }
@@ -53,6 +54,7 @@ public class AppDbContext : DbContext
     // Produccion
     public DbSet<Produccion_Rubro> Produccion_Rubros { get; set; }
     public DbSet<Produccion_Proveedor> Produccion_Proveedores { get; set; }
+    public DbSet<Produccion_ProveedorRubro> Produccion_ProveedorRubros { get; set; }
     public DbSet<Produccion_TipoHora> Produccion_TiposHora { get; set; }
     public DbSet<Produccion_Gasto> Produccion_Gastos { get; set; }
     
@@ -66,6 +68,7 @@ public class AppDbContext : DbContext
     // Talleres y Despachos
     public DbSet<Talleres_Rubro> Talleres_Rubros { get; set; }
     public DbSet<Talleres_Proveedor> Talleres_Proveedores { get; set; }
+    public DbSet<Talleres_ProveedorRubro> Talleres_ProveedorRubros { get; set; }
     public DbSet<Talleres_Cotizacion> Talleres_Cotizaciones { get; set; }
     public DbSet<Talleres_Gasto> Talleres_Gastos { get; set; }
     public DbSet<Talleres_PresupuestoMensual> Talleres_PresupuestosMensuales { get; set; }
@@ -73,6 +76,7 @@ public class AppDbContext : DbContext
     // Planeacion
     public DbSet<Planeacion_Rubro> Planeacion_Rubros { get; set; }
     public DbSet<Planeacion_Proveedor> Planeacion_Proveedores { get; set; }
+    public DbSet<Planeacion_ProveedorRubro> Planeacion_ProveedorRubros { get; set; }
     public DbSet<Planeacion_Cotizacion> Planeacion_Cotizaciones { get; set; }
     public DbSet<Planeacion_Gasto> Planeacion_Gastos { get; set; }
     public DbSet<Planeacion_PresupuestoMensual> Planeacion_PresupuestosMensuales { get; set; }
@@ -81,6 +85,7 @@ public class AppDbContext : DbContext
     // Diseno
     public DbSet<Diseno_Rubro> Diseno_Rubros { get; set; }
     public DbSet<Diseno_Proveedor> Diseno_Proveedores { get; set; }
+    public DbSet<Diseno_ProveedorRubro> Diseno_ProveedorRubros { get; set; }
     public DbSet<Diseno_Cotizacion> Diseno_Cotizaciones { get; set; }
     public DbSet<Diseno_Gasto> Diseno_Gastos { get; set; }
     public DbSet<Diseno_PresupuestoMensual> Diseno_PresupuestosMensuales { get; set; }
@@ -100,6 +105,7 @@ public class AppDbContext : DbContext
 
     // Consolidado NC
     public DbSet<ConsolidadoNC> ConsolidadosNC { get; set; }
+    public DbSet<CalidadNC_TipoReclamacionOpcion> CalidadNC_TiposReclamacion { get; set; }
 
     // Tickets
     public DbSet<Ticket> Tickets { get; set; }
@@ -122,20 +128,45 @@ public class AppDbContext : DbContext
     public DbSet<CronogramaRegistro> CronogramaRegistros { get; set; }
     public DbSet<HojaVidaFoto> HojaVidaFotos { get; set; }
     public DbSet<BitacoraMaquina> BitacorasMaquinas { get; set; }
+    public DbSet<BitacoraMantenimientoDiaria> BitacoraMantenimientoDiaria { get; set; }
 
     // Mantenimiento Gastos
     public DbSet<Mantenimiento_Rubro> Mantenimiento_Rubros { get; set; }
     public DbSet<Mantenimiento_Proveedor> Mantenimiento_Proveedores { get; set; }
+    public DbSet<Mantenimiento_ProveedorRubro> Mantenimiento_ProveedorRubros { get; set; }
     public DbSet<Mantenimiento_Cotizacion> Mantenimiento_Cotizaciones { get; set; }
     public DbSet<Mantenimiento_Gasto> Mantenimiento_Gastos { get; set; }
     public DbSet<Mantenimiento_PresupuestoMensual> Mantenimiento_PresupuestosMensuales { get; set; }
     public DbSet<Mantenimiento_Producto> Mantenimiento_Productos { get; set; }
+    public DbSet<Mantenimiento_Consumo> Mantenimiento_Consumos { get; set; }
+    public DbSet<Mantenimiento_AjusteInventario> Mantenimiento_AjustesInventario { get; set; }
     public DbSet<Mantenimiento_TipoHora> Mantenimiento_TiposHora { get; set; }
     public DbSet<Mantenimiento_TipoRecargo> Mantenimiento_TiposRecargo { get; set; }
+    public DbSet<Mantenimiento_Trazabilidad> Mantenimiento_Trazabilidad { get; set; }
 
-    // Actas de Destrucción
+    // Actas de Destrucci├│n
     public DbSet<ActaDestruccion> ActasDestruccion { get; set; }
     public DbSet<ActaDestruccionProceso> ActaDestruccionProcesos { get; set; }
+    public DbSet<Contabilidad_Ingreso> Contabilidad_Ingresos { get; set; }
+    public DbSet<Contabilidad_Gasto> Contabilidad_Gastos { get; set; }
+    public DbSet<AdjuntoDocumentoExtraccion> AdjuntoDocumentoExtracciones { get; set; }
+    public DbSet<CatalogoOrdenProduccion> CatalogoOrdenesProduccion { get; set; }
+
+    // Evaluaci├│n por ├ürea (checklist mensual por ├írea)
+    public DbSet<EvaluacionArea_Actividad> EvaluacionArea_Actividades { get; set; }
+    public DbSet<Audit_Checklist> Audit_Checklist_Items { get; set; }
+    public DbSet<Audit_ChecklistResponsable> Audit_Checklist_Responsables { get; set; }
+    public DbSet<Audit_ChecklistTipo> Audit_Checklist_Tipos { get; set; }
+
+    // Almac├®n
+    public DbSet<AlmacenProducto> AlmacenProductos { get; set; }
+    public DbSet<AlmacenProveedor> AlmacenProveedores { get; set; }
+    public DbSet<AlmacenRequisicion> AlmacenRequisiciones { get; set; }
+    public DbSet<AlmacenPedido> AlmacenPedidos { get; set; }
+    public DbSet<AlmacenPedidoProveedor> AlmacenPedidoProveedores { get; set; }
+    public DbSet<AlmacenRecepcionLinea> AlmacenRecepcionLineas { get; set; }
+    public DbSet<AlmacenOrdenCompra> AlmacenOrdenesCompra { get; set; }
+    public DbSet<AlmacenOrdenCompraLinea> AlmacenOrdenCompraLineas { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -159,6 +190,12 @@ public class AppDbContext : DbContext
             .HasOne(e => e.PlanAccion)
             .WithMany(p => p.Evidencias)
             .HasForeignKey(e => e.PlanAccionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<PlanAccionObservacion>()
+            .HasOne(o => o.PlanAccion)
+            .WithMany(p => p.HistoricoObservaciones)
+            .HasForeignKey(o => o.PlanAccionId)
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<TiempoProceso>()
@@ -335,6 +372,12 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<Produccion_Rubro>().ToTable("Produccion_Rubros");
         modelBuilder.Entity<Produccion_Proveedor>().ToTable("Produccion_Proveedores");
+        modelBuilder.Entity<Produccion_ProveedorRubro>()
+            .HasKey(x => new { x.ProveedorId, x.RubroId });
+        modelBuilder.Entity<Produccion_ProveedorRubro>()
+            .HasOne(x => x.Proveedor).WithMany(p => p.ProveedorRubros).HasForeignKey(x => x.ProveedorId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<Produccion_ProveedorRubro>()
+            .HasOne(x => x.Rubro).WithMany().HasForeignKey(x => x.RubroId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<Produccion_TipoHora>().ToTable("Produccion_TiposHora");
         modelBuilder.Entity<Produccion_TipoRecargo>().ToTable("Produccion_TiposRecargo");
         modelBuilder.Entity<Produccion_Gasto>().ToTable("Produccion_Gastos");
@@ -359,6 +402,12 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<Talleres_Rubro>().ToTable("Talleres_Rubros");
         modelBuilder.Entity<Talleres_Proveedor>().ToTable("Talleres_Proveedores");
+        modelBuilder.Entity<Talleres_ProveedorRubro>()
+            .HasKey(x => new { x.ProveedorId, x.RubroId });
+        modelBuilder.Entity<Talleres_ProveedorRubro>()
+            .HasOne(x => x.Proveedor).WithMany(p => p.ProveedorRubros).HasForeignKey(x => x.ProveedorId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<Talleres_ProveedorRubro>()
+            .HasOne(x => x.Rubro).WithMany().HasForeignKey(x => x.RubroId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<Talleres_Gasto>().ToTable("Talleres_Gastos");
         modelBuilder.Entity<Talleres_PresupuestoMensual>().ToTable("Talleres_PresupuestosMensuales");
 
@@ -390,6 +439,13 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Planeacion_Gasto>().ToTable("Planeacion_Gastos");
         modelBuilder.Entity<Planeacion_PresupuestoMensual>().ToTable("Planeacion_PresupuestosMensuales");
         modelBuilder.Entity<Planeacion_Personal>().ToTable("Planeacion_Personal");
+
+        modelBuilder.Entity<Planeacion_ProveedorRubro>()
+            .HasKey(x => new { x.ProveedorId, x.RubroId });
+        modelBuilder.Entity<Planeacion_ProveedorRubro>()
+            .HasOne(x => x.Proveedor).WithMany(p => p.ProveedorRubros).HasForeignKey(x => x.ProveedorId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<Planeacion_ProveedorRubro>()
+            .HasOne(x => x.Rubro).WithMany().HasForeignKey(x => x.RubroId).OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<Planeacion_Proveedor>()
             .HasOne(p => p.Rubro)
@@ -448,6 +504,13 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Diseno_Cotizacion>().ToTable("Diseno_Cotizaciones");
         modelBuilder.Entity<Diseno_Gasto>().ToTable("Diseno_Gastos");
         modelBuilder.Entity<Diseno_PresupuestoMensual>().ToTable("Diseno_PresupuestosMensuales");
+
+        modelBuilder.Entity<Diseno_ProveedorRubro>()
+            .HasKey(x => new { x.ProveedorId, x.RubroId });
+        modelBuilder.Entity<Diseno_ProveedorRubro>()
+            .HasOne(x => x.Proveedor).WithMany(p => p.ProveedorRubros).HasForeignKey(x => x.ProveedorId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<Diseno_ProveedorRubro>()
+            .HasOne(x => x.Rubro).WithMany().HasForeignKey(x => x.RubroId).OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<Diseno_Proveedor>()
             .HasOne(p => p.Rubro)
@@ -519,6 +582,7 @@ public class AppDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<ConsolidadoNC>().ToTable("ConsolidadosNC");
+        modelBuilder.Entity<CalidadNC_TipoReclamacionOpcion>().ToTable("CalidadNC_TiposReclamacion");
         modelBuilder.Entity<ConsolidadoNC>()
             .HasOne(nc => nc.EncuestaProduccion)
             .WithMany()
@@ -575,6 +639,7 @@ public class AppDbContext : DbContext
             .HasForeignKey(p => p.OrdenProduccionId)
             .OnDelete(DeleteBehavior.Restrict);
 
+
         modelBuilder.Entity<ProgramacionOP>().ToTable("ProgramacionesOP");
         modelBuilder.Entity<ProgramacionOPProceso>().ToTable("ProgramacionesOPProcesos");
 
@@ -589,7 +654,6 @@ public class AppDbContext : DbContext
             .WithMany(op => op.Procesos)
             .HasForeignKey(p => p.ProgramacionOPId)
             .OnDelete(DeleteBehavior.Cascade);
-
         modelBuilder.Entity<TallerExterno>().ToTable("TalleresExternos");
         modelBuilder.Entity<EncuestaCalidadTaller>().ToTable("EncuestasCalidadTalleres");
 
@@ -636,6 +700,8 @@ public class AppDbContext : DbContext
             .HasForeignKey(b => b.HojaVidaId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        modelBuilder.Entity<BitacoraMantenimientoDiaria>().ToTable("Bitacora_MantenimientoDiaria");
+
         modelBuilder.Entity<CronogramaActividad>().ToTable("Cronogramas_Actividades");
         modelBuilder.Entity<CronogramaRegistro>().ToTable("Cronogramas_Registros");
 
@@ -646,8 +712,42 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Mantenimiento_Gasto>().ToTable("Mantenimiento_Gastos");
         modelBuilder.Entity<Mantenimiento_PresupuestoMensual>().ToTable("Mantenimiento_PresupuestosMensuales");
         modelBuilder.Entity<Mantenimiento_Producto>().ToTable("Mantenimiento_Productos");
+        modelBuilder.Entity<Mantenimiento_Consumo>().ToTable("Mantenimiento_Consumos");
+        modelBuilder.Entity<Mantenimiento_AjusteInventario>().ToTable("Mantenimiento_AjustesInventario");
+        modelBuilder.Entity<Mantenimiento_AjusteInventario>()
+            .HasOne(a => a.Producto)
+            .WithMany()
+            .HasForeignKey(a => a.ProductoId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<Mantenimiento_Consumo>()
+            .HasOne(c => c.Producto)
+            .WithMany()
+            .HasForeignKey(c => c.ProductoId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<Mantenimiento_Consumo>()
+            .HasOne(c => c.Maquina)
+            .WithMany()
+            .HasForeignKey(c => c.MaquinaId)
+            .OnDelete(DeleteBehavior.SetNull);
+        modelBuilder.Entity<Mantenimiento_Consumo>()
+            .HasOne(c => c.HojaVida)
+            .WithMany()
+            .HasForeignKey(c => c.HojaVidaId)
+            .OnDelete(DeleteBehavior.SetNull);
+        modelBuilder.Entity<Mantenimiento_Consumo>()
+            .HasOne(c => c.MantenimientoRegistro)
+            .WithMany()
+            .HasForeignKey(c => c.MantenimientoHojaVidaId)
+            .OnDelete(DeleteBehavior.SetNull);
         modelBuilder.Entity<Mantenimiento_TipoHora>().ToTable("Mantenimiento_TiposHora");
         modelBuilder.Entity<Mantenimiento_TipoRecargo>().ToTable("Mantenimiento_TiposRecargo");
+
+        modelBuilder.Entity<Mantenimiento_ProveedorRubro>()
+            .HasKey(x => new { x.ProveedorId, x.RubroId });
+        modelBuilder.Entity<Mantenimiento_ProveedorRubro>()
+            .HasOne(x => x.Proveedor).WithMany(p => p.ProveedorRubros).HasForeignKey(x => x.ProveedorId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<Mantenimiento_ProveedorRubro>()
+            .HasOne(x => x.Rubro).WithMany().HasForeignKey(x => x.RubroId).OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<Mantenimiento_Proveedor>()
             .HasOne(p => p.Rubro)
@@ -683,14 +783,99 @@ public class AppDbContext : DbContext
             .HasIndex(p => new { p.RubroId, p.Anio, p.Mes })
             .IsUnique();
 
-        // Actas de Destrucción
+        // Actas de Destrucci├│n
         modelBuilder.Entity<ActaDestruccion>().ToTable("ActasDestruccion");
         modelBuilder.Entity<ActaDestruccionProceso>().ToTable("ActaDestruccionProcesos");
+        modelBuilder.Entity<Contabilidad_Ingreso>().ToTable("Contabilidad_Ingresos");
+        modelBuilder.Entity<Contabilidad_Gasto>().ToTable("Contabilidad_Gastos");
+        modelBuilder.Entity<EvaluacionArea_Actividad>().ToTable("EvaluacionArea_Actividades");
+
+        modelBuilder.Entity<EvaluacionArea_Actividad>()
+            .HasIndex(a => new { a.Area, a.Anio, a.Mes });
 
         modelBuilder.Entity<ActaDestruccionProceso>()
             .HasOne(p => p.ActaDestruccion)
             .WithMany(a => a.Procesos)
             .HasForeignKey(p => p.ActaDestruccionId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // Audit Checklist (CT-PAT / ILS)
+        modelBuilder.Entity<Audit_Checklist>().ToTable("Audit_Checklist_Items");
+        modelBuilder.Entity<Audit_ChecklistResponsable>().ToTable("Audit_Checklist_Responsables");
+
+        modelBuilder.Entity<Audit_Checklist>()
+            .HasIndex(c => new { c.Tipo, c.Anio, c.Mes });
+
+        modelBuilder.Entity<Audit_Checklist>()
+            .HasMany(c => c.Responsables)
+            .WithOne(r => r.Checklist!)
+            .HasForeignKey(r => r.ChecklistId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Audit_ChecklistTipo>().ToTable("Audit_Checklist_Tipos");
+        modelBuilder.Entity<Audit_ChecklistTipo>()
+            .HasIndex(t => new { t.Codigo, t.Anio })
+            .IsUnique();
+
+        // Almac├®n
+        modelBuilder.Entity<AlmacenPedido>()
+            .HasOne(p => p.Requisicion)
+            .WithOne(r => r.Pedido)
+            .HasForeignKey<AlmacenPedido>(p => p.RequisicionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<AlmacenPedidoProveedor>()
+            .HasOne(p => p.Pedido)
+            .WithMany(p => p.Proveedores)
+            .HasForeignKey(p => p.PedidoId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<AlmacenPedidoProveedor>()
+            .HasOne(p => p.OrdenCompra)
+            .WithMany(o => o.PedidoProveedores)
+            .HasForeignKey(p => p.OrdenCompraId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<AlmacenOrdenCompra>()
+            .HasIndex(o => o.NumeroOrdenCompra)
+            .IsUnique();
+
+        modelBuilder.Entity<AlmacenOrdenCompraLinea>()
+            .HasOne(l => l.OrdenCompra)
+            .WithMany(o => o.Lineas)
+            .HasForeignKey(l => l.OrdenCompraId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<AlmacenOrdenCompraLinea>()
+            .HasOne(l => l.PedidoProveedor)
+            .WithOne(p => p.OrdenCompraLinea)
+            .HasForeignKey<AlmacenOrdenCompraLinea>(l => l.PedidoProveedorId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<AlmacenOrdenCompraLinea>()
+            .HasOne(l => l.Requisicion)
+            .WithMany()
+            .HasForeignKey(l => l.RequisicionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<AlmacenOrdenCompraLinea>()
+            .HasIndex(l => l.PedidoProveedorId)
+            .IsUnique();
+
+        modelBuilder.Entity<AlmacenRecepcionLinea>()
+            .HasOne(l => l.Requisicion)
+            .WithMany(r => r.RecepcionLineas)
+            .HasForeignKey(l => l.RequisicionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<AlmacenRecepcionLinea>()
+            .HasOne(l => l.PedidoProveedor)
+            .WithMany()
+            .HasForeignKey(l => l.PedidoProveedorId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<AlmacenRequisicion>()
+            .HasIndex(r => r.Codigo)
+            .IsUnique();
     }
 }

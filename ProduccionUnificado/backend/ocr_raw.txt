@@ -1,0 +1,289 @@
+REPORTE DE DESPERDICIOS
+Fecha: Abril 2026
+Total Registros: 285 | Total Cantidad: 16707.00
+Fecha Máquina Operario Código OP Cant Nota
+2026-04-01 16 Barnizadora UV Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7328 40 -
+2026-04-01 8B Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7507 17 -
+2026-04-01 8A Troqueladora de Papel Sarmiento Rincon Yhan Otoniel 08 - Desperdicios por errores en el diseño o arte 7494 8 -
+2026-04-01 9 Troqueladora Rollo Preciado Rivas Johan Alexander 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7514 15 -
+2026-04-01 9 Troqueladora Rollo Blandon Moreno Jose Lizandro 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7445 40 -
+2026-04-01 6 SpeedMaster Josue lopez 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7528 25 02- 25 unidades
+2026-04-01 11 Laminadora BOPP Renteria Mejia Nestor Alfonso 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7494 53 -
+2026-04-04 8B Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7488 242 ok orden despachada
+2026-04-04 9 Troqueladora Rollo Blandon Moreno Jose Lizandro 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7445 10 -
+2026-04-04 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7348 42 -
+2026-04-04 6 SpeedMaster Enrique Muñoz Hector Hilde 03 - Desperdicios por cortes inexactos o mal aprovechamiento del material 7348 60 -
+2026-04-04 4 Sord Z Obando Higuita Jose Luis 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7479 50 -
+2026-04-04 8A Troqueladora de Papel Preciado Rivas Johan Alexander S/C - Sin Categoría 7479 190 -
+2026-04-04 14 Pegadora de Cajas Cruz Pinto Alberto 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7479 210 -
+2026-04-04 16 Barnizadora UV Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7328 20 -
+2026-04-04 11 Laminadora BOPP Renteria Mejia Nestor Alfonso 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7513 21 -
+2026-04-04 8A Troqueladora de Papel Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7466 10 -
+2026-04-04 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7474 60 -
+2026-04-06 4 Sord Z Obando Higuita Jose Luis 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7448 10 -
+2026-04-06 4 Sord Z Obando Higuita Jose Luis 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7447 5 -
+2026-04-06 4 Sord Z Obando Higuita Jose Luis 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7447 5 -
+2026-04-06 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7348 84 -
+2026-04-06 6 SpeedMaster Enrique Muñoz Hector Hilde 03 - Desperdicios por cortes inexactos o mal aprovechamiento del material 7348 120 -
+2026-04-06 8B Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7520 7 -
+2026-04-06 8A Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7502 8 -
+2026-04-06 8A Troqueladora de Papel Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7466 6 -
+2026-04-06 9 Troqueladora Rollo Blandon Moreno Jose Lizandro 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7348 20 -
+2026-04-06 6 SpeedMaster Josue lopez 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7534 339 -
+2026-04-06 6 SpeedMaster Josue lopez 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7534 339 -
+2026-04-07 9 Troqueladora Rollo Blandon Moreno Jose Lizandro 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7444 43 -
+2026-04-07 4 Sord Z Obando Higuita Jose Luis 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7503 20 -
+2026-04-07 6 SpeedMaster Josue lopez 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7431 40 -
+2026-04-07 6 SpeedMaster Josue lopez 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7531 30 -
+2026-04-07 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7490 35 -
+2026-04-07 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7489 180 -
+2026-04-07 6 SpeedMaster Josue lopez 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7464 150 -
+2026-04-07 16 Barnizadora UV Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7330 20 -
+2026-04-07 11 Laminadora BOPP Renteria Mejia Nestor Alfonso 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7513 32 -
+2026-04-07 6 SpeedMaster Josue lopez 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7474 373 sucias por el reverso de tinta
+2026-04-07 8B Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7521 20 -
+2026-04-07 8B Troqueladora de Papel Cristian Felipe Echavarria 04 - Desperdicios por material en malas condiciones (por almacenamiento o recepción inadecuada) 7521 3 -
+2026-04-07 8B Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7522 16 -
+2026-04-07 8B Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7520 3 -
+2026-04-07 6 SpeedMaster Josue lopez 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7474 104 -
+2026-04-07 9 Troqueladora Rollo Preciado Rivas Johan Alexander 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7435 500 300 troqueladas al revez / 200 por proceso
+2026-04-07 10A Colaminadora Carton Bedoya Maria Fernanda 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7480 36 -
+2026-04-07 11 Laminadora BOPP Renteria Mejia Nestor Alfonso 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7407 38 -
+2026-04-07 16 Barnizadora UV Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7330 5 -
+2026-04-07 8B Troqueladora de Papel Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7513 5 plegadiza
+2026-04-08 8B Troqueladora de Papel Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7474 6 -
+2026-04-08 8B Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7513 48 -
+2026-04-08 9 Troqueladora Rollo Blandon Moreno Jose Lizandro 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7526 15 -
+2026-04-08 9 Troqueladora Rollo Blandon Moreno Jose Lizandro 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7463 20 -
+2026-04-08 9 Troqueladora Rollo Preciado Rivas Johan Alexander 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7444 150 -
+2026-04-08 6 SpeedMaster Josue lopez 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7529 110 -
+2026-04-08 6 SpeedMaster Josue lopez 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7529 110 -
+2026-04-08 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7530 100 -
+2026-04-08 11 Laminadora BOPP Renteria Mejia Nestor Alfonso 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7447 90 -
+2026-04-08 16 Barnizadora UV Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7330 20 -
+2026-04-08 10A Colaminadora Carton Bedoya Maria Fernanda 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7490 2 -
+2026-04-08 8B Troqueladora de Papel Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7480 24 -
+2026-04-09 11 Laminadora BOPP Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7448 5 -
+2026-04-09 16 Barnizadora UV Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7407 60 -
+2026-04-09 10A Colaminadora Carton Bedoya Maria Fernanda 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7490 11 -
+2026-04-09 10A Colaminadora Carton Bedoya Maria Fernanda 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7490 7 -
+2026-04-09 11 Laminadora BOPP Renteria Mejia Nestor Alfonso 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7503 1 -
+2026-04-09 11 Laminadora BOPP Renteria Mejia Nestor Alfonso 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7448 45 -
+2026-04-09 11 Laminadora BOPP Renteria Mejia Nestor Alfonso 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7447 21 -
+2026-04-09 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7557 76 -
+2026-04-09 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7556 112 -
+2026-04-09 6 SpeedMaster Josue lopez 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7518 92 -
+2026-04-10 9 Troqueladora Rollo Preciado Rivas Johan Alexander 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7254 15 -
+2026-04-10 9 Troqueladora Rollo Blandon Moreno Jose Lizandro 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7528 4 -
+2026-04-10 9 Troqueladora Rollo Jose Fernando Ruiz 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7523 47 -
+2026-04-10 6 SpeedMaster Josue lopez 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7518 90 -
+2026-04-10 8B Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7474 30 -
+2026-04-10 8B Troqueladora de Papel Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7529 8 -
+2026-04-10 8B Troqueladora de Papel Sarmiento Rincon Yhan Otoniel 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7474 4 -
+2026-04-10 9 Troqueladora Rollo Preciado Rivas Johan Alexander 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7525 184 -
+2026-04-10 1B CONVERTIDORA Velez Arana Robert De Jesus 04 - Desperdicios por material en malas condiciones (por almacenamiento o recepción inadecuada) 7544 100 -
+2026-04-10 6 SpeedMaster Enrique Muñoz Hector Hilde 03 - Desperdicios por cortes inexactos o mal aprovechamiento del material 7515 16 -
+2026-04-10 8C Estampadora Preciado Rivas Johan Alexander 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7355 10 -
+2026-04-10 9 Troqueladora Rollo Preciado Rivas 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7528 30 -
+2026-04-10 9 Troqueladora Rollo Blandon Moreno Jose Lizandro 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7330 16 -
+2026-04-10 9 Troqueladora Rollo Blandon Moreno Jose Lizandro 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7355 18 -
+2026-04-10 8B Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7529 60 -
+2026-04-10 8B Troqueladora de Papel Sarmiento Rincon Yhan Otoniel 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7450 9 -
+2026-04-10 8B Troqueladora de Papel Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7558 8 -
+2026-04-10 11 Laminadora BOPP Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7503 15 -
+2026-04-10 14 Pegadora de Cajas Cruz Pinto Alberto 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7531 21 -
+2026-04-10 8B Troqueladora de Papel Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7531 46 -
+2026-04-10 6 SpeedMaster Josue lopez 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7531 65 -
+2026-04-10 8B Troqueladora de Papel Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7513 4 inserto
+2026-04-11 8B Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7490 25 -
+2026-04-11 9 Troqueladora Rollo Preciado Rivas Johan Alexander 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7330 20 -
+2026-04-11 11 Laminadora BOPP Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7513 6 -
+2026-04-13 9 Troqueladora Rollo Blandon Moreno Jose Lizandro 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7328 10 -
+2026-04-14 Taller Externo Taller Externo 15 - Otros desperdicios 7428 28 DESPERDICIO POR REPEGUE
+2026-04-14 8A Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7513 12 -
+2026-04-14 8B Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7490 40 -
+2026-04-14 8B Troqueladora de Papel Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7407 3 -
+2026-04-14 7 SpeedMaster Josue lopez 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7519 10 -
+2026-04-14 4 Sord Z Obando Higuita Jose Luis 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7473 1050 1000 unidades malas por descase
+2026-04-14 7 SpeedMaster Josue lopez 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7505 14 -
+2026-04-14 8B Troqueladora de Papel Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7546 4 -
+2026-04-14 1B CONVERTIDORA Velez Arana Robert De Jesus 04 - Desperdicios por material en malas condiciones (por almacenamiento o recepción inadecuada) 7559 200 -
+2026-04-14 9 Troqueladora Rollo Blandon Moreno Jose Lizandro 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7328 35 -
+2026-04-14 10A Colaminadora Carton Bedoya Maria Fernanda 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7519 5 -
+2026-04-14 10A Colaminadora Carton Bedoya Maria Fernanda 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7519 5 -
+2026-04-14 10A Colaminadora Carton Bedoya Maria Fernanda 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7546 2 -
+2026-04-14 8A Troqueladora Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7489 23 -
+2026-04-14 8B Troqueladora de Papel Sarmiento Rincon Yhan Otoniel 03 - Desperdicios por cortes inexactos o mal aprovechamiento del material 7407 3 -
+2026-04-14 10A Colaminadora Carton Bedoya Maria Fernanda 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7546 2 -
+2026-04-14 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7575 16 -
+2026-04-15 11 Laminadora BOPP Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7576 57 -
+2026-04-15 11 Laminadora BOPP Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7575 49 -
+2026-04-15 8A Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7489 32 -
+2026-04-15 8B Troqueladora de Papel Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7473 2 -
+2026-04-15 8B Troqueladora de Papel Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7519 6 -
+2026-04-15 9 Troqueladora Rollo Blandon Moreno Jose Lizandro 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7493 20 -
+2026-04-15 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7517 60 -
+2026-04-15 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7576 50 -
+2026-04-15 10A Colaminadora Carton Bedoya Maria Fernanda 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7505 2 -
+2026-04-15 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7576 50 -
+2026-04-16 8B Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7473 6 -
+2026-04-16 8A Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7550 10 -
+2026-04-16 8A Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7505 3 -
+2026-04-16 8A Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7489 20 -
+2026-04-16 8B Troqueladora de Papel Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7473 6 -
+2026-04-16 9 Troqueladora Rollo Blandon Moreno Jose Lizandro 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7555 54 -
+2026-04-16 4 Sord Z Obando Higuita Jose Luis 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7549 10 -
+2026-04-16 4 Sord Z Obando Higuita Jose Luis 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7548 20 -
+2026-04-16 4 Sord Z Obando Higuita Jose Luis 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7550 20 -
+2026-04-16 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7548 100 -
+2026-04-16 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7550 220 -
+2026-04-16 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7549 49 -
+2026-04-16 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7550 110 -
+2026-04-17 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7548 50 -
+2026-04-17 5 Sord Z Obando Higuita Jose Luis 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7547 82 -
+2026-04-17 2A Guillotina polar132 Gomez Ruiz William Hernan 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7551 292 material volteado, se imprime por el lado anverso
+2026-04-17 11 Laminadora BOPP Riascos Castillo Andres Felipe 15 - Otros desperdicios 7577 9 MARCAS EN EL ESMALTADO DEL MATERIAL
+2026-04-17 11 Laminadora BOPP Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7577 8 -
+2026-04-17 11 Laminadora BOPP Riascos Castillo Andres Felipe 15 - Otros desperdicios 7516 78 MARCAS DEL ESMALTADO
+2026-04-17 11 Laminadora BOPP Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7516 7 -
+2026-04-17 8A Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7548 12 -
+2026-04-17 8A Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7550 28 -
+2026-04-17 8C Estampadora Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7330 9 -
+2026-04-17 9 Troqueladora Rollo Blandon Moreno Jose Lizandro 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7447 11 -
+2026-04-17 6 SpeedMaster Juan Carlos Preciado 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7547 150 -
+2026-04-17 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7584 140 -
+2026-04-17 11 Laminadora BOPP Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7517 82 -
+2026-04-17 11 Laminadora BOPP Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7576 41 -
+2026-04-18 6 SpeedMaster Juan Carlos Preciado 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7547 75 -
+2026-04-18 6 SpeedMaster Juan Carlos Preciado 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7551 248 -
+2026-04-18 8B Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7551 16 -
+2026-04-18 8C Estampadora Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7330 9 -
+2026-04-18 9 Troqueladora Rollo Blandon Moreno Jose Lizandro S/C - Sin Categoría 7503 6 -
+2026-04-18 9 Troqueladora Rollo Blandon Moreno Jose Lizandro 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7447 3 -
+2026-04-18 6 SpeedMaster Juan Carlos Preciado 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7535 300 -
+2026-04-18 10A Colaminadora Carton Bedoya Maria Fernanda 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7583 7 -
+2026-04-18 11 Laminadora BOPP Riascos Castillo Andres Felipe 15 - Otros desperdicios 7515 108 -
+2026-04-18 11 Laminadora BOPP Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7515 18 -
+2026-04-18 8A Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7547 31 -
+2026-04-18 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7535 396 -
+2026-04-20 8C Estampadora Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7515 6 -
+2026-04-20 8C Estampadora Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7330 19 -
+2026-04-20 8B Troqueladora de Papel Roldan Barona Erik Esteban 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7583 3 -
+2026-04-20 8B Troqueladora de Papel Roldan Barona Erik Esteban 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7584 18 -
+2026-04-20 8A Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7587 13 -
+2026-04-20 8A Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7547 20 -
+2026-04-20 8B Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7583 13 -
+2026-04-20 8B Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7584 8 -
+2026-04-20 9 Troqueladora Rollo milton felipe  suarez 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7503 30 -
+2026-04-20 6 SpeedMaster Juan Carlos Preciado 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7559 80 -
+2026-04-20 9 Troqueladora Rollo Blandon Moreno Jose Lizandro 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7535 20 -
+2026-04-20 4 Sord Z Obando Higuita Jose Luis 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7293 40 -
+2026-04-20 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7539 40 -
+2026-04-20 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7560 36 -
+2026-04-21 4 Sord Z Obando Higuita Jose Luis 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7544 40 -
+2026-04-21 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7612 90 -
+2026-04-21 6 SpeedMaster Juan Carlos Preciado 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7562 100 -
+2026-04-21 6 SpeedMaster Juan Carlos Preciado 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7536 50 -
+2026-04-21 6 SpeedMaster Juan Carlos Preciado 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7537 50 -
+2026-04-21 11 Laminadora BOPP Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7560 15 -
+2026-04-21 11 Laminadora BOPP Riascos Castillo Andres Felipe 15 - Otros desperdicios 7575 56 huella del esmaltado
+2026-04-21 11 Laminadora BOPP Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7575 15 -
+2026-04-21 8C Estampadora Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7515 19 -
+2026-04-21 8B Troqueladora de Papel Roldan Barona Erik Esteban 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7539 7 -
+2026-04-21 8A Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7293 3 -
+2026-04-21 8A Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7491 20 -
+2026-04-21 9 Troqueladora Rollo Blandon Moreno Jose Lizandro 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7330 30 -
+2026-04-21 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7613 210 -
+2026-04-22 9 Troqueladora Rollo Blandon Moreno Jose Lizandro 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7613 184 -
+2026-04-22 9 Troqueladora Rollo Blandon Moreno Jose Lizandro 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7600 10 -
+2026-04-23 7 SpeedMaster Ramirez Romero Andres Mauricio 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7518 80 -
+2026-04-23 11 Laminadora BOPP Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7533 31 -
+2026-04-23 11 Laminadora BOPP Riascos Castillo Andres Felipe 15 - Otros desperdicios 7518 4 HUELLA ESMALTADO
+2026-04-23 11 Laminadora BOPP Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7518 6 -
+2026-04-23 10A Colaminadora Carton Bedoya Maria Fernanda 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7544 80 -
+2026-04-23 10A Colaminadora Carton Bedoya Maria Fernanda 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7544 15 -
+2026-04-23 8C Estampadora Blandon Moreno Jose Lizandro 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7516 5 -
+2026-04-23 9 Troqueladora Rollo Blandon Moreno Jose Lizandro 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7515 6 -
+2026-04-23 8A Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7544 8 LADO 2
+2026-04-23 8A Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7544 24 LADO 1
+2026-04-23 8A Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7600 8 -
+2026-04-23 8C Estampadora Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7517 10 -
+2026-04-23 8C Estampadora Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7515 8 -
+2026-04-23 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7570 60 -
+2026-04-23 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7582 20 -
+2026-04-23 6 SpeedMaster Juan Carlos Preciado 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7578 1000 -
+2026-04-23 6 SpeedMaster Juan Carlos Preciado 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7582 30 -
+2026-04-23 8C Estampadora Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7516 15 -
+2026-04-23 11 Laminadora BOPP Riascos Castillo Andres Felipe 15 - Otros desperdicios 7418 42 huellas del esmaltado
+2026-04-23 11 Laminadora BOPP Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7518 10 -
+2026-04-23 11 Laminadora BOPP Riascos Castillo Andres Felipe 15 - Otros desperdicios 7575 56 huella en el esmaltado
+2026-04-23 11 Laminadora BOPP Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7575 40 -
+2026-04-23 10A Colaminadora Carton Bedoya Maria Fernanda 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7544 15 -
+2026-04-23 10A Colaminadora Carton Bedoya Maria Fernanda 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7544 10 -
+2026-04-23 6 SpeedMaster Juan Carlos Preciado 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7578 120 -
+2026-04-23 6 SpeedMaster Juan Carlos Preciado 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7611 130 -
+2026-04-23 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7470 24 -
+2026-04-23 7 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7517 200 -
+2026-04-23 7 SpeedMaster Ramirez Romero Andres Mauricio 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7515 275 -
+2026-04-24 9 Troqueladora Rollo milton felipe  suarez 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7611 43 -
+2026-04-24 8C Estampadora Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7576 13 -
+2026-04-24 11 Laminadora BOPP Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7533 35 -
+2026-04-24 8A Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7544 18 -
+2026-04-24 9 Troqueladora Rollo Blandon Moreno Jose Lizandro 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7565 23 -
+2026-04-24 6 SpeedMaster Enrique Muñoz Hector Hilde 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7580 100 -
+2026-04-24 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7580 200 -
+2026-04-24 4 Sord Z Obando Higuita Jose Luis 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7580 48 -
+2026-04-24 6 SpeedMaster Juan Carlos Preciado 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7580 350 -
+2026-04-24 11 Laminadora BOPP Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7533 10 -
+2026-04-24 8C Estampadora Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7516 8 -
+2026-04-24 8C Estampadora Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7517 9 -
+2026-04-24 9 Troqueladora Rollo Blandon Moreno Jose Lizandro 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7578 30 -
+2026-04-24 4 Sord Z Obando Higuita Jose Luis 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7560 20 -
+2026-04-24 4 Sord Z Obando Higuita Jose Luis 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7542 20 lado 1
+2026-04-24 8A Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7544 46 lado 2
+2026-04-24 8A Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7544 5 lado 1
+2026-04-24 10A Colaminadora Carton Bedoya Maria Fernanda 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7589 15 -
+2026-04-24 10A Colaminadora Carton Bedoya Maria Fernanda 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7545 8 -
+2026-04-24 10A Colaminadora Carton Bedoya Maria Fernanda 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7545 10 -
+2026-04-24 11 Laminadora BOPP Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7578 34 -
+2026-04-24 4 Sord Z Obando Higuita Jose Luis 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7542 20 lado 2
+2026-04-25 4 Sord Z Obando Higuita Jose Luis 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7579 207 -
+2026-04-27 6 SpeedMaster Juan Carlos Preciado 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7561 50 base
+2026-04-27 6 SpeedMaster Juan Carlos Preciado 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7561 50 tapa
+2026-04-27 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7553 90 -
+2026-04-27 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7554 76 -
+2026-04-27 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7594 48 -
+2026-04-27 6 SpeedMaster Juan Carlos Preciado 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7615 148 funda
+2026-04-27 10A Colaminadora Carton Bedoya Maria Fernanda 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7588 3 -
+2026-04-27 9 Troqueladora Rollo Blandon Moreno Jose Lizandro 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7565 40 -
+2026-04-27 8B Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7588 2 -
+2026-04-27 8B Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7545 4 -
+2026-04-27 8A Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7543 19 lado 1
+2026-04-27 8A Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7544 13 lado1
+2026-04-27 8A Troqueladora de Papel Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7544 6 -
+2026-04-27 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7594 12 -
+2026-04-28 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7554 38 -
+2026-04-28 11 Laminadora BOPP Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7533 40 -
+2026-04-28 10A Colaminadora Carton Bedoya Maria Fernanda 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7585 6 -
+2026-04-28 10A Colaminadora Carton Bedoya Maria Fernanda 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7543 20 lado 1
+2026-04-28 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7553 90 -
+2026-04-28 11 Laminadora BOPP Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7533 24 -
+2026-04-28 8A Troqueladora Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7585 5 -
+2026-04-28 8A Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7543 8 -
+2026-04-28 8C Estampadora Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7543 4 -
+2026-04-28 8A Troqueladora de Papel Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7543 4 -
+2026-04-29 6 SpeedMaster Enrique Muñoz Hector Hilde 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7567 120 forro
+2026-04-29 8A Troqueladora de Papel Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7543 6 lado 2
+2026-04-29 8B Troqueladora de Papel Roldan Barona Erik Esteban 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7579 47 -
+2026-04-29 8A Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7533 12 -
+2026-04-29 8A Troqueladora de Papel Cristian Felipe Echavarria 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7543 20 lado 2
+2026-04-29 11 Laminadora BOPP Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7590 10 -
+2026-04-29 11 Laminadora BOPP Riascos Castillo Andres Felipe 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7533 20 -
+2026-04-29 6 SpeedMaster Juan Carlos Preciado 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7569 150 lado 2
+2026-04-29 6 SpeedMaster Juan Carlos Preciado 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7569 150 lado 1
+2026-04-29 6 SpeedMaster Enrique Muñoz Hector Hilde 03 - Desperdicios por cortes inexactos o mal aprovechamiento del material 7564 60 -
+2026-04-29 14 Pegadora de Cajas Cruz Pinto Alberto 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7580 15 -
+2026-04-29 9 Troqueladora Rollo Blandon Moreno Jose Lizandro 02 - Desperdicio durante la configuración o pruebas iniciales de la máquina 7566 92 -
+2026-04-29 8C Estampadora Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7575 3 -
+2026-04-29 8A Troqueladora de Papel Sarmiento Rincon Yhan Otoniel 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7544 4 lado 1
+2026-04-30 14 Pegadora de Cajas Cruz Pinto Alberto 01 - Desperdicio por errores operativos (fallos humanos o de configuración de la máquina) 7579 30 -

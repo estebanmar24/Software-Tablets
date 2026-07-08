@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace TiempoProcesos.API.Models;
 
@@ -10,6 +11,7 @@ public class AdminUsuario
     public string Username { get; set; } = string.Empty;
 
     [Required]
+    [JsonIgnore]
     public string PasswordHash { get; set; } = string.Empty;
 
     [Required]

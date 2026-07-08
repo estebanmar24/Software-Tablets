@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
+using TiempoProcesos.API.Helpers;
+using TiempoProcesos.API.DTOs;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using System.IO;
@@ -114,36 +116,33 @@ public class TalleresController : ControllerBase
     /// Get all proveedores
     /// </summary>
     [HttpGet("proveedores")]
-    public async Task<ActionResult<IEnumerable<object>>> GetProveedores()
+    public async Task<ActionResult<IEnumerable<object>>> GetProveedores([FromQuery] int? rubroId)
     {
-        return await _context.Talleres_Proveedores
-            .Include(p => p.Rubro)
-            .Where(p => p.Activo)
-            .OrderBy(p => p.Nombre)
-            .Select(p => new {
-                p.Id,
-                p.Nombre,
-                p.NitCedula,
-                p.Telefono,
-                p.PrecioCotizado,
-                p.Activo,
-                p.RubroId,
-                RubroNombre = p.Rubro != null ? p.Rubro.Nombre : ""
-            })
-            .ToListAsync();
+        return Ok(await ProveedorRubroHelper.ListTalleresProveedoresAsync(_context, rubroId));
     }
 
     /// <summary>
     /// Create a new proveedor (NIT/Cedula is required)
     /// </summary>
     [HttpPost("proveedores")]
-    public async Task<ActionResult<Talleres_Proveedor>> CreateProveedor(Talleres_Proveedor proveedor)
+    public async Task<ActionResult<Talleres_Proveedor>> CreateProveedor([FromBody] ProveedorWriteDto dto)
     {
-        if (string.IsNullOrWhiteSpace(proveedor.NitCedula))
-        {
+        var nit = dto.NitCedula ?? dto.Nit;
+        if (string.IsNullOrWhiteSpace(nit))
             return BadRequest("El NIT o Cédula es obligatorio");
-        }
+        var rubroIds = dto.ResolveRubroIds();
+        var proveedor = new Talleres_Proveedor
+        {
+            Nombre = dto.Nombre,
+            NitCedula = nit,
+            Telefono = dto.Telefono,
+            PrecioCotizado = dto.PrecioCotizado,
+            RubroId = rubroIds.FirstOrDefault(),
+            Activo = true
+        };
         _context.Talleres_Proveedores.Add(proveedor);
+        await _context.SaveChangesAsync();
+        await ProveedorRubroHelper.SyncTalleresAsync(_context, proveedor.Id, rubroIds);
         await _context.SaveChangesAsync();
         return Ok(new { id = proveedor.Id });
     }
@@ -152,24 +151,22 @@ public class TalleresController : ControllerBase
     /// Update a proveedor
     /// </summary>
     [HttpPut("proveedores/{id}")]
-    public async Task<IActionResult> UpdateProveedor(int id, Talleres_Proveedor proveedor)
+    public async Task<IActionResult> UpdateProveedor(int id, [FromBody] ProveedorWriteDto dto)
     {
-        if (id != proveedor.Id) return BadRequest();
-        if (string.IsNullOrWhiteSpace(proveedor.NitCedula))
-        {
+        var nit = dto.NitCedula ?? dto.Nit;
+        if (string.IsNullOrWhiteSpace(nit))
             return BadRequest("El NIT o Cédula es obligatorio");
-        }
 
         var existingProveedor = await _context.Talleres_Proveedores.FindAsync(id);
         if (existingProveedor == null) return NotFound();
 
-        existingProveedor.Nombre = proveedor.Nombre;
-        existingProveedor.NitCedula = proveedor.NitCedula;
-        existingProveedor.Telefono = proveedor.Telefono;
-        existingProveedor.PrecioCotizado = proveedor.PrecioCotizado;
-        existingProveedor.RubroId = proveedor.RubroId;
-
-        _context.Entry(existingProveedor).State = EntityState.Modified;
+        var rubroIds = dto.ResolveRubroIds();
+        existingProveedor.Nombre = dto.Nombre;
+        existingProveedor.NitCedula = nit;
+        existingProveedor.Telefono = dto.Telefono;
+        existingProveedor.PrecioCotizado = dto.PrecioCotizado;
+        existingProveedor.RubroId = rubroIds.FirstOrDefault();
+        await ProveedorRubroHelper.SyncTalleresAsync(_context, id, rubroIds);
         await _context.SaveChangesAsync();
         return NoContent();
     }
@@ -191,8 +188,22 @@ public class TalleresController : ControllerBase
 
         Console.WriteLine($"[CreateGasto] EsPendiente from Frontend: {gasto.EsPendiente}");
 
+        var esLaborT = GastoMedioPagoHelper.EsGastoLaborHorasExtrasORecargo(gasto.TipoHoraId, gasto.TipoRecargoId);
+        var mpT = GastoMedioPagoHelper.ValidateCreditoOExclusivoEfectivo(esLaborT, gasto.EsSolicitudCredito, gasto.EsEfectivo);
+        if (mpT != null) return (ActionResult<Talleres_Gasto>)(object)mpT;
+
         try 
         {
+            var rubroT = await _context.Talleres_Rubros.FindAsync(gasto.RubroId);
+            var pT = gasto.Precio;
+            var pbT = gasto.PrecioBase;
+            var piT = gasto.PrecioIva;
+            var errIvT = GastoPrecioIvaHelper.AplicarSegunRubroYTipo(false, gasto.TipoHoraId, gasto.TipoRecargoId, rubroT?.Nombre, ref pT, ref pbT, ref piT);
+            if (errIvT != null) return (ActionResult<Talleres_Gasto>)(object)errIvT;
+            gasto.Precio = pT;
+            gasto.PrecioBase = pbT;
+            gasto.PrecioIva = piT;
+
             // Set Creator
             var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == "Id");
             if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int adminId))
@@ -200,7 +211,16 @@ public class TalleresController : ControllerBase
                 gasto.CreadoPorId = adminId;
             }
 
+            GastoPeriodoHelper.AplicarAnioMesDesdeFecha(gasto.Fecha, (a, m) => { gasto.Anio = a; gasto.Mes = m; });
+
             gasto.FechaCreacion = DateTime.UtcNow;
+
+            if (GastoOvertimeDuplicateHelper.IsOvertimeLabor(gasto.TipoHoraId, gasto.TipoRecargoId))
+            {
+                if (await GastoOvertimeDuplicateHelper.ExistsTalleresDuplicateAsync(_context, gasto))
+                    return BadRequest(new { message = GastoOvertimeDuplicateHelper.DuplicateMessage });
+            }
+
             _context.Talleres_Gastos.Add(gasto);
             await _context.SaveChangesAsync();
             return Ok(new { id = gasto.Id });
@@ -232,6 +252,22 @@ public class TalleresController : ControllerBase
         }
 
         Console.WriteLine($"[UpdateGasto] ID: {id}, EsPendiente from Frontend: {gasto.EsPendiente}");
+
+        var esLaborTu = GastoMedioPagoHelper.EsGastoLaborHorasExtrasORecargo(gasto.TipoHoraId, gasto.TipoRecargoId);
+        var mpTu = GastoMedioPagoHelper.ValidateCreditoOExclusivoEfectivo(esLaborTu, gasto.EsSolicitudCredito, gasto.EsEfectivo);
+        if (mpTu != null) return mpTu;
+
+        var rubroTu = await _context.Talleres_Rubros.FindAsync(gasto.RubroId);
+        var pTu = gasto.Precio;
+        var pbTu = gasto.PrecioBase;
+        var piTu = gasto.PrecioIva;
+        var errIvTu = GastoPrecioIvaHelper.AplicarSegunRubroYTipo(false, gasto.TipoHoraId, gasto.TipoRecargoId, rubroTu?.Nombre, ref pTu, ref pbTu, ref piTu);
+        if (errIvTu != null) return errIvTu;
+        gasto.Precio = pTu;
+        gasto.PrecioBase = pbTu;
+        gasto.PrecioIva = piTu;
+
+        GastoPeriodoHelper.AplicarAnioMesDesdeFecha(gasto.Fecha, (a, m) => { gasto.Anio = a; gasto.Mes = m; });
 
         // Preserve FechaCreacion
     var existingEntry = await _context.Talleres_Gastos.AsNoTracking().FirstOrDefaultAsync(g => g.Id == id);
@@ -294,6 +330,10 @@ public class TalleresController : ControllerBase
                 g.Mes,
                 g.NumeroFactura,
                 g.Precio,
+                g.PrecioBase,
+                g.PrecioIva,
+                g.EsSolicitudCredito,
+                g.EsEfectivo,
                 g.Fecha,
                 g.Observaciones,
                 g.FacturaPdfUrl,
@@ -315,7 +355,8 @@ public class TalleresController : ControllerBase
                 g.FechaModificacion,
                 g.CreadoPorId,
                 CreadoPorNombre = g.CreadoPor != null ? g.CreadoPor.NombreMostrar : "",
-                g.EsPendiente
+                g.EsPendiente,
+                Estado = g.Estado ?? "Montado"
             })
             .ToListAsync();
 
@@ -357,23 +398,31 @@ public class TalleresController : ControllerBase
             .Include(g => g.Personal)
             .Include(g => g.TipoHora)
             .OrderByDescending(g => g.Fecha)
-            .Select(g => new {
-                Id = g.Id,
-                Fecha = g.Fecha,
-                PersonalNombre = g.Personal != null ? g.Personal.Nombre : "N/A",
-                PersonalDocumento = g.Personal != null ? g.Personal.Documento : "",
-                Salario = g.Personal != null ? g.Personal.Salario : 0,
-                ValorHora = g.Personal != null ? (g.Personal.Salario / 220m) : 0,
-                NumeroOP = g.NumeroOP ?? "",
-                TipoHoraNombre = g.TipoHora != null ? g.TipoHora.Nombre : "N/A",
-                Factor = g.TipoHora != null ? g.TipoHora.Factor : 0,
-                CantidadHoras = g.CantidadHoras ?? 0,
-                Precio = g.Precio,
-                Nota = g.Observaciones ?? ""
-            })
             .ToListAsync();
 
-        return Ok(gastos);
+        var result = gastos.Select(g =>
+        {
+            var salario = g.Personal?.Salario ?? 0;
+            var factor = g.TipoHora?.Factor ?? 0;
+            var horas = g.CantidadHoras ?? 0;
+            return new
+            {
+                Id = g.Id,
+                Fecha = g.Fecha,
+                PersonalNombre = g.Personal?.Nombre ?? "N/A",
+                PersonalDocumento = g.Personal?.Documento ?? "",
+                Salario = salario,
+                ValorHora = LaborHorasExtrasHelper.ValorHora(salario),
+                NumeroOP = g.NumeroOP ?? "",
+                TipoHoraNombre = g.TipoHora?.Nombre ?? "N/A",
+                Factor = factor,
+                CantidadHoras = horas,
+                Precio = LaborHorasExtrasHelper.CalcularValorAPagar(salario, factor, horas),
+                Nota = g.Observaciones ?? ""
+            };
+        }).ToList();
+
+        return Ok(result);
     }
 
     // ===================== RECARGOS REPORT =====================
@@ -396,23 +445,31 @@ public class TalleresController : ControllerBase
             .Include(g => g.Personal)
             .Include(g => g.TipoRecargo)
             .OrderByDescending(g => g.Fecha)
-            .Select(g => new {
-                Id = g.Id,
-                Fecha = g.Fecha,
-                PersonalNombre = g.Personal != null ? g.Personal.Nombre : "N/A",
-                PersonalDocumento = g.Personal != null ? g.Personal.Documento : "",
-                Salario = g.Personal != null ? g.Personal.Salario : 0,
-                ValorHora = g.Personal != null ? (g.Personal.Salario / 220m) : 0,
-                NumeroOP = g.NumeroOP ?? "",
-                TipoRecargoNombre = g.TipoRecargo != null ? g.TipoRecargo.Nombre : "N/A",
-                Factor = g.TipoRecargo != null ? g.TipoRecargo.Factor : 0,
-                CantidadHoras = g.CantidadHoras ?? 0,
-                Precio = g.Precio,
-                Nota = g.Observaciones ?? ""
-            })
             .ToListAsync();
 
-        return Ok(gastos);
+        var result = gastos.Select(g =>
+        {
+            var salario = g.Personal?.Salario ?? 0;
+            var factor = g.TipoRecargo?.Factor ?? 0;
+            var horas = g.CantidadHoras ?? 0;
+            return new
+            {
+                Id = g.Id,
+                Fecha = g.Fecha,
+                PersonalNombre = g.Personal?.Nombre ?? "N/A",
+                PersonalDocumento = g.Personal?.Documento ?? "",
+                Salario = salario,
+                ValorHora = LaborHorasExtrasHelper.ValorHora(salario),
+                NumeroOP = g.NumeroOP ?? "",
+                TipoRecargoNombre = g.TipoRecargo?.Nombre ?? "N/A",
+                Factor = factor,
+                CantidadHoras = horas,
+                Precio = LaborHorasExtrasHelper.CalcularValorAPagar(salario, factor, horas),
+                Nota = g.Observaciones ?? ""
+            };
+        }).ToList();
+
+        return Ok(result);
     }
 
     #endregion

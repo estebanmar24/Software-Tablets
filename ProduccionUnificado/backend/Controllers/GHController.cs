@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
+using TiempoProcesos.API.Helpers;
 using Microsoft.AspNetCore.Authorization;
 
 namespace TiempoProcesos.API.Controllers;
@@ -397,6 +398,10 @@ public class GHController : ControllerBase
                 g.Mes,
                 g.NumeroFactura,
                 g.Precio,
+                g.PrecioBase,
+                g.PrecioIva,
+                g.EsSolicitudCredito,
+                g.EsEfectivo,
                 g.FechaCompra,
                 g.Nota,
                 g.ArchivoFactura,
@@ -406,7 +411,8 @@ public class GHController : ControllerBase
                 g.FechaModificacion,
                 g.CreadoPorId,
                 CreadoPorNombre = g.CreadoPor != null ? g.CreadoPor.NombreMostrar : "",
-                g.EsPendiente
+                g.EsPendiente,
+                Estado = g.Estado ?? "Montado"
             })
             .ToListAsync();
 
@@ -496,12 +502,27 @@ public class GHController : ControllerBase
     [HttpPost("gastos")]
     public async Task<ActionResult<GH_GastoMensual>> CreateGasto([FromBody] GH_GastoMensual gasto)
     {
+        var mpG = GastoMedioPagoHelper.ValidateCreditoOExclusivoEfectivo(false, gasto.EsSolicitudCredito, gasto.EsEfectivo);
+        if (mpG != null) return (ActionResult<GH_GastoMensual>)(object)mpG;
+
+        var rubroG = await _context.GH_Rubros.FindAsync(gasto.RubroId);
+        var pG = gasto.Precio;
+        var pbG = gasto.PrecioBase;
+        var piG = gasto.PrecioIva;
+        var errIvG = GastoPrecioIvaHelper.AplicarSegunRubroYTipo(false, null, null, rubroG?.Nombre, ref pG, ref pbG, ref piG);
+        if (errIvG != null) return (ActionResult<GH_GastoMensual>)(object)errIvG;
+        gasto.Precio = pG;
+        gasto.PrecioBase = pbG;
+        gasto.PrecioIva = piG;
+
         // Set Creator
         var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == "Id");
         if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int adminId))
         {
             gasto.CreadoPorId = adminId;
         }
+
+        GastoPeriodoHelper.AplicarAnioMesDesdeFecha(gasto.FechaCompra, (a, m) => { gasto.Anio = a; gasto.Mes = m; });
 
         gasto.FechaCreacion = DateTime.UtcNow;
         _context.GH_GastosMensuales.Add(gasto);
@@ -513,6 +534,21 @@ public class GHController : ControllerBase
     public async Task<IActionResult> UpdateGasto(int id, [FromBody] GH_GastoMensual gasto)
     {
         if (id != gasto.Id) return BadRequest();
+
+        GastoPeriodoHelper.AplicarAnioMesDesdeFecha(gasto.FechaCompra, (a, m) => { gasto.Anio = a; gasto.Mes = m; });
+
+        var mpGu = GastoMedioPagoHelper.ValidateCreditoOExclusivoEfectivo(false, gasto.EsSolicitudCredito, gasto.EsEfectivo);
+        if (mpGu != null) return mpGu;
+
+        var rubroGu = await _context.GH_Rubros.FindAsync(gasto.RubroId);
+        var pGu = gasto.Precio;
+        var pbGu = gasto.PrecioBase;
+        var piGu = gasto.PrecioIva;
+        var errIvGu = GastoPrecioIvaHelper.AplicarSegunRubroYTipo(false, null, null, rubroGu?.Nombre, ref pGu, ref pbGu, ref piGu);
+        if (errIvGu != null) return errIvGu;
+        gasto.Precio = pGu;
+        gasto.PrecioBase = pbGu;
+        gasto.PrecioIva = piGu;
         
         // Preserve FechaCreacion
         var existingEntry = await _context.GH_GastosMensuales.AsNoTracking().FirstOrDefaultAsync(g => g.Id == id);
