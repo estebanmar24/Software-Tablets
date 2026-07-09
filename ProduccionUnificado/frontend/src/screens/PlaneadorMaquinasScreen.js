@@ -4,10 +4,10 @@ import {
     ActivityIndicator, Alert, Modal, TextInput, Platform
 } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
-import * as planeacionApi from '../services/planeacionApi';
+import * as planeadorGanttApi from '../services/planeadorGanttApi';
 import * as api from '../services/api';
 
-const PROCESOS = [
+const DEFAULT_ACTIVIDADES = [
     'Preprensa', 'Conversion', 'Corte', 'Impresion', 'Recubrimiento',
     'Colaminado', 'Estampado', 'Troquelado', 'Terminado'
 ];
@@ -66,10 +66,11 @@ const getRangeDates = (baseDate) => {
     });
 };
 
-const buildDefaultProcesosForm = (startDate) => {
+const buildDefaultProcesosForm = (actividadNombres, startDate) => {
+    const nombres = actividadNombres?.length ? actividadNombres : DEFAULT_ACTIVIDADES;
     const base = formatDateKey(startDate);
     const result = {};
-    PROCESOS.forEach((p, i) => {
+    nombres.forEach((p, i) => {
         const d = new Date(startDate);
         d.setDate(d.getDate() + i);
         const fin = new Date(d);
@@ -84,7 +85,7 @@ const buildDefaultProcesosForm = (startDate) => {
             tiemposAuxiliares: [],
         };
     });
-    result[PROCESOS[0]].fechaInicio = base;
+    if (nombres[0]) result[nombres[0]].fechaInicio = base;
     return result;
 };
 
@@ -171,6 +172,80 @@ const overlapsDay = (fechaInicio, fechaFin, dayDate) => {
     return start <= dayEnd && end >= dayStart;
 };
 
+const VIEW_TABS = [
+    { key: 'diagrama', label: 'Diagrama' },
+    { key: 'cumplimiento', label: 'Cumplimiento de meta' },
+];
+
+const getCumplimientoColor = (pct) => {
+    if (pct >= 100) return '#22C55E';
+    if (pct >= 80) return '#EAB308';
+    return '#EF4444';
+};
+
+const buildCumplimientoData = (prog) => {
+    const meta = prog.metaTiros || 0;
+    const procesos = prog.procesos || [];
+    const now = new Date();
+
+    if (!meta || procesos.length === 0) {
+        return {
+            id: prog.id,
+            numeroOP: prog.numeroOP,
+            cliente: prog.cliente,
+            color: prog.color || '#3B82F6',
+            meta,
+            realTiros: 0,
+            realPct: 0,
+            esperadoPct: 0,
+            esperadoTiros: 0,
+            cumplimientoVsCronograma: 0,
+            estadoCrono: 'sin_datos',
+            inicio: null,
+            fin: null,
+        };
+    }
+
+    const inicio = new Date(Math.min(...procesos.map((p) => new Date(p.fechaInicio).getTime())));
+    const fin = new Date(Math.max(...procesos.map((p) => new Date(p.fechaFin).getTime())));
+    const realTiros = procesos.reduce((sum, p) => sum + Number(p.cantidadProducida || 0), 0);
+    const realPct = Math.min(100, Math.round((realTiros / meta) * 100));
+
+    const totalMs = fin.getTime() - inicio.getTime();
+    let esperadoPct = 0;
+    if (totalMs > 0) {
+        if (now <= inicio) esperadoPct = 0;
+        else if (now >= fin) esperadoPct = 100;
+        else esperadoPct = Math.round(((now.getTime() - inicio.getTime()) / totalMs) * 100);
+    }
+    const esperadoTiros = Math.round((meta * esperadoPct) / 100);
+
+    let cumplimientoVsCronograma = 0;
+    if (esperadoPct === 0 && realPct > 0) cumplimientoVsCronograma = 100;
+    else if (esperadoPct > 0) cumplimientoVsCronograma = Math.round((realPct / esperadoPct) * 100);
+    else cumplimientoVsCronograma = realPct >= 100 ? 100 : 0;
+
+    let estadoCrono = 'en_tiempo';
+    if (cumplimientoVsCronograma < 80) estadoCrono = 'atrasado';
+    else if (cumplimientoVsCronograma >= 100) estadoCrono = 'adelantado';
+
+    return {
+        id: prog.id,
+        numeroOP: prog.numeroOP,
+        cliente: prog.cliente,
+        color: prog.color || '#3B82F6',
+        meta,
+        realTiros,
+        realPct,
+        esperadoPct,
+        esperadoTiros,
+        cumplimientoVsCronograma,
+        estadoCrono,
+        inicio,
+        fin,
+    };
+};
+
 export default function PlaneadorMaquinasScreen() {
     const { colors, isDarkMode } = useTheme();
     const [loading, setLoading] = useState(true);
@@ -178,10 +253,16 @@ export default function PlaneadorMaquinasScreen() {
     const [rangeDates, setRangeDates] = useState(getRangeDates(new Date()));
     const [programaciones, setProgramaciones] = useState([]);
     const [ordenes, setOrdenes] = useState([]);
+    const [actividades, setActividades] = useState([]);
     const [selectedId, setSelectedId] = useState(null);
     const [backendUnavailable, setBackendUnavailable] = useState(false);
 
+    const [activeTab, setActiveTab] = useState('diagrama');
     const [showModal, setShowModal] = useState(false);
+    const [showActividadesModal, setShowActividadesModal] = useState(false);
+    const [actividadEditId, setActividadEditId] = useState(null);
+    const [actividadNombre, setActividadNombre] = useState('');
+    const [savingActividad, setSavingActividad] = useState(false);
     const [showDayDetail, setShowDayDetail] = useState(false);
     const [dayDetailData, setDayDetailData] = useState(null);
     const [editingId, setEditingId] = useState(null);
@@ -190,8 +271,20 @@ export default function PlaneadorMaquinasScreen() {
         numeroOP: '',
         cliente: '',
         metaTiros: '',
-        procesosSeleccionados: buildDefaultProcesosForm(new Date()),
+        procesosSeleccionados: buildDefaultProcesosForm(DEFAULT_ACTIVIDADES, new Date()),
     });
+
+    const actividadNombres = useMemo(() => {
+        const nombres = actividades.map((a) => a.nombre || a.Nombre).filter(Boolean);
+        const base = nombres.length ? nombres : [...DEFAULT_ACTIVIDADES];
+        const extras = new Set();
+        programaciones.forEach((prog) => {
+            (prog.procesos || []).forEach((p) => {
+                if (!base.includes(p.proceso)) extras.add(p.proceso);
+            });
+        });
+        return [...base, ...extras];
+    }, [actividades, programaciones]);
 
     const monthGroups = useMemo(() => groupDatesByMonth(rangeDates), [rangeDates]);
     const weekGroups = useMemo(() => groupDatesByWeek(rangeDates), [rangeDates]);
@@ -214,7 +307,7 @@ export default function PlaneadorMaquinasScreen() {
 
     const rowHeights = useMemo(() => {
         const heights = {};
-        PROCESOS.forEach((proceso) => {
+        actividadNombres.forEach((proceso) => {
             let maxItems = 0;
             rangeDates.forEach((_, i) => {
                 maxItems = Math.max(maxItems, getDayItems(proceso, i).length);
@@ -224,19 +317,62 @@ export default function PlaneadorMaquinasScreen() {
             heights[proceso] = Math.max(BASE_ROW_HEIGHT, 10 + visible * (CHIP_HEIGHT + 2) + extra * 14);
         });
         return heights;
-    }, [getDayItems, rangeDates]);
+    }, [getDayItems, rangeDates, actividadNombres]);
+
+    const cumplimientoData = useMemo(
+        () => programaciones.map(buildCumplimientoData),
+        [programaciones]
+    );
+
+    const cumplimientoResumen = useMemo(() => {
+        if (cumplimientoData.length === 0) {
+            return { promedio: 0, adelantadas: 0, enTiempo: 0, atrasadas: 0 };
+        }
+        const valid = cumplimientoData.filter((d) => d.meta > 0);
+        const promedio = valid.length
+            ? Math.round(valid.reduce((s, d) => s + d.cumplimientoVsCronograma, 0) / valid.length)
+            : 0;
+        return {
+            promedio,
+            adelantadas: valid.filter((d) => d.estadoCrono === 'adelantado').length,
+            enTiempo: valid.filter((d) => d.estadoCrono === 'en_tiempo').length,
+            atrasadas: valid.filter((d) => d.estadoCrono === 'atrasado').length,
+        };
+    }, [cumplimientoData]);
+
+    const modalTheme = useMemo(() => ({
+        border: isDarkMode ? '#334155' : colors.border,
+        fieldLabel: isDarkMode ? '#CBD5E0' : '#1E293B',
+        hint: isDarkMode ? '#94A3B8' : '#64748B',
+        inputBg: isDarkMode ? '#2D3748' : '#FFFFFF',
+        inputBorder: isDarkMode ? '#4A5568' : '#CBD5E0',
+        inputText: isDarkMode ? '#FFFFFF' : '#1E293B',
+        placeholder: isDarkMode ? '#718096' : '#94A3B8',
+        procesoBlockBg: isDarkMode ? '#11182744' : '#F8FAFC',
+        procesoBlockBorder: isDarkMode ? '#334155' : '#E2E8F0',
+        procesoBlockActiveBg: isDarkMode ? '#4F46E511' : '#EEF2FF',
+        hourChipBg: isDarkMode ? '#2D3748' : '#F1F5F9',
+        hourChipBorder: isDarkMode ? '#4A5568' : '#CBD5E0',
+        hourChipText: isDarkMode ? '#CBD5E0' : '#334155',
+        checkBoxBg: isDarkMode ? '#2D3748' : '#FFFFFF',
+        checkBoxBorder: isDarkMode ? '#4A5568' : '#94A3B8',
+        auxBorder: isDarkMode ? '#334155' : '#E2E8F0',
+        cancelBorder: isDarkMode ? '#4A5568' : '#CBD5E0',
+    }), [isDarkMode, colors.border]);
 
     const loadData = useCallback(async () => {
         setLoading(true);
         try {
             const start = formatDateKey(rangeDates[0]);
             const end = `${formatDateKey(rangeDates[rangeDates.length - 1])}T23:59:59`;
-            const [progs, ords] = await Promise.all([
-                planeacionApi.getProgramacionesRango(start, end),
+            const [progs, ords, acts] = await Promise.all([
+                planeadorGanttApi.getProgramacionesRango(start, end),
                 api.getOrdenes(),
+                planeadorGanttApi.getPlaneadorActividades().catch(() => []),
             ]);
             setProgramaciones(Array.isArray(progs) ? progs : []);
             setOrdenes(ords);
+            setActividades(Array.isArray(acts) ? acts : []);
             setBackendUnavailable(false);
             setSelectedId((prev) => prev ?? (progs.length > 0 ? progs[0].id : null));
         } catch (error) {
@@ -277,14 +413,14 @@ export default function PlaneadorMaquinasScreen() {
             numeroOP: '',
             cliente: '',
             metaTiros: '',
-            procesosSeleccionados: buildDefaultProcesosForm(rangeDates[0]),
+            procesosSeleccionados: buildDefaultProcesosForm(actividadNombres, rangeDates[0]),
         });
         setShowModal(true);
     };
 
     const openEditModal = (prog) => {
         setEditingId(prog.id);
-        const procesosMap = buildDefaultProcesosForm(rangeDates[0]);
+        const procesosMap = buildDefaultProcesosForm(actividadNombres, rangeDates[0]);
         prog.procesos.forEach((p) => {
             procesosMap[p.proceso] = {
                 activo: true,
@@ -319,27 +455,33 @@ export default function PlaneadorMaquinasScreen() {
             return;
         }
 
-        const procesosActivos = Object.entries(form.procesosSeleccionados)
-            .filter(([, v]) => v.activo)
-            .map(([proceso, v]) => {
-                const inicio = buildDateTime(v.fechaInicio, v.horaInicio);
-                const fin = buildDateTime(v.fechaFin, v.horaFin);
-                if (new Date(inicio) >= new Date(fin)) {
-                    throw new Error(`El proceso "${proceso}" tiene fecha/hora de fin anterior al inicio.`);
-                }
-                return {
-                    proceso,
-                    fechaInicio: inicio,
-                    fechaFin: fin,
-                    horasEstimadas: v.horasEstimadas ? parseFloat(v.horasEstimadas) : null,
-                    tiemposAuxiliares: (v.tiemposAuxiliares || [])
-                        .filter((t) => t.descripcion?.trim())
-                        .map((t) => ({
-                            descripcion: t.descripcion.trim(),
-                            horas: parseFloat(t.horas) || 0,
-                        })),
-                };
-            });
+        let procesosActivos;
+        try {
+            procesosActivos = Object.entries(form.procesosSeleccionados)
+                .filter(([, v]) => v.activo)
+                .map(([proceso, v]) => {
+                    const inicio = buildDateTime(v.fechaInicio, v.horaInicio);
+                    const fin = buildDateTime(v.fechaFin, v.horaFin);
+                    if (new Date(inicio) >= new Date(fin)) {
+                        throw new Error(`El proceso "${proceso}" tiene fecha/hora de fin anterior al inicio.`);
+                    }
+                    return {
+                        proceso,
+                        fechaInicio: inicio,
+                        fechaFin: fin,
+                        horasEstimadas: v.horasEstimadas ? parseFloat(v.horasEstimadas) : null,
+                        tiemposAuxiliares: (v.tiemposAuxiliares || [])
+                            .filter((t) => t.descripcion?.trim())
+                            .map((t) => ({
+                                descripcion: t.descripcion.trim(),
+                                horas: parseFloat(t.horas) || 0,
+                            })),
+                    };
+                });
+        } catch (validationError) {
+            Alert.alert('Validación', validationError.message || 'Revise fechas y procesos seleccionados.');
+            return;
+        }
 
         if (procesosActivos.length === 0) {
             Alert.alert('Procesos', 'Seleccione al menos un proceso para la OP.');
@@ -357,10 +499,14 @@ export default function PlaneadorMaquinasScreen() {
 
         setSaving(true);
         try {
+            const saveFn = editingId ? planeadorGanttApi.actualizarProgramacionOP : planeadorGanttApi.crearProgramacionOP;
+            if (typeof saveFn !== 'function') {
+                throw new TypeError('Módulo de guardado no cargado. Recargue la página con Ctrl+F5.');
+            }
             if (editingId) {
-                await planeacionApi.actualizarProgramacionOP(editingId, payload);
+                await planeadorGanttApi.actualizarProgramacionOP(editingId, payload);
             } else {
-                await planeacionApi.crearProgramacionOP(payload);
+                await planeadorGanttApi.crearProgramacionOP(payload);
             }
             setShowModal(false);
             await loadData();
@@ -369,6 +515,8 @@ export default function PlaneadorMaquinasScreen() {
             if (error?.response?.status === 404) {
                 setBackendUnavailable(true);
                 Alert.alert('Backend desactualizado', 'Reinicie el backend (dotnet run) para habilitar guardar programaciones OP.');
+            } else if (error instanceof TypeError || String(error?.message || '').includes('no cargado')) {
+                Alert.alert('Error de carga', error.message || 'Recargue la página con Ctrl+F5 e intente de nuevo.');
             } else if (error.message && !error.response) {
                 Alert.alert('Validación', error.message);
             } else {
@@ -412,7 +560,7 @@ export default function PlaneadorMaquinasScreen() {
     const handleDelete = (id) => {
         const performDelete = async () => {
             try {
-                await planeacionApi.eliminarProgramacionOP(id);
+                await planeadorGanttApi.eliminarProgramacionOP(id);
                 if (selectedId === id) setSelectedId(null);
                 setShowModal(false);
                 setShowDayDetail(false);
@@ -426,6 +574,72 @@ export default function PlaneadorMaquinasScreen() {
             if (window.confirm('¿Eliminar esta programación de OP?')) performDelete();
         } else {
             Alert.alert('Eliminar', '¿Eliminar esta programación de OP?', [
+                { text: 'Cancelar', style: 'cancel' },
+                { text: 'Eliminar', style: 'destructive', onPress: performDelete },
+            ]);
+        }
+    };
+
+    const resetActividadForm = () => {
+        setActividadEditId(null);
+        setActividadNombre('');
+    };
+
+    const openActividadesModal = () => {
+        resetActividadForm();
+        setShowActividadesModal(true);
+    };
+
+    const startEditActividad = (actividad) => {
+        setActividadEditId(actividad.id);
+        setActividadNombre(actividad.nombre || actividad.Nombre || '');
+    };
+
+    const handleSaveActividad = async () => {
+        const nombre = actividadNombre.trim();
+        if (!nombre) {
+            Alert.alert('Campo requerido', 'Ingrese el nombre de la actividad.');
+            return;
+        }
+
+        setSavingActividad(true);
+        try {
+            const wasEdit = !!actividadEditId;
+            if (actividadEditId) {
+                await planeadorGanttApi.actualizarPlaneadorActividad(actividadEditId, { nombre });
+            } else {
+                await planeadorGanttApi.crearPlaneadorActividad({ nombre });
+            }
+            resetActividadForm();
+            await loadData();
+            Alert.alert('Éxito', wasEdit ? 'Actividad actualizada.' : 'Actividad creada.');
+        } catch (error) {
+            if (error?.response?.status === 404) {
+                Alert.alert('Backend desactualizado', 'Reinicie el backend para gestionar actividades.');
+            } else {
+                Alert.alert('Error', getErrorMessage(error));
+            }
+        } finally {
+            setSavingActividad(false);
+        }
+    };
+
+    const handleDeleteActividad = (actividad) => {
+        const nombre = actividad.nombre || actividad.Nombre || 'esta actividad';
+        const performDelete = async () => {
+            try {
+                await planeadorGanttApi.eliminarPlaneadorActividad(actividad.id);
+                if (actividadEditId === actividad.id) resetActividadForm();
+                await loadData();
+            } catch (error) {
+                Alert.alert('Error', getErrorMessage(error));
+            }
+        };
+
+        if (Platform.OS === 'web' && window.confirm) {
+            if (window.confirm(`¿Eliminar la actividad "${nombre}"?`)) performDelete();
+        } else {
+            Alert.alert('Confirmar', `¿Eliminar la actividad "${nombre}"?`, [
                 { text: 'Cancelar', style: 'cancel' },
                 { text: 'Eliminar', style: 'destructive', onPress: performDelete },
             ]);
@@ -558,7 +772,7 @@ export default function PlaneadorMaquinasScreen() {
                 </View>
 
                 <ScrollView style={styles.ganttBody} nestedScrollEnabled>
-                    {PROCESOS.map((proceso, rowIdx) => (
+                    {actividadNombres.map((proceso, rowIdx) => (
                         <View
                             key={proceso}
                             style={[
@@ -739,62 +953,163 @@ export default function PlaneadorMaquinasScreen() {
         );
     };
 
+    const renderActividadesModal = () => (
+        <Modal visible={showActividadesModal} transparent animationType="fade">
+            <View style={styles.modalOverlay}>
+                <View style={[styles.actividadesModalContent, { backgroundColor: isDarkMode ? '#1A202C' : '#FFFFFF', borderColor: modalTheme.border }]}>
+                    <View style={styles.actividadesModalHeader}>
+                        <Text style={[styles.modalTitle, { color: colors.text, marginBottom: 0 }]}>
+                            Gestionar actividades
+                        </Text>
+                        <TouchableOpacity onPress={() => { setShowActividadesModal(false); resetActividadForm(); }}>
+                            <Text style={{ color: colors.subText, fontSize: 22, fontWeight: '700' }}>✕</Text>
+                        </TouchableOpacity>
+                    </View>
+                    <Text style={{ color: modalTheme.hint, fontSize: 12, marginBottom: 14 }}>
+                        Las actividades son las filas del diagrama. Puede añadir, renombrar o quitar las que no tengan OPs programadas.
+                    </Text>
+
+                    <View style={[styles.actividadFormRow, { borderColor: modalTheme.procesoBlockBorder, backgroundColor: modalTheme.procesoBlockBg }]}>
+                        <TextInput
+                            style={[styles.input, { flex: 1, backgroundColor: modalTheme.inputBg, borderColor: modalTheme.inputBorder, color: modalTheme.inputText }]}
+                            placeholder={actividadEditId ? 'Editar nombre de actividad' : 'Nueva actividad'}
+                            placeholderTextColor={modalTheme.placeholder}
+                            value={actividadNombre}
+                            onChangeText={setActividadNombre}
+                        />
+                        <TouchableOpacity
+                            style={[styles.actividadSaveBtn, { opacity: savingActividad ? 0.7 : 1 }]}
+                            onPress={handleSaveActividad}
+                            disabled={savingActividad}
+                        >
+                            {savingActividad
+                                ? <ActivityIndicator color="#FFF" size="small" />
+                                : <Text style={styles.actividadSaveBtnText}>{actividadEditId ? 'Guardar' : '+ Añadir'}</Text>}
+                        </TouchableOpacity>
+                        {actividadEditId && (
+                            <TouchableOpacity style={styles.actividadCancelEditBtn} onPress={resetActividadForm}>
+                                <Text style={{ color: colors.subText, fontWeight: '700' }}>Cancelar</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
+
+                    <ScrollView style={{ maxHeight: 360, marginTop: 12 }}>
+                        {[...actividades]
+                            .sort((a, b) => (a.orden ?? a.Orden ?? 0) - (b.orden ?? b.Orden ?? 0))
+                            .map((actividad) => {
+                                const nombre = actividad.nombre || actividad.Nombre;
+                                const isEditing = actividadEditId === actividad.id;
+                                return (
+                                    <View
+                                        key={actividad.id}
+                                        style={[
+                                            styles.actividadListItem,
+                                            {
+                                                borderColor: isEditing ? '#4F46E5' : modalTheme.procesoBlockBorder,
+                                                backgroundColor: isEditing ? modalTheme.procesoBlockActiveBg : modalTheme.procesoBlockBg,
+                                            },
+                                        ]}
+                                    >
+                                        <Text style={[styles.actividadListName, { color: colors.text }]}>{nombre}</Text>
+                                        <View style={styles.actividadListActions}>
+                                            <TouchableOpacity style={styles.actividadActionBtn} onPress={() => startEditActividad(actividad)}>
+                                                <Text style={styles.actividadActionBtnText}>Editar</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity
+                                                style={[styles.actividadActionBtn, styles.actividadDeleteBtn]}
+                                                onPress={() => handleDeleteActividad(actividad)}
+                                            >
+                                                <Text style={[styles.actividadActionBtnText, { color: '#FEE2E2' }]}>Quitar</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+                                );
+                            })}
+                    </ScrollView>
+                </View>
+            </View>
+        </Modal>
+    );
+
     const renderModal = () => (
         <Modal visible={showModal} transparent animationType="fade">
             <View style={styles.modalOverlay}>
                 <ScrollView contentContainerStyle={styles.modalScrollContent}>
-                    <View style={[styles.modalContent, { backgroundColor: isDarkMode ? '#1A202C' : '#FFFFFF' }]}>
+                    <View style={[styles.modalContent, { backgroundColor: isDarkMode ? '#1A202C' : '#FFFFFF', borderColor: modalTheme.border }]}>
                         <Text style={[styles.modalTitle, { color: colors.text }]}>
                             {editingId ? 'Editar Programación' : 'Nueva Programación de OP'}
                         </Text>
 
-                        <Text style={styles.fieldLabel}>Número de OP *</Text>
+                        <Text style={[styles.fieldLabel, { color: modalTheme.fieldLabel }]}>Número de OP *</Text>
                         <TextInput
-                            style={styles.input}
+                            style={[styles.input, { backgroundColor: modalTheme.inputBg, borderColor: modalTheme.inputBorder, color: modalTheme.inputText }]}
                             placeholder="Ej: OP-2024-001"
-                            placeholderTextColor="#718096"
+                            placeholderTextColor={modalTheme.placeholder}
                             value={form.numeroOP || ''}
                             onChangeText={(v) => setForm((f) => ({ ...f, numeroOP: v }))}
                         />
 
-                        <Text style={styles.fieldLabel}>Cliente</Text>
+                        <Text style={[styles.fieldLabel, { color: modalTheme.fieldLabel }]}>Cliente</Text>
                         <TextInput
-                            style={styles.input}
+                            style={[styles.input, { backgroundColor: modalTheme.inputBg, borderColor: modalTheme.inputBorder, color: modalTheme.inputText }]}
                             placeholder="Nombre del cliente"
-                            placeholderTextColor="#718096"
+                            placeholderTextColor={modalTheme.placeholder}
                             value={form.cliente || ''}
                             onChangeText={(v) => setForm((f) => ({ ...f, cliente: v }))}
                         />
 
-                        <Text style={styles.fieldLabel}>Meta de Tiros *</Text>
+                        <Text style={[styles.fieldLabel, { color: modalTheme.fieldLabel }]}>Meta de Tiros *</Text>
                         <TextInput
-                            style={styles.input}
+                            style={[styles.input, { backgroundColor: modalTheme.inputBg, borderColor: modalTheme.inputBorder, color: modalTheme.inputText }]}
                             placeholder="Ej: 50000"
-                            placeholderTextColor="#718096"
+                            placeholderTextColor={modalTheme.placeholder}
                             keyboardType="numeric"
                             value={form.metaTiros || ''}
                             onChangeText={(v) => setForm((f) => ({ ...f, metaTiros: v }))}
                         />
 
-                        <Text style={[styles.fieldLabel, { marginTop: 20 }]}>Procesos, fechas y horas</Text>
-                        <Text style={{ color: '#718096', fontSize: 12, marginBottom: 10 }}>
+                        <Text style={[styles.fieldLabel, { color: modalTheme.fieldLabel, marginTop: 20 }]}>Procesos, fechas y horas</Text>
+                        <Text style={{ color: modalTheme.hint, fontSize: 12, marginBottom: 10 }}>
                             Marque los procesos, indique inicio/fin con hora, horas de trabajo y tiempos auxiliares.
                         </Text>
 
-                        {PROCESOS.map((proceso) => {
-                            const proc = form.procesosSeleccionados[proceso];
+                        {actividadNombres.map((proceso) => {
+                            const proc = form.procesosSeleccionados[proceso] || {
+                                activo: false,
+                                fechaInicio: formatDateKey(rangeDates[0]),
+                                horaInicio: 8,
+                                fechaFin: formatDateKey(rangeDates[0]),
+                                horaFin: 18,
+                                horasEstimadas: '8',
+                                tiemposAuxiliares: [],
+                            };
                             return (
-                                <View key={proceso} style={[styles.procesoBlock, proc.activo && styles.procesoBlockActive]}>
+                                <View
+                                    key={proceso}
+                                    style={[
+                                        styles.procesoBlock,
+                                        {
+                                            backgroundColor: proc.activo ? modalTheme.procesoBlockActiveBg : modalTheme.procesoBlockBg,
+                                            borderColor: proc.activo ? '#4F46E5' : modalTheme.procesoBlockBorder,
+                                        },
+                                    ]}
+                                >
                                     <View style={styles.procesoFormRow}>
                                         <TouchableOpacity
-                                            style={[styles.checkBox, proc.activo && styles.checkBoxActive]}
+                                            style={[
+                                                styles.checkBox,
+                                                {
+                                                    backgroundColor: proc.activo ? '#4F46E5' : modalTheme.checkBoxBg,
+                                                    borderColor: proc.activo ? '#4F46E5' : modalTheme.checkBoxBorder,
+                                                },
+                                            ]}
                                             onPress={() => updateProcesoField(proceso, 'activo', !proc.activo)}
                                         >
-                                            <Text style={{ color: proc.activo ? '#FFF' : '#718096', fontSize: 12 }}>
+                                            <Text style={{ color: proc.activo ? '#FFF' : modalTheme.hint, fontSize: 12 }}>
                                                 {proc.activo ? '✓' : ''}
                                             </Text>
                                         </TouchableOpacity>
-                                        <Text style={[styles.procesoFormName, { color: colors.text, opacity: proc.activo ? 1 : 0.5 }]}>
+                                        <Text style={[styles.procesoFormName, { color: colors.text, opacity: proc.activo ? 1 : 0.65 }]}>
                                             {proceso}
                                         </Text>
                                     </View>
@@ -803,23 +1118,29 @@ export default function PlaneadorMaquinasScreen() {
                                         <View style={styles.procesoFields}>
                                             <View style={styles.timeRow}>
                                                 <View style={styles.timeGroup}>
-                                                    <Text style={styles.timeLabel}>Inicio</Text>
+                                                    <Text style={[styles.timeLabel, { color: modalTheme.fieldLabel }]}>Inicio</Text>
                                                     <TextInput
-                                                        style={styles.dateInput}
+                                                        style={[styles.dateInput, { backgroundColor: modalTheme.inputBg, borderColor: modalTheme.inputBorder, color: modalTheme.inputText }]}
                                                         value={proc.fechaInicio || ''}
                                                         onChangeText={(v) => updateProcesoField(proceso, 'fechaInicio', v)}
                                                         placeholder="YYYY-MM-DD"
-                                                        placeholderTextColor="#718096"
+                                                        placeholderTextColor={modalTheme.placeholder}
                                                     />
                                                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 4 }}>
                                                         <View style={styles.hourPickerRow}>
                                                             {HOUR_OPTIONS.map((h) => (
                                                                 <TouchableOpacity
                                                                     key={`si-${h.value}`}
-                                                                    style={[styles.hourChip, proc.horaInicio === h.value && styles.hourChipActive]}
+                                                                    style={[
+                                                                        styles.hourChip,
+                                                                        {
+                                                                            backgroundColor: proc.horaInicio === h.value ? '#4F46E5' : modalTheme.hourChipBg,
+                                                                            borderColor: proc.horaInicio === h.value ? '#4F46E5' : modalTheme.hourChipBorder,
+                                                                        },
+                                                                    ]}
                                                                     onPress={() => updateProcesoField(proceso, 'horaInicio', h.value)}
                                                                 >
-                                                                    <Text style={[styles.hourChipText, proc.horaInicio === h.value && { color: '#FFF' }]}>
+                                                                    <Text style={[styles.hourChipText, { color: proc.horaInicio === h.value ? '#FFF' : modalTheme.hourChipText }]}>
                                                                         {h.label}
                                                                     </Text>
                                                                 </TouchableOpacity>
@@ -828,26 +1149,32 @@ export default function PlaneadorMaquinasScreen() {
                                                     </ScrollView>
                                                 </View>
 
-                                                <Text style={{ color: '#718096', marginTop: 20 }}>→</Text>
+                                                <Text style={{ color: modalTheme.hint, marginTop: 20 }}>→</Text>
 
                                                 <View style={styles.timeGroup}>
-                                                    <Text style={styles.timeLabel}>Fin</Text>
+                                                    <Text style={[styles.timeLabel, { color: modalTheme.fieldLabel }]}>Fin</Text>
                                                     <TextInput
-                                                        style={styles.dateInput}
+                                                        style={[styles.dateInput, { backgroundColor: modalTheme.inputBg, borderColor: modalTheme.inputBorder, color: modalTheme.inputText }]}
                                                         value={proc.fechaFin || ''}
                                                         onChangeText={(v) => updateProcesoField(proceso, 'fechaFin', v)}
                                                         placeholder="YYYY-MM-DD"
-                                                        placeholderTextColor="#718096"
+                                                        placeholderTextColor={modalTheme.placeholder}
                                                     />
                                                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 4 }}>
                                                         <View style={styles.hourPickerRow}>
                                                             {HOUR_OPTIONS.map((h) => (
                                                                 <TouchableOpacity
                                                                     key={`sf-${h.value}`}
-                                                                    style={[styles.hourChip, proc.horaFin === h.value && styles.hourChipActive]}
+                                                                    style={[
+                                                                        styles.hourChip,
+                                                                        {
+                                                                            backgroundColor: proc.horaFin === h.value ? '#4F46E5' : modalTheme.hourChipBg,
+                                                                            borderColor: proc.horaFin === h.value ? '#4F46E5' : modalTheme.hourChipBorder,
+                                                                        },
+                                                                    ]}
                                                                     onPress={() => updateProcesoField(proceso, 'horaFin', h.value)}
                                                                 >
-                                                                    <Text style={[styles.hourChipText, proc.horaFin === h.value && { color: '#FFF' }]}>
+                                                                    <Text style={[styles.hourChipText, { color: proc.horaFin === h.value ? '#FFF' : modalTheme.hourChipText }]}>
                                                                         {h.label}
                                                                     </Text>
                                                                 </TouchableOpacity>
@@ -858,44 +1185,44 @@ export default function PlaneadorMaquinasScreen() {
                                             </View>
 
                                             <View style={styles.horasEstimadasRow}>
-                                                <Text style={styles.timeLabel}>Horas de trabajo *</Text>
+                                                <Text style={[styles.timeLabel, { color: modalTheme.fieldLabel }]}>Horas de trabajo *</Text>
                                                 <TextInput
-                                                    style={[styles.dateInput, { width: 100 }]}
+                                                    style={[styles.dateInput, { width: 100, backgroundColor: modalTheme.inputBg, borderColor: modalTheme.inputBorder, color: modalTheme.inputText }]}
                                                     value={proc.horasEstimadas || ''}
                                                     onChangeText={(v) => updateProcesoField(proceso, 'horasEstimadas', v)}
                                                     placeholder="Ej: 8"
-                                                    placeholderTextColor="#718096"
+                                                    placeholderTextColor={modalTheme.placeholder}
                                                     keyboardType="decimal-pad"
                                                 />
                                             </View>
 
-                                            <View style={styles.auxSection}>
+                                            <View style={[styles.auxSection, { borderTopColor: modalTheme.auxBorder }]}>
                                                 <View style={styles.auxHeader}>
-                                                    <Text style={styles.timeLabel}>Tiempos auxiliares</Text>
+                                                    <Text style={[styles.timeLabel, { color: modalTheme.fieldLabel }]}>Tiempos auxiliares</Text>
                                                     <TouchableOpacity style={styles.addAuxBtn} onPress={() => addTiempoAuxiliar(proceso)}>
                                                         <Text style={styles.addAuxBtnText}>+ Añadir</Text>
                                                     </TouchableOpacity>
                                                 </View>
                                                 {(proc.tiemposAuxiliares || []).length === 0 ? (
-                                                    <Text style={{ color: '#718096', fontSize: 11, fontStyle: 'italic' }}>
+                                                    <Text style={{ color: modalTheme.hint, fontSize: 11, fontStyle: 'italic' }}>
                                                         Ej: montaje, limpieza, puesta a punto...
                                                     </Text>
                                                 ) : (
                                                     proc.tiemposAuxiliares.map((aux) => (
                                                         <View key={aux.id} style={styles.auxRow}>
                                                             <TextInput
-                                                                style={[styles.dateInput, { flex: 2 }]}
+                                                                style={[styles.dateInput, { flex: 2, backgroundColor: modalTheme.inputBg, borderColor: modalTheme.inputBorder, color: modalTheme.inputText }]}
                                                                 value={aux.descripcion || ''}
                                                                 onChangeText={(v) => updateTiempoAuxiliar(proceso, aux.id, 'descripcion', v)}
                                                                 placeholder="Descripción"
-                                                                placeholderTextColor="#718096"
+                                                                placeholderTextColor={modalTheme.placeholder}
                                                             />
                                                             <TextInput
-                                                                style={[styles.dateInput, { width: 70 }]}
+                                                                style={[styles.dateInput, { width: 70, backgroundColor: modalTheme.inputBg, borderColor: modalTheme.inputBorder, color: modalTheme.inputText }]}
                                                                 value={aux.horas || ''}
                                                                 onChangeText={(v) => updateTiempoAuxiliar(proceso, aux.id, 'horas', v)}
                                                                 placeholder="Hrs"
-                                                                placeholderTextColor="#718096"
+                                                                placeholderTextColor={modalTheme.placeholder}
                                                                 keyboardType="decimal-pad"
                                                             />
                                                             <TouchableOpacity onPress={() => removeTiempoAuxiliar(proceso, aux.id)}>
@@ -921,7 +1248,7 @@ export default function PlaneadorMaquinasScreen() {
                                 </TouchableOpacity>
                             )}
                             <TouchableOpacity
-                                style={[styles.modalBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#4A5568' }]}
+                                style={[styles.modalBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: modalTheme.cancelBorder }]}
                                 onPress={() => setShowModal(false)}
                             >
                                 <Text style={[styles.modalBtnText, { color: colors.text }]}>Cancelar</Text>
@@ -932,6 +1259,138 @@ export default function PlaneadorMaquinasScreen() {
             </View>
         </Modal>
     );
+
+    const renderCumplimiento = () => {
+        if (cumplimientoData.length === 0) {
+            return (
+                <View style={[styles.cumplimientoEmpty, { backgroundColor: isDarkMode ? '#111827' : '#F1F5F9' }]}>
+                    <Text style={{ color: colors.subText, textAlign: 'center', fontSize: 14 }}>
+                        No hay OPs programadas en este rango. Cree una programación para ver el cumplimiento de meta.
+                    </Text>
+                </View>
+            );
+        }
+
+        const maxBarPct = Math.max(
+            100,
+            ...cumplimientoData.map((d) => Math.max(d.realPct, d.esperadoPct, d.cumplimientoVsCronograma))
+        );
+
+        return (
+            <ScrollView style={styles.cumplimientoScroll} contentContainerStyle={styles.cumplimientoContent}>
+                <View style={styles.cumplimientoResumenRow}>
+                    <View style={[styles.cumplimientoKpi, { backgroundColor: isDarkMode ? '#1F2937' : '#E2E8F0' }]}>
+                        <Text style={[styles.cumplimientoKpiValue, { color: getCumplimientoColor(cumplimientoResumen.promedio) }]}>
+                            {cumplimientoResumen.promedio}%
+                        </Text>
+                        <Text style={[styles.cumplimientoKpiLabel, { color: colors.subText }]}>Cumplimiento promedio</Text>
+                    </View>
+                    <View style={[styles.cumplimientoKpi, { backgroundColor: isDarkMode ? '#1F2937' : '#E2E8F0' }]}>
+                        <Text style={[styles.cumplimientoKpiValue, { color: '#22C55E' }]}>{cumplimientoResumen.adelantadas}</Text>
+                        <Text style={[styles.cumplimientoKpiLabel, { color: colors.subText }]}>Adelantadas</Text>
+                    </View>
+                    <View style={[styles.cumplimientoKpi, { backgroundColor: isDarkMode ? '#1F2937' : '#E2E8F0' }]}>
+                        <Text style={[styles.cumplimientoKpiValue, { color: '#EAB308' }]}>{cumplimientoResumen.enTiempo}</Text>
+                        <Text style={[styles.cumplimientoKpiLabel, { color: colors.subText }]}>En tiempo</Text>
+                    </View>
+                    <View style={[styles.cumplimientoKpi, { backgroundColor: isDarkMode ? '#1F2937' : '#E2E8F0' }]}>
+                        <Text style={[styles.cumplimientoKpiValue, { color: '#EF4444' }]}>{cumplimientoResumen.atrasadas}</Text>
+                        <Text style={[styles.cumplimientoKpiLabel, { color: colors.subText }]}>Atrasadas</Text>
+                    </View>
+                </View>
+
+                <View style={styles.cumplimientoLegend}>
+                    <View style={styles.legendItem}>
+                        <View style={[styles.legendDot, { backgroundColor: '#3B82F6' }]} />
+                        <Text style={{ color: colors.subText, fontSize: 11 }}>Avance real (meta)</Text>
+                    </View>
+                    <View style={styles.legendItem}>
+                        <View style={[styles.legendDot, { backgroundColor: '#A78BFA' }]} />
+                        <Text style={{ color: colors.subText, fontSize: 11 }}>Avance esperado (cronograma)</Text>
+                    </View>
+                    <View style={styles.legendItem}>
+                        <View style={[styles.legendDot, { backgroundColor: '#22C55E' }]} />
+                        <Text style={{ color: colors.subText, fontSize: 11 }}>Cumplimiento vs cronograma</Text>
+                    </View>
+                </View>
+
+                <View style={[styles.cumplimientoChart, { backgroundColor: isDarkMode ? '#111827' : '#F8FAFC', borderColor: colors.border }]}>
+                    <Text style={[styles.cumplimientoChartTitle, { color: colors.text }]}>
+                        Cumplimiento de meta según cronograma
+                    </Text>
+                    <Text style={{ color: colors.subText, fontSize: 11, marginBottom: 16 }}>
+                        Compara el avance real de tiros contra lo que el cronograma establecido exige a la fecha de hoy.
+                    </Text>
+
+                    {cumplimientoData.map((item) => {
+                        const barColor = getCumplimientoColor(item.cumplimientoVsCronograma);
+                        const realWidth = `${Math.max(4, (item.realPct / maxBarPct) * 100)}%`;
+                        const esperadoWidth = `${Math.max(4, (item.esperadoPct / maxBarPct) * 100)}%`;
+                        const cumplWidth = `${Math.max(4, (Math.min(item.cumplimientoVsCronograma, maxBarPct) / maxBarPct) * 100)}%`;
+
+                        return (
+                            <TouchableOpacity
+                                key={item.id}
+                                style={[styles.cumplimientoRow, { borderColor: colors.border }]}
+                                onPress={() => setSelectedId(item.id)}
+                            >
+                                <View style={styles.cumplimientoRowHeader}>
+                                    <View style={[styles.colorDot, { backgroundColor: item.color }]} />
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={[styles.cumplimientoOp, { color: colors.text }]}>{item.numeroOP}</Text>
+                                        <Text style={{ color: colors.subText, fontSize: 11 }}>
+                                            {item.cliente || 'Sin cliente'} · Meta: {item.meta.toLocaleString()} tiros
+                                        </Text>
+                                    </View>
+                                    <View style={[styles.cumplimientoBadge, { backgroundColor: `${barColor}22`, borderColor: barColor }]}>
+                                        <Text style={[styles.cumplimientoBadgeText, { color: barColor }]}>
+                                            {item.cumplimientoVsCronograma}%
+                                        </Text>
+                                    </View>
+                                </View>
+
+                                <View style={styles.cumplimientoBarGroup}>
+                                    <View style={styles.cumplimientoBarRow}>
+                                        <Text style={[styles.cumplimientoBarLabel, { color: colors.subText }]}>Real</Text>
+                                        <View style={styles.cumplimientoBarTrack}>
+                                            <View style={[styles.cumplimientoBarFill, { width: realWidth, backgroundColor: '#3B82F6' }]} />
+                                        </View>
+                                        <Text style={[styles.cumplimientoBarValue, { color: colors.text }]}>
+                                            {item.realPct}% ({item.realTiros.toLocaleString()})
+                                        </Text>
+                                    </View>
+                                    <View style={styles.cumplimientoBarRow}>
+                                        <Text style={[styles.cumplimientoBarLabel, { color: colors.subText }]}>Esperado</Text>
+                                        <View style={styles.cumplimientoBarTrack}>
+                                            <View style={[styles.cumplimientoBarFill, { width: esperadoWidth, backgroundColor: '#A78BFA' }]} />
+                                        </View>
+                                        <Text style={[styles.cumplimientoBarValue, { color: colors.text }]}>
+                                            {item.esperadoPct}% ({item.esperadoTiros.toLocaleString()})
+                                        </Text>
+                                    </View>
+                                    <View style={styles.cumplimientoBarRow}>
+                                        <Text style={[styles.cumplimientoBarLabel, { color: colors.subText }]}>Cumpl.</Text>
+                                        <View style={styles.cumplimientoBarTrack}>
+                                            <View style={[styles.cumplimientoBarFill, { width: cumplWidth, backgroundColor: barColor }]} />
+                                        </View>
+                                        <Text style={[styles.cumplimientoBarValue, { color: barColor, fontWeight: '800' }]}>
+                                            {item.cumplimientoVsCronograma}%
+                                        </Text>
+                                    </View>
+                                </View>
+
+                                {item.inicio && item.fin && (
+                                    <Text style={{ color: colors.subText, fontSize: 10, marginTop: 8 }}>
+                                        Cronograma: {item.inicio.toLocaleDateString('es-CO')} – {item.fin.toLocaleDateString('es-CO')}
+                                    </Text>
+                                )}
+                            </TouchableOpacity>
+                        );
+                    })}
+                </View>
+            </ScrollView>
+        );
+    };
 
     if (loading && programaciones.length === 0) {
         return (
@@ -947,8 +1406,7 @@ export default function PlaneadorMaquinasScreen() {
         <View style={[styles.container, { backgroundColor: colors.background }]}>
             <View style={[styles.topBar, { borderBottomColor: colors.border }]}>
                 <View>
-                    <Text style={[styles.ganttTitle, { color: colors.text }]}>Diagrama de Gantt</Text>
-                    <Text style={{ color: colors.subText, fontSize: 12 }}>
+                    <Text style={{ color: colors.subText, fontSize: 13, fontWeight: '600' }}>
                         {WEEKS_TO_SHOW} semanas · {rangeLabel}
                     </Text>
                 </View>
@@ -962,20 +1420,48 @@ export default function PlaneadorMaquinasScreen() {
                     <TouchableOpacity style={styles.navBtn} onPress={() => shiftRange(1)}>
                         <Text style={styles.navBtnText}>4 sem ▶</Text>
                     </TouchableOpacity>
+                    <TouchableOpacity style={styles.actividadesBtn} onPress={openActividadesModal}>
+                        <Text style={styles.actividadesBtnText}>Actividades</Text>
+                    </TouchableOpacity>
                     <TouchableOpacity style={styles.createBtn} onPress={openCreateModal}>
                         <Text style={styles.createBtnText}>+ Programar OP</Text>
                     </TouchableOpacity>
                 </View>
             </View>
 
-            <View style={styles.weekLegend}>
-                {WEEK_PALETTE.map((w, i) => (
-                    <View key={i} style={styles.legendItem}>
-                        <View style={[styles.legendDot, { backgroundColor: w.header }]} />
-                        <Text style={{ color: colors.subText, fontSize: 11 }}>{w.label}</Text>
-                    </View>
-                ))}
+            <View style={[styles.tabsContainer, { borderBottomColor: colors.border }]}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsScroll}>
+                    {VIEW_TABS.map((tab) => (
+                        <TouchableOpacity
+                            key={tab.key}
+                            style={[
+                                styles.viewTab,
+                                activeTab === tab.key && styles.viewTabActive,
+                                activeTab === tab.key && { borderColor: colors.primary },
+                            ]}
+                            onPress={() => setActiveTab(tab.key)}
+                        >
+                            <Text style={[
+                                styles.viewTabText,
+                                { color: activeTab === tab.key ? colors.primary : colors.subText },
+                            ]}>
+                                {tab.label}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </ScrollView>
             </View>
+
+            {activeTab === 'diagrama' && (
+                <View style={styles.weekLegend}>
+                    {WEEK_PALETTE.map((w, i) => (
+                        <View key={i} style={styles.legendItem}>
+                            <View style={[styles.legendDot, { backgroundColor: w.header }]} />
+                            <Text style={{ color: colors.subText, fontSize: 11 }}>{w.label}</Text>
+                        </View>
+                    ))}
+                </View>
+            )}
 
             {backendUnavailable && (
                 <View style={styles.backendBanner}>
@@ -985,12 +1471,21 @@ export default function PlaneadorMaquinasScreen() {
                 </View>
             )}
 
-            <View style={styles.ganttWrapper}>
-                {renderGantt()}
-            </View>
+            {activeTab === 'diagrama' ? (
+                <>
+                    <View style={styles.ganttWrapper}>
+                        {renderGantt()}
+                    </View>
+                    {renderProgressPanel()}
+                </>
+            ) : (
+                <View style={styles.cumplimientoWrapper}>
+                    {renderCumplimiento()}
+                </View>
+            )}
 
-            {renderProgressPanel()}
             {renderModal()}
+            {renderActividadesModal()}
             {renderDayDetailModal()}
         </View>
     );
@@ -1008,6 +1503,88 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
     },
     ganttTitle: { fontSize: 20, fontWeight: '800', letterSpacing: 0.5 },
+    tabsContainer: {
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+        borderBottomWidth: 1,
+    },
+    tabsScroll: { flexDirection: 'row', gap: 10 },
+    viewTab: {
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: 'transparent',
+        backgroundColor: 'transparent',
+    },
+    viewTabActive: {
+        backgroundColor: '#3B82F618',
+        borderWidth: 1,
+    },
+    viewTabText: { fontSize: 13, fontWeight: '700' },
+    cumplimientoWrapper: { flex: 1 },
+    cumplimientoScroll: { flex: 1 },
+    cumplimientoContent: { padding: 20, paddingBottom: 32 },
+    cumplimientoEmpty: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 32,
+        margin: 20,
+        borderRadius: 12,
+    },
+    cumplimientoResumenRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 10,
+        marginBottom: 16,
+    },
+    cumplimientoKpi: {
+        flex: 1,
+        minWidth: 120,
+        borderRadius: 12,
+        padding: 14,
+        alignItems: 'center',
+    },
+    cumplimientoKpiValue: { fontSize: 22, fontWeight: '800' },
+    cumplimientoKpiLabel: { fontSize: 11, marginTop: 4, textAlign: 'center' },
+    cumplimientoLegend: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 16,
+        marginBottom: 14,
+    },
+    cumplimientoChart: {
+        borderRadius: 14,
+        borderWidth: 1,
+        padding: 16,
+    },
+    cumplimientoChartTitle: { fontSize: 16, fontWeight: '800', marginBottom: 4 },
+    cumplimientoRow: {
+        borderTopWidth: 1,
+        paddingVertical: 14,
+    },
+    cumplimientoRowHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    cumplimientoOp: { fontSize: 14, fontWeight: '800' },
+    cumplimientoBadge: {
+        borderWidth: 1,
+        borderRadius: 10,
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+    },
+    cumplimientoBadgeText: { fontSize: 13, fontWeight: '800' },
+    cumplimientoBarGroup: { marginTop: 12, gap: 8 },
+    cumplimientoBarRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    cumplimientoBarLabel: { width: 58, fontSize: 10, fontWeight: '600' },
+    cumplimientoBarTrack: {
+        flex: 1,
+        height: 10,
+        backgroundColor: '#334155',
+        borderRadius: 5,
+        overflow: 'hidden',
+    },
+    cumplimientoBarFill: { height: '100%', borderRadius: 5 },
+    cumplimientoBarValue: { width: 110, fontSize: 10, textAlign: 'right' },
     topBarActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     navBtn: {
         backgroundColor: '#1E40AF',
@@ -1025,6 +1602,67 @@ const styles = StyleSheet.create({
         elevation: 3,
     },
     createBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
+    actividadesBtn: {
+        backgroundColor: '#334155',
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderRadius: 10,
+    },
+    actividadesBtnText: { color: '#FFF', fontWeight: '700', fontSize: 13 },
+    actividadesModalContent: {
+        borderRadius: 16,
+        padding: 24,
+        maxWidth: 520,
+        width: '100%',
+        alignSelf: 'center',
+        borderWidth: 1,
+        maxHeight: '90%',
+    },
+    actividadesModalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    actividadFormRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        padding: 10,
+        borderRadius: 10,
+        borderWidth: 1,
+        flexWrap: 'wrap',
+    },
+    actividadSaveBtn: {
+        backgroundColor: '#4F46E5',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderRadius: 10,
+        minWidth: 88,
+        alignItems: 'center',
+    },
+    actividadSaveBtnText: { color: '#FFF', fontWeight: '700', fontSize: 13 },
+    actividadCancelEditBtn: { paddingHorizontal: 8, paddingVertical: 10 },
+    actividadListItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: 12,
+        borderRadius: 10,
+        borderWidth: 1,
+        marginBottom: 8,
+        gap: 10,
+    },
+    actividadListName: { flex: 1, fontSize: 14, fontWeight: '700' },
+    actividadListActions: { flexDirection: 'row', gap: 8 },
+    actividadActionBtn: {
+        backgroundColor: '#475569',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 8,
+    },
+    actividadDeleteBtn: { backgroundColor: '#DC2626' },
+    actividadActionBtnText: { color: '#FFF', fontSize: 11, fontWeight: '700' },
     weekLegend: {
         flexDirection: 'row',
         paddingHorizontal: 20,
