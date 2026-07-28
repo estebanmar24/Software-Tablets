@@ -33,16 +33,22 @@ import MedioPagoGastoControls, {
     showAlertMedioPagoRequerido
 } from '../components/MedioPagoGastoControls';
 import { useTheme, lightColors } from '../contexts/ThemeContext';
-import { resolveOvertimeShiftContext, applyLegacyLunchDiscount } from '../utils/overtimeLunch';
+import { resolveOvertimeShiftContext, pickDaySchedulesFromVersion, addDayScheduleCutPoints, isWithinOrdinaryShift, resolveLunchDiscountHours, appendLunchInfoLine } from '../utils/overtimeLunch';
+import { produccionApi } from '../services/produccionApi';
 import {
     MSG_GASTO_HORAS_DUPLICADO,
     findDuplicateOvertimeAmongCandidates,
     buildOvertimeCandidatesFromForm,
 } from '../utils/duplicateOvertimeGasto';
+import { calcValorHoraLabor } from '../utils/laborHorasExtras';
 import { showAppAlert, extractApiErrorMessage, isOvertimeDuplicateMessage } from '../utils/appAlert';
 import { getFileServerUrl, getApiBaseUrl } from '../services/apiConfig';
 import { parseMontoInput, GastoListaPrecios } from '../utils/gastoPrecioForm';
 import { gastoPermiteEdicionTrasContabilidad } from '../utils/gastoEditPermission';
+import GastoAutorizacionBloque from '../components/GastoAutorizacionBloque';
+import GastosCapturaBodyScroll from '../components/GastosCapturaBodyScroll';
+import { puedeEditarMontosGasto } from '../utils/gastoAutorizacionIntegracion';
+import { MODULOS_GASTO } from '../services/gastosAutorizacionApi';
 import {
     esRubroConProductoInventario,
     esRubroConMaquinaObligatoria,
@@ -108,12 +114,12 @@ const COLOMBIAN_HOLIDAYS = [
     '2025-10-13', '2025-11-03', '2025-11-17', '2025-12-08', '2025-12-25',
     // 2026
     '2026-01-01', '2026-01-12', '2026-03-23', '2026-04-02', '2026-04-03', '2026-05-01',
-    '2026-05-18', '2026-06-08', '2026-06-15', '2026-06-29', '2026-07-20', '2026-08-07',
+    '2026-05-18', '2026-06-08', '2026-06-15', '2026-06-29', '2026-07-13', '2026-07-20', '2026-08-07',
     '2026-08-17', '2026-10-12', '2026-11-02', '2026-11-16', '2026-12-08', '2026-12-25'
 ];
 
 
-export default function MantenimientoGastosScreen({ initialTab = 'gastos' }) {
+export default function MantenimientoGastosScreen({ initialTab = 'gastos', displayName }) {
     const { colors: _c, isDarkMode: _d } = useTheme(); const colors = lightColors; const isDarkMode = false;
     const styles = getStyles(isDarkMode, colors);
     const [activeTab, setActiveTab] = useState(initialTab);
@@ -143,7 +149,7 @@ export default function MantenimientoGastosScreen({ initialTab = 'gastos' }) {
             </View>
 
             {/* Content based on active tab */}
-            {activeTab === 'gastos' && <GastosTab />}
+            {activeTab === 'gastos' && <GastosTab displayName={displayName} />}
             {activeTab === 'graficas' && <GraficasTab />}
             {activeTab === 'rubros' && <RubrosTab />}
             {activeTab === 'productos' && <ProductosTab />}
@@ -154,9 +160,11 @@ export default function MantenimientoGastosScreen({ initialTab = 'gastos' }) {
 }
 
 // ===================== GASTOS TAB =====================
-function GastosTab() {
+function GastosTab({ displayName }) {
     const { colors: themeColors, isDarkMode: _d } = useTheme(); const colors = lightColors; const isDarkMode = false;
     const styles = getStyles(isDarkMode, colors);
+    const autorizacionActivaRef = useRef(null);
+    const [authRefreshKey, setAuthRefreshKey] = useState(0);
     const [loading, setLoading] = useState(true);
     const [serverUrl, setServerUrl] = useState('');
     const [apiBaseUrl, setApiBaseUrl] = useState('');
@@ -283,6 +291,21 @@ function GastosTab() {
     // ========== SMART BREAKDOWN (Turno base desde horaInicio) ==========
     const [breakdown, setBreakdown] = useState([]);
     const [formOvertimeError, setFormOvertimeError] = useState('');
+    const [jornadaOt, setJornadaOt] = useState(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        const load = async () => {
+            try {
+                const data = await produccionApi.getParametrosJornadaOt(formData.fecha);
+                if (!cancelled) setJornadaOt(data);
+            } catch (e) {
+                if (!cancelled) setJornadaOt(null);
+            }
+        };
+        if (formData.fecha) load();
+        return () => { cancelled = true; };
+    }, [formData.fecha]);
 
     const calculateSmartBreakdown = useCallback(() => {
         if (!formData.usuarioId || !formData.horaInicio || !formData.horaFin || !formData.fecha) {
@@ -318,10 +341,12 @@ function GastosTab() {
         const isSpecialDayStart = isSundayStart || isHolidayStart;
         const isSaturdayStart = startDate.getDay() === 6;
 
-        const { shiftEndMin, lunchWindow: lunchWindowCtx, usesScheduledShift } = resolveOvertimeShiftContext(startFull, endFull, {
+        const otCtx = resolveOvertimeShiftContext(startFull, endFull, {
             isSpecialDay: isSpecialDayStart,
             isSaturday: isSaturdayStart,
+            daySchedules: pickDaySchedulesFromVersion(jornadaOt, startDate),
         });
+        const { lunchWindow: lunchWindowCtx, usesScheduledShift, usesDaySchedule, lunchDiscountHours } = otCtx;
 
         const addBreakdown = (s, e, typeNameMatch, isHe, isSpecialDay) => {
             if (e <= s) return;
@@ -344,7 +369,7 @@ function GastosTab() {
         };
 
         const cutPoints = new Set([startFull, endFull]);
-        if (shiftEndMin > startFull && shiftEndMin < endFull) cutPoints.add(shiftEndMin);
+        addDayScheduleCutPoints(cutPoints, otCtx, startFull, endFull);
         [NIGHT_END, NIGHT_START, 1440, NIGHT_END + 1440, NIGHT_START + 1440].forEach(boundary => {
             if (boundary > startFull && boundary < endFull) cutPoints.add(boundary);
         });
@@ -363,7 +388,7 @@ function GastosTab() {
             if (mid >= 1440) actualDate.setDate(actualDate.getDate() + 1);
             const actualDateISO = formatISO(actualDate);
             const isSpecialDay = actualDate.getDay() === 0 || COLOMBIAN_HOLIDAYS.includes(actualDateISO);
-            const isWithinShift = s < shiftEndMin;
+            const isWithinShift = isWithinOrdinaryShift(mid, otCtx, s);
             const timeInDay = mid % 1440;
             const isNight = timeInDay >= NIGHT_START || timeInDay < NIGHT_END;
 
@@ -385,24 +410,23 @@ function GastosTab() {
         };
 
         const totalDurationMin = endFull - startFull;
-        const lunchDiscountApplied = lunchWindowCtx || usesScheduledShift
-            ? 0
-            : (totalDurationMin >= 6 * 60 ? applyLegacyLunchDiscount(breakdownItems, 1.0) : 0);
-        if (lunchDiscountApplied > 0 && breakdownItems.some(item => item.hours > 0)) {
-            breakdownItems.push({ type: '- COMIDA (Descuento)', typeId: 0, hours: -lunchDiscountApplied, isHe: false, isLunch: true });
-        }
+        const lunchHoursToApply = resolveLunchDiscountHours(
+            { lunchWindow: lunchWindowCtx, lunchDiscountHours, usesScheduledShift, usesDaySchedule },
+            { totalDurationMin, isSaturday: isSaturdayStart }
+        );
+        appendLunchInfoLine(breakdownItems, lunchHoursToApply);
 
         setBreakdown(breakdownItems.map(item => ({ ...item, formattedHours: formatHours(item.hours) })));
 
         let totalCost = 0;
-        const valorHoraBase = (parseFloat(worker.salario) || 0) / 220;
+        const valorHoraBase = calcValorHoraLabor(parseFloat(worker.salario) || 0, formData.fecha);
         breakdownItems.filter(item => !item.isLunch).forEach(item => {
             const tipo = (item.isHe ? tiposHora : tiposRecargo).find(t => t.id == item.typeId);
             if (tipo) totalCost += valorHoraBase * (parseFloat(tipo.factor) || 1.0) * item.hours;
         });
         setFormData(prev => ({ ...prev, precio: Math.round(totalCost).toString() }));
 
-    }, [formData.usuarioId, formData.horaInicio, formData.horaFin, formData.fecha, usuarios, tiposHora, tiposRecargo]);
+    }, [formData.usuarioId, formData.horaInicio, formData.horaFin, formData.fecha, usuarios, tiposHora, tiposRecargo, jornadaOt]);
 
     useEffect(() => {
         calculateSmartBreakdown();
@@ -513,7 +537,7 @@ function GastosTab() {
             numeroFactura: '', facturaPdfUrl: '', archivoFactura: null, archivoNombre: '',
             fechaEntregaFactura: '', fechaVencimientoFactura: '',
             numeroOP: '', esPendiente: false, esSolicitudCredito: false,
-            esOtraMaquina: false, otraMaquinaNombre: ''
+            esOtraMaquina: false, otraMaquinaNombre: '', desdeAutorizacion: false,
         });
         setMedioPago(null);
         setFormOvertimeError('');
@@ -545,6 +569,54 @@ function GastosTab() {
 
     const handleAdd = () => {
         resetForm();
+        autorizacionActivaRef.current = null;
+        setShowModal(true);
+    };
+
+    const handleRegistrarDirecto = (rubroId) => {
+        autorizacionActivaRef.current = null;
+        resetForm();
+        setFormData((prev) => ({ ...prev, rubroId: String(rubroId) }));
+        setShowModal(true);
+    };
+
+    const handleRegistrarDesdeAutorizacion = (sol) => {
+        autorizacionActivaRef.current = sol;
+        setEditItem(null);
+        setIsLegalizing(false);
+        isLegalizingRef.current = false;
+        resetForm();
+        const fecha = sol.fechaAproximada?.split('T')[0] || new Date().toISOString().split('T')[0];
+        setFormData({
+            rubroId: sol.rubroId ? String(sol.rubroId) : '',
+            proveedorId: sol.proveedorId ? String(sol.proveedorId) : '',
+            maquinaId: '',
+            productoId: '',
+            cantidad: '',
+            precio: String(sol.cantidad ?? ''),
+            precioDisplay: formatCurrencyInput(String(sol.cantidad ?? '')),
+            precioBase: String(sol.cantidad ?? ''),
+            precioIva: '0',
+            fecha,
+            nota: sol.razon || '',
+            numeroFactura: '',
+            facturaPdfUrl: '',
+            archivoFactura: null,
+            archivoNombre: '',
+            fechaEntregaFactura: '',
+            fechaVencimientoFactura: '',
+            numeroOP: '',
+            usuarioId: '',
+            horaInicio: '',
+            horaFin: '',
+            cantidadHoras: '',
+            esPendiente: false,
+            esSolicitudCredito: sol.esSolicitudCredito || false,
+            esOtraMaquina: false,
+            otraMaquinaNombre: '',
+            desdeAutorizacion: true,
+        });
+        setMedioPago(flagsToMedioPago(!!sol.esSolicitudCredito, !!sol.esEfectivo));
         setShowModal(true);
     };
 
@@ -797,7 +869,7 @@ function GastosTab() {
             // Si hay breakdown (Horas Extras/Recargos con Hora Inicio/Fin), crear múltiples registros
             if ((isHorasExtras || isRecargo) && breakdown.length > 0 && !editItem) {
                 const worker = usuarios.find(u => u.id == formData.usuarioId);
-                const valorHoraBase = (parseFloat(worker?.salario) || 0) / 220;
+                const valorHoraBase = calcValorHoraLabor(parseFloat(worker?.salario) || 0, formData.fecha);
 
                 const rubroHE = rubros.find(r => r.nombre.toLowerCase().includes('horas extras') || r.nombre.toLowerCase().includes('hora extra'))?.id;
                 const rubroRecargo = rubros.find(r => r.nombre.toLowerCase().includes('recargo'))?.id;
@@ -835,7 +907,12 @@ function GastosTab() {
                 await Promise.all(promises);
             } else {
                 if (editItem) await mantenimientoApi.updateGasto(editItem.id, { ...gastoData, id: editItem.id });
-                else await mantenimientoApi.createGasto(gastoData);
+                else {
+                    const authId = autorizacionActivaRef.current?.id;
+                    await mantenimientoApi.createGasto(gastoData, authId);
+                    autorizacionActivaRef.current = null;
+                    setAuthRefreshKey((k) => k + 1);
+                }
             }
 
             Alert.alert('Éxito', editItem ? 'Gasto actualizado' : 'Gasto registrado');
@@ -1148,16 +1225,26 @@ function GastosTab() {
                 </View>
             </View>
 
-            {/* Add Button - EXACT SST STYLE */}
-            <TouchableOpacity style={styles.addButton} onPress={handleAdd}>
-                <Text style={styles.addButtonText}>+ Agregar Gasto</Text>
-            </TouchableOpacity>
+            <GastosCapturaBodyScroll>
+            <GastoAutorizacionBloque
+                modulo={MODULOS_GASTO.mantenimiento}
+                anio={anio}
+                mes={mes}
+                displayName={displayName}
+                proveedores={proveedores}
+                rubros={rubros}
+                formatCurrency={formatCurrency}
+                formatDate={formatDate}
+                onRegistrarGasto={handleRegistrarDesdeAutorizacion}
+                onRegistrarDirecto={handleRegistrarDirecto}
+                refreshKey={authRefreshKey}
+            />
 
             {/* Gastos List */}
             {loading ? (
                 <ActivityIndicator size="large" color="#2563EB" style={styles.loading} />
             ) : (
-                <ScrollView style={styles.listContainer}>
+                <View style={styles.listContainer}>
                     {filteredGastos.length === 0 ? (
                         <View style={styles.emptyState}>
                             <Text style={styles.emptyText}>
@@ -1278,9 +1365,10 @@ function GastosTab() {
                             );
                         })
                     )}
-                </ScrollView>
+                </View>
             )
             }
+            </GastosCapturaBodyScroll>
 
 
             {/* Add/Edit Modal - EXACT SST STYLE */}
@@ -1646,23 +1734,23 @@ function GastosTab() {
                                             </>
                                         ) : (
                                             <>
-                                                <Text style={styles.label}>Precio base * {(!formData.esPendiente && !formData.numeroFactura.trim()) ? '(ingrese factura primero)' : ''}</Text>
+                                                <Text style={styles.label}>Precio base * {(!puedeEditarMontosGasto(formData, editItem) && !formData.desdeAutorizacion) ? '(ingrese factura primero)' : formData.desdeAutorizacion ? '(puede ajustar el monto real)' : ''}</Text>
                                                 <TextInput
-                                                    style={[styles.input, (!formData.esPendiente && !formData.numeroFactura.trim()) && styles.inputDisabled]}
+                                                    style={[styles.input, !puedeEditarMontosGasto(formData, editItem) && styles.inputDisabled]}
                                                     value={formData.precioBase}
                                                     onChangeText={(t) => setFormData(p => ({ ...p, precioBase: t }))}
                                                     keyboardType="decimal-pad"
                                                     placeholder="0"
-                                                    editable={formData.esPendiente || !!formData.numeroFactura.trim() || !!editItem}
+                                                    editable={puedeEditarMontosGasto(formData, editItem)}
                                                 />
                                                 <Text style={[styles.label, { marginTop: 10 }]}>IVA * (puede ser 0)</Text>
                                                 <TextInput
-                                                    style={[styles.input, (!formData.esPendiente && !formData.numeroFactura.trim()) && styles.inputDisabled]}
+                                                    style={[styles.input, !puedeEditarMontosGasto(formData, editItem) && styles.inputDisabled]}
                                                     value={formData.precioIva}
                                                     onChangeText={(t) => setFormData(p => ({ ...p, precioIva: t }))}
                                                     keyboardType="decimal-pad"
                                                     placeholder="0"
-                                                    editable={formData.esPendiente || !!formData.numeroFactura.trim() || !!editItem}
+                                                    editable={puedeEditarMontosGasto(formData, editItem)}
                                                 />
                                                 <Text style={{ marginTop: 8, fontSize: 14, fontWeight: 'bold', color: '#059669' }}>
                                                     Total: {formatCurrency((parseMontoInput(formData.precioBase) ?? 0) + (parseMontoInput(formData.precioIva) ?? 0))}
@@ -2908,7 +2996,6 @@ const getStyles = (isDarkMode, colors) => StyleSheet.create({
         fontWeight: 'bold',
     },
     listContainer: {
-        flex: 1,
         paddingHorizontal: 16,
     },
     emptyText: {

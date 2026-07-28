@@ -186,10 +186,22 @@ async function downloadWithFetch(
             }
         }
 
-        const blob = new Blob(chunks, {
+        const merged = new Uint8Array(loaded);
+        let offset = 0;
+        for (const chunk of chunks) {
+            merged.set(chunk, offset);
+            offset += chunk.length;
+        }
+
+        const blob = new Blob([merged], {
             type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         });
         if (!blob.size) throw new Error('El archivo recibido está vacío.');
+
+        // Validar firma ZIP de xlsx (PK)
+        if (merged.length < 4 || merged[0] !== 0x50 || merged[1] !== 0x4b) {
+            throw new Error('El archivo descargado no es un Excel válido. Intente de nuevo.');
+        }
 
         onProgress?.({
             phase: 'saving',

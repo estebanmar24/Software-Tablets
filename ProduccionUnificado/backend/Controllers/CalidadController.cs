@@ -4,8 +4,10 @@ using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
 using Microsoft.AspNetCore.Authorization;
 using TiempoProcesos.API.DTOs;
+using TiempoProcesos.API.Helpers;
 using OfficeOpenXml;
 using OfficeOpenXml.Style;
+using OfficeOpenXml.Drawing;
 
 namespace TiempoProcesos.API.Controllers;
 
@@ -100,6 +102,59 @@ public class CalidadController : ControllerBase
         return Ok(encuestas);
     }
 
+    /// <summary>
+    /// Índice de encuestas por OP: para cada OP devuelve los IDs de encuestas
+    /// de calidad de planta (EncuestasCalidad) y calidad externa (EncuestasCalidadTalleres).
+    /// Usado por el Historial para mostrar botones de revisión junto a cada OP.
+    /// </summary>
+    [HttpGet("encuestas-por-op")]
+    public async Task<IActionResult> GetIndiceEncuestasPorOp()
+    {
+        var planta = await _context.EncuestasCalidad
+            .AsNoTracking()
+            .Select(e => new { e.Id, e.OrdenProduccion })
+            .ToListAsync();
+
+        var externa = await _context.EncuestasCalidadTalleres
+            .AsNoTracking()
+            .Select(e => new { e.Id, e.OrdenProduccion })
+            .ToListAsync();
+
+        static string NormalizarOp(string? op)
+        {
+            if (string.IsNullOrWhiteSpace(op)) return "";
+            var digits = new string(op.Where(char.IsDigit).ToArray());
+            return digits.TrimStart('0');
+        }
+
+        var indice = new Dictionary<string, (List<int> Planta, List<int> Externa)>();
+
+        foreach (var e in planta)
+        {
+            var key = NormalizarOp(e.OrdenProduccion);
+            if (key.Length == 0) continue;
+            if (!indice.TryGetValue(key, out var entry)) entry = (new List<int>(), new List<int>());
+            entry.Planta.Add(e.Id);
+            indice[key] = entry;
+        }
+
+        foreach (var e in externa)
+        {
+            var key = NormalizarOp(e.OrdenProduccion);
+            if (key.Length == 0) continue;
+            if (!indice.TryGetValue(key, out var entry)) entry = (new List<int>(), new List<int>());
+            entry.Externa.Add(e.Id);
+            indice[key] = entry;
+        }
+
+        return Ok(indice.Select(kv => new
+        {
+            op = kv.Key,
+            planta = kv.Value.Planta,
+            externa = kv.Value.Externa,
+        }));
+    }
+
     [HttpGet("encuestas/{id}")]
     public async Task<ActionResult<EncuestaCalidadDetalleDto>> GetEncuesta(int id)
     {
@@ -173,7 +228,7 @@ public class CalidadController : ControllerBase
                 AprobacionArranque = dto.AprobacionArranque,
                 Observacion = dto.Observacion,
                 ContieneMuestraFisica = dto.ContieneMuestraFisica,
-                FechaCreacion = DateTime.UtcNow
+                FechaCreacion = ColombiaTime.Now
             };
 
             _context.EncuestasCalidad.Add(encuesta);
@@ -314,6 +369,7 @@ public class CalidadController : ControllerBase
         }
     }
 
+    [AllowAnonymous]
     [HttpGet("foto/{fileName}")]
     public IActionResult GetFoto(string fileName)
     {
@@ -386,128 +442,354 @@ public class CalidadController : ControllerBase
         return Ok(new { message = "Foto eliminada correctamente" });
     }
 
-    [HttpGet("export-excel")]
-    public async Task<IActionResult> ExportExcel([FromQuery] DateTime fechaInicio, [FromQuery] DateTime fechaFin)
-    {
-        // Ajustar fechaFin al final del día
-        fechaFin = fechaFin.Date.AddDays(1).AddTicks(-1);
+    private static readonly string[] EstadosInformeSemanal = { "Conforme", "No conforme", "En revision" };
 
-        var encuestas = await _context.EncuestasCalidad
-            .Include(e => e.Operario)
-            .Include(e => e.Auxiliar)
-            .Include(e => e.Maquina)
-            .Include(e => e.Novedades)
-            .Where(e => e.FechaCreacion >= fechaInicio && e.FechaCreacion <= fechaFin)
-            .OrderByDescending(e => e.FechaCreacion)
+    /// <summary>
+    /// Excel de calidad en una sola hoja (formato informe semanal).
+    /// </summary>
+    [HttpGet("export-excel")]
+    public Task<IActionResult> ExportExcel([FromQuery] DateTime fechaInicio, [FromQuery] DateTime fechaFin)
+        => GenerarExcelInformeCalidadAsync(fechaInicio, fechaFin, "Calidad");
+
+    [HttpGet("informe-semanal")]
+    public async Task<ActionResult<IEnumerable<InformeSemanalLineaDto>>> GetInformeSemanal(
+        [FromQuery] DateTime fechaInicio,
+        [FromQuery] DateTime fechaFin)
+    {
+        var lineas = await ConstruirLineasInformeSemanalAsync(fechaInicio, fechaFin);
+        return Ok(lineas);
+    }
+
+    [HttpGet("informe-semanal/export-excel")]
+    public Task<IActionResult> ExportInformeSemanalExcel(
+        [FromQuery] DateTime fechaInicio,
+        [FromQuery] DateTime fechaFin)
+        => GenerarExcelInformeCalidadAsync(fechaInicio, fechaFin, "Informe_Semanal_Calidad");
+
+    private async Task<IActionResult> GenerarExcelInformeCalidadAsync(
+        DateTime fechaInicio,
+        DateTime fechaFin,
+        string fileNamePrefix)
+    {
+        try
+        {
+            var lineas = await ConstruirLineasInformeSemanalAsync(fechaInicio, fechaFin);
+            if (lineas.Count == 0)
+                return NotFound(new { message = "No se encontraron defectos en el rango de fechas seleccionado" });
+
+            var inicio = fechaInicio.Date;
+            var fin = fechaFin.Date;
+            const int colCount = 8;
+
+            using var package = new ExcelPackage();
+            var ws = package.Workbook.Worksheets.Add("Informe");
+
+            ws.Cells[1, 1, 1, colCount].Merge = true;
+            ws.Cells[1, 1].Value = "INFORME DE CONTROL DE CALIDAD EN PROCESO - SEMANAL";
+            ws.Cells[1, 1].Style.Font.Bold = true;
+            ws.Cells[1, 1].Style.Font.Size = 14;
+            ws.Cells[1, 1].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+            ws.Cells[1, 1].Style.Fill.PatternType = ExcelFillStyle.Solid;
+            ws.Cells[1, 1].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.FromArgb(30, 58, 95));
+            ws.Cells[1, 1].Style.Font.Color.SetColor(System.Drawing.Color.White);
+            ws.Row(1).Height = 28;
+
+            ws.Cells[2, 1, 2, colCount].Merge = true;
+            ws.Cells[2, 1].Value = $"Periodo: {inicio:dd/MM/yyyy} — {fin:dd/MM/yyyy}";
+            ws.Cells[2, 1].Style.Font.Italic = true;
+            ws.Cells[2, 1].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+
+            // Columna 8 sin título: celda libre para anotaciones manuales
+            var headers = new[]
+            {
+                "N°", "FOTO", "REFERENCIA", "DEFECTO ENCONTRADO", "OBSERVACIONES", "CANTIDAD", "ESTADO", "ANOTACIONES"
+            };
+            const int headerRow = 4;
+            for (int i = 0; i < headers.Length; i++)
+            {
+                ws.Cells[headerRow, i + 1].Value = headers[i];
+                ws.Cells[headerRow, i + 1].Style.Font.Bold = true;
+                ws.Cells[headerRow, i + 1].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                ws.Cells[headerRow, i + 1].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.FromArgb(30, 58, 95));
+                ws.Cells[headerRow, i + 1].Style.Font.Color.SetColor(System.Drawing.Color.White);
+                ws.Cells[headerRow, i + 1].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                ws.Cells[headerRow, i + 1].Style.Border.BorderAround(ExcelBorderStyle.Thin);
+            }
+
+            ws.Column(1).Width = 6;
+            ws.Column(2).Width = 16;
+            ws.Column(3).Width = 14;
+            ws.Column(4).Width = 34;
+            ws.Column(5).Width = 48;
+            ws.Column(6).Width = 14;
+            ws.Column(7).Width = 16;
+            ws.Column(8).Width = 36;
+
+            int row = headerRow + 1;
+            // Mantener streams abiertos hasta GetAsByteArray: cerrarlos antes corrompe el xlsx.
+            var imageStreams = new List<MemoryStream>();
+            try
+            {
+                foreach (var linea in lineas)
+                {
+                    ws.Cells[row, 1].Value = linea.Numero;
+                    ws.Cells[row, 1].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                    ws.Cells[row, 1].Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+
+                    var fotoPath = ResolverRutaFotoLocal(linea.FotoUrl);
+                    var fotoOk = false;
+                    if (fotoPath != null)
+                    {
+                        try
+                        {
+                            fotoOk = TryEmbedFoto(ws, $"foto_{linea.NovedadId}_{row}", fotoPath, row, imageStreams);
+                        }
+                        catch (Exception exFoto)
+                        {
+                            Console.WriteLine($"[EXCEL CALIDAD] Foto omitida {fotoPath}: {exFoto.Message}");
+                        }
+
+                        if (!fotoOk)
+                            ws.Cells[row, 2].Value = "—";
+                    }
+
+                    ws.Cells[row, 3].Value = linea.Referencia;
+                    ws.Cells[row, 4].Value = linea.DefectoEncontrado;
+                    ws.Cells[row, 5].Value = linea.Observaciones ?? "";
+                    ws.Cells[row, 6].Value = linea.Cantidad ?? "";
+                    ws.Cells[row, 6].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                    ws.Cells[row, 7].Value = string.IsNullOrWhiteSpace(linea.Estado)
+                        ? EstadosInformeSemanal[2]
+                        : linea.Estado;
+                    ws.Cells[row, 8].Value = ""; // anotaciones a mano
+
+                    ws.Cells[row, 3, row, 8].Style.WrapText = true;
+                    ws.Cells[row, 1, row, colCount].Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+                    for (int c = 1; c <= colCount; c++)
+                        ws.Cells[row, c].Style.Border.BorderAround(ExcelBorderStyle.Thin);
+
+                    if (row % 2 == 0)
+                    {
+                        ws.Cells[row, 1, row, colCount].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                        ws.Cells[row, 1, row, colCount].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.FromArgb(245, 247, 250));
+                    }
+
+                    ws.Row(row).Height = fotoOk ? 72 : 28;
+                    row++;
+                }
+
+                if (row > headerRow + 1)
+                {
+                    var estadoRange = ws.Cells[headerRow + 1, 7, row - 1, 7];
+                    var estadoValidation = ws.DataValidations.AddListValidation(estadoRange.Address);
+                    estadoValidation.ShowErrorMessage = true;
+                    estadoValidation.ErrorTitle = "Estado no válido";
+                    estadoValidation.Error = "Seleccione: Conforme, No conforme o En revision";
+                    estadoValidation.Formula.Values.Add("Conforme");
+                    estadoValidation.Formula.Values.Add("No conforme");
+                    estadoValidation.Formula.Values.Add("En revision");
+                }
+
+                ws.View.FreezePanes(headerRow + 1, 1);
+
+                var fileName = $"{fileNamePrefix}_{inicio:yyyyMMdd}_{fin:yyyyMMdd}.xlsx";
+                Response.Headers.Append("Cache-Control", "no-store");
+                var bytes = package.GetAsByteArray();
+                return File(bytes,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    fileName);
+            }
+            finally
+            {
+                foreach (var s in imageStreams)
+                {
+                    try { s.Dispose(); } catch { /* ignore */ }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] GenerarExcelInformeCalidad: {ex.Message}");
+            return StatusCode(500, new { message = "Error al generar el Excel de calidad.", details = ex.Message });
+        }
+    }
+
+    private async Task<List<InformeSemanalLineaDto>> ConstruirLineasInformeSemanalAsync(DateTime fechaInicio, DateTime fechaFin)
+    {
+        var inicio = fechaInicio.Date;
+        var fin = fechaFin.Date.AddDays(1).AddTicks(-1);
+
+        var novedades = await _context.EncuestaNovedades
+            .AsNoTracking()
+            .Include(n => n.Encuesta)
+            .Where(n =>
+                n.Encuesta != null &&
+                n.Encuesta.FechaCreacion >= inicio &&
+                n.Encuesta.FechaCreacion <= fin &&
+                (n.TipoNovedad == null || n.TipoNovedad.ToLower() != "sin hallazgos"))
+            .OrderBy(n => n.Encuesta!.FechaCreacion)
+            .ThenBy(n => n.Id)
             .ToListAsync();
 
-        if (!encuestas.Any())
-            return NotFound(new { message = "No se encontraron encuestas en el rango de fechas seleccionado" });
+        var numerosOp = novedades
+            .Select(n => ExtraerNumeroOp(n.Encuesta!.OrdenProduccion))
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Select(n => n!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-        using var package = new ExcelPackage();
-
-        // ===== HOJA 1: ENCUESTAS =====
-        var wsEncuestas = package.Workbook.Worksheets.Add("Encuestas");
-        var encHeaders = new[] { "Fecha", "Operario", "Auxiliar", "Máquina", "OP", "Proceso",
-            "Cant. Producir", "Cant. Evaluada", "Estado", "Ficha Técnica", "Registro Formatos", "Arranque",
-            "Observación", "N° Novedades", "Tipos de Novedad", "Cant. Defectuosa Total" };
-
-        for (int i = 0; i < encHeaders.Length; i++)
+        var referenciasCatalogo = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (numerosOp.Count > 0)
         {
-            wsEncuestas.Cells[1, i + 1].Value = encHeaders[i];
-            wsEncuestas.Cells[1, i + 1].Style.Font.Bold = true;
-            wsEncuestas.Cells[1, i + 1].Style.Fill.PatternType = ExcelFillStyle.Solid;
-            wsEncuestas.Cells[1, i + 1].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.FromArgb(0, 51, 102));
-            wsEncuestas.Cells[1, i + 1].Style.Font.Color.SetColor(System.Drawing.Color.White);
+            var catalogoRows = await _context.CatalogoOrdenesProduccion
+                .AsNoTracking()
+                .Where(c => numerosOp.Contains(c.Numero))
+                .OrderByDescending(c => c.FechaActualizacion)
+                .ToListAsync();
+
+            foreach (var grupo in catalogoRows.GroupBy(c => c.Numero, StringComparer.OrdinalIgnoreCase))
+                referenciasCatalogo[grupo.Key] = grupo.First().Referencia ?? grupo.Key;
         }
 
-        int row = 2;
-        foreach (var e in encuestas)
+        var lineas = new List<InformeSemanalLineaDto>();
+        var numero = 1;
+        foreach (var novedad in novedades)
         {
-            wsEncuestas.Cells[row, 1].Value = e.FechaCreacion.ToString("dd/MM/yyyy HH:mm");
-            wsEncuestas.Cells[row, 2].Value = e.Operario?.Nombre ?? "";
-            wsEncuestas.Cells[row, 3].Value = e.Auxiliar?.Nombre ?? "";
-            wsEncuestas.Cells[row, 4].Value = e.Maquina?.Nombre ?? "";
-            wsEncuestas.Cells[row, 5].Value = e.OrdenProduccion;
-            wsEncuestas.Cells[row, 6].Value = e.Proceso;
-            wsEncuestas.Cells[row, 7].Value = (double)e.CantidadProducir;
-            wsEncuestas.Cells[row, 8].Value = (double)e.CantidadEvaluada;
-            wsEncuestas.Cells[row, 9].Value = e.EstadoProceso;
-            wsEncuestas.Cells[row, 10].Value = e.TieneFichaTecnica ? "Sí" : "No";
-            wsEncuestas.Cells[row, 11].Value = e.CorrectoRegistroFormatos ? "Sí" : "No";
-            wsEncuestas.Cells[row, 12].Value = e.AprobacionArranque ? "Sí" : "No";
-            wsEncuestas.Cells[row, 13].Value = e.Observacion ?? "";
-            wsEncuestas.Cells[row, 14].Value = e.Novedades.Count;
-            wsEncuestas.Cells[row, 15].Value = e.Novedades.Any() 
-                ? string.Join(", ", e.Novedades.Select(n => n.TipoNovedad)) 
-                : "Sin novedades";
-            wsEncuestas.Cells[row, 16].Value = e.Novedades.Sum(n => n.CantidadDefectuosa);
+            var encuesta = novedad.Encuesta!;
+            var opNum = ExtraerNumeroOp(encuesta.OrdenProduccion);
+            var referencia = !string.IsNullOrWhiteSpace(opNum) && referenciasCatalogo.TryGetValue(opNum!, out var refCat)
+                ? refCat
+                : (string.IsNullOrWhiteSpace(opNum) ? encuesta.OrdenProduccion : opNum!);
 
-            // Color de fondo alterno
-            if (row % 2 == 0)
+            // En el informe histórico la columna REFERENCIA muestra el código corto (OP / ref. catálogo).
+            // Si el catálogo trae texto largo, preferimos el número de OP para que coincida con el formato semanal.
+            if (!string.IsNullOrWhiteSpace(opNum) && referencia.Length > 12)
+                referencia = opNum!;
+
+            lineas.Add(new InformeSemanalLineaDto
             {
-                for (int i = 1; i <= encHeaders.Length; i++)
-                {
-                    wsEncuestas.Cells[row, i].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                    wsEncuestas.Cells[row, i].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.FromArgb(245, 247, 250));
-                }
-            }
-            row++;
+                NovedadId = novedad.Id,
+                Numero = numero++,
+                FotoUrl = novedad.FotoPath != null ? $"fotos-calidad/{Path.GetFileName(novedad.FotoPath)}" : null,
+                Referencia = referencia,
+                DefectoEncontrado = novedad.TipoNovedad,
+                Observaciones = ResolverObservacionesInforme(encuesta, novedad),
+                Cantidad = FormatearCantidadInforme(encuesta),
+                Estado = string.IsNullOrWhiteSpace(novedad.InformeEstado) ? null : novedad.InformeEstado.Trim(),
+                FechaEncuesta = encuesta.FechaCreacion,
+                OrdenProduccion = encuesta.OrdenProduccion,
+            });
         }
 
-        wsEncuestas.Cells[wsEncuestas.Dimension.Address].AutoFitColumns();
+        return lineas;
+    }
 
-        // ===== HOJA 2: NOVEDADES (DETALLE) =====
-        var wsNovedades = package.Workbook.Worksheets.Add("Novedades");
-        var novHeaders = new[] { "Fecha Encuesta", "Operario", "Máquina", "OP", "Proceso",
-            "Estado", "Cant. Producir", "Tipo Novedad", "Descripción", "Cant. Defectuosa", "Observación Encuesta" };
+    private static string? ResolverObservacionesInforme(EncuestaCalidad encuesta, EncuestaNovedad novedad)
+    {
+        if (!string.IsNullOrWhiteSpace(novedad.InformeObservaciones))
+            return novedad.InformeObservaciones.Trim();
 
-        for (int i = 0; i < novHeaders.Length; i++)
-        {
-            wsNovedades.Cells[1, i + 1].Value = novHeaders[i];
-            wsNovedades.Cells[1, i + 1].Style.Font.Bold = true;
-            wsNovedades.Cells[1, i + 1].Style.Fill.PatternType = ExcelFillStyle.Solid;
-            wsNovedades.Cells[1, i + 1].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.FromArgb(200, 0, 0));
-            wsNovedades.Cells[1, i + 1].Style.Font.Color.SetColor(System.Drawing.Color.White);
-        }
+        var partes = new List<string>();
+        if (!string.IsNullOrWhiteSpace(encuesta.Observacion))
+            partes.Add(encuesta.Observacion.Trim());
+        if (!string.IsNullOrWhiteSpace(novedad.Descripcion))
+            partes.Add(novedad.Descripcion.Trim());
 
-        row = 2;
-        foreach (var e in encuestas)
-        {
-            foreach (var n in e.Novedades)
-            {
-                wsNovedades.Cells[row, 1].Value = e.FechaCreacion.ToString("dd/MM/yyyy HH:mm");
-                wsNovedades.Cells[row, 2].Value = e.Operario?.Nombre ?? "";
-                wsNovedades.Cells[row, 3].Value = e.Maquina?.Nombre ?? "";
-                wsNovedades.Cells[row, 4].Value = e.OrdenProduccion;
-                wsNovedades.Cells[row, 5].Value = e.Proceso;
-                wsNovedades.Cells[row, 6].Value = e.EstadoProceso;
-                wsNovedades.Cells[row, 7].Value = (double)e.CantidadProducir;
-                wsNovedades.Cells[row, 8].Value = n.TipoNovedad;
-                wsNovedades.Cells[row, 9].Value = n.Descripcion ?? "";
-                wsNovedades.Cells[row, 10].Value = n.CantidadDefectuosa;
-                wsNovedades.Cells[row, 11].Value = e.Observacion ?? "";
+        return partes.Count == 0 ? null : string.Join(" | ", partes);
+    }
 
-                if (row % 2 == 0)
-                {
-                    for (int i = 1; i <= novHeaders.Length; i++)
-                    {
-                        wsNovedades.Cells[row, i].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                        wsNovedades.Cells[row, i].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.FromArgb(255, 245, 245));
-                    }
-                }
-                row++;
-            }
-        }
+    private static string FormatearCantidadInforme(EncuestaCalidad encuesta)
+    {
+        // Formato histórico del informe: producir/evaluada (ej. 2200/2025)
+        var producir = encuesta.CantidadProducir % 1 == 0
+            ? ((long)encuesta.CantidadProducir).ToString()
+            : encuesta.CantidadProducir.ToString("0.##");
+        var evaluada = encuesta.CantidadEvaluada % 1 == 0
+            ? ((long)encuesta.CantidadEvaluada).ToString()
+            : encuesta.CantidadEvaluada.ToString("0.##");
+        return $"{producir}/{evaluada}";
+    }
 
-        wsNovedades.Cells[wsNovedades.Dimension.Address].AutoFitColumns();
+    private static string? ExtraerNumeroOp(string? ordenProduccion)
+    {
+        if (string.IsNullOrWhiteSpace(ordenProduccion)) return null;
+        var parte = ordenProduccion
+            .Split(new[] { '-', '/', ' ', '_' }, StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault()
+            ?.Trim();
+        if (string.IsNullOrWhiteSpace(parte)) return null;
+        var digits = new string(parte.Where(char.IsDigit).ToArray());
+        return string.IsNullOrEmpty(digits) ? parte : digits;
+    }
 
-        var fileName = $"Calidad_{fechaInicio:yyyyMMdd}_{fechaFin:yyyyMMdd}.xlsx";
-        var content = package.GetAsByteArray();
+    private static bool TryEmbedFoto(
+        ExcelWorksheet ws,
+        string pictureName,
+        string fotoPath,
+        int row,
+        List<MemoryStream> keepAliveStreams)
+    {
+        var bytes = System.IO.File.ReadAllBytes(fotoPath);
+        if (bytes.Length < 24)
+            return false;
 
-        return File(content,
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            fileName);
+        var pictureType = DetectPictureType(bytes);
+        if (pictureType == null)
+            return false;
+
+        var ms = new MemoryStream(bytes);
+        keepAliveStreams.Add(ms);
+        ms.Position = 0;
+
+        var picture = ws.Drawings.AddPicture(pictureName, ms, pictureType.Value);
+        picture.SetPosition(row - 1, 4, 1, 4);
+        picture.SetSize(90, 90);
+        return true;
+    }
+
+    private static ePictureType? DetectPictureType(byte[] bytes)
+    {
+        // JPEG
+        if (bytes.Length > 2 && bytes[0] == 0xFF && bytes[1] == 0xD8)
+            return ePictureType.Jpg;
+        // PNG
+        if (bytes.Length > 7 &&
+            bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47)
+            return ePictureType.Png;
+        // GIF
+        if (bytes.Length > 5 && bytes[0] == (byte)'G' && bytes[1] == (byte)'I' && bytes[2] == (byte)'F')
+            return ePictureType.Gif;
+        // BMP
+        if (bytes.Length > 1 && bytes[0] == (byte)'B' && bytes[1] == (byte)'M')
+            return ePictureType.Bmp;
+        // WEBP (RIFF....WEBP)
+        if (bytes.Length > 11 &&
+            bytes[0] == (byte)'R' && bytes[1] == (byte)'I' && bytes[2] == (byte)'F' && bytes[3] == (byte)'F' &&
+            bytes[8] == (byte)'W' && bytes[9] == (byte)'E' && bytes[10] == (byte)'B' && bytes[11] == (byte)'P')
+            return ePictureType.WebP;
+
+        return null;
+    }
+
+    private string? ResolverRutaFotoLocal(string? fotoPath)
+    {
+        if (string.IsNullOrWhiteSpace(fotoPath)) return null;
+
+        var fileName = Path.GetFileName(fotoPath.Replace('\\', '/').Split('/').Last());
+        if (string.IsNullOrEmpty(fileName)) return null;
+
+        var candidatos = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(_env.WebRootPath))
+            candidatos.Add(Path.Combine(_env.WebRootPath, "fotos-calidad", fileName));
+
+        candidatos.Add(Path.Combine(_env.ContentRootPath, "wwwroot", "fotos-calidad", fileName));
+        candidatos.Add(Path.Combine(_env.ContentRootPath, "publish", "wwwroot", "fotos-calidad", fileName));
+
+        if (Path.IsPathRooted(fotoPath))
+            candidatos.Add(fotoPath);
+
+        return candidatos.FirstOrDefault(System.IO.File.Exists);
     }
 
     [HttpGet("detalles-op")]

@@ -8,8 +8,16 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { Asset } from 'expo-asset';
 import { Platform } from 'react-native';
+import { downloadBlobFromApi, type DownloadProgress } from '../utils/blobDownload';
 
 const SERVER_URL = API_URL.replace('/api', '');
+
+const initialExcelProgress = (): DownloadProgress => ({
+    phase: 'preparing',
+    percent: 0,
+    loadedBytes: 0,
+    label: '',
+});
 
 interface Novedad {
     id: number;
@@ -88,6 +96,7 @@ export default function QualityView({ navigation }: QualityViewProps) {
     });
     const [exportFechaFin, setExportFechaFin] = useState(() => new Date().toISOString().split('T')[0]);
     const [generatingExcel, setGeneratingExcel] = useState(false);
+    const [excelProgress, setExcelProgress] = useState<DownloadProgress>(initialExcelProgress);
     const [generatingOPPdf, setGeneratingOPPdf] = useState(false);
 
     const openImageModal = (uri: string) => {
@@ -297,23 +306,32 @@ export default function QualityView({ navigation }: QualityViewProps) {
 
         setGeneratingPdf(true);
         try {
-            // Dynamic import for jsPDF
-            const { jsPDF } = require('jspdf');
-            // const autoTable = require('jspdf-autotable').default; // Not used in detailed view anymore, or maybe for summary?
-
-            // Fetch Details for ALL filtered items
+            // Fetch Details for ALL filtered items (con token — axios sin auth dejaba el PDF vacío)
             const detailsPromises = filteredData.map(async (item) => {
                 try {
-                    const response = await axios.get(`${API_URL}/calidad/encuestas/${item.id}`);
+                    const response = await api.get(`calidad/encuestas/${item.id}`);
                     return response.data;
                 } catch (e: any) {
                     console.error("Error fetching detail for ID", item.id, e);
-                    return null;
+                    return {
+                        id: item.id,
+                        fechaCreacion: item.fechaCreacion,
+                        maquina: item.maquina,
+                        operario: item.operario,
+                        ordenProduccion: item.ordenProduccion,
+                        proceso: item.proceso,
+                        totalNovedades: item.totalNovedades,
+                        novedades: [],
+                        observacion: null,
+                    };
                 }
             });
 
             // Wait for all details
             const fullDetails = (await Promise.all(detailsPromises)).filter(d => d !== null);
+
+            const { jsPDF } = require('jspdf');
+            const autoTable = require('jspdf-autotable').default;
 
             const doc = new jsPDF();
             const width = doc.internal.pageSize.getWidth();
@@ -391,6 +409,56 @@ export default function QualityView({ navigation }: QualityViewProps) {
             doc.line(15, y, width - 15, y); // Separator
             y += 10;
 
+            // Resumen: OPs revisadas y cuántas veces
+            const opMap: Record<string, { tomas: number; conDefectos: number }> = {};
+            fullDetails.forEach((item: any) => {
+                const op = String(item.ordenProduccion || 'S/OP').trim() || 'S/OP';
+                if (!opMap[op]) opMap[op] = { tomas: 0, conDefectos: 0 };
+                opMap[op].tomas += 1;
+                const novs = item.novedades?.length ?? item.totalNovedades ?? 0;
+                if (novs > 0) opMap[op].conDefectos += 1;
+            });
+            const opRows = Object.entries(opMap)
+                .sort((a, b) => b[1].tomas - a[1].tomas || a[0].localeCompare(b[0]))
+                .map(([op, info], idx) => [
+                    String(idx + 1),
+                    op,
+                    String(info.tomas),
+                    String(info.conDefectos),
+                    String(info.tomas - info.conDefectos),
+                ]);
+
+            doc.setFontSize(12);
+            doc.setTextColor(0, 51, 102);
+            doc.setFont(undefined, 'bold');
+            doc.text('OPs revisadas (cuántas veces)', 15, y);
+            y += 3;
+
+            autoTable(doc, {
+                startY: y,
+                head: [['#', 'OP', 'N° Tomas', 'Con defectos', 'OK']],
+                body: opRows.length ? opRows : [['—', 'Sin OPs', '0', '0', '0']],
+                theme: 'striped',
+                headStyles: { fillColor: [0, 51, 102], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9 },
+                bodyStyles: { fontSize: 9 },
+                columnStyles: {
+                    0: { cellWidth: 12, halign: 'center' },
+                    1: { cellWidth: 45 },
+                    2: { cellWidth: 28, halign: 'center' },
+                    3: { cellWidth: 30, halign: 'center' },
+                    4: { cellWidth: 22, halign: 'center' },
+                },
+                margin: { left: 15, right: 15 },
+                alternateRowStyles: { fillColor: [245, 247, 250] },
+            });
+
+            y = (doc as any).lastAutoTable.finalY + 12;
+            doc.setFontSize(12);
+            doc.setTextColor(0, 51, 102);
+            doc.setFont(undefined, 'bold');
+            doc.text('Detalle de tomas', 15, y);
+            y += 8;
+
             // Iterate Items
             for (let i = 0; i < fullDetails.length; i++) {
                 const item = fullDetails[i];
@@ -420,10 +488,11 @@ export default function QualityView({ navigation }: QualityViewProps) {
                 doc.text(`Operario: ${item.operario} | OP: ${item.ordenProduccion} | Proc: ${item.proceso}`, 20, y);
 
                 // Status Badge logic (Text)
-                const isOK = item.totalNovedades === 0 || (item.novedades && item.novedades.length === 0);
+                const novCount = item.novedades?.length ?? item.totalNovedades ?? 0;
+                const isOK = novCount === 0;
                 doc.setFont(undefined, 'bold');
                 doc.setTextColor(isOK ? 40 : 220, isOK ? 167 : 53, isOK ? 69 : 69); // Green or Red
-                doc.text(isOK ? 'CALIDAD OK' : `CON DEFECTOS (${item.novedades.length})`, width - 20, y - 6, { align: 'right' }); // Top right of box
+                doc.text(isOK ? 'CALIDAD OK' : `CON DEFECTOS (${novCount})`, width - 20, y - 6, { align: 'right' }); // Top right of box
 
                 y += 12;
 
@@ -523,49 +592,34 @@ export default function QualityView({ navigation }: QualityViewProps) {
 
     // --- EXCEL EXPORT ---
     const generateExcel = async () => {
-        setGeneratingExcel(true);
-        try {
-            const url = `${API_URL}/calidad/export-excel?fechaInicio=${exportFechaInicio}&fechaFin=${exportFechaFin}`;
+        if (!exportFechaInicio || !exportFechaFin) {
+            Alert.alert('Exportar Excel', 'Indique fecha inicio y fecha fin.');
+            return;
+        }
 
-            if (Platform.OS === 'web') {
-                const response = await fetch(url);
-                if (!response.ok) {
-                    const err = await response.json().catch(() => ({ message: 'Error del servidor' }));
-                    Alert.alert('Sin datos', err.message || 'No se encontraron datos en el rango seleccionado');
-                    return;
-                }
-                const blob = await response.blob();
-                const blobUrl = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = blobUrl;
-                a.download = `Calidad_${exportFechaInicio}_${exportFechaFin}.xlsx`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                window.URL.revokeObjectURL(blobUrl);
-                setExcelModalVisible(false);
-            } else {
-                const fileUri = (FileSystem as any).documentDirectory + `Calidad_${exportFechaInicio}_${exportFechaFin}.xlsx`;
-                const result = await FileSystem.downloadAsync(url, fileUri);
-                if (result.status !== 200) {
-                    Alert.alert('Sin datos', 'No se encontraron datos en el rango seleccionado');
-                    return;
-                }
-                setExcelModalVisible(false);
-                if (await Sharing.isAvailableAsync()) {
-                    await Sharing.shareAsync(fileUri, {
-                        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                        dialogTitle: 'Exportar Excel Calidad',
-                    });
-                } else {
-                    Alert.alert('Guardado', `Excel guardado en: ${fileUri}`);
-                }
-            }
-        } catch (error: any) {
+        setGeneratingExcel(true);
+        setExcelProgress({
+            phase: 'preparing',
+            percent: 2,
+            loadedBytes: 0,
+            label: 'Preparando informe en una sola hoja...',
+        });
+
+        try {
+            await downloadBlobFromApi(
+                'calidad/export-excel',
+                { fechaInicio: exportFechaInicio, fechaFin: exportFechaFin },
+                `Calidad_${exportFechaInicio}_${exportFechaFin}.xlsx`,
+                setExcelProgress
+            );
+            setExcelModalVisible(false);
+        } catch (error: unknown) {
             console.error(error);
-            Alert.alert('Error', 'No se pudo generar el Excel: ' + error.message);
+            const mensaje = error instanceof Error ? error.message : 'No se pudo generar el Excel.';
+            Alert.alert('Exportar Excel', mensaje);
         } finally {
             setGeneratingExcel(false);
+            setExcelProgress(initialExcelProgress());
         }
     };
 
@@ -1220,23 +1274,29 @@ export default function QualityView({ navigation }: QualityViewProps) {
                 animationType="fade"
                 transparent={true}
                 visible={excelModalVisible}
-                onRequestClose={() => setExcelModalVisible(false)}
+                onRequestClose={() => !generatingExcel && setExcelModalVisible(false)}
             >
                 <View style={styles.modalOverlay}>
-                    <View style={[styles.modalContent, { width: 420, height: 'auto', maxHeight: 340 }]}>
+                    <View style={[styles.modalContent, { width: 440, height: 'auto', maxHeight: generatingExcel ? 420 : 380 }]}>
                         <View style={styles.modalHeader}>
                             <Text style={styles.modalTitle}>📊 Exportar Excel - Calidad</Text>
-                            <TouchableOpacity onPress={() => setExcelModalVisible(false)} style={styles.closeButton}>
-                                <Text style={styles.closeButtonText}>X</Text>
-                            </TouchableOpacity>
+                            {!generatingExcel && (
+                                <TouchableOpacity onPress={() => setExcelModalVisible(false)} style={styles.closeButton}>
+                                    <Text style={styles.closeButtonText}>X</Text>
+                                </TouchableOpacity>
+                            )}
                         </View>
                         <View style={{ padding: 20 }}>
+                            <Text style={{ fontSize: 12, color: '#4A5568', marginBottom: 14, lineHeight: 18 }}>
+                                Una sola hoja: N° · Foto · Referencia · Defecto · Observaciones · Cantidad · Estado · celda libre
+                            </Text>
                             <Text style={{ fontWeight: 'bold', marginBottom: 5, color: '#333' }}>Fecha Inicio:</Text>
                             {Platform.OS === 'web' ? (
                                 <input
                                     type="date"
                                     value={exportFechaInicio}
                                     onChange={(e: any) => setExportFechaInicio(e.target.value)}
+                                    disabled={generatingExcel}
                                     style={{ border: '1px solid #ccc', borderRadius: 6, padding: '8px 12px', fontSize: 15, width: '100%', boxSizing: 'border-box' as any }}
                                 />
                             ) : (
@@ -1245,6 +1305,7 @@ export default function QualityView({ navigation }: QualityViewProps) {
                                     value={exportFechaInicio}
                                     onChangeText={setExportFechaInicio}
                                     placeholder="YYYY-MM-DD"
+                                    editable={!generatingExcel}
                                 />
                             )}
                             <Text style={{ fontWeight: 'bold', marginBottom: 5, marginTop: 12, color: '#333' }}>Fecha Fin:</Text>
@@ -1253,6 +1314,7 @@ export default function QualityView({ navigation }: QualityViewProps) {
                                     type="date"
                                     value={exportFechaFin}
                                     onChange={(e: any) => setExportFechaFin(e.target.value)}
+                                    disabled={generatingExcel}
                                     style={{ border: '1px solid #ccc', borderRadius: 6, padding: '8px 12px', fontSize: 15, width: '100%', boxSizing: 'border-box' as any }}
                                 />
                             ) : (
@@ -1261,15 +1323,39 @@ export default function QualityView({ navigation }: QualityViewProps) {
                                     value={exportFechaFin}
                                     onChangeText={setExportFechaFin}
                                     placeholder="YYYY-MM-DD"
+                                    editable={!generatingExcel}
                                 />
                             )}
+
+                            {generatingExcel && (
+                                <View style={excelStyles.progressBox}>
+                                    <Text style={excelStyles.progressLabel}>
+                                        {excelProgress.label || 'Generando documento...'}
+                                    </Text>
+                                    <View style={excelStyles.progressTrack}>
+                                        <View
+                                            style={[
+                                                excelStyles.progressFill,
+                                                { width: `${Math.max(excelProgress.percent, 4)}%` },
+                                            ]}
+                                        />
+                                    </View>
+                                    <Text style={excelStyles.progressPercent}>{excelProgress.percent}%</Text>
+                                    <Text style={excelStyles.progressHint}>
+                                        No cierre esta ventana. Con fotos puede tardar 1–2 minutos.
+                                    </Text>
+                                </View>
+                            )}
+
                             <TouchableOpacity
                                 style={[excelStyles.exportBtn, { opacity: generatingExcel ? 0.7 : 1 }]}
                                 onPress={generateExcel}
                                 disabled={generatingExcel}
                             >
                                 {generatingExcel ? (
-                                    <ActivityIndicator color="white" size="small" />
+                                    <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 15 }}>
+                                        Generando... {excelProgress.percent}%
+                                    </Text>
                                 ) : (
                                     <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 15 }}>📥 Descargar Excel</Text>
                                 )}
@@ -1651,5 +1737,45 @@ const excelStyles = StyleSheet.create({
         borderRadius: 6,
         alignItems: 'center' as const,
         marginTop: 20,
+    },
+    progressBox: {
+        marginTop: 16,
+        padding: 12,
+        backgroundColor: '#F7FAFC',
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    progressLabel: {
+        fontSize: 13,
+        color: '#4A5568',
+        textAlign: 'center',
+        marginBottom: 10,
+        minHeight: 32,
+    },
+    progressTrack: {
+        height: 12,
+        backgroundColor: '#E2E8F0',
+        borderRadius: 999,
+        overflow: 'hidden',
+    },
+    progressFill: {
+        height: '100%',
+        backgroundColor: '#38A169',
+        borderRadius: 999,
+    },
+    progressPercent: {
+        marginTop: 8,
+        textAlign: 'center',
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#1E3A5F',
+    },
+    progressHint: {
+        marginTop: 8,
+        fontSize: 11,
+        color: '#718096',
+        textAlign: 'center',
+        lineHeight: 16,
     },
 });

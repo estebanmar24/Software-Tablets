@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { View, StyleSheet, Alert, Platform, ScrollView, useWindowDimensions, BackHandler, TouchableOpacity, Text, Modal } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { usePersistence } from './src/hooks/usePersistence';
@@ -293,6 +293,7 @@ function AppContent() {
 
   // Planeación Actual (Planeador de Máquinas)
   const [planeacionActual, setPlaneacionActual] = useState<any>(null);
+  const [planeacionMensaje, setPlaneacionMensaje] = useState<string | null>(null);
 
 
   // 1. Cargar datos persistidos al iniciar
@@ -349,6 +350,23 @@ function AppContent() {
   useEffect(() => {
     activeProcessIdRef.current = activeProcessId;
   }, [activeProcessId]);
+
+  /** Evita duplicar tiros: el registro en curso ya puede estar en tirosTotalesDia vía sync al servidor. */
+  const tirosTotalesDisplay = useMemo(() => {
+    const vivoDb = activeProcessId
+      ? (historial.find((h) => h.id === activeProcessId
+          && (h.estado === 'EnProgreso' || h.estado === 'Pausado'))?.tiros || 0)
+      : 0;
+    return Math.max(0, tirosTotalesDia - vivoDb + tirosAcumulados);
+  }, [historial, activeProcessId, tirosTotalesDia, tirosAcumulados]);
+
+  const desperdicioTotalDisplay = useMemo(() => {
+    const vivoDb = activeProcessId
+      ? (historial.find((h) => h.id === activeProcessId
+          && (h.estado === 'EnProgreso' || h.estado === 'Pausado'))?.desperdicio || 0)
+      : 0;
+    return Math.max(0, desperdicioTotalDia - vivoDb + desperdicioAcumulado);
+  }, [historial, activeProcessId, desperdicioTotalDia, desperdicioAcumulado]);
 
   // 1. Cargar datos persistidos al iniciar
   useEffect(() => {
@@ -441,33 +459,50 @@ function AppContent() {
     return () => clearInterval(interval);
   }, [isRestored, selectedUsuario, selectedMaquina]);
 
-  // Cargar Planeación Actual al cambiar de máquina
+  // Cargar programación cuando coinciden máquina + turno + operario (como en el planeador)
   useEffect(() => {
     const fetchPlaneacion = async () => {
-      if (selectedMaquina) {
-        try {
-          const plan = await planeacionApi.getPlaneadorActual(selectedMaquina);
-          console.log('Planeación actual recibida:', plan);
-          setPlaneacionActual(plan);
-
-          // Si hay una planeación y no hay OP seleccionada, o la OP es diferente, sugerir/autollenar
-          if (plan && plan.ordenProduccion) {
-            // Solo autollenamos si el campo está vacío o si el usuario aún no ha empezado a escribir algo distinto
-            if (!opSearchText || opSearchText === '') {
-              setOpSearchText(plan.ordenProduccion.numero);
-              setSelectedOrden(plan.ordenProduccion.id);
-            }
-          }
-        } catch (error) {
-          console.log('Error al buscar planeación:', error);
-          setPlaneacionActual(null);
-        }
-      } else {
+      if (!selectedMaquina || !selectedHorario || !selectedUsuario) {
         setPlaneacionActual(null);
+        setPlaneacionMensaje(
+          selectedMaquina || selectedHorario || selectedUsuario
+            ? 'Seleccione máquina, turno y operario para cargar la programación.'
+            : null
+        );
+        return;
+      }
+
+      try {
+        const plan = await planeacionApi.getPlaneadorActual(
+          selectedMaquina,
+          selectedHorario,
+          selectedUsuario
+        );
+        console.log('Planeación actual recibida:', plan);
+
+        if (plan?.coincidencia === false) {
+          setPlaneacionActual(null);
+          setPlaneacionMensaje(plan.mensaje || 'No hay programación para esta combinación.');
+          return;
+        }
+
+        setPlaneacionActual(plan);
+        setPlaneacionMensaje(null);
+
+        const opNum = plan?.numeroOP || plan?.ordenProduccion?.numero;
+        if (opNum && !timer.isRunning && !timer.isPaused && (!opSearchText || opSearchText === '')) {
+          setOpSearchText(String(opNum));
+          const ordenId = plan?.ordenProduccionId ?? plan?.ordenProduccion?.id;
+          if (ordenId) setSelectedOrden(ordenId);
+        }
+      } catch (error) {
+        console.log('Error al buscar planeación:', error);
+        setPlaneacionActual(null);
+        setPlaneacionMensaje('No hay programación para esta combinación hoy.');
       }
     };
     fetchPlaneacion();
-  }, [selectedMaquina]);
+  }, [selectedMaquina, selectedHorario, selectedUsuario]);
 
 
   const loadCatalogs = async () => {
@@ -908,7 +943,16 @@ function AppContent() {
   };
 
   const handleAddTiros = (value: number) => {
-    setTirosAcumulados((prev) => prev + value);
+    setTirosAcumulados((prev) => {
+      const next = prev + value;
+      if (activeProcessId) {
+        coreApi.actualizarProgreso(activeProcessId, {
+          tiros: next,
+          desperdicio: desperdicioAcumulado,
+        }).catch((err) => console.warn('No se pudo sincronizar tiros en vivo:', err));
+      }
+      return next;
+    });
   };
 
   // Funciones para WasteModal
@@ -1221,11 +1265,12 @@ function AppContent() {
               onOpenWasteModal={handleOpenWasteModal}
               historial={historial}
               // handleClearData removed as the button was removed from the component
-              tirosTotales={tirosTotalesDia + tirosAcumulados}
-              desperdicioTotal={desperdicioTotalDia + desperdicioAcumulado}
+              tirosTotales={tirosTotalesDisplay}
+              desperdicioTotal={desperdicioTotalDisplay}
               metaDia={planeacionActual?.metaTiros || maquinas.find(m => m.id === selectedMaquina)?.metaRendimiento || 0}
               valorPorTiro={maquinas.find(m => m.id === selectedMaquina)?.valorPorTiro || 0}
               planeacionActual={planeacionActual}
+              planeacionMensaje={planeacionMensaje}
               opNumero={opDisplayText}
               maquinaId={selectedMaquina}
               maquinaNombre={maquinas.find((m) => m.id === selectedMaquina)?.nombre ?? null}
@@ -1249,11 +1294,12 @@ function AppContent() {
             onOpenWasteModal={handleOpenWasteModal}
             historial={historial}
             handleClearData={handleClearData}
-            tirosTotales={tirosTotalesDia + tirosAcumulados}
-            desperdicioTotal={desperdicioTotalDia + desperdicioAcumulado}
-            metaDia={maquinas.find(m => m.id === selectedMaquina)?.metaRendimiento || 0}
+            tirosTotales={tirosTotalesDisplay}
+            desperdicioTotal={desperdicioTotalDisplay}
+            metaDia={planeacionActual?.metaTiros || maquinas.find(m => m.id === selectedMaquina)?.metaRendimiento || 0}
             valorPorTiro={maquinas.find(m => m.id === selectedMaquina)?.valorPorTiro || 0}
             planeacionActual={planeacionActual}
+            planeacionMensaje={planeacionMensaje}
             opNumero={opDisplayText}
             maquinaId={selectedMaquina}
             maquinaNombre={maquinas.find((m) => m.id === selectedMaquina)?.nombre ?? null}
@@ -1267,12 +1313,19 @@ function AppContent() {
           // Crear objeto registro
           if (!selectedMaquina || !selectedUsuario) return;
 
+          const now = new Date();
+          const yyyy = now.getFullYear();
+          const mm = String(now.getMonth() + 1).padStart(2, '0');
+          const dd = String(now.getDate()).padStart(2, '0');
+          // Mediodía local: evita que UTC cruce al día anterior/siguiente
+          const fechaLocal = `${yyyy}-${mm}-${dd}T12:00:00`;
+
           const record: RegistroDesperdicioRequest = {
             maquinaId: selectedMaquina,
             usuarioId: selectedUsuario,
             codigoDesperdicioId: codigoId,
             cantidad: cantidad,
-            fecha: new Date().toISOString(), // Fecha local UTC o similar
+            fecha: fechaLocal,
             ordenProduccion: opSearchText || undefined,
             registradoPor: 'Tablet',
           };
@@ -1332,7 +1385,7 @@ const Content = ({
   subActividadDescripcion,
   isMobile, actividades, handleSelectActividad, handleAddTiros,
   onOpenWasteModal, historial, handleClearData, tirosTotales,
-  desperdicioTotal, metaDia, valorPorTiro, planeacionActual,
+  desperdicioTotal, metaDia, valorPorTiro, planeacionActual, planeacionMensaje,
   opNumero, maquinaId, maquinaNombre,
 }: any) => (
 
@@ -1383,6 +1436,7 @@ const Content = ({
             meta={metaDia}
             valorPorTiro={valorPorTiro}
             planeacionActual={planeacionActual}
+            planeacionMensaje={planeacionMensaje}
             opNumero={opNumero ?? ''}
             maquinaId={maquinaId ?? null}
             maquinaNombre={maquinaNombre ?? null}

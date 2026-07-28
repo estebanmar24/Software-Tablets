@@ -24,12 +24,18 @@ public class ProduccionController : ControllerBase
     private readonly AppDbContext _context;
     private readonly ITiempoProcesoService _tiempoProcesoService;
     private readonly IWebHostEnvironment _env;
+    private readonly GastoAutorizacionService _gastoAutorizacion;
 
-    public ProduccionController(AppDbContext context, ITiempoProcesoService tiempoProcesoService, IWebHostEnvironment env)
+    public ProduccionController(
+        AppDbContext context,
+        ITiempoProcesoService tiempoProcesoService,
+        IWebHostEnvironment env,
+        GastoAutorizacionService gastoAutorizacion)
     {
         _context = context;
         _tiempoProcesoService = tiempoProcesoService;
         _env = env;
+        _gastoAutorizacion = gastoAutorizacion;
     }
 
     [AllowAnonymous]
@@ -1255,7 +1261,9 @@ public class ProduccionController : ControllerBase
     }
 
     [HttpPost("gastos")]
-    public async Task<ActionResult<Produccion_Gasto>> CreateGasto(Produccion_Gasto gasto)
+    public async Task<ActionResult<Produccion_Gasto>> CreateGasto(
+        Produccion_Gasto gasto,
+        [FromQuery] int? autorizacionId = null)
     {
         try
         {
@@ -1264,13 +1272,31 @@ public class ProduccionController : ControllerBase
 
         // Set Creator
         var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == "Id");
-        if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int adminId))
+        int adminId = 0;
+        if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int parsedAdminId))
         {
-            gasto.CreadoPorId = adminId;
+            adminId = parsedAdminId;
+            gasto.CreadoPorId = parsedAdminId;
         }
 
         // Helper: Validate logic based on Rubro
         var rubro = await _context.Produccion_Rubros.FindAsync(gasto.RubroId);
+        var esNomina = rubro != null && (rubro.Nombre == "Horas Extras" || rubro.Nombre == "Recargo"
+            || gasto.TipoHoraId.HasValue || gasto.TipoRecargoId.HasValue);
+
+        if (adminId <= 0 && !esNomina)
+            return BadRequest(new { message = "No se pudo identificar al usuario." });
+
+        try
+        {
+            await _gastoAutorizacion.ExigirAutorizacionParaGastoNormalAsync(
+                "produccion", autorizacionId, adminId, esNomina);
+        }
+        catch (InvalidOperationException exAuth)
+        {
+            return BadRequest(new { message = exAuth.Message });
+        }
+
         if (rubro != null)
         {
             if (rubro.Nombre == "Horas Extras" || rubro.Nombre == "Recargo")
@@ -1298,8 +1324,9 @@ public class ProduccionController : ControllerBase
 
                 if (usuario == null) return BadRequest("Usuario no encontrado");
 
-                // Formula: (Salario / 220) * Factor * Horas
-                decimal hourlyRate = usuario.Salario / 220m;
+                // Formula: (Salario / divisor) * Factor * Horas
+                // divisor 220 hasta 14/07/2026; 210 desde 15/07/2026
+                decimal hourlyRate = LaborHorasExtrasHelper.ValorHora(usuario.Salario, gasto.Fecha);
                 gasto.Precio = hourlyRate * factor * (gasto.CantidadHoras ?? 0);
                 gasto.Precio = Math.Round(gasto.Precio, 2);
                 
@@ -1314,8 +1341,6 @@ public class ProduccionController : ControllerBase
                     return BadRequest("Número de Factura es requerido para este tipo de rubro");
             }
 
-            var esNomina = gasto.TipoHoraId.HasValue || gasto.TipoRecargoId.HasValue
-                || rubro.Nombre == "Horas Extras" || rubro.Nombre == "Recargo";
             var mpErr = GastoMedioPagoHelper.ValidateCreditoOExclusivoEfectivo(esNomina, gasto.EsSolicitudCredito, gasto.EsEfectivo);
             if (mpErr != null) return (ActionResult<Produccion_Gasto>)(object)mpErr;
             // Add more if needed
@@ -1342,6 +1367,9 @@ public class ProduccionController : ControllerBase
 
         _context.Produccion_Gastos.Add(gasto);
         await _context.SaveChangesAsync();
+
+        if (autorizacionId.HasValue && autorizacionId.Value > 0)
+            await _gastoAutorizacion.VincularGastoRegistradoAsync(autorizacionId.Value, gasto.Id);
 
         return Ok(gasto);
         }
@@ -1453,12 +1481,12 @@ public class ProduccionController : ControllerBase
                 UsuarioNombre = g.Usuario?.Nombre ?? "N/A",
                 UsuarioDocumento = g.Usuario?.Documento ?? "",
                 Salario = salario,
-                ValorHora = LaborHorasExtrasHelper.ValorHora(salario),
+                ValorHora = LaborHorasExtrasHelper.ValorHora(salario, g.Fecha),
                 NumeroOP = g.NumeroOP ?? "",
                 TipoHoraNombre = g.TipoHora?.Nombre ?? "N/A",
                 Factor = factor,
                 CantidadHoras = horas,
-                Precio = LaborHorasExtrasHelper.CalcularValorAPagar(salario, factor, horas),
+                Precio = LaborHorasExtrasHelper.CalcularValorAPagar(salario, factor, horas, g.Fecha),
                 Nota = g.Nota ?? ""
             };
         }).ToList();
@@ -1500,12 +1528,12 @@ public class ProduccionController : ControllerBase
                 UsuarioNombre = g.Usuario?.Nombre ?? "N/A",
                 UsuarioDocumento = g.Usuario?.Documento ?? "",
                 Salario = salario,
-                ValorHora = LaborHorasExtrasHelper.ValorHora(salario),
+                ValorHora = LaborHorasExtrasHelper.ValorHora(salario, g.Fecha),
                 NumeroOP = g.NumeroOP ?? "",
                 TipoRecargoNombre = g.TipoRecargo?.Nombre ?? "N/A",
                 Factor = factor,
                 CantidadHoras = horas,
-                Precio = LaborHorasExtrasHelper.CalcularValorAPagar(salario, factor, horas),
+                Precio = LaborHorasExtrasHelper.CalcularValorAPagar(salario, factor, horas, g.Fecha),
                 Nota = g.Nota ?? ""
             };
         }).ToList();
@@ -2178,6 +2206,118 @@ public class ProduccionController : ControllerBase
         return Ok();
     }
 
+    // ===================== PARAMETROS JORNADA OT =====================
+    private static string? FormatTimeOt(TimeSpan? t) =>
+        t.HasValue ? $"{(int)t.Value.TotalHours:D2}:{t.Value.Minutes:D2}" : null;
+
+    private static TimeSpan? ParseTimeOt(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        var parts = s.Trim().Split(':');
+        if (parts.Length < 2) return null;
+        if (!int.TryParse(parts[0], out var h) || !int.TryParse(parts[1], out var m)) return null;
+        return new TimeSpan(h, m, 0);
+    }
+
+    private static ParametrosJornadaOtVersionDto MapJornadaVersion(DateTime vigenteDesde, List<ParametrosJornadaOt> dias) =>
+        new()
+        {
+            VigenteDesde = vigenteDesde.ToString("yyyy-MM-dd"),
+            Dias = dias
+                .OrderBy(d => d.DiaSemana)
+                .ThenBy(d => d.HoraInicio ?? TimeSpan.MaxValue)
+                .Select(d => new ParametrosJornadaOtDiaDto
+                {
+                    DiaSemana = d.DiaSemana,
+                    HoraInicio = FormatTimeOt(d.HoraInicio),
+                    HoraFin = FormatTimeOt(d.HoraFin),
+                    DescuentaComida = d.DescuentaComida,
+                    MinutosComida = d.MinutosComida
+                }).ToList()
+        };
+
+    /// <summary>
+    /// Jornada OT vigente para una fecha (la versión con VigenteDesde más reciente &lt;= fecha).
+    /// Si no hay versión, retorna dias vacío (el FE usa lógica legacy).
+    /// </summary>
+    [HttpGet("parametros-jornada-ot")]
+    public async Task<ActionResult> GetParametrosJornadaOt([FromQuery] string? fecha = null)
+    {
+        DateTime fechaRef;
+        if (string.IsNullOrWhiteSpace(fecha) || !DateTime.TryParse(fecha, out fechaRef))
+            fechaRef = DateTime.Today;
+        fechaRef = fechaRef.Date;
+
+        var vigenteDesde = await _context.ParametrosJornadaOt
+            .Where(p => p.Activo && p.VigenteDesde <= fechaRef)
+            .OrderByDescending(p => p.VigenteDesde)
+            .Select(p => p.VigenteDesde)
+            .FirstOrDefaultAsync();
+
+        if (vigenteDesde == default)
+            return Ok(new ParametrosJornadaOtVersionDto { VigenteDesde = "", Dias = new List<ParametrosJornadaOtDiaDto>() });
+
+        var dias = await _context.ParametrosJornadaOt
+            .Where(p => p.Activo && p.VigenteDesde == vigenteDesde)
+            .ToListAsync();
+
+        return Ok(MapJornadaVersion(vigenteDesde, dias));
+    }
+
+    [HttpGet("parametros-jornada-ot/all")]
+    public async Task<ActionResult> GetAllParametrosJornadaOt()
+    {
+        var grupos = await _context.ParametrosJornadaOt
+            .Where(p => p.Activo)
+            .GroupBy(p => p.VigenteDesde)
+            .OrderByDescending(g => g.Key)
+            .ToListAsync();
+
+        var result = grupos.Select(g => MapJornadaVersion(g.Key, g.ToList())).ToList();
+        return Ok(result);
+    }
+
+    [HttpPut("parametros-jornada-ot")]
+    public async Task<ActionResult> SaveParametrosJornadaOt([FromBody] ParametrosJornadaOtSaveDto dto)
+    {
+        if (dto == null || string.IsNullOrWhiteSpace(dto.VigenteDesde) ||
+            !DateTime.TryParse(dto.VigenteDesde, out var vigenteDesde))
+            return BadRequest(new { message = "VigenteDesde inválido (yyyy-MM-dd)" });
+
+        vigenteDesde = vigenteDesde.Date;
+        if (dto.Dias == null || dto.Dias.Count == 0)
+            return BadRequest(new { message = "Debe enviar al menos un horario" });
+
+        var existentes = await _context.ParametrosJornadaOt
+            .Where(p => p.VigenteDesde == vigenteDesde)
+            .ToListAsync();
+        if (existentes.Count > 0)
+            _context.ParametrosJornadaOt.RemoveRange(existentes);
+
+        var nuevos = new List<ParametrosJornadaOt>();
+        foreach (var diaDto in dto.Dias)
+        {
+            if (diaDto.DiaSemana < 0 || diaDto.DiaSemana > 6) continue;
+            nuevos.Add(new ParametrosJornadaOt
+            {
+                VigenteDesde = vigenteDesde,
+                DiaSemana = diaDto.DiaSemana,
+                HoraInicio = ParseTimeOt(diaDto.HoraInicio),
+                HoraFin = ParseTimeOt(diaDto.HoraFin),
+                DescuentaComida = diaDto.DescuentaComida,
+                MinutosComida = Math.Max(0, diaDto.MinutosComida),
+                Activo = true
+            });
+        }
+
+        if (nuevos.Count == 0)
+            return BadRequest(new { message = "No hay horarios válidos para guardar" });
+
+        _context.ParametrosJornadaOt.AddRange(nuevos);
+        await _context.SaveChangesAsync();
+        return Ok(MapJornadaVersion(vigenteDesde, nuevos));
+    }
+
     // ===================== TIPOS DE HORA CRUD =====================
     [HttpPost("tiposhora")]
     public async Task<ActionResult> CreateTipoHora([FromBody] Produccion_TipoHora tipoHora)
@@ -2569,7 +2709,7 @@ public class ProduccionController : ControllerBase
             
             if (factor > 0 && g.CantidadHoras > 0)
             {
-                decimal hourlyRate = g.Usuario.Salario / 220m;
+                decimal hourlyRate = LaborHorasExtrasHelper.ValorHora(g.Usuario.Salario, g.Fecha);
                 g.Precio = Math.Round(hourlyRate * factor * g.CantidadHoras.Value, 2);
                 count++;
             }

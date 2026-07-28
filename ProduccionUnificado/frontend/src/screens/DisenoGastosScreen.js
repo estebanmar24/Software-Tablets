@@ -3,7 +3,7 @@
  * 3-level hierarchy: Rubro → Tipo de Servicio → Proveedor
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import {
     View, Text, StyleSheet, ScrollView, TextInput,
@@ -27,6 +27,9 @@ import * as Sharing from 'expo-sharing';
 import { Asset } from 'expo-asset';
 import { parseMontoInput, GastoListaPrecios } from '../utils/gastoPrecioForm';
 import { gastoPermiteEdicionTrasContabilidad } from '../utils/gastoEditPermission';
+import GastoAutorizacionBloque from '../components/GastoAutorizacionBloque';
+import GastosCapturaBodyScroll from '../components/GastosCapturaBodyScroll';
+import { MODULOS_GASTO } from '../services/gastosAutorizacionApi';
 
 const TABS = [
     { key: 'gastos', label: 'Captura de Gastos', icon: '💰' },
@@ -72,7 +75,7 @@ const getEstadoColor = (estado) => {
 };
 
 // ===================== MAIN COMPONENT =====================
-export default function DisenoGastosScreen() {
+export default function DisenoGastosScreen({ displayName }) {
     const { colors } = useTheme();
     const [activeTab, setActiveTab] = useState('gastos');
 
@@ -93,7 +96,7 @@ export default function DisenoGastosScreen() {
                 ))}
             </View>
 
-            {activeTab === 'gastos' && <GastosTab />}
+            {activeTab === 'gastos' && <GastosTab displayName={displayName} />}
             {activeTab === 'graficas' && <GraficasTab />}
 
             {activeTab === 'rubros' && <RubrosTab />}
@@ -104,8 +107,10 @@ export default function DisenoGastosScreen() {
 }
 
 // ===================== GASTOS TAB =====================
-function GastosTab() {
+function GastosTab({ displayName }) {
     const { colors: themeColors } = useTheme();
+    const autorizacionActivaRef = useRef(null);
+    const [authRefreshKey, setAuthRefreshKey] = useState(0);
     const [loading, setLoading] = useState(true);
     const [anio, setAnio] = useState(new Date().getFullYear());
     const [mes, setMes] = useState(new Date().getMonth() + 1);
@@ -144,7 +149,8 @@ function GastosTab() {
         tipoTrabajo: '',
         ordenProduccion: '',
         esPendiente: false,
-        esSolicitudCredito: false
+        esSolicitudCredito: false,
+        desdeAutorizacion: false
     });
     const [filterCredit, setFilterCredit] = useState(false);
     const [filterPending, setFilterPending] = useState(false);
@@ -258,10 +264,37 @@ function GastosTab() {
             fecha: new Date().toISOString().split('T')[0], observaciones: '', facturaPdfUrl: '',
             tipoTrabajo: '', ordenProduccion: '',
             esPendiente: false,
-            esSolicitudCredito: false
+            esSolicitudCredito: false,
+            desdeAutorizacion: false
         });
         setMedioPago(null);
         setIsLegalizing(false);
+    };
+
+    const handleRegistrarDesdeAutorizacion = (sol) => {
+        autorizacionActivaRef.current = sol;
+        setEditItem(null);
+        setIsLegalizing(false);
+        resetForm();
+        const fecha = sol.fechaAproximada?.split('T')[0] || new Date().toISOString().split('T')[0];
+        setFormData({
+            rubroId: sol.rubroId ? String(sol.rubroId) : '',
+            proveedorId: sol.proveedorId ? String(sol.proveedorId) : '',
+            numeroFactura: '',
+            precio: String(sol.cantidad ?? ''),
+            precioBase: String(sol.cantidad ?? ''),
+            precioIva: '0',
+            fecha,
+            observaciones: sol.razon || '',
+            facturaPdfUrl: '',
+            tipoTrabajo: '',
+            ordenProduccion: '',
+            esPendiente: false,
+            esSolicitudCredito: sol.esSolicitudCredito || false,
+            desdeAutorizacion: true
+        });
+        setMedioPago(flagsToMedioPago(!!sol.esSolicitudCredito, !!sol.esEfectivo));
+        setShowModal(true);
     };
 
     const gastoEsHeRecRubro = (g) => {
@@ -452,7 +485,12 @@ function GastosTab() {
             }
 
             if (editItem) { await disenoApi.updateGasto(editItem.id, { ...gastoData, id: editItem.id }); }
-            else { await disenoApi.createGasto(gastoData); }
+            else {
+                const authId = autorizacionActivaRef.current?.id;
+                await disenoApi.createGasto(gastoData, authId);
+                autorizacionActivaRef.current = null;
+                setAuthRefreshKey((k) => k + 1);
+            }
             showAlert('Éxito', editItem ? 'Actualizado' : 'Ingresado', () => { setShowModal(false); resetForm(); loadData(); });
         } catch (error) {
             console.error('Error saving gasto:', error);
@@ -574,10 +612,22 @@ function GastosTab() {
                 <View style={[styles.summaryCard, displayedRestante >= 0 ? styles.restanteCard : styles.excesoCard]}><Text style={styles.summaryLabel}>{displayedRestante >= 0 ? 'Restante' : 'Exceso'}</Text><Text style={styles.summaryValue}>{formatCurrency(Math.abs(displayedRestante))}</Text></View>
             </View>
 
-            <TouchableOpacity style={styles.addButton} onPress={() => setShowModal(true)}><Text style={styles.addButtonText}>+ Agregar Gasto</Text></TouchableOpacity>
+            <GastosCapturaBodyScroll>
+            <GastoAutorizacionBloque
+                modulo={MODULOS_GASTO.diseno}
+                anio={anio}
+                mes={mes}
+                displayName={displayName}
+                proveedores={proveedores}
+                rubros={rubros}
+                formatCurrency={formatCurrency}
+                formatDate={formatDate}
+                onRegistrarGasto={handleRegistrarDesdeAutorizacion}
+                refreshKey={authRefreshKey}
+            />
 
             {loading ? <ActivityIndicator size="large" color="#2563EB" style={styles.loading} /> : (
-                <ScrollView style={styles.listContainer}>
+                <View style={styles.listContainer}>
                     {filteredGastos.length === 0 ? (
                         <View style={styles.emptyState}><Text style={styles.emptyText}>No hay gastos registrados</Text></View>
                     ) : (
@@ -654,8 +704,9 @@ function GastosTab() {
                             </View>
                         ))
                     )}
-                </ScrollView>
+                </View>
             )}
+            </GastosCapturaBodyScroll>
 
             <ExpenseHistoryModal visible={showHistoryModal} onClose={() => setShowHistoryModal(false)} gasto={selectedHistoryGasto} />
 
@@ -1465,7 +1516,7 @@ const styles = StyleSheet.create({
     addButtonSmall: { backgroundColor: '#2563EB', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6 },
     addButtonText: { color: '#FFF', fontWeight: 'bold' },
     loading: { marginTop: 40 },
-    listContainer: { flex: 1, paddingHorizontal: 16 },
+    listContainer: { paddingHorizontal: 16 },
     emptyState: { padding: 40, alignItems: 'center' },
     emptyText: { color: '#9CA3AF', fontSize: 16 },
     gastoCard: { backgroundColor: '#FFF', padding: 16, borderRadius: 8, marginBottom: 12, borderLeftWidth: 4, borderLeftColor: '#2563EB' },

@@ -10,15 +10,34 @@ import {
     useWindowDimensions,
     ActivityIndicator,
     Modal,
+    Image,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { api, ajustarTiempo, repararProcesosAbiertos } from '../services/productionApi';
+import { api, ajustarTiempo, repararProcesosAbiertos, API_URL } from '../services/productionApi';
 import {
     isRegistroEnProgreso,
     isRegistroPausado,
     getRegistroVivoMasReciente,
 } from '../utils/tiempoProceso';
 import { useTheme } from '../contexts/ThemeContext';
+
+const SERVER_URL = API_URL.replace(/\/api$/, '');
+
+/** Normaliza un número de OP a solo dígitos sin ceros a la izquierda ("OP-0460" → "460"). */
+const normalizarOpKey = (op) => {
+    if (op == null) return '';
+    const digits = String(op).replace(/\D/g, '');
+    return digits.replace(/^0+/, '');
+};
+
+/** Construye URL absoluta de una foto de calidad (acepta rutas relativas de planta y externa). */
+const buildFotoUrl = (ruta) => {
+    if (!ruta) return null;
+    const r = String(ruta).trim();
+    if (r.startsWith('http') || r.startsWith('data:')) return r;
+    if (r.startsWith('/')) return `${SERVER_URL}${r}`;
+    return `${SERVER_URL}/${r}`;
+};
 
 const toDateStr = (d) => {
     const yyyy = d.getFullYear();
@@ -193,6 +212,14 @@ const HistoryScreen = () => {
     const [reparando, setReparando] = useState(false);
     const [catalogoActividades, setCatalogoActividades] = useState([]);
 
+    // Índice de encuestas de calidad por OP: { '7818': { planta: [ids], externa: [ids] } }
+    const [calidadIndex, setCalidadIndex] = useState({});
+    // Modal de calidad: { tipo: 'planta'|'externa', ids: [..], op }
+    const [calidadModal, setCalidadModal] = useState(null);
+    const [calidadDetalle, setCalidadDetalle] = useState(null);
+    const [calidadDetalleLoading, setCalidadDetalleLoading] = useState(false);
+    const [calidadImagenAmpliada, setCalidadImagenAmpliada] = useState(null);
+
     const cargar = useCallback(async (silent = false) => {
         if (!silent) setLoading(true);
         try {
@@ -222,6 +249,56 @@ const HistoryScreen = () => {
         api.get('tiempoproceso/actividades')
             .then((res) => setCatalogoActividades(Array.isArray(res.data) ? res.data : []))
             .catch(() => setCatalogoActividades([]));
+    }, []);
+
+    const cargarCalidadIndex = useCallback(async () => {
+        try {
+            const res = await api.get('calidad/encuestas-por-op');
+            const map = {};
+            (Array.isArray(res.data) ? res.data : []).forEach((row) => {
+                if (row?.op) map[row.op] = { planta: row.planta || [], externa: row.externa || [] };
+            });
+            setCalidadIndex(map);
+        } catch {
+            setCalidadIndex({});
+        }
+    }, []);
+
+    useEffect(() => {
+        cargarCalidadIndex();
+        const t = setInterval(cargarCalidadIndex, 60000);
+        return () => clearInterval(t);
+    }, [cargarCalidadIndex]);
+
+    const abrirCalidad = useCallback(async (tipo, ids, op) => {
+        setCalidadModal({ tipo, ids, op });
+        setCalidadDetalle(null);
+        // Si solo hay una encuesta, cargarla directamente
+        if (ids.length === 1) {
+            setCalidadDetalleLoading(true);
+            try {
+                const url = tipo === 'planta' ? `calidad/encuestas/${ids[0]}` : `CalidadTalleres/${ids[0]}`;
+                const res = await api.get(url);
+                setCalidadDetalle(res.data);
+            } catch {
+                setCalidadDetalle(null);
+            } finally {
+                setCalidadDetalleLoading(false);
+            }
+        }
+    }, []);
+
+    const cargarDetalleCalidad = useCallback(async (tipo, id) => {
+        setCalidadDetalleLoading(true);
+        try {
+            const url = tipo === 'planta' ? `calidad/encuestas/${id}` : `CalidadTalleres/${id}`;
+            const res = await api.get(url);
+            setCalidadDetalle(res.data);
+        } catch {
+            setCalidadDetalle(null);
+        } finally {
+            setCalidadDetalleLoading(false);
+        }
     }, []);
 
     // Tick por segundo SOLO si hay registros en progreso (evita renders innecesarios).
@@ -908,6 +985,8 @@ const HistoryScreen = () => {
                                             isDarkMode={isDarkMode}
                                             colors={colors}
                                             onAjustar={() => abrirAjuste(r)}
+                                            calidadInfo={calidadIndex[normalizarOpKey(r.ordenProduccionNumero)]}
+                                            onVerCalidad={abrirCalidad}
                                         />
                                     ))}
                                 </View>
@@ -1067,9 +1146,220 @@ const HistoryScreen = () => {
                     </View>
                 </Modal>
             )}
+            {calidadModal && (
+                <Modal visible transparent animationType="fade" onRequestClose={() => setCalidadModal(null)}>
+                    <View style={s.modalOverlay}>
+                        <View style={[s.modalCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', maxHeight: '90vh', maxWidth: 640 }]}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                                <Text style={[s.modalTitle, { color: isDarkMode ? '#e2e8f0' : '#1a202c', flex: 1, marginBottom: 0 }]}>
+                                    {calidadModal.tipo === 'planta' ? 'Calidad de procesos (planta)' : 'Calidad externa (taller)'} · OP {calidadModal.op}
+                                </Text>
+                                <TouchableOpacity onPress={() => setCalidadModal(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                                    <MaterialCommunityIcons name="close" size={22} color={isDarkMode ? '#a0aec0' : '#4a5568'} />
+                                </TouchableOpacity>
+                            </View>
+                            <ScrollView>
+                                {calidadModal.ids.length > 1 && (
+                                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                                        {calidadModal.ids.map((id, i) => (
+                                            <TouchableOpacity
+                                                key={id}
+                                                style={{
+                                                    paddingHorizontal: 10,
+                                                    paddingVertical: 5,
+                                                    borderRadius: 8,
+                                                    backgroundColor: calidadDetalle?.id === id ? '#2563eb' : (isDarkMode ? '#1f2937' : '#e2e8f0'),
+                                                }}
+                                                onPress={() => cargarDetalleCalidad(calidadModal.tipo, id)}
+                                            >
+                                                <Text style={{ color: calidadDetalle?.id === id ? '#fff' : (isDarkMode ? '#cbd5e0' : '#334155'), fontSize: 12, fontWeight: '700' }}>
+                                                    Revisión {i + 1}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+                                )}
+                                {calidadDetalleLoading && <ActivityIndicator size="large" color="#2563eb" style={{ marginVertical: 30 }} />}
+                                {!calidadDetalleLoading && !calidadDetalle && calidadModal.ids.length > 1 && (
+                                    <Text style={{ color: isDarkMode ? '#a0aec0' : '#4a5568', marginVertical: 20, textAlign: 'center' }}>
+                                        Seleccione una revisión para ver el detalle.
+                                    </Text>
+                                )}
+                                {!calidadDetalleLoading && calidadDetalle && calidadModal.tipo === 'planta' && (
+                                    <CalidadPlantaDetalle d={calidadDetalle} isDarkMode={isDarkMode} onFoto={setCalidadImagenAmpliada} />
+                                )}
+                                {!calidadDetalleLoading && calidadDetalle && calidadModal.tipo === 'externa' && (
+                                    <CalidadExternaDetalle d={calidadDetalle} isDarkMode={isDarkMode} onFoto={setCalidadImagenAmpliada} />
+                                )}
+                            </ScrollView>
+                        </View>
+                    </View>
+                </Modal>
+            )}
+            {calidadImagenAmpliada && (
+                <Modal visible transparent animationType="fade" onRequestClose={() => setCalidadImagenAmpliada(null)}>
+                    <TouchableOpacity
+                        style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', justifyContent: 'center', alignItems: 'center' }}
+                        activeOpacity={1}
+                        onPress={() => setCalidadImagenAmpliada(null)}
+                    >
+                        <Image source={{ uri: calidadImagenAmpliada }} style={{ width: '92%', height: '82%' }} resizeMode="contain" />
+                        <TouchableOpacity
+                            style={{ marginTop: 12, backgroundColor: '#ffffff22', paddingHorizontal: 18, paddingVertical: 8, borderRadius: 8 }}
+                            onPress={() => setCalidadImagenAmpliada(null)}
+                        >
+                            <Text style={{ color: '#fff', fontWeight: '700' }}>✕ Cerrar</Text>
+                        </TouchableOpacity>
+                    </TouchableOpacity>
+                </Modal>
+            )}
         </View>
     );
 };
+
+/* ==================== Detalle de encuestas de calidad ==================== */
+
+function CalidadDetalleFila({ k, v, isDarkMode, color }) {
+    return (
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3, borderBottomWidth: 1, borderBottomColor: isDarkMode ? '#1f2937' : '#f1f5f9' }}>
+            <Text style={{ color: isDarkMode ? '#a0aec0' : '#64748b', fontSize: 12, fontWeight: '600' }}>{k}</Text>
+            <Text style={{ color: color || (isDarkMode ? '#e2e8f0' : '#1a202c'), fontSize: 12, fontWeight: '700', flexShrink: 1, textAlign: 'right' }}>{v}</Text>
+        </View>
+    );
+}
+
+function CalidadSeccionTitulo({ children, isDarkMode }) {
+    return (
+        <Text style={{ color: isDarkMode ? '#93c5fd' : '#2563eb', fontWeight: '800', fontSize: 13, marginTop: 14, marginBottom: 6 }}>
+            {children}
+        </Text>
+    );
+}
+
+function CalidadFotos({ rutas, onFoto }) {
+    const urls = String(rutas || '').split(/\|\|\||\|\||;/).map((u) => u.trim()).filter(Boolean);
+    if (urls.length === 0) return null;
+    return (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+            {urls.map((u, i) => {
+                const full = buildFotoUrl(u);
+                return (
+                    <TouchableOpacity key={i} onPress={() => onFoto(full)}>
+                        <Image source={{ uri: full }} style={{ width: 110, height: 110, borderRadius: 8, backgroundColor: '#00000022' }} />
+                    </TouchableOpacity>
+                );
+            })}
+        </View>
+    );
+}
+
+function CalidadPlantaDetalle({ d, isDarkMode, onFoto }) {
+    const cumple = (b) => (b ? 'SÍ CUMPLE' : 'NO CUMPLE');
+    const cumpleColor = (b) => (b ? '#38a169' : '#e53e3e');
+    return (
+        <View>
+            <CalidadSeccionTitulo isDarkMode={isDarkMode}>Información general</CalidadSeccionTitulo>
+            <CalidadDetalleFila k="Fecha" v={d.fechaCreacion ? new Date(d.fechaCreacion).toLocaleString() : '—'} isDarkMode={isDarkMode} />
+            <CalidadDetalleFila k="Operario" v={d.operario || '—'} isDarkMode={isDarkMode} />
+            {!!d.auxiliar && <CalidadDetalleFila k="Auxiliar" v={d.auxiliar} isDarkMode={isDarkMode} />}
+            <CalidadDetalleFila k="Máquina" v={d.maquina || '—'} isDarkMode={isDarkMode} />
+            <CalidadDetalleFila k="Proceso" v={d.proceso || '—'} isDarkMode={isDarkMode} />
+            <CalidadDetalleFila k="OP" v={d.ordenProduccion || '—'} isDarkMode={isDarkMode} />
+            <CalidadDetalleFila k="Cant. a producir" v={String(d.cantidadProducir ?? '—')} isDarkMode={isDarkMode} />
+            <CalidadDetalleFila k="Cant. evaluada" v={String(d.cantidadEvaluada ?? '—')} isDarkMode={isDarkMode} />
+            <CalidadDetalleFila k="Estado" v={d.estadoProceso || '—'} color={d.estadoProceso === 'Terminado' ? '#38a169' : '#d69e2e'} isDarkMode={isDarkMode} />
+
+            <CalidadSeccionTitulo isDarkMode={isDarkMode}>Verificación</CalidadSeccionTitulo>
+            <CalidadDetalleFila k="Ficha técnica" v={cumple(d.tieneFichaTecnica)} color={cumpleColor(d.tieneFichaTecnica)} isDarkMode={isDarkMode} />
+            <CalidadDetalleFila k="Registro de formatos" v={cumple(d.correctoRegistroFormatos)} color={cumpleColor(d.correctoRegistroFormatos)} isDarkMode={isDarkMode} />
+            <CalidadDetalleFila k="Aprobación de arranque" v={cumple(d.aprobacionArranque)} color={cumpleColor(d.aprobacionArranque)} isDarkMode={isDarkMode} />
+            <CalidadDetalleFila k="Muestra física" v={d.contieneMuestraFisica ? 'SÍ' : 'NO'} isDarkMode={isDarkMode} />
+
+            {!!d.observacion && (
+                <>
+                    <CalidadSeccionTitulo isDarkMode={isDarkMode}>Observaciones</CalidadSeccionTitulo>
+                    <Text style={{ color: isDarkMode ? '#e2e8f0' : '#1a202c', fontStyle: 'italic', fontSize: 12 }}>{d.observacion}</Text>
+                </>
+            )}
+
+            <CalidadSeccionTitulo isDarkMode={isDarkMode}>Novedades y hallazgos</CalidadSeccionTitulo>
+            {(d.novedades || []).length === 0 && (
+                <Text style={{ color: isDarkMode ? '#a0aec0' : '#64748b', fontSize: 12 }}>Sin novedades registradas.</Text>
+            )}
+            {(d.novedades || []).map((nov, i) => (
+                <View key={nov.id || i} style={{ borderWidth: 1, borderColor: isDarkMode ? '#374151' : '#e2e8f0', borderRadius: 8, padding: 8, marginBottom: 8 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <Text style={{ color: '#e53e3e', fontWeight: '800', fontSize: 12 }}>{nov.tipoNovedad}</Text>
+                        {!!nov.cantidadDefectuosa && (
+                            <Text style={{ color: '#be123c', fontSize: 11, fontWeight: '700' }}>Cant: {nov.cantidadDefectuosa}</Text>
+                        )}
+                    </View>
+                    {!!nov.descripcion && (
+                        <Text style={{ color: isDarkMode ? '#cbd5e0' : '#334155', fontSize: 12, marginTop: 4, fontStyle: 'italic' }}>{nov.descripcion}</Text>
+                    )}
+                    <CalidadFotos rutas={nov.fotoUrl} onFoto={onFoto} />
+                </View>
+            ))}
+        </View>
+    );
+}
+
+function CalidadExternaDetalle({ d, isDarkMode, onFoto }) {
+    const siNo = (b) => (b ? 'SÍ' : 'NO');
+    const hallazgos = [
+        ['Variación de tono', d.variacionTono, d.fotoVariacionTono],
+        ['Quebrado / arrugado', d.quebradoArrugado, d.fotoQuebradoArrugado],
+        ['Esquina defectuosa', d.esquinaDefectuosa, d.fotoEsquinaDefectuosa],
+        ['Presencia de pestañas', d.presenciaPestanas, d.fotoPresenciaPestanas],
+        ['Desgaste de impresión', d.desgasteImpresion, d.fotoDesgasteImpresion],
+        ['Manchas', d.manchas, d.fotoManchas],
+        ['Reserva de pega', d.reservaPega, d.fotoReservaPega],
+        ['Grafado roto', d.grafadoRoto, d.fotoGrafadoRoto],
+        ['Novedad BPM', d.novedadBPM, d.fotoNovedadBPM],
+        ['Usa cofia', d.usaCofia, d.fotoUsaCofia],
+        ['Insumos pendientes', d.insumosPendientes, d.fotoInsumosPendientes],
+    ];
+    return (
+        <View>
+            <CalidadSeccionTitulo isDarkMode={isDarkMode}>Información general</CalidadSeccionTitulo>
+            <CalidadDetalleFila k="Fecha" v={d.fechaCreacion ? new Date(d.fechaCreacion).toLocaleString() : '—'} isDarkMode={isDarkMode} />
+            <CalidadDetalleFila k="Taller" v={d.tallerNombre || '—'} isDarkMode={isDarkMode} />
+            <CalidadDetalleFila k="Inspector" v={d.inspector || '—'} isDarkMode={isDarkMode} />
+            <CalidadDetalleFila k="OP" v={d.ordenProduccion || '—'} isDarkMode={isDarkMode} />
+            <CalidadDetalleFila k="Remisión" v={d.numeroRemision || '—'} isDarkMode={isDarkMode} />
+            <CalidadDetalleFila k="Cant. a producir" v={String(d.cantidadProducir ?? '—')} isDarkMode={isDarkMode} />
+            <CalidadDetalleFila k="Cant. evaluada" v={String(d.cantidadEvaluada ?? '—')} isDarkMode={isDarkMode} />
+            <CalidadDetalleFila k="Estado" v={d.estadoProceso || '—'} color={d.estadoProceso === 'Terminado' ? '#38a169' : '#d69e2e'} isDarkMode={isDarkMode} />
+            <CalidadDetalleFila k="Hora llegada" v={d.horaLlegada || '—'} isDarkMode={isDarkMode} />
+            <CalidadDetalleFila k="Hora salida" v={d.horaSalida || '—'} isDarkMode={isDarkMode} />
+
+            <CalidadSeccionTitulo isDarkMode={isDarkMode}>Documentación y condiciones</CalidadSeccionTitulo>
+            <CalidadDetalleFila k="Tiene muestra" v={siNo(d.tieneMuestra)} isDarkMode={isDarkMode} />
+            {!!d.tipoProducto && <CalidadDetalleFila k="Tipo de producto" v={d.tipoProducto} isDarkMode={isDarkMode} />}
+            <CalidadDetalleFila k="Conoce forma de empaque" v={siNo(d.conoceFormaEmpaque)} isDarkMode={isDarkMode} />
+            <CalidadDetalleFila k="Tiene remisión" v={siNo(d.tieneRemision)} isDarkMode={isDarkMode} />
+            <CalidadDetalleFila k="Insumos completos" v={siNo(d.tieneInsumosCompletos)} isDarkMode={isDarkMode} />
+            {d.insumosPendientes && (
+                <CalidadDetalleFila k="Insumos pendientes" v={d.tipoInsumosPendientes || 'SÍ'} color="#e53e3e" isDarkMode={isDarkMode} />
+            )}
+
+            <CalidadSeccionTitulo isDarkMode={isDarkMode}>Hallazgos de inspección</CalidadSeccionTitulo>
+            {hallazgos.map(([label, valor, fotos], i) => (
+                <View key={i} style={{ marginBottom: 6 }}>
+                    <CalidadDetalleFila k={label} v={siNo(valor)} color={valor ? '#e53e3e' : '#38a169'} isDarkMode={isDarkMode} />
+                    {valor ? <CalidadFotos rutas={fotos} onFoto={onFoto} /> : null}
+                </View>
+            ))}
+
+            {!!d.observaciones && (
+                <>
+                    <CalidadSeccionTitulo isDarkMode={isDarkMode}>Observaciones</CalidadSeccionTitulo>
+                    <Text style={{ color: isDarkMode ? '#e2e8f0' : '#1a202c', fontStyle: 'italic', fontSize: 12 }}>{d.observaciones}</Text>
+                </>
+            )}
+        </View>
+    );
+}
 
 function HtmlSelect({ value, onChange, options, isDarkMode }) {
     if (Platform.OS === 'web') {
@@ -1130,7 +1420,7 @@ function KpiCard({ icon, label, value, color, isDarkMode, sub }) {
     );
 }
 
-function ActivityRow({ r, isDarkMode, colors, onAjustar }) {
+function ActivityRow({ r, isDarkMode, colors, onAjustar, calidadInfo, onVerCalidad }) {
     const enProgreso = isRegistroEnProgreso(r);
     const pausado = isRegistroPausado(r);
     const code = r.actividadCodigo ? `${r.actividadCodigo} · ` : '';
@@ -1175,6 +1465,28 @@ function ActivityRow({ r, isDarkMode, colors, onAjustar }) {
                         <View style={actStyles.opChip}>
                             <Text style={actStyles.opChipText}>OP {r.ordenProduccionNumero}</Text>
                         </View>
+                    )}
+                    {!!(calidadInfo?.planta?.length) && (
+                        <TouchableOpacity
+                            style={[actStyles.calidadBtn, { backgroundColor: '#7C3AED22', borderColor: '#7C3AED' }]}
+                            onPress={() => onVerCalidad?.('planta', calidadInfo.planta, r.ordenProduccionNumero)}
+                        >
+                            <MaterialCommunityIcons name="clipboard-check-outline" size={13} color="#8B5CF6" />
+                            <Text style={[actStyles.calidadBtnText, { color: '#8B5CF6' }]}>
+                                Calidad{calidadInfo.planta.length > 1 ? ` (${calidadInfo.planta.length})` : ''}
+                            </Text>
+                        </TouchableOpacity>
+                    )}
+                    {!!(calidadInfo?.externa?.length) && (
+                        <TouchableOpacity
+                            style={[actStyles.calidadBtn, { backgroundColor: '#0D948822', borderColor: '#0D9488' }]}
+                            onPress={() => onVerCalidad?.('externa', calidadInfo.externa, r.ordenProduccionNumero)}
+                        >
+                            <MaterialCommunityIcons name="factory" size={13} color="#14B8A6" />
+                            <Text style={[actStyles.calidadBtnText, { color: '#14B8A6' }]}>
+                                Externa{calidadInfo.externa.length > 1 ? ` (${calidadInfo.externa.length})` : ''}
+                            </Text>
+                        </TouchableOpacity>
                     )}
                     {onAjustar && (
                         <TouchableOpacity onPress={onAjustar} style={actStyles.ajustarBtn}>
@@ -1677,6 +1989,17 @@ const actStyles = StyleSheet.create({
         borderRadius: 12,
     },
     opChipText: { color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
+    calidadBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 3,
+        paddingHorizontal: 7,
+        paddingVertical: 3,
+        borderRadius: 6,
+        borderWidth: 1,
+        marginLeft: 4,
+    },
+    calidadBtnText: { fontSize: 10, fontWeight: '800' },
     ajustarBtn: {
         flexDirection: 'row',
         alignItems: 'center',

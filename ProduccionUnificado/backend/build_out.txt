@@ -1,0 +1,14 @@
+﻿  Determinando los proyectos que se van a restaurar...
+G:\Proyecto-Tablets\ProduccionUnificado\backend\TiempoProcesos.API.csproj : warning NU1902: El paquete "MailKit" 4.10.0 tiene una vulnerabilidad de gravedad moderada conocida, https://github.com/advisories/GHSA-9j88-vvj5-vhgr
+  Todos los proyectos est├ín actualizados para la restauraci├│n.
+G:\Proyecto-Tablets\ProduccionUnificado\backend\TiempoProcesos.API.csproj : warning NU1902: El paquete "MailKit" 4.10.0 tiene una vulnerabilidad de gravedad moderada conocida, https://github.com/advisories/GHSA-9j88-vvj5-vhgr
+  TiempoProcesos.API -> G:\Proyecto-Tablets\ProduccionUnificado\backend\bin\Debug\net9.0\TiempoProcesos.API.dll
+
+Compilaci├│n correcta.
+
+G:\Proyecto-Tablets\ProduccionUnificado\backend\TiempoProcesos.API.csproj : warning NU1902: El paquete "MailKit" 4.10.0 tiene una vulnerabilidad de gravedad moderada conocida, https://github.com/advisories/GHSA-9j88-vvj5-vhgr
+G:\Proyecto-Tablets\ProduccionUnificado\backend\TiempoProcesos.API.csproj : warning NU1902: El paquete "MailKit" 4.10.0 tiene una vulnerabilidad de gravedad moderada conocida, https://github.com/advisories/GHSA-9j88-vvj5-vhgr
+    2 Advertencia(s)
+    0 Errores
+
+Tiempo transcurrido 00:00:02.65

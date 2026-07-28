@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OfficeOpenXml;
@@ -20,17 +21,20 @@ public class AlmacenController : ControllerBase
     private readonly AlmacenService _service;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly AlmacenEmailService _emailService;
+    private readonly IWebHostEnvironment _env;
 
     public AlmacenController(
         AppDbContext context,
         AlmacenService service,
         IServiceScopeFactory scopeFactory,
-        AlmacenEmailService emailService)
+        AlmacenEmailService emailService,
+        IWebHostEnvironment env)
     {
         _context = context;
         _service = service;
         _scopeFactory = scopeFactory;
         _emailService = emailService;
+        _env = env;
     }
 
     private void EncolarCorreo(Func<AlmacenEmailService, Task> accion)
@@ -502,7 +506,9 @@ public class AlmacenController : ControllerBase
                 r.OrdenProduccionNumero.ToLower().Contains(term) ||
                 r.Cliente.ToLower().Contains(term) ||
                 r.ProductoNombre.ToLower().Contains(term) ||
-                (r.Observacion != null && r.Observacion.ToLower().Contains(term)));
+                (r.Observacion != null && r.Observacion.ToLower().Contains(term)) ||
+                _context.AlmacenRequisicionComentarios.Any(c =>
+                    c.RequisicionId == r.Id && c.Texto.ToLower().Contains(term)));
         }
 
         var ids = await query
@@ -565,6 +571,15 @@ public class AlmacenController : ControllerBase
             _context.AlmacenRequisiciones.Add(entity);
             await _context.SaveChangesAsync();
 
+            if (!string.IsNullOrWhiteSpace(dto.Observacion))
+            {
+                await _service.AgregarComentarioRequisicionAsync(
+                    entity.Id,
+                    new AlmacenRequisicionComentarioWriteDto { Texto = dto.Observacion.Trim() },
+                    usuario.id,
+                    usuario.nombre);
+            }
+
             var loaded = await _service.CargarRequisicionCompletaAsync(entity.Id);
             var mapped = _service.MapRequisicion(loaded!);
             EncolarCorreo(m => m.NotificarNuevaRequisicionAsync(mapped));
@@ -605,11 +620,36 @@ public class AlmacenController : ControllerBase
         entity.Cantidad = dto.Cantidad!.Value;
         entity.Unidad = dto.Unidad!.Trim();
         entity.FechaRequerida = AlmacenService.ParseFecha(dto.FechaRequerida, entity.FechaRequerida);
-        entity.Observacion = string.IsNullOrWhiteSpace(dto.Observacion) ? null : dto.Observacion.Trim();
 
         await _context.SaveChangesAsync();
         var loaded = await _service.CargarRequisicionCompletaAsync(id);
         return Ok(_service.MapRequisicion(loaded!));
+    }
+
+    [HttpGet("requisiciones/{id:int}/comentarios")]
+    public async Task<ActionResult<IEnumerable<AlmacenRequisicionComentarioDto>>> GetComentariosRequisicion(int id)
+    {
+        var exists = await _context.AlmacenRequisiciones.AsNoTracking().AnyAsync(r => r.Id == id);
+        if (!exists) return NotFound();
+        var list = await _service.ListarComentariosRequisicionAsync(id);
+        return Ok(list);
+    }
+
+    [HttpPost("requisiciones/{id:int}/comentarios")]
+    public async Task<ActionResult<AlmacenRequisicionComentarioDto>> AgregarComentarioRequisicion(
+        int id,
+        [FromBody] AlmacenRequisicionComentarioWriteDto dto)
+    {
+        try
+        {
+            var usuario = ObtenerUsuarioActual();
+            var comentario = await _service.AgregarComentarioRequisicionAsync(id, dto, usuario.id, usuario.nombre);
+            return Ok(comentario);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     [HttpGet("ordenes-compra")]
@@ -694,6 +734,12 @@ public class AlmacenController : ControllerBase
             if (proveedores.Count > 1 && proveedores.Any(p => string.IsNullOrWhiteSpace(p.FechaEntregaEstimada)))
                 return BadRequest(new { message = "Cada proveedor debe tener fecha estimada de entrega." });
 
+            foreach (var p in proveedores)
+            {
+                if (p.PrecioEspecial == true && string.IsNullOrWhiteSpace(p.ComentarioPrecioEspecial))
+                    return BadRequest(new { message = $"Indique el motivo del precio especial para «{p.Nombre}»." });
+            }
+
             var existentesPorId = entity.Pedido?.Proveedores.ToDictionary(p => p.Id)
                 ?? new Dictionary<int, AlmacenPedidoProveedor>();
             var usuario = ObtenerUsuarioActual();
@@ -759,8 +805,14 @@ public class AlmacenController : ControllerBase
                     existente.Telefono = p.Telefono?.Trim();
                     existente.Cantidad = p.Cantidad;
                     existente.PrecioUnitario = p.PrecioUnitario;
+                    existente.PrecioEspecial = p.PrecioEspecial == true;
+                    existente.ComentarioPrecioEspecial = string.IsNullOrWhiteSpace(p.ComentarioPrecioEspecial)
+                        ? null
+                        : p.ComentarioPrecioEspecial.Trim();
                     existente.FechaEntregaEstimada = fechaEntrega;
                     existente.Recibido = p.Recibido ?? existente.Recibido;
+                    existente.ProformaUrl = string.IsNullOrWhiteSpace(p.ProformaUrl) ? null : p.ProformaUrl.Trim();
+                    existente.ProformaNombre = string.IsNullOrWhiteSpace(p.ProformaNombre) ? null : p.ProformaNombre.Trim();
                     keepIds.Add(provId);
                     continue;
                 }
@@ -773,8 +825,14 @@ public class AlmacenController : ControllerBase
                     Telefono = p.Telefono?.Trim(),
                     Cantidad = p.Cantidad,
                     PrecioUnitario = p.PrecioUnitario,
+                    PrecioEspecial = p.PrecioEspecial == true,
+                    ComentarioPrecioEspecial = string.IsNullOrWhiteSpace(p.ComentarioPrecioEspecial)
+                        ? null
+                        : p.ComentarioPrecioEspecial.Trim(),
                     FechaEntregaEstimada = fechaEntrega,
                     Recibido = p.Recibido ?? false,
+                    ProformaUrl = string.IsNullOrWhiteSpace(p.ProformaUrl) ? null : p.ProformaUrl.Trim(),
+                    ProformaNombre = string.IsNullOrWhiteSpace(p.ProformaNombre) ? null : p.ProformaNombre.Trim(),
                 };
                 entity.Pedido.Proveedores.Add(nuevoProv);
                 nuevosProveedores.Add((nuevoProv, p.AgregarAOrdenCompraId));
@@ -827,6 +885,44 @@ public class AlmacenController : ControllerBase
         }
     }
 
+    [HttpPost("upload-proforma")]
+    [Consumes("multipart/form-data")]
+    public async Task<ActionResult> UploadProforma([FromForm] FileUploadDto dto)
+    {
+        var file = dto.File;
+        if (file == null || file.Length == 0)
+            return BadRequest(new { message = "No se recibió ningún archivo." });
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        var permitidos = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ".pdf", ".jpg", ".jpeg", ".png", ".webp"
+        };
+        if (!permitidos.Contains(ext))
+            return BadRequest(new { message = "Formato no permitido. Use PDF, JPG, PNG o WEBP." });
+
+        const long maxBytes = 15 * 1024 * 1024;
+        if (file.Length > maxBytes)
+            return BadRequest(new { message = "El archivo supera el tamaño máximo de 15 MB." });
+
+        var uploadsFolder = Path.Combine(_env.WebRootPath, "uploads", "proformas_almacen");
+        Directory.CreateDirectory(uploadsFolder);
+
+        var uniqueFileName = Guid.NewGuid().ToString() + ext;
+        var filePath = Path.Combine(uploadsFolder, uniqueFileName);
+
+        await using (var stream = new FileStream(filePath, FileMode.Create))
+        {
+            await file.CopyToAsync(stream);
+        }
+
+        return Ok(new
+        {
+            url = $"/uploads/proformas_almacen/{uniqueFileName}",
+            nombre = file.FileName,
+        });
+    }
+
     [HttpPatch("requisiciones/{id:int}/pedido/proveedores/{proveedorId:int}/pagado")]
     public async Task<ActionResult<AlmacenRequisicionDto>> MarcarProveedorPagado(
         int id,
@@ -844,8 +940,8 @@ public class AlmacenController : ControllerBase
             if (dto.Pagado)
             {
                 var forma = (dto.FormaPago ?? "").Trim().ToLowerInvariant();
-                if (forma is not ("credito" or "efectivo"))
-                    return BadRequest(new { message = "Indique la forma de pago: credito o efectivo." });
+                if (forma is not ("credito" or "efectivo" or "contado"))
+                    return BadRequest(new { message = "Indique la forma de pago: credito, efectivo o contado." });
                 prov.Pagado = true;
                 prov.FormaPago = forma;
             }
@@ -1636,7 +1732,6 @@ public class AlmacenController : ControllerBase
         if (string.IsNullOrWhiteSpace(dto.OrdenProduccionNumero) && string.IsNullOrWhiteSpace(dto.OrdenProduccionId))
             return "Seleccione la orden de producción.";
         if (string.IsNullOrWhiteSpace(dto.ProductoId)) return "Seleccione el producto.";
-        if (string.IsNullOrWhiteSpace(dto.Cliente)) return "Indique el cliente.";
         if (string.IsNullOrWhiteSpace(dto.Referencia)) return "Indique la referencia.";
         if (string.IsNullOrWhiteSpace(dto.FechaSolicitud)) return "Indique la fecha de solicitud.";
         if (!dto.Cantidad.HasValue || dto.Cantidad <= 0) return "Indique una cantidad válida.";

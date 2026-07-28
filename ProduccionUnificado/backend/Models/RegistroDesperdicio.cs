@@ -34,5 +34,5 @@ public class RegistroDesperdicio
     [MaxLength(120)]
     public string? RegistradoPor { get; set; }
 
-    public DateTime FechaRegistro { get; set; } = DateTime.Now;
+    public DateTime FechaRegistro { get; set; } = Helpers.ColombiaTime.Now;
 }

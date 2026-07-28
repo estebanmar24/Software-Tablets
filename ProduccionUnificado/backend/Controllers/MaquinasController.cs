@@ -28,7 +28,7 @@ namespace TiempoProcesos.API.Controllers
                 query = query.Where(m => m.Activo);
             }
             
-            // Exclude TERMINADOS
+            // Exclude TERMINADOS (catálogo genérico; "Terminado Manual" sí aparece)
             query = query.Where(m => m.Nombre != null && !m.Nombre.Contains("TERMINADOS"));
             
             var maquinas = await query.ToListAsync();

@@ -9,6 +9,9 @@ public class CrearEncuestaCalidadProduccionDto
     public string? Cabida { get; set; }
     public decimal CantidadAProducir { get; set; }
     public string? Cliente { get; set; }
+    public string? Alcance { get; set; }
+    public string? TipoReclamacion { get; set; }
+    public string? TipoReclamacionNuevo { get; set; }
     public decimal CantidadRecuperada { get; set; }
     public decimal CantidadParaDespacho { get; set; }
     public string? Observaciones { get; set; }
@@ -30,6 +33,8 @@ public class EncuestaCalidadProduccionResumenDto
     public string? Referencia { get; set; }
     public string? Material { get; set; }
     public string? Cliente { get; set; }
+    public string? Alcance { get; set; }
+    public string? TipoReclamacion { get; set; }
     public decimal CantidadAProducir { get; set; }
     public decimal CantidadRecuperada { get; set; }
     public decimal CantidadParaDespacho { get; set; }
@@ -46,6 +51,8 @@ public class EncuestaCalidadProduccionDetalleDto
     public string? Material { get; set; }
     public string? Cliente { get; set; }
     public string? Cabida { get; set; }
+    public string? Alcance { get; set; }
+    public string? TipoReclamacion { get; set; }
     public decimal CantidadAProducir { get; set; }
     public decimal CantidadRecuperada { get; set; }
     public decimal CantidadParaDespacho { get; set; }

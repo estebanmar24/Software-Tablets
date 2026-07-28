@@ -91,6 +91,7 @@ function calcularHorasTurnoCalendario(mesVal, anioVal, diaInicio = null, diaFin 
         f.push(trasladarALunes(new Date(pascua.getTime() + 68 * 86400000)));
         f.push(trasladarALunes(new Date(year, 0, 6)), trasladarALunes(new Date(year, 2, 19)), trasladarALunes(new Date(year, 5, 29)));
         f.push(trasladarALunes(new Date(year, 7, 15)), trasladarALunes(new Date(year, 9, 12)), trasladarALunes(new Date(year, 10, 1)), trasladarALunes(new Date(year, 10, 11)));
+        if (year === 2026) f.push(new Date(2026, 6, 13)); // Festivo excepcional
         return f;
     };
     const esFestivo = (fecha, festivos) => festivos.some(f =>
@@ -2780,6 +2781,7 @@ export default function DashboardScreen({ navigation }) {
                     f.push(trasladarALunes(new Date(year, 9, 12)));  // Día de la Raza
                     f.push(trasladarALunes(new Date(year, 10, 1)));  // Todos los Santos
                     f.push(trasladarALunes(new Date(year, 10, 11))); // Independencia Cartagena
+                    if (year === 2026) f.push(new Date(2026, 6, 13)); // Festivo excepcional
                     return f;
                 };
                 const esFestivo = (fecha, festivos) => festivos.some(f =>

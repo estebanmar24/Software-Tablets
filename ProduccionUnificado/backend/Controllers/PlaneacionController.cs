@@ -5,6 +5,7 @@ using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
 using TiempoProcesos.API.Helpers;
 using TiempoProcesos.API.DTOs;
+using TiempoProcesos.API.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using System.IO;
@@ -24,11 +25,13 @@ public class PlaneacionController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly IWebHostEnvironment _env;
+    private readonly GastoAutorizacionService _gastoAutorizacion;
 
-    public PlaneacionController(AppDbContext context, IWebHostEnvironment env)
+    public PlaneacionController(AppDbContext context, IWebHostEnvironment env, GastoAutorizacionService gastoAutorizacion)
     {
         _context = context;
         _env = env;
+        _gastoAutorizacion = gastoAutorizacion;
     }
 
     #region Rubros
@@ -353,9 +356,31 @@ public class PlaneacionController : ControllerBase
     /// Create a new gasto
     /// </summary>
     [HttpPost("gastos")]
-    public async Task<ActionResult<Planeacion_Gasto>> CreateGasto(Planeacion_Gasto gasto)
+    public async Task<ActionResult<Planeacion_Gasto>> CreateGasto(
+        Planeacion_Gasto gasto,
+        [FromQuery] int? autorizacionId = null)
     {
         var esLaborP = GastoMedioPagoHelper.EsGastoLaborHorasExtrasORecargo(gasto.TipoHoraId, gasto.TipoRecargoId);
+
+        var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == "Id");
+        int adminId = 0;
+        if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int parsedAdminId))
+        {
+            adminId = parsedAdminId;
+            gasto.CreadoPorId = parsedAdminId;
+        }
+        if (adminId <= 0 && !esLaborP)
+            return BadRequest(new { message = "No se pudo identificar al usuario." });
+        try
+        {
+            await _gastoAutorizacion.ExigirAutorizacionParaGastoNormalAsync(
+                "planeacion", autorizacionId, adminId, esLaborP);
+        }
+        catch (InvalidOperationException exAuth)
+        {
+            return BadRequest(new { message = exAuth.Message });
+        }
+
         var mpP = GastoMedioPagoHelper.ValidateCreditoOExclusivoEfectivo(esLaborP, gasto.EsSolicitudCredito, gasto.EsEfectivo);
         if (mpP != null) return (ActionResult<Planeacion_Gasto>)(object)mpP;
 
@@ -372,18 +397,13 @@ public class PlaneacionController : ControllerBase
         gasto.PrecioBase = pbP;
         gasto.PrecioIva = piP;
 
-        // Set Creator
-        var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == "Id");
-        if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int adminId))
-        {
-            gasto.CreadoPorId = adminId;
-        }
-
         GastoPeriodoHelper.AplicarAnioMesDesdeFecha(gasto.Fecha, (a, m) => { gasto.Anio = a; gasto.Mes = m; });
 
         gasto.FechaCreacion = DateTime.UtcNow;
         _context.Planeacion_Gastos.Add(gasto);
         await _context.SaveChangesAsync();
+        if (autorizacionId.HasValue && autorizacionId.Value > 0)
+            await _gastoAutorizacion.VincularGastoRegistradoAsync(autorizacionId.Value, gasto.Id);
         return Ok(new { id = gasto.Id });
     }
 

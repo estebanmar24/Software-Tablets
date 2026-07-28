@@ -12,6 +12,10 @@ public class EncuestaCalidadProduccion
     public decimal CantidadRecuperada { get; set; }
     public decimal CantidadParaDespacho { get; set; }
     public string? Cliente { get; set; }
+    /// <summary>Alcance interno / externo.</summary>
+    public string? Alcance { get; set; }
+    /// <summary>Queja, reclamo, devolución, otro (catálogo dinámico).</summary>
+    public string? TipoReclamacion { get; set; }
     public string? Observaciones { get; set; }
     public DateTime FechaCreacion { get; set; } = DateTime.Now;
 

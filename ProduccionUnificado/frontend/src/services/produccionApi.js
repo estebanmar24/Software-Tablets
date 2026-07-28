@@ -15,8 +15,9 @@ export const produccionApi = {
         return response.data;
     },
 
-    createGasto: async (gasto) => {
-        const response = await api.post(`${BASE_URL}/gastos`, gasto);
+    createGasto: async (gasto, autorizacionId) => {
+        const q = autorizacionId ? `?autorizacionId=${encodeURIComponent(autorizacionId)}` : '';
+        const response = await api.post(`${BASE_URL}/gastos${q}`, gasto);
         return response.data;
     },
 
@@ -102,6 +103,23 @@ export const produccionApi = {
 
     deleteTipoRecargo: async (id) => {
         await api.delete(`${BASE_URL}/tiposrecargo/${id}`);
+    },
+
+    // ==================== PARAMETROS JORNADA OT ====================
+    getParametrosJornadaOt: async (fecha) => {
+        const q = fecha ? `?fecha=${encodeURIComponent(fecha)}` : '';
+        const response = await api.get(`${BASE_URL}/parametros-jornada-ot${q}`);
+        return response.data;
+    },
+
+    getAllParametrosJornadaOt: async () => {
+        const response = await api.get(`${BASE_URL}/parametros-jornada-ot/all`);
+        return response.data;
+    },
+
+    saveParametrosJornadaOt: async (payload) => {
+        const response = await api.put(`${BASE_URL}/parametros-jornada-ot`, payload);
+        return response.data;
     },
 
     // ==================== BUDGET ENDPOINTS ====================

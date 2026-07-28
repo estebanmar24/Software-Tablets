@@ -185,6 +185,24 @@ public class TiempoProcesoController : ControllerBase
     }
 
     /// <summary>
+    /// Actualiza tiros/desperdicio de un registro en curso (tablet → planeador en vivo).
+    /// </summary>
+    [HttpPut("progreso/{id}")]
+    public async Task<ActionResult<TiempoProcesoDto>> ActualizarProgreso(long id, [FromBody] ActualizarProgresoRequest request)
+    {
+        try
+        {
+            var dto = await _service.ActualizarProgresoAsync(id, request);
+            if (dto == null) return NotFound(new { error = $"Registro {id} no encontrado o ya finalizado" });
+            return Ok(dto);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Ajuste administrativo de horas/tiros de un registro (corrección de errores).
     /// </summary>
     [HttpPut("ajustar/{id}")]

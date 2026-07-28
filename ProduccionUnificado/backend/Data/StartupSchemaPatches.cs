@@ -1,4 +1,8 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using Microsoft.EntityFrameworkCore;
+using TiempoProcesos.API.Models;
 
 namespace TiempoProcesos.API.Data;
 
@@ -113,6 +117,8 @@ WHERE ""RubroId"" IS NOT NULL
     {
         var sqls = new (string Label, string Sql)[]
         {
+            ("EncuestasCalidadProduccion.Alcance", @"ALTER TABLE ""EncuestasCalidadProduccion"" ADD COLUMN IF NOT EXISTS ""Alcance"" text NULL;"),
+            ("EncuestasCalidadProduccion.TipoReclamacion", @"ALTER TABLE ""EncuestasCalidadProduccion"" ADD COLUMN IF NOT EXISTS ""TipoReclamacion"" text NULL;"),
             ("ConsolidadosNC.Alcance", @"ALTER TABLE ""ConsolidadosNC"" ADD COLUMN IF NOT EXISTS ""Alcance"" text NULL;"),
             ("CalidadNC_TiposReclamacion", @"
 CREATE TABLE IF NOT EXISTS ""CalidadNC_TiposReclamacion"" (
@@ -438,6 +444,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS ""IX_Almacen_Pedidos_RequisicionId"" ON ""Alma
 ALTER TABLE ""Almacen_Pedidos"" ADD COLUMN IF NOT EXISTS ""PrecioUnitario"" numeric(18,2) NULL;"),
             ("Almacen_PedidoProveedores.PrecioUnitario", @"
 ALTER TABLE ""Almacen_PedidoProveedores"" ADD COLUMN IF NOT EXISTS ""PrecioUnitario"" numeric(18,2) NULL;"),
+            ("Almacen_PedidoProveedores.PrecioEspecial", @"
+ALTER TABLE ""Almacen_PedidoProveedores"" ADD COLUMN IF NOT EXISTS ""PrecioEspecial"" boolean NOT NULL DEFAULT false;"),
+            ("Almacen_PedidoProveedores.ComentarioPrecioEspecial", @"
+ALTER TABLE ""Almacen_PedidoProveedores"" ADD COLUMN IF NOT EXISTS ""ComentarioPrecioEspecial"" character varying(500) NULL;"),
             ("Almacen_PedidoProveedores.NumeroOrdenCompra", @"
 ALTER TABLE ""Almacen_PedidoProveedores"" ADD COLUMN IF NOT EXISTS ""NumeroOrdenCompra"" integer NULL;"),
             ("Almacen_PedidoProveedores.Pagado", @"
@@ -448,6 +458,8 @@ ALTER TABLE ""Almacen_PedidoProveedores"" ADD COLUMN IF NOT EXISTS ""FormaPago""
 ALTER TABLE ""Almacen_Requisiciones"" ADD COLUMN IF NOT EXISTS ""CreadoPorId"" integer NULL;"),
             ("Almacen_Requisiciones.CreadoPorNombre", @"
 ALTER TABLE ""Almacen_Requisiciones"" ADD COLUMN IF NOT EXISTS ""CreadoPorNombre"" character varying(200) NULL;"),
+            ("Almacen_Requisiciones.RecordatorioPedidoEnviado", @"
+ALTER TABLE ""Almacen_Requisiciones"" ADD COLUMN IF NOT EXISTS ""RecordatorioPedidoEnviado"" boolean NOT NULL DEFAULT false;"),
             ("Almacen_Pedidos.ProcesadoPorId", @"
 ALTER TABLE ""Almacen_Pedidos"" ADD COLUMN IF NOT EXISTS ""ProcesadoPorId"" integer NULL;"),
             ("Almacen_Pedidos.ProcesadoPorNombre", @"
@@ -609,6 +621,22 @@ BEGIN
     END LOOP;
   END IF;
 END $$;"),
+            ("Almacen_PedidoProveedores.ProformaUrl", @"
+ALTER TABLE ""Almacen_PedidoProveedores"" ADD COLUMN IF NOT EXISTS ""ProformaUrl"" character varying(500) NULL;"),
+            ("Almacen_PedidoProveedores.ProformaNombre", @"
+ALTER TABLE ""Almacen_PedidoProveedores"" ADD COLUMN IF NOT EXISTS ""ProformaNombre"" character varying(260) NULL;"),
+            ("Almacen_RequisicionComentarios", @"
+CREATE TABLE IF NOT EXISTS ""Almacen_RequisicionComentarios"" (
+    ""Id"" serial PRIMARY KEY,
+    ""RequisicionId"" integer NOT NULL,
+    ""ParentId"" integer NULL,
+    ""Texto"" text NOT NULL,
+    ""UsuarioId"" integer NULL,
+    ""UsuarioNombre"" character varying(200) NULL,
+    ""FechaRegistro"" timestamp without time zone NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+    CONSTRAINT ""FK_Almacen_RequisicionComentarios_Requisicion"" FOREIGN KEY (""RequisicionId"") REFERENCES ""Almacen_Requisiciones"" (""Id"") ON DELETE CASCADE,
+    CONSTRAINT ""FK_Almacen_RequisicionComentarios_Parent"" FOREIGN KEY (""ParentId"") REFERENCES ""Almacen_RequisicionComentarios"" (""Id"") ON DELETE CASCADE
+);"),
         };
 
         Console.WriteLine("[STARTUP] Tablas Almacén (productos, proveedores, requisiciones, pedidos, recepciones)...");
@@ -618,6 +646,62 @@ END $$;"),
             catch (Exception ex) { Console.WriteLine($"[DB FIX] {label}: {ex.Message}"); }
         }
         Console.WriteLine("[STARTUP] Tablas Almacén listas.");
+    }
+
+    public static void ApplyGastoAutorizacionTable(AppDbContext context)
+    {
+        const string sql = @"
+CREATE TABLE IF NOT EXISTS ""Gasto_AutorizacionSolicitudes"" (
+    ""Id"" serial PRIMARY KEY,
+    ""Modulo"" character varying(30) NOT NULL,
+    ""ProveedorId"" integer NULL,
+    ""ProveedorNombre"" character varying(200) NULL,
+    ""FechaAproximada"" timestamp without time zone NOT NULL,
+    ""Cantidad"" numeric(18,2) NOT NULL,
+    ""Razon"" text NOT NULL,
+    ""EsSolicitudCredito"" boolean NOT NULL DEFAULT false,
+    ""EsEfectivo"" boolean NOT NULL DEFAULT false,
+    ""EstadoAutorizacion"" character varying(20) NOT NULL DEFAULT 'Pendiente',
+    ""SolicitadoPorId"" integer NULL,
+    ""SolicitadoPorNombre"" character varying(200) NULL,
+    ""AutorizadoPorId"" integer NULL,
+    ""AutorizadoPorNombre"" character varying(200) NULL,
+    ""FechaSolicitud"" timestamp without time zone NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+    ""FechaResolucion"" timestamp without time zone NULL,
+    ""MotivoRechazo"" text NULL,
+    ""GastoId"" integer NULL,
+    ""Anio"" integer NOT NULL,
+    ""Mes"" integer NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ""IX_Gasto_AutorizacionSolicitudes_Modulo_Anio_Mes""
+ON ""Gasto_AutorizacionSolicitudes"" (""Modulo"", ""Anio"", ""Mes"");
+CREATE INDEX IF NOT EXISTS ""IX_Gasto_AutorizacionSolicitudes_Estado""
+ON ""Gasto_AutorizacionSolicitudes"" (""EstadoAutorizacion"");";
+
+        Console.WriteLine("[STARTUP] Tabla Gasto_AutorizacionSolicitudes...");
+        try { context.Database.ExecuteSqlRaw(sql); }
+        catch (Exception ex) { Console.WriteLine($"[DB FIX] Gasto_AutorizacionSolicitudes: {ex.Message}"); }
+
+        const string alterRubro = @"
+ALTER TABLE ""Gasto_AutorizacionSolicitudes"" ADD COLUMN IF NOT EXISTS ""RubroId"" integer NULL;
+ALTER TABLE ""Gasto_AutorizacionSolicitudes"" ADD COLUMN IF NOT EXISTS ""RubroNombre"" character varying(200) NULL;";
+        try { context.Database.ExecuteSqlRaw(alterRubro); }
+        catch (Exception ex) { Console.WriteLine($"[DB FIX] Gasto_AutorizacionSolicitudes Rubro: {ex.Message}"); }
+
+        const string comentariosSql = @"
+CREATE TABLE IF NOT EXISTS ""Gasto_AutorizacionComentarios"" (
+    ""Id"" serial PRIMARY KEY,
+    ""SolicitudId"" integer NOT NULL,
+    ""ParentId"" integer NULL,
+    ""Texto"" text NOT NULL,
+    ""UsuarioId"" integer NULL,
+    ""UsuarioNombre"" character varying(200) NULL,
+    ""FechaRegistro"" timestamp without time zone NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
+    CONSTRAINT ""FK_Gasto_AutorizacionComentarios_Solicitud"" FOREIGN KEY (""SolicitudId"") REFERENCES ""Gasto_AutorizacionSolicitudes"" (""Id"") ON DELETE CASCADE,
+    CONSTRAINT ""FK_Gasto_AutorizacionComentarios_Parent"" FOREIGN KEY (""ParentId"") REFERENCES ""Gasto_AutorizacionComentarios"" (""Id"") ON DELETE CASCADE
+);";
+        try { context.Database.ExecuteSqlRaw(comentariosSql); }
+        catch (Exception ex) { Console.WriteLine($"[DB FIX] Gasto_AutorizacionComentarios: {ex.Message}"); }
     }
 
     public static void ApplyMantenimientoConsumosTable(AppDbContext context)
@@ -708,4 +792,361 @@ CREATE INDEX IF NOT EXISTS ""IX_Bitacora_MantenimientoDiaria_Fecha"" ON ""Bitaco
             Console.WriteLine($"[DB FIX] Bitacora_MantenimientoDiaria: {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// Jornada ordinaria OT configurable por día (vigente desde 2026-07-15).
+    /// </summary>
+    public static void ApplyParametrosJornadaOtTable(AppDbContext context)
+    {
+        const string createTable = @"
+CREATE TABLE IF NOT EXISTS ""ParametrosJornadaOt"" (
+    ""Id"" serial PRIMARY KEY,
+    ""VigenteDesde"" date NOT NULL,
+    ""DiaSemana"" integer NOT NULL,
+    ""HoraInicio"" interval NULL,
+    ""HoraFin"" interval NULL,
+    ""DescuentaComida"" boolean NOT NULL DEFAULT false,
+    ""MinutosComida"" integer NOT NULL DEFAULT 0,
+    ""Activo"" boolean NOT NULL DEFAULT true
+);
+CREATE INDEX IF NOT EXISTS ""IX_ParametrosJornadaOt_Vigente_Dia""
+    ON ""ParametrosJornadaOt"" (""VigenteDesde"", ""DiaSemana"");";
+
+        try
+        {
+            context.Database.ExecuteSqlRaw(createTable);
+            // Permitir varios horarios (bloques) por el mismo día
+            context.Database.ExecuteSqlRaw(@"
+DROP INDEX IF EXISTS ""IX_ParametrosJornadaOt_Vigente_Dia"";
+CREATE INDEX IF NOT EXISTS ""IX_ParametrosJornadaOt_Vigente_Dia""
+    ON ""ParametrosJornadaOt"" (""VigenteDesde"", ""DiaSemana"");");
+            Console.WriteLine("[STARTUP] Tabla ParametrosJornadaOt verificada.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DB FIX] ParametrosJornadaOt create: {ex.Message}");
+            return;
+        }
+
+        // Seed jornada reducida Colombia 2026-07-15 (idempotente)
+        // DiaSemana: 0=Dom … 6=Sáb
+        try
+        {
+            var exists = context.ParametrosJornadaOt.Any(p => p.VigenteDesde == new DateTime(2026, 7, 15));
+            if (!exists)
+            {
+                var vigente = new DateTime(2026, 7, 15);
+                var seed = new List<ParametrosJornadaOt>
+                {
+                    new() { VigenteDesde = vigente, DiaSemana = 0, HoraInicio = null, HoraFin = null, DescuentaComida = false, MinutosComida = 0, Activo = true },
+                    new() { VigenteDesde = vigente, DiaSemana = 1, HoraInicio = new TimeSpan(8, 0, 0), HoraFin = new TimeSpan(12, 0, 0), DescuentaComida = false, MinutosComida = 0, Activo = true },
+                    new() { VigenteDesde = vigente, DiaSemana = 2, HoraInicio = new TimeSpan(7, 0, 0), HoraFin = new TimeSpan(15, 30, 0), DescuentaComida = true, MinutosComida = 30, Activo = true },
+                    new() { VigenteDesde = vigente, DiaSemana = 3, HoraInicio = new TimeSpan(7, 0, 0), HoraFin = new TimeSpan(15, 30, 0), DescuentaComida = true, MinutosComida = 30, Activo = true },
+                    new() { VigenteDesde = vigente, DiaSemana = 4, HoraInicio = new TimeSpan(7, 0, 0), HoraFin = new TimeSpan(15, 30, 0), DescuentaComida = true, MinutosComida = 30, Activo = true },
+                    new() { VigenteDesde = vigente, DiaSemana = 5, HoraInicio = new TimeSpan(7, 0, 0), HoraFin = new TimeSpan(15, 30, 0), DescuentaComida = true, MinutosComida = 30, Activo = true },
+                    new() { VigenteDesde = vigente, DiaSemana = 6, HoraInicio = new TimeSpan(7, 0, 0), HoraFin = new TimeSpan(13, 0, 0), DescuentaComida = false, MinutosComida = 0, Activo = true },
+                };
+                context.ParametrosJornadaOt.AddRange(seed);
+                context.SaveChanges();
+                Console.WriteLine("[STARTUP] Seed ParametrosJornadaOt 2026-07-15 insertado.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DB FIX] ParametrosJornadaOt seed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Sincroniza catálogo Gantt con procesos de planta y máquinas asociadas (UI filtra por código).
+    /// </summary>
+    public static void ApplyProcesosGanttCatalog(AppDbContext context)
+    {
+        var desired = new[]
+        {
+            "Conversion", "Corrugacion", "Corte", "Impresion", "Acabado",
+            "Colaminado", "Troquelado", "Despique", "Pegadora", "Terminado Manual"
+        };
+        var desiredSet = new HashSet<string>(desired, StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            var existing = context.ProcesosGantt.ToList();
+            for (var i = 0; i < desired.Length; i++)
+            {
+                var nombre = desired[i];
+                var row = existing.FirstOrDefault(p =>
+                    string.Equals(p.Nombre, nombre, StringComparison.OrdinalIgnoreCase));
+                if (row == null)
+                {
+                    context.ProcesosGantt.Add(new ProcesoGantt
+                    {
+                        Nombre = nombre,
+                        Orden = i,
+                        Activo = true
+                    });
+                }
+                else
+                {
+                    row.Activo = true;
+                    row.Orden = i;
+                    if (!string.Equals(row.Nombre, nombre, StringComparison.Ordinal))
+                        row.Nombre = nombre;
+                }
+            }
+
+            foreach (var row in existing)
+            {
+                if (!desiredSet.Contains(row.Nombre))
+                    row.Activo = false;
+            }
+
+            context.SaveChanges();
+            Console.WriteLine("[STARTUP] ProcesosGantt catálogo sincronizado.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DB FIX] ProcesosGantt catalog: {ex.Message}");
+        }
+    }
+
+    private static readonly HashSet<string> MaquinasCalculoManual = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Conversion", "Corrugacion", "Corte", "Impresion", "Acabado",
+        "Colaminado", "Troquelado", "Despique", "Pegadora", "Terminado Manual",
+        "MANUAL / TERMINADOS",
+    };
+
+    private static Maquina CrearMaquinaDesperdicioProceso(string nombre) => new()
+    {
+        Nombre = nombre,
+        MetaRendimiento = 0,
+        MetaDesperdicio = 0,
+        ValorPorTiro = 0,
+        TirosReferencia = 0,
+        SemaforoMin = 0,
+        SemaforoNormal = 0,
+        SemaforoMax = 0,
+        Importancia = 0,
+        Meta100Porciento = 0,
+        Activo = true,
+        Tarifa = 0,
+        HorasAlistamiento = 1.00m,
+        HorasLavada = 0.50m,
+    };
+
+    /// <summary>
+    /// Máquinas virtuales de proceso Gantt para roster y planeación (una por proceso del Gantt).
+    /// </summary>
+    public static void EnsureMaquinasDesperdicioProcesos(AppDbContext context)
+    {
+        var nombres = new[]
+        {
+            "Conversion", "Corrugacion", "Corte", "Impresion", "Acabado",
+            "Colaminado", "Troquelado", "Despique", "Pegadora", "Terminado Manual"
+        };
+        try
+        {
+            var existentes = context.Maquinas
+                .AsEnumerable()
+                .Select(m => m.Nombre?.Trim() ?? "")
+                .Where(n => n.Length > 0)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var agregadas = 0;
+            foreach (var nombre in nombres)
+            {
+                if (existentes.Contains(nombre)) continue;
+                context.Maquinas.Add(CrearMaquinaDesperdicioProceso(nombre));
+                agregadas++;
+            }
+
+            if (agregadas > 0)
+            {
+                context.SaveChanges();
+                Console.WriteLine($"[STARTUP] Máquinas virtuales Gantt creadas: {agregadas}.");
+            }
+            else
+            {
+                Console.WriteLine("[STARTUP] Máquinas virtuales Gantt ya existen.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DB FIX] Máquinas desperdicio: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Despique / Terminado Manual / MANUAL no llevan meta de cálculo: solo fechas manuales en el planeador.
+    /// </summary>
+    public static void EnsureMaquinasCalculoManualSinEstandar(AppDbContext context)
+    {
+        try
+        {
+            var maquinas = context.Maquinas
+                .Where(m => m.Activo && m.Nombre != null)
+                .AsEnumerable()
+                .Where(m => MaquinasCalculoManual.Contains(m.Nombre.Trim()))
+                .ToList();
+
+            var updated = 0;
+            foreach (var maquina in maquinas)
+            {
+                var changed = false;
+                if (maquina.Meta100Porciento != 0)
+                {
+                    maquina.Meta100Porciento = 0;
+                    changed = true;
+                }
+                if (maquina.MetaRendimiento != 0)
+                {
+                    maquina.MetaRendimiento = 0;
+                    changed = true;
+                }
+                if (maquina.HorasAlistamiento <= 0)
+                {
+                    maquina.HorasAlistamiento = 1.00m;
+                    changed = true;
+                }
+                if (maquina.HorasLavada <= 0)
+                {
+                    maquina.HorasLavada = 0.50m;
+                    changed = true;
+                }
+                if (changed) updated++;
+            }
+
+            if (updated > 0)
+            {
+                context.SaveChanges();
+                Console.WriteLine($"[STARTUP] Máquinas cálculo manual sin meta: {updated} actualizada(s).");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DB FIX] Máquinas cálculo manual: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Columnas del informe semanal de calidad (observaciones/estado editables por novedad).
+    /// </summary>
+    public static void ApplyEncuestaNovedadInformeColumns(AppDbContext context)
+    {
+        var patches = new (string Label, string Sql)[]
+        {
+            ("EncuestaNovedades.InformeObservaciones",
+                "ALTER TABLE \"EncuestaNovedades\" ADD COLUMN IF NOT EXISTS \"InformeObservaciones\" text NULL;"),
+            ("EncuestaNovedades.InformeEstado",
+                "ALTER TABLE \"EncuestaNovedades\" ADD COLUMN IF NOT EXISTS \"InformeEstado\" character varying(40) NULL;"),
+        };
+
+        foreach (var (label, sql) in patches)
+        {
+            try
+            {
+                context.Database.ExecuteSqlRaw(sql);
+                Console.WriteLine($"[STARTUP] {label} verificada.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[DB FIX] {label}: {ex.Message}");
+            }
+        }
+    }
+    /// <summary>
+    /// Roster semanal, config de turnos por máquina, novedades de personal y EstadoOperativo.
+    /// </summary>
+    public static void ApplyRosterDisponibilidadTables(AppDbContext context)
+    {
+        var patches = new (string Label, string Sql)[]
+        {
+            ("Maquinas.EstadoOperativo",
+                @"ALTER TABLE ""Maquinas"" ADD COLUMN IF NOT EXISTS ""EstadoOperativo"" character varying(32) NOT NULL DEFAULT 'Operativa';"),
+            ("MaquinaTurnoConfig",
+                @"CREATE TABLE IF NOT EXISTS ""MaquinaTurnoConfig"" (
+    ""Id"" serial PRIMARY KEY,
+    ""MaquinaId"" integer NOT NULL,
+    ""HorarioId"" integer NOT NULL,
+    ""Activo"" boolean NOT NULL DEFAULT true,
+    ""RequiereOperario"" boolean NOT NULL DEFAULT true,
+    ""AuxiliaresRequeridos"" integer NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ""IX_MaquinaTurnoConfig_Maquina_Horario""
+    ON ""MaquinaTurnoConfig"" (""MaquinaId"", ""HorarioId"");"),
+            ("RosterAsignaciones",
+                @"CREATE TABLE IF NOT EXISTS ""RosterAsignaciones"" (
+    ""Id"" serial PRIMARY KEY,
+    ""Anio"" integer NOT NULL,
+    ""SemanaIso"" integer NOT NULL,
+    ""FechaDia"" date NOT NULL,
+    ""MaquinaId"" integer NOT NULL,
+    ""HorarioId"" integer NOT NULL,
+    ""UsuarioId"" integer NOT NULL,
+    ""EsAuxiliar"" boolean NOT NULL DEFAULT false
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ""IX_RosterAsignaciones_Dia_Maq_Hor_Usr""
+    ON ""RosterAsignaciones"" (""FechaDia"", ""MaquinaId"", ""HorarioId"", ""UsuarioId"");
+CREATE INDEX IF NOT EXISTS ""IX_RosterAsignaciones_Anio_Semana""
+    ON ""RosterAsignaciones"" (""Anio"", ""SemanaIso"");"),
+            ("PersonalNovedades",
+                @"CREATE TABLE IF NOT EXISTS ""PersonalNovedades"" (
+    ""Id"" serial PRIMARY KEY,
+    ""UsuarioId"" integer NOT NULL,
+    ""Tipo"" character varying(40) NOT NULL DEFAULT 'falta',
+    ""FechaInicio"" date NOT NULL,
+    ""FechaFin"" date NOT NULL,
+    ""Observacion"" text NULL
+);
+CREATE INDEX IF NOT EXISTS ""IX_PersonalNovedades_Usuario_Fechas""
+    ON ""PersonalNovedades"" (""UsuarioId"", ""FechaInicio"", ""FechaFin"");"),
+            ("RosterTurnoDias",
+                @"CREATE TABLE IF NOT EXISTS ""RosterTurnoDias"" (
+    ""Id"" serial PRIMARY KEY,
+    ""FechaDia"" date NOT NULL,
+    ""MaquinaId"" integer NOT NULL,
+    ""HorarioId"" integer NOT NULL,
+    ""Incluir"" boolean NOT NULL DEFAULT true
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ""IX_RosterTurnoDias_Dia_Maq_Hor""
+    ON ""RosterTurnoDias"" (""FechaDia"", ""MaquinaId"", ""HorarioId"");"),
+            ("RosterDiasFestivos",
+                @"CREATE TABLE IF NOT EXISTS ""RosterDiasFestivos"" (
+    ""Id"" serial PRIMARY KEY,
+    ""FechaDia"" date NOT NULL,
+    ""Observacion"" character varying(256) NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ""IX_RosterDiasFestivos_FechaDia""
+    ON ""RosterDiasFestivos"" (""FechaDia"");"),
+            ("PersonalNovedades.MedioDia",
+                @"ALTER TABLE ""PersonalNovedades"" ADD COLUMN IF NOT EXISTS ""MedioDia"" boolean NOT NULL DEFAULT false;"),
+            ("PersonalNovedades.Jornada",
+                @"ALTER TABLE ""PersonalNovedades"" ADD COLUMN IF NOT EXISTS ""Jornada"" character varying(16) NULL;"),
+            ("RosterAsignaciones.HoraInicio",
+                @"ALTER TABLE ""RosterAsignaciones"" ADD COLUMN IF NOT EXISTS ""HoraInicio"" time NULL;"),
+            ("RosterAsignaciones.HoraFin",
+                @"ALTER TABLE ""RosterAsignaciones"" ADD COLUMN IF NOT EXISTS ""HoraFin"" time NULL;"),
+            ("RosterAsignaciones.EsDescanso",
+                @"ALTER TABLE ""RosterAsignaciones"" ADD COLUMN IF NOT EXISTS ""EsDescanso"" boolean NOT NULL DEFAULT false;"),
+            ("RosterAsignaciones.DescuentaComida",
+                @"ALTER TABLE ""RosterAsignaciones"" ADD COLUMN IF NOT EXISTS ""DescuentaComida"" boolean NOT NULL DEFAULT false;"),
+            ("RosterAsignaciones.MinutosComida",
+                @"ALTER TABLE ""RosterAsignaciones"" ADD COLUMN IF NOT EXISTS ""MinutosComida"" integer NOT NULL DEFAULT 0;")
+        };
+
+        foreach (var (label, sql) in patches)
+        {
+            try
+            {
+                context.Database.ExecuteSqlRaw(sql);
+                Console.WriteLine($"[STARTUP] {label} verificada.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[DB FIX] {label}: {ex.Message}");
+            }
+        }
+    }
+
 }

@@ -24,8 +24,17 @@ import {
     getCantidadTotalPedido,
     getTotalPedidoMonetario,
     formatearMonedaCop,
+    formatearCantidad,
+    sanitizarCantidadInput,
+    parseCantidadInput,
+    formatPrecioCopInput,
+    formatearPrecioCopMientrasEscribe,
+    parsePrecioCopInput,
     parseFechaInput,
     textoIngresadoPorRequisicion,
+    contarComentariosRequisicion,
+    previewUltimoComentario,
+    filtrarProveedorCatalogo,
     OPCIONES_FILTRO_ESTADO_REQUISICION,
     type Requisicion,
     type TipoRequisicionId,
@@ -60,13 +69,22 @@ import { buscarCatalogoOp } from '../services/catalogoOpApi';
 import { camposRequisicionDesdeAdjuntos } from '../utils/adjuntosCamposResumen';
 import AlmacenPedidosTab from '../components/AlmacenPedidosTab';
 import AlmacenRecepcionTab from '../components/AlmacenRecepcionTab';
-import AlmacenCalidadProveedoresTab from '../components/AlmacenCalidadProveedoresTab';
+import AlmacenIndicadoresTab from '../components/AlmacenIndicadoresTab';
 import AlmacenEstadoBadge from '../components/AlmacenEstadoBadge';
 import AlmacenContadorBadge from '../components/AlmacenContadorBadge';
 import AlmacenFiltroEstado, { type FiltroEstadoValor } from '../components/AlmacenFiltroEstado';
+import AlmacenExcelColumnFilter from '../components/AlmacenExcelColumnFilter';
+import AlmacenRequisicionComentariosModal from '../components/AlmacenRequisicionComentariosModal';
+import AlmacenComentariosCelda from '../components/AlmacenComentariosCelda';
+import {
+    applyColumnFilters,
+    applyColumnSort,
+    getUniqueColumnValues,
+    type ColumnSortState,
+} from '../utils/almacenColumnFilters';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-type TabAlmacen = 'requisicion' | 'pedidos' | 'recepcion' | 'calidad';
+type TabAlmacen = 'requisicion' | 'pedidos' | 'recepcion' | 'indicadores';
 
 interface FormRequisicion {
     ordenProduccionId: string;
@@ -97,7 +115,7 @@ const TABS: { key: TabAlmacen; label: string; icon: string }[] = [
     { key: 'requisicion', label: 'Requisición', icon: '📋' },
     { key: 'pedidos', label: 'Pedidos', icon: '🛒' },
     { key: 'recepcion', label: 'Recepción', icon: '📦' },
-    { key: 'calidad', label: 'Calidad proveedores', icon: '⭐' },
+    { key: 'indicadores', label: 'Indicadores', icon: '📊' },
 ];
 
 /** Requisiciones visibles por página en el listado. */
@@ -145,6 +163,74 @@ function splitCampoMultiplesOps(valor?: string): string[] {
         .split('|')
         .map((s) => s.trim())
         .filter(Boolean);
+}
+
+const COLUMNAS_FILTRABLES_REQUISICION = [
+    'codigo',
+    'fechaSolicitud',
+    'ordenProduccion',
+    'cliente',
+    'referencia',
+    'producto',
+    'cantidad',
+    'precio',
+    'fechaRequerida',
+    'observacion',
+    'ingresadoPor',
+    'estado',
+] as const;
+
+function joinCampoMultiplesOps(valor?: string): string {
+    const partes = splitCampoMultiplesOps(valor);
+    return partes.length ? partes.join(' | ') : '';
+}
+
+function getRequisicionColumnValue(req: Requisicion, key: string): string {
+    switch (key) {
+        case 'codigo':
+            return req.codigo ?? '';
+        case 'fechaSolicitud': {
+            const fecha = formatFechaDisplay(req.fechaSolicitud) || req.fechaSolicitud || '';
+            return req.horaRegistro ? `${fecha} ${req.horaRegistro}`.trim() : fecha;
+        }
+        case 'ordenProduccion':
+            return joinCampoMultiplesOps(req.ordenProduccion);
+        case 'cliente':
+            return joinCampoMultiplesOps(req.cliente);
+        case 'referencia':
+            return joinCampoMultiplesOps(req.referencia);
+        case 'producto':
+            return req.producto ?? '';
+        case 'cantidad':
+            return `Req: ${formatearCantidad(req.cantidad)} ${req.unidad}`.trim();
+        case 'precio': {
+            if (!req.pedido) return '—';
+            const total = getTotalPedidoMonetario(req.pedido);
+            return total > 0 ? formatearMonedaCop(total) : '—';
+        }
+        case 'fechaRequerida':
+            return req.fechaRequerida ?? '';
+        case 'observacion':
+            return previewUltimoComentario(req) || req.observacion?.trim() || '';
+        case 'ingresadoPor':
+            return textoIngresadoPorRequisicion(req);
+        case 'estado':
+            return req.estado ?? '';
+        default:
+            return '';
+    }
+}
+
+function getRequisicionColumnSortValue(req: Requisicion, key: string): string | number {
+    if (key === 'cantidad') return req.cantidad ?? 0;
+    if (key === 'precio') {
+        if (!req.pedido) return 0;
+        return getTotalPedidoMonetario(req.pedido);
+    }
+    if (key === 'fechaSolicitud') {
+        return `${req.fechaSolicitud ?? ''} ${req.horaRegistro ?? ''}`.trim();
+    }
+    return getRequisicionColumnValue(req, key);
 }
 
 function CeldaTextoTabla({ texto, color }: { texto?: string | null; color: string }) {
@@ -204,7 +290,7 @@ function campoRequisicionValido(key: FormFieldKey, form: FormRequisicion, opSear
         case 'productoId':
             return !!form.productoId;
         case 'cliente':
-            return !!form.cliente.trim();
+            return true;
         case 'referencia':
             return !!form.referencia.trim();
         case 'fechaSolicitud':
@@ -212,7 +298,7 @@ function campoRequisicionValido(key: FormFieldKey, form: FormRequisicion, opSear
         case 'fechaRequerida':
             return !!form.fechaRequerida.trim();
         case 'cantidad': {
-            const cantidad = parseFloat(form.cantidad.replace(',', '.'));
+            const cantidad = parseCantidadInput(form.cantidad);
             return !!cantidad && cantidad > 0;
         }
         case 'unidad':
@@ -549,6 +635,159 @@ function SearchableSelectDropdown({
     );
 }
 
+/** Autocompletado de proveedores del catálogo de almacén (texto libre permitido). */
+function ProveedorAutocompleteField({
+    label,
+    value,
+    catalogo,
+    onChangeText,
+    onSelect,
+    onOpenChange,
+    placeholder,
+    colors,
+    isDarkMode,
+    error,
+}: {
+    label: string;
+    value: string;
+    catalogo: ProveedorCatalogo[];
+    onChangeText: (text: string) => void;
+    onSelect: (nombre: string) => void;
+    onOpenChange?: (open: boolean) => void;
+    placeholder: string;
+    colors: ReturnType<typeof useTheme>['colors'];
+    isDarkMode: boolean;
+    error?: string;
+}) {
+    const panelBg = isDarkMode ? '#111827' : '#FFFFFF';
+    const panelItemBg = isDarkMode ? '#111827' : '#FFFFFF';
+    const [listaAbierta, setListaAbierta] = useState(false);
+    const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const setAbierta = useCallback(
+        (open: boolean) => {
+            setListaAbierta(open);
+            onOpenChange?.(open);
+        },
+        [onOpenChange]
+    );
+
+    const opcionesFiltradas = useMemo(
+        () => filtrarProveedorCatalogo(catalogo, value, 12),
+        [catalogo, value]
+    );
+
+    const listaVisible = listaAbierta && value.trim() !== '' && opcionesFiltradas.length > 0;
+
+    const handleSelect = (nombre: string) => {
+        if (blurTimerRef.current) {
+            clearTimeout(blurTimerRef.current);
+            blurTimerRef.current = null;
+        }
+        onSelect(nombre);
+        setAbierta(false);
+    };
+
+    const handleChange = (text: string) => {
+        onChangeText(text);
+        setAbierta(true);
+    };
+
+    const handleFocus = () => {
+        if (blurTimerRef.current) {
+            clearTimeout(blurTimerRef.current);
+            blurTimerRef.current = null;
+        }
+        if (value.trim()) setAbierta(true);
+    };
+
+    const handleBlur = () => {
+        blurTimerRef.current = setTimeout(() => setAbierta(false), 180);
+    };
+
+    useEffect(
+        () => () => {
+            if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
+        },
+        []
+    );
+
+    return (
+        <View style={[dropdownStyles.wrapper, listaVisible && dropdownStyles.wrapperElevated]}>
+            <Text style={[dropdownStyles.label, { color: colors.subText }]}>{label}</Text>
+            <View style={[dropdownStyles.anchor, listaVisible && dropdownStyles.anchorElevated]}>
+                <TextInput
+                    style={[
+                        dropdownStyles.searchInput,
+                        {
+                            backgroundColor: isDarkMode ? '#0F172A' : colors.inputBackground,
+                            borderColor: error ? '#EF4444' : listaVisible ? colors.primary : colors.border,
+                            color: colors.text,
+                        },
+                    ]}
+                    placeholder={placeholder}
+                    placeholderTextColor={colors.subText}
+                    value={value}
+                    onChangeText={handleChange}
+                    onFocus={handleFocus}
+                    onBlur={handleBlur}
+                />
+                {listaVisible ? (
+                    <View
+                        style={[
+                            dropdownStyles.listOverlay,
+                            dropdownStyles.listOverlayDropDown,
+                            {
+                                backgroundColor: panelBg,
+                                borderColor: colors.border,
+                            },
+                            Platform.OS === 'web' && {
+                                ...dropdownStyles.listOverlayWeb,
+                                backgroundColor: panelBg,
+                                boxShadow: '0 10px 28px rgba(0,0,0,0.22)',
+                            },
+                        ]}
+                    >
+                        <ScrollView
+                            style={{ maxHeight: 220, backgroundColor: panelBg }}
+                            contentContainerStyle={{ backgroundColor: panelBg }}
+                            nestedScrollEnabled
+                            keyboardShouldPersistTaps="always"
+                            showsVerticalScrollIndicator={opcionesFiltradas.length > 5}
+                        >
+                            {opcionesFiltradas.map((prov, idx) => (
+                                <TouchableOpacity
+                                    key={prov.id}
+                                    style={[
+                                        dropdownStyles.item,
+                                        {
+                                            backgroundColor: panelItemBg,
+                                            borderBottomColor: colors.border,
+                                            borderBottomWidth:
+                                                idx < opcionesFiltradas.length - 1 ? 1 : 0,
+                                        },
+                                    ]}
+                                    onPress={() => handleSelect(prov.nombre)}
+                                >
+                                    <Text style={{ color: colors.text, fontSize: 15, fontWeight: '600' }}>
+                                        {prov.nombre}
+                                    </Text>
+                                    {prov.nit ? (
+                                        <Text style={{ color: colors.subText, fontSize: 12, marginTop: 2 }}>
+                                            NIT {prov.nit}
+                                        </Text>
+                                    ) : null}
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+                    </View>
+                ) : null}
+            </View>
+            {error ? <Text style={styles.fieldErrorText}>{error}</Text> : null}
+        </View>
+    );
+}
+
 /** Autocompletado de OP igual que Sidebar (operarios) y Captura Mensual. */
 function OpAutocompleteField({
     label,
@@ -812,6 +1051,8 @@ export default function AlmacenScreen() {
     const [tipoRequisicionActivo, setTipoRequisicionActivo] = useState<TipoRequisicionId>('consumo_diario');
     const [paginaRequisicion, setPaginaRequisicion] = useState(1);
     const [filtroEstadoRequisicion, setFiltroEstadoRequisicion] = useState<FiltroEstadoValor>('todos');
+    const [filtrosColumnaReq, setFiltrosColumnaReq] = useState<Record<string, string[] | null>>({});
+    const [ordenColumnaReq, setOrdenColumnaReq] = useState<ColumnSortState>(null);
     const [requisiciones, setRequisiciones] = useState<Requisicion[]>([]);
     const [catalogoProveedores, setCatalogoProveedores] = useState<ProveedorCatalogo[]>([]);
     const [productos, setProductos] = useState<ProductoInsumo[]>([]);
@@ -825,11 +1066,13 @@ export default function AlmacenScreen() {
     const [borrandoPruebas, setBorrandoPruebas] = useState(false);
     const [importandoProductosExcel, setImportandoProductosExcel] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
+    const [comentariosModalReq, setComentariosModalReq] = useState<Requisicion | null>(null);
     const [editingRequisicionId, setEditingRequisicionId] = useState<string | null>(null);
     const [form, setForm] = useState<FormRequisicion>(emptyForm);
     const [opSearch, setOpSearch] = useState('');
     const [menuDesplegableAbierto, setMenuDesplegableAbierto] = useState<'producto' | 'unidad' | null>(null);
     const [opListaAbierta, setOpListaAbierta] = useState(false);
+    const [proveedorListaAbierta, setProveedorListaAbierta] = useState(false);
     const [cargandoDatosOp, setCargandoDatosOp] = useState(false);
     const [mensajeAutofillOp, setMensajeAutofillOp] = useState('');
     const [erroresForm, setErroresForm] = useState<Partial<Record<FormFieldKey, string>>>({});
@@ -837,6 +1080,8 @@ export default function AlmacenScreen() {
     const [erroresOpsRelacionadas, setErroresOpsRelacionadas] = useState<
         Record<string, Partial<Record<'ordenProduccionNumero' | 'cliente' | 'referencia', string>>>
     >({});
+    const [precioReferenciaTexto, setPrecioReferenciaTexto] = useState('');
+    const [actualizandoPrecioCatalogoReq, setActualizandoPrecioCatalogoReq] = useState(false);
     const lastAutofillOpRef = useRef('');
     const autofillTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
@@ -866,12 +1111,37 @@ export default function AlmacenScreen() {
     }, [requisicionesDelTipoSinEstado]);
 
     const requisicionesDelTipo = useMemo(() => {
-        const filtradas =
+        let filtradas =
             filtroEstadoRequisicion === 'todos'
                 ? requisicionesDelTipoSinEstado
                 : requisicionesDelTipoSinEstado.filter((r) => r.estado === filtroEstadoRequisicion);
-        return ordenarRequisicionesMasRecientesPrimero(filtradas);
+
+        filtradas = applyColumnFilters(filtradas, filtrosColumnaReq, getRequisicionColumnValue);
+
+        if (ordenColumnaReq) {
+            filtradas = applyColumnSort(filtradas, ordenColumnaReq, getRequisicionColumnSortValue);
+        } else {
+            filtradas = ordenarRequisicionesMasRecientesPrimero(filtradas);
+        }
+
+        return filtradas;
+    }, [requisicionesDelTipoSinEstado, filtroEstadoRequisicion, filtrosColumnaReq, ordenColumnaReq]);
+
+    const requisicionesBaseParaFiltrosColumna = useMemo(() => {
+        return filtroEstadoRequisicion === 'todos'
+            ? requisicionesDelTipoSinEstado
+            : requisicionesDelTipoSinEstado.filter((r) => r.estado === filtroEstadoRequisicion);
     }, [requisicionesDelTipoSinEstado, filtroEstadoRequisicion]);
+
+    const valoresUnicosPorColumna = useMemo(() => {
+        const map: Record<string, string[]> = {};
+        for (const key of COLUMNAS_FILTRABLES_REQUISICION) {
+            map[key] = getUniqueColumnValues(requisicionesBaseParaFiltrosColumna, (req) =>
+                getRequisicionColumnValue(req, key)
+            );
+        }
+        return map;
+    }, [requisicionesBaseParaFiltrosColumna]);
 
     const totalRequisicionesTipo = requisicionesDelTipo.length;
     const totalPaginas = Math.max(1, Math.ceil(totalRequisicionesTipo / REQUISICIONES_POR_PAGINA));
@@ -887,7 +1157,13 @@ export default function AlmacenScreen() {
         if (paginaRequisicion > totalPaginas) {
             setPaginaRequisicion(totalPaginas);
         }
-    }, [paginaRequisicion, totalPaginas, tipoRequisicionActivo, filtroEstadoRequisicion]);
+    }, [paginaRequisicion, totalPaginas, tipoRequisicionActivo, filtroEstadoRequisicion, filtrosColumnaReq, ordenColumnaReq]);
+
+    useEffect(() => {
+        setFiltrosColumnaReq({});
+        setOrdenColumnaReq(null);
+        setPaginaRequisicion(1);
+    }, [tipoRequisicionActivo]);
 
     const handleCambioFiltroEstado = (estado: FiltroEstadoValor) => {
         setFiltroEstadoRequisicion(estado);
@@ -898,6 +1174,13 @@ export default function AlmacenScreen() {
         () => productos.filter((p) => p.tipoRequisicion === tipoRequisicionActivo),
         [productos, tipoRequisicionActivo]
     );
+
+    const productoSeleccionadoRequisicion = useMemo(
+        () => productosDelTipo.find((p) => p.id === form.productoId) ?? null,
+        [productosDelTipo, form.productoId]
+    );
+
+    const costoCatalogoRequisicion = productoSeleccionadoRequisicion?.costoEstandar;
 
     useEffect(() => {
         let cancelado = false;
@@ -965,7 +1248,7 @@ export default function AlmacenScreen() {
                 cliente: catalogo.cliente?.trim() || '',
                 referencia: catalogo.referencia?.trim() || '',
                 ordenProduccionId: catalogo.id != null ? String(catalogo.id) : '',
-                mensaje: 'Cliente y referencia desde catálogo de OP',
+                mensaje: 'Proveedor y referencia desde catálogo de OP',
             };
         }
 
@@ -976,7 +1259,7 @@ export default function AlmacenScreen() {
                 cliente: '',
                 referencia: '',
                 ordenProduccionId: '',
-                mensaje: 'Sin datos OCR para esta OP; puede escribir cliente y referencia.',
+                mensaje: 'Sin datos OCR para esta OP; puede escribir proveedor y referencia.',
             };
         }
         const fuente = data?.op?.campos ? 'PDF/OP' : 'ficha';
@@ -984,7 +1267,7 @@ export default function AlmacenScreen() {
             cliente: mapped.cliente?.trim() || '',
             referencia: mapped.referencia?.trim() || '',
             ordenProduccionId: '',
-            mensaje: `Cliente y referencia desde adjunto OCR (${fuente})`,
+            mensaje: `Proveedor y referencia desde adjunto OCR (${fuente})`,
         };
     }, []);
 
@@ -1132,6 +1415,7 @@ export default function AlmacenScreen() {
         setOpListaAbierta(false);
         setMensajeAutofillOp('');
         lastAutofillOpRef.current = '';
+        setPrecioReferenciaTexto('');
         setModalVisible(true);
     }, []);
 
@@ -1172,15 +1456,20 @@ export default function AlmacenScreen() {
             productoId: prod?.id ?? '',
             fechaSolicitud: req.fechaSolicitud,
             fechaRequerida: req.fechaRequerida,
-            cantidad: String(req.cantidad),
+            cantidad: formatearCantidad(req.cantidad),
             unidad: req.unidad,
-            observacion: req.observacion ?? '',
+            observacion: '',
         });
         setOpSearch(opPrincipal.replace(/\D/g, ''));
         setMenuDesplegableAbierto(null);
         setOpListaAbierta(false);
         setMensajeAutofillOp('');
         lastAutofillOpRef.current = opPrincipal.replace(/\D/g, '');
+        setPrecioReferenciaTexto(
+            prod?.costoEstandar != null && prod.costoEstandar > 0
+                ? formatPrecioCopInput(prod.costoEstandar)
+                : ''
+        );
         setModalVisible(true);
     }, [productos]);
 
@@ -1322,6 +1611,44 @@ export default function AlmacenScreen() {
             productoId,
             unidad: prod?.unidadSugerida || prev.unidad,
         }));
+        setPrecioReferenciaTexto(
+            prod?.costoEstandar != null && prod.costoEstandar > 0
+                ? formatPrecioCopInput(prod.costoEstandar)
+                : ''
+        );
+    };
+
+    const precioReferenciaDifiereCatalogo = useMemo(() => {
+        const precio = parsePrecioCopInput(precioReferenciaTexto);
+        if (!precio || precio <= 0) return false;
+        if (costoCatalogoRequisicion == null || costoCatalogoRequisicion <= 0) return true;
+        return Math.abs(precio - costoCatalogoRequisicion) > 0.009;
+    }, [precioReferenciaTexto, costoCatalogoRequisicion]);
+
+    const aplicarPrecioCatalogoDesdeRequisicion = async () => {
+        const prodId = form.productoId;
+        if (!prodId) {
+            almacenAlert('Catálogo', 'Seleccione un producto del catálogo.');
+            return;
+        }
+        setActualizandoPrecioCatalogoReq(true);
+        try {
+            const productosFresh = await handleRecargarCatalogoProductos();
+            const prod = productosFresh.find((p) => p.id === prodId);
+            if (!prod?.costoEstandar || prod.costoEstandar <= 0) {
+                almacenAlert('Catálogo', 'No hay costo estándar definido en el catálogo para este producto.');
+                return;
+            }
+            setPrecioReferenciaTexto(formatPrecioCopInput(prod.costoEstandar));
+            almacenAlert(
+                'Precio aplicado',
+                `Precio del catálogo aplicado: ${formatearMonedaCop(prod.costoEstandar)}.`
+            );
+        } catch (error) {
+            almacenAlert('Error', extraerMensajeErrorApi(error, 'No se pudo obtener el precio del catálogo.'));
+        } finally {
+            setActualizandoPrecioCatalogoReq(false);
+        }
     };
 
     const handleCambioTipoHoja = (tipo: TipoRequisicionId) => {
@@ -1340,12 +1667,11 @@ export default function AlmacenScreen() {
         const errores: Partial<Record<FormFieldKey, string>> = {};
         if (!form.ordenProduccionId && !ordenProduccionNumero) errores.ordenProduccionNumero = 'Campo obligatorio.';
         if (!form.productoId) errores.productoId = 'Campo obligatorio.';
-        if (!clientePrincipal) errores.cliente = 'Campo obligatorio.';
         if (!referenciaPrincipal) errores.referencia = 'Campo obligatorio.';
         if (!form.fechaSolicitud.trim()) errores.fechaSolicitud = 'Campo obligatorio.';
         if (!form.fechaRequerida.trim()) errores.fechaRequerida = 'Campo obligatorio.';
-        const cantidad = parseFloat(form.cantidad.replace(',', '.'));
-        if (!cantidad || cantidad <= 0) errores.cantidad = 'Ingrese un valor mayor a cero.';
+        const cantidad = parseCantidadInput(form.cantidad);
+        if (!cantidad || cantidad <= 0) errores.cantidad = 'Ingrese un valor mayor a cero (puede usar decimales, ej. 20,9).';
         if (!form.unidad.trim()) errores.unidad = 'Campo obligatorio.';
         const erroresOps: Record<string, Partial<Record<'ordenProduccionNumero' | 'cliente' | 'referencia', string>>> = {};
         const opsExtrasNormalizadas = opsRelacionadas.map((op) => ({
@@ -1359,7 +1685,6 @@ export default function AlmacenScreen() {
             if (!hayAlgo) return;
             const rowErr: Partial<Record<'ordenProduccionNumero' | 'cliente' | 'referencia', string>> = {};
             if (!op.ordenProduccionNumero) rowErr.ordenProduccionNumero = 'OP obligatoria.';
-            if (!op.cliente) rowErr.cliente = 'Cliente obligatorio.';
             if (!op.referencia) rowErr.referencia = 'Referencia obligatoria.';
             if (Object.keys(rowErr).length > 0) erroresOps[op.id] = rowErr;
         });
@@ -1404,7 +1729,7 @@ export default function AlmacenScreen() {
             fechaRequerida: parseFechaInput(form.fechaRequerida),
             cantidad,
             unidad: form.unidad,
-            observacion: form.observacion.trim() || undefined,
+            ...(editingRequisicionId ? {} : { observacion: form.observacion.trim() || undefined }),
         };
 
         setGuardando(true);
@@ -1471,6 +1796,36 @@ export default function AlmacenScreen() {
         setRequisiciones((prev) => mergeRequisicionEnLista(prev, actualizada));
     };
 
+    const handleComentariosActualizados = useCallback(
+        (requisicionId: string, comentarios: Requisicion['comentarios']) => {
+            const total = contarComentariosRequisicion(comentarios);
+            const preview = previewUltimoComentario({ comentarios, observacion: undefined });
+            setRequisiciones((prev) =>
+                prev.map((r) =>
+                    r.id === requisicionId
+                        ? {
+                              ...r,
+                              comentarios,
+                              totalComentarios: total,
+                              observacion: preview || r.observacion,
+                          }
+                        : r
+                )
+            );
+            setComentariosModalReq((prev) =>
+                prev?.id === requisicionId
+                    ? {
+                          ...prev,
+                          comentarios,
+                          totalComentarios: total,
+                          observacion: preview || prev.observacion,
+                      }
+                    : prev
+            );
+        },
+        []
+    );
+
     const handleConsolidarPedido = async (payload: Parameters<typeof consolidarPedidoOc>[0]) => {
         const result = await consolidarPedidoOc(payload);
         setRequisiciones((prev) => {
@@ -1487,7 +1842,7 @@ export default function AlmacenScreen() {
         requisicionId: string,
         proveedorId: string,
         pagado: boolean,
-        formaPago?: 'credito' | 'efectivo'
+        formaPago?: 'credito' | 'efectivo' | 'contado'
     ) => {
         const actualizada = await marcarProveedorPagado(requisicionId, proveedorId, pagado, formaPago);
         setRequisiciones((prev) => mergeRequisicionEnLista(prev, actualizada));
@@ -1527,12 +1882,13 @@ export default function AlmacenScreen() {
         setCatalogoProveedores(provs);
     };
 
-    const handleRecargarCatalogoProductos = async () => {
+    const handleRecargarCatalogoProductos = async (): Promise<ProductoInsumo[]> => {
         const catalogos = await getCatalogos();
         setProductos(catalogos.productos);
         if (catalogos.unidadesMedida.length > 0) {
             setUnidadesMedida(catalogos.unidadesMedida);
         }
+        return catalogos.productos;
     };
 
     const handleGuardarProductoCatalogo = async (payload: {
@@ -1630,6 +1986,7 @@ export default function AlmacenScreen() {
         setOpSearch('');
         setMensajeAutofillOp('');
         lastAutofillOpRef.current = '';
+        setPrecioReferenciaTexto('');
         setModalVisible(false);
     };
 
@@ -1673,7 +2030,7 @@ export default function AlmacenScreen() {
         },
         {
             key: 'cliente',
-            label: 'CLIENTE',
+            label: 'PROVEEDORES',
             flex: 1.35,
             minWidth: 160,
             render: (req) => (
@@ -1706,11 +2063,11 @@ export default function AlmacenScreen() {
                 return (
                     <View>
                         <Text style={[styles.td, { color: colors.text }]}>
-                            Req: {req.cantidad} {req.unidad}
+                            Req: {formatearCantidad(req.cantidad)} {req.unidad}
                         </Text>
                         {totalPedido !== null && totalPedido > 0 ? (
                             <Text style={[styles.tdCantidadPedido, { color: colors.subText }]}>
-                                Ped: {totalPedido} {req.unidad}
+                                Ped: {formatearCantidad(totalPedido)} {req.unidad}
                             </Text>
                         ) : (
                             <Text style={[styles.tdCantidadPedido, { color: colors.subText }]}>Ped: —</Text>
@@ -1735,13 +2092,18 @@ export default function AlmacenScreen() {
                 }
                 return (
                     <View>
-                        <Text style={[styles.td, { color: colors.text, fontWeight: '700' }]}>
+                        <Text style={[styles.tdPrecioTotal, { color: isDarkMode ? '#F8FAFC' : '#0F172A' }]}>
                             {formatearMonedaCop(totalMonetario)}
                         </Text>
+                        {provs.some((p) => p.precioEspecial) ? (
+                            <Text style={{ color: '#F59E0B', fontSize: 11, fontWeight: '700', marginTop: 2 }}>
+                                Precio esp.
+                            </Text>
+                        ) : null}
                         {provs.length === 1 &&
                         provs[0]?.precioUnitario != null &&
                         provs[0].precioUnitario > 0 ? (
-                            <Text style={[styles.tdCantidadPedido, { color: colors.subText }]}>
+                            <Text style={[styles.tdPrecioUnitario, { color: isDarkMode ? '#4ADE80' : '#15803D' }]}>
                                 {formatearMonedaCop(provs[0].precioUnitario)} / {req.unidad}
                             </Text>
                         ) : provs.length > 1 ? (
@@ -1756,10 +2118,16 @@ export default function AlmacenScreen() {
         { key: 'fechaRequerida', label: 'FECHA REQ.', flex: 1, minWidth: 108, render: (req) => req.fechaRequerida },
         {
             key: 'observacion',
-            label: 'OBSERVACIÓN',
+            label: 'COMENTARIOS',
             flex: 1.15,
             minWidth: 150,
-            render: (req) => <CeldaTextoTabla texto={req.observacion} color={colors.text} />,
+            render: (req) => (
+                <AlmacenComentariosCelda
+                    requisicion={req}
+                    onPress={() => setComentariosModalReq(req)}
+                    colors={colors}
+                />
+            ),
         },
         {
             key: 'ingresadoPor',
@@ -1811,9 +2179,27 @@ export default function AlmacenScreen() {
             <>
                 <View style={[styles.tableHeader, { borderBottomColor: colors.border }]}>
                     {tableColumns.map((col) => (
-                        <View key={col.key} style={[styles.tableCell, { flex: col.flex, minWidth: col.minWidth }]}>
-                            <Text style={[styles.th, { color: colors.subText }]}>{col.label}</Text>
-                        </View>
+                        <AlmacenExcelColumnFilter
+                            key={col.key}
+                            label={col.label}
+                            columnKey={col.key}
+                            flex={col.flex}
+                            minWidth={col.minWidth}
+                            values={valoresUnicosPorColumna[col.key] ?? []}
+                            selectedValues={filtrosColumnaReq[col.key] ?? null}
+                            sortState={ordenColumnaReq}
+                            filterable={col.key !== 'acciones'}
+                            onApplyFilter={(selected) => {
+                                setFiltrosColumnaReq((prev) => ({ ...prev, [col.key]: selected }));
+                                setPaginaRequisicion(1);
+                            }}
+                            onSort={(dir) => {
+                                setOrdenColumnaReq({ key: col.key, dir });
+                                setPaginaRequisicion(1);
+                            }}
+                            colors={colors}
+                            isDarkMode={isDarkMode}
+                        />
                     ))}
                 </View>
 
@@ -2058,16 +2444,25 @@ export default function AlmacenScreen() {
 
     const handleOpOpenChange = useCallback((open: boolean) => {
         setOpListaAbierta(open);
-        if (open) setMenuDesplegableAbierto(null);
+        if (open) {
+            setMenuDesplegableAbierto(null);
+            setProveedorListaAbierta(false);
+        }
     }, []);
 
     const handleProductoOpenChange = useCallback((next: boolean) => {
-        if (next) setOpListaAbierta(false);
+        if (next) {
+            setOpListaAbierta(false);
+            setProveedorListaAbierta(false);
+        }
         setMenuDesplegableAbierto(next ? 'producto' : null);
     }, []);
 
     const handleUnidadOpenChange = useCallback((next: boolean) => {
-        if (next) setOpListaAbierta(false);
+        if (next) {
+            setOpListaAbierta(false);
+            setProveedorListaAbierta(false);
+        }
         setMenuDesplegableAbierto(next ? 'unidad' : null);
     }, []);
 
@@ -2119,28 +2514,90 @@ export default function AlmacenScreen() {
                 />
             </View>
 
-            <View style={[styles.formCol, isWide && styles.formColHalf]}>
-                <Text style={[dropdownStyles.label, { color: colors.subText }]}>
-                    Cliente <Text style={{ color: '#60A5FA' }}> *</Text>
-                </Text>
-                <TextInput
-                    style={[
-                        styles.input,
-                        {
-                            backgroundColor: inputBg,
-                            borderColor: erroresForm.cliente ? '#EF4444' : colors.border,
-                            color: colors.text,
-                        },
-                    ]}
+            {form.productoId ? (
+                <View style={[styles.formCol, styles.formColFull]}>
+                    <Text style={[dropdownStyles.label, { color: colors.subText }]}>
+                        Precio de referencia (compra)
+                    </Text>
+                    {costoCatalogoRequisicion != null && costoCatalogoRequisicion > 0 ? (
+                        <Text style={{ color: colors.subText, fontSize: 12, marginBottom: 6 }}>
+                            Catálogo: {formatearMonedaCop(costoCatalogoRequisicion)}
+                            {form.unidad ? ` / ${form.unidad}` : ''}
+                        </Text>
+                    ) : (
+                        <Text style={{ color: colors.subText, fontSize: 12, marginBottom: 6 }}>
+                            Sin costo en catálogo. Puede registrar uno aquí.
+                        </Text>
+                    )}
+                    <TextInput
+                        style={[
+                            styles.input,
+                            {
+                                backgroundColor: inputBg,
+                                borderColor: colors.border,
+                                color: colors.text,
+                            },
+                        ]}
+                        placeholder="Ej. 69.327,73"
+                        placeholderTextColor={colors.subText}
+                        value={precioReferenciaTexto}
+                        onChangeText={(t) => {
+                            const { display } = formatearPrecioCopMientrasEscribe(t);
+                            setPrecioReferenciaTexto(display);
+                        }}
+                        keyboardType="decimal-pad"
+                    />
+                    {precioReferenciaDifiereCatalogo ? (
+                        <TouchableOpacity
+                            style={[
+                                styles.secondaryBtn,
+                                {
+                                    borderColor: colors.primary,
+                                    marginTop: 8,
+                                    alignSelf: 'flex-start',
+                                    paddingVertical: 8,
+                                    paddingHorizontal: 12,
+                                    opacity: actualizandoPrecioCatalogoReq ? 0.6 : 1,
+                                },
+                            ]}
+                            onPress={aplicarPrecioCatalogoDesdeRequisicion}
+                            disabled={actualizandoPrecioCatalogoReq}
+                        >
+                            <Text style={[styles.secondaryBtnText, { color: colors.primary, fontSize: 13 }]}>
+                                {actualizandoPrecioCatalogoReq
+                                    ? 'Aplicando…'
+                                    : '↻ Aplicar precio del catálogo'}
+                            </Text>
+                        </TouchableOpacity>
+                    ) : null}
+                </View>
+            ) : null}
+
+            <View style={[styles.formCol, isWide && styles.formColHalf, proveedorListaAbierta && styles.formColElevated]}>
+                <ProveedorAutocompleteField
+                    label="Proveedores"
                     value={form.cliente}
-                    placeholder="Nombre del cliente"
-                    placeholderTextColor={colors.subText}
+                    catalogo={catalogoProveedores}
+                    placeholder="Buscar proveedor…"
+                    colors={colors}
+                    isDarkMode={isDarkMode}
+                    error={erroresForm.cliente}
                     onChangeText={(t) => {
                         setForm((prev) => ({ ...prev, cliente: t }));
                         if (erroresForm.cliente) setErroresForm((prev) => ({ ...prev, cliente: undefined }));
                     }}
+                    onSelect={(nombre) => {
+                        setForm((prev) => ({ ...prev, cliente: nombre }));
+                        if (erroresForm.cliente) setErroresForm((prev) => ({ ...prev, cliente: undefined }));
+                    }}
+                    onOpenChange={(open) => {
+                        setProveedorListaAbierta(open);
+                        if (open) {
+                            setOpListaAbierta(false);
+                            setMenuDesplegableAbierto(null);
+                        }
+                    }}
                 />
-                {erroresForm.cliente ? <Text style={styles.fieldErrorText}>{erroresForm.cliente}</Text> : null}
             </View>
 
             <View style={[styles.formCol, isWide && styles.formColHalf]}>
@@ -2219,25 +2676,23 @@ export default function AlmacenScreen() {
 
                             <View style={[styles.formGrid, isWide && styles.formGridWide, styles.opRelacionadaFields]}>
                                 <View style={[styles.formCol, isWide && styles.formColHalf]}>
-                                    <Text style={[dropdownStyles.label, { color: colors.subText }]}>Cliente *</Text>
-                                    <TextInput
-                                        style={[
-                                            styles.input,
-                                            {
-                                                backgroundColor: inputBg,
-                                                borderColor: rowErr.cliente ? '#EF4444' : colors.border,
-                                                color: colors.text,
-                                            },
-                                        ]}
+                                    <ProveedorAutocompleteField
+                                        label="Proveedores"
                                         value={op.cliente}
-                                        placeholder="Nombre del cliente"
-                                        placeholderTextColor={colors.subText}
+                                        catalogo={catalogoProveedores}
+                                        placeholder="Buscar proveedor…"
+                                        colors={colors}
+                                        isDarkMode={isDarkMode}
+                                        error={rowErr.cliente}
                                         onChangeText={(t) => {
                                             setOpRelacionadaPatch(op.id, { cliente: t });
                                             limpiarErrorOpRelacionada(op.id, 'cliente');
                                         }}
+                                        onSelect={(nombre) => {
+                                            setOpRelacionadaPatch(op.id, { cliente: nombre });
+                                            limpiarErrorOpRelacionada(op.id, 'cliente');
+                                        }}
                                     />
-                                    {rowErr.cliente ? <Text style={styles.fieldErrorText}>{rowErr.cliente}</Text> : null}
                                 </View>
                                 <View style={[styles.formCol, isWide && styles.formColHalf]}>
                                     <Text style={[dropdownStyles.label, { color: colors.subText }]}>Referencia *</Text>
@@ -2324,9 +2779,9 @@ export default function AlmacenScreen() {
                     placeholderTextColor={colors.subText}
                     value={form.cantidad}
                     onChangeText={(t) => {
-                        const cleaned = t.replace(/[^0-9.,]/g, '');
+                        const cleaned = sanitizarCantidadInput(t);
                         setForm((prev) => ({ ...prev, cantidad: cleaned }));
-                        const cantidad = parseFloat(cleaned.replace(',', '.'));
+                        const cantidad = parseCantidadInput(cleaned);
                         if (erroresForm.cantidad && cantidad > 0) {
                             setErroresForm((prev) => ({ ...prev, cantidad: undefined }));
                         }
@@ -2356,33 +2811,41 @@ export default function AlmacenScreen() {
                 />
             </View>
 
-            <View
-                style={[
-                    styles.formCol,
-                    styles.formColFull,
-                    styles.observacionSection,
-                    { borderTopColor: colors.border },
-                ]}
-            >
-                <Text style={[dropdownStyles.label, { color: colors.subText }]}>Observación</Text>
-                <TextInput
+            {!editingRequisicionId ? (
+                <View
                     style={[
-                        styles.inputObs,
-                        {
-                            backgroundColor: inputBg,
-                            borderColor: colors.border,
-                            color: colors.text,
-                        },
+                        styles.formCol,
+                        styles.formColFull,
+                        styles.observacionSection,
+                        { borderTopColor: colors.border },
                     ]}
-                    placeholder="Notas adicionales (opcional)"
-                    placeholderTextColor={colors.subText}
-                    value={form.observacion}
-                    onChangeText={(t) => setForm((prev) => ({ ...prev, observacion: t }))}
-                    multiline
-                    numberOfLines={3}
-                    textAlignVertical="top"
-                />
-            </View>
+                >
+                    <Text style={[dropdownStyles.label, { color: colors.subText }]}>
+                        Observación inicial (opcional)
+                    </Text>
+                    <Text style={[styles.observacionHint, { color: colors.subText }]}>
+                        Se registrará como comentario con su nombre, fecha y hora. Luego podrá responder desde la
+                        columna Comentarios.
+                    </Text>
+                    <TextInput
+                        style={[
+                            styles.inputObs,
+                            {
+                                backgroundColor: inputBg,
+                                borderColor: colors.border,
+                                color: colors.text,
+                            },
+                        ]}
+                        placeholder="Notas o pregunta inicial (opcional)"
+                        placeholderTextColor={colors.subText}
+                        value={form.observacion}
+                        onChangeText={(t) => setForm((prev) => ({ ...prev, observacion: t }))}
+                        multiline
+                        numberOfLines={3}
+                        textAlignVertical="top"
+                    />
+                </View>
+            ) : null}
         </View>
     );
 
@@ -2491,20 +2954,22 @@ export default function AlmacenScreen() {
                         isDarkMode={isDarkMode}
                         cardBg={cardBg}
                         isWide={isWide}
+                        onAbrirComentarios={setComentariosModalReq}
                     />
                 )}
                 {!cargando && activeTab === 'recepcion' && (
                     <AlmacenRecepcionTab
                         requisiciones={requisiciones}
                         onRegistrarRecepcion={handleRegistrarRecepcion}
+                        onAbrirComentarios={setComentariosModalReq}
                         colors={colors}
                         isDarkMode={isDarkMode}
                         cardBg={cardBg}
                         isWide={isWide}
                     />
                 )}
-                {!cargando && activeTab === 'calidad' && (
-                    <AlmacenCalidadProveedoresTab
+                {!cargando && activeTab === 'indicadores' && (
+                    <AlmacenIndicadoresTab
                         requisiciones={requisiciones}
                         colors={colors}
                         isDarkMode={isDarkMode}
@@ -2579,6 +3044,17 @@ export default function AlmacenScreen() {
                     </View>
                 </View>
             </Modal>
+
+            <AlmacenRequisicionComentariosModal
+                visible={comentariosModalReq != null}
+                requisicion={comentariosModalReq}
+                onClose={() => setComentariosModalReq(null)}
+                onComentariosActualizados={handleComentariosActualizados}
+                colors={colors}
+                isDarkMode={isDarkMode}
+                cardBg={cardBg}
+                inputBg={inputBg}
+            />
         </View>
     );
 }
@@ -2874,6 +3350,20 @@ const styles = StyleSheet.create({
         minWidth: 0,
     },
     tdCantidadPedido: { fontSize: 13, lineHeight: 18, marginTop: 2, paddingRight: 10 },
+    tdPrecioTotal: {
+        fontSize: 15,
+        fontWeight: '800',
+        lineHeight: 20,
+        paddingRight: 10,
+        letterSpacing: 0.2,
+    },
+    tdPrecioUnitario: {
+        fontSize: 13,
+        fontWeight: '700',
+        lineHeight: 18,
+        marginTop: 3,
+        paddingRight: 10,
+    },
     emptyText: { paddingVertical: 32, textAlign: 'center', fontSize: 16 },
     paginationBar: {
         marginTop: 16,
@@ -2999,6 +3489,28 @@ const styles = StyleSheet.create({
         marginTop: 6,
         paddingTop: 14,
         borderTopWidth: 1,
+    },
+    observacionHint: {
+        fontSize: 12,
+        lineHeight: 17,
+        marginBottom: 8,
+    },
+    comentariosCelda: {
+        paddingVertical: 2,
+        gap: 4,
+    },
+    comentariosCeldaTop: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    comentariosContador: {
+        fontSize: 12,
+        fontWeight: '800',
+    },
+    comentariosPreview: {
+        fontSize: 12,
+        lineHeight: 16,
     },
     opsRelacionadasWrap: {
         marginTop: 2,

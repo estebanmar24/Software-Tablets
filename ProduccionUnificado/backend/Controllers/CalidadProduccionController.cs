@@ -55,6 +55,8 @@ public class CalidadProduccionController : ControllerBase
                 Referencia = e.Referencia,
                 Material = e.Material,
                 Cliente = e.Cliente,
+                Alcance = e.Alcance,
+                TipoReclamacion = e.TipoReclamacion,
                 CantidadAProducir = e.CantidadAProducir,
                 CantidadRecuperada = e.CantidadRecuperada,
                 CantidadParaDespacho = e.CantidadParaDespacho,
@@ -84,6 +86,8 @@ public class CalidadProduccionController : ControllerBase
             Referencia = encuesta.Referencia,
             Material = encuesta.Material,
             Cliente = encuesta.Cliente,
+            Alcance = encuesta.Alcance,
+            TipoReclamacion = encuesta.TipoReclamacion,
             Cabida = encuesta.Cabida,
             CantidadAProducir = encuesta.CantidadAProducir,
             CantidadRecuperada = encuesta.CantidadRecuperada,
@@ -112,6 +116,8 @@ public class CalidadProduccionController : ControllerBase
                 Referencia = dto.Referencia,
                 Material = dto.Material,
                 Cliente = dto.Cliente,
+                Alcance = dto.Alcance,
+                TipoReclamacion = dto.TipoReclamacion,
                 Cabida = dto.Cabida,
                 CantidadAProducir = dto.CantidadAProducir,
                 CantidadRecuperada = dto.CantidadRecuperada,
@@ -136,6 +142,8 @@ public class CalidadProduccionController : ControllerBase
             }
 
             await _context.SaveChangesAsync();
+
+            await SyncConsolidadoDesdeEncuesta(encuesta, dto.TipoReclamacionNuevo);
 
             return CreatedAtAction(nameof(GetEncuesta), new { id = encuesta.Id }, new { id = encuesta.Id });
         }
@@ -164,6 +172,8 @@ public class CalidadProduccionController : ControllerBase
             encuesta.Referencia = dto.Referencia;
             encuesta.Material = dto.Material;
             encuesta.Cliente = dto.Cliente;
+            encuesta.Alcance = dto.Alcance;
+            encuesta.TipoReclamacion = dto.TipoReclamacion;
             encuesta.Cabida = dto.Cabida;
             encuesta.CantidadAProducir = dto.CantidadAProducir;
             encuesta.CantidadRecuperada = dto.CantidadRecuperada;
@@ -185,6 +195,7 @@ public class CalidadProduccionController : ControllerBase
             }
 
             await _context.SaveChangesAsync();
+            await SyncConsolidadoDesdeEncuesta(encuesta, dto.TipoReclamacionNuevo);
             return NoContent();
         }
         catch (Exception ex)
@@ -208,5 +219,49 @@ public class CalidadProduccionController : ControllerBase
         await _context.SaveChangesAsync();
 
         return NoContent();
+    }
+
+    private async Task SyncConsolidadoDesdeEncuesta(EncuestaCalidadProduccion encuesta, string? tipoReclamacionNuevo)
+    {
+        if (!string.IsNullOrWhiteSpace(tipoReclamacionNuevo))
+        {
+            var limpio = tipoReclamacionNuevo.Trim();
+            var exists = await _context.CalidadNC_TiposReclamacion
+                .AnyAsync(t => t.Nombre.ToLower() == limpio.ToLower());
+            if (!exists)
+            {
+                _context.CalidadNC_TiposReclamacion.Add(new CalidadNC_TipoReclamacionOpcion
+                {
+                    Nombre = limpio,
+                    Activo = true
+                });
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(encuesta.Alcance) && string.IsNullOrWhiteSpace(encuesta.TipoReclamacion))
+            return;
+
+        var nc = await _context.ConsolidadosNC
+            .FirstOrDefaultAsync(x => x.EncuestaProduccionId == encuesta.Id);
+
+        if (nc == null)
+        {
+            nc = new ConsolidadoNC
+            {
+                EncuestaProduccionId = encuesta.Id,
+                Fecha = encuesta.Fecha,
+                OrdenProduccion = encuesta.OrdenProduccion,
+                Cliente = encuesta.Cliente,
+                Referencia = encuesta.Referencia,
+                CantidadTotal = encuesta.CantidadAProducir,
+                DescripcionNovedad = encuesta.Observaciones,
+                FechaCreacion = DateTime.Now
+            };
+            _context.ConsolidadosNC.Add(nc);
+        }
+
+        nc.Alcance = encuesta.Alcance;
+        nc.TipoReclamacion = encuesta.TipoReclamacion;
+        await _context.SaveChangesAsync();
     }
 }

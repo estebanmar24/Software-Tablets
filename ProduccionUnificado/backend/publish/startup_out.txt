@@ -1,0 +1,564 @@
+[STARTUP] Getting DbContext...
+[STARTUP] DbContext acquired.
+[STARTUP] Parches criticos de columnas de gastos (EsEfectivo, Estado, PrecioBase, PrecioIva)...
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (28ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Produccion_Gastos" ADD COLUMN IF NOT EXISTS "EsEfectivo" boolean NOT NULL DEFAULT false;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (192ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Talleres_Gastos" ADD COLUMN IF NOT EXISTS "EsEfectivo" boolean NOT NULL DEFAULT false;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (35ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Planeacion_Gastos" ADD COLUMN IF NOT EXISTS "EsEfectivo" boolean NOT NULL DEFAULT false;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Gastos" ADD COLUMN IF NOT EXISTS "EsEfectivo" boolean NOT NULL DEFAULT false;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (73ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Diseno_Gastos" ADD COLUMN IF NOT EXISTS "EsEfectivo" boolean NOT NULL DEFAULT false;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (12ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "SST_GastosMensuales" ADD COLUMN IF NOT EXISTS "EsEfectivo" boolean NOT NULL DEFAULT false;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (40ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "GH_GastosMensuales" ADD COLUMN IF NOT EXISTS "EsEfectivo" boolean NOT NULL DEFAULT false;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (14ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Produccion_Gastos" ADD COLUMN IF NOT EXISTS "Estado" character varying(50) NOT NULL DEFAULT 'Montado';
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Talleres_Gastos" ADD COLUMN IF NOT EXISTS "Estado" character varying(50) NOT NULL DEFAULT 'Montado';
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Planeacion_Gastos" ADD COLUMN IF NOT EXISTS "Estado" character varying(50) NOT NULL DEFAULT 'Montado';
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Gastos" ADD COLUMN IF NOT EXISTS "Estado" character varying(50) NOT NULL DEFAULT 'Montado';
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Diseno_Gastos" ADD COLUMN IF NOT EXISTS "Estado" character varying(50) NOT NULL DEFAULT 'Montado';
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "GH_GastosMensuales" ADD COLUMN IF NOT EXISTS "Estado" character varying(50) NOT NULL DEFAULT 'Montado';
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "SST_GastosMensuales" ADD COLUMN IF NOT EXISTS "Estado" character varying(50) NOT NULL DEFAULT 'Montado';
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Produccion_Gastos" ADD COLUMN IF NOT EXISTS "PrecioBase" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Produccion_Gastos" ADD COLUMN IF NOT EXISTS "PrecioIva" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Produccion_Gastos" ADD COLUMN IF NOT EXISTS "HoraInicio" character varying(8) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Produccion_Gastos" ADD COLUMN IF NOT EXISTS "HoraFin" character varying(8) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Talleres_Gastos" ADD COLUMN IF NOT EXISTS "PrecioBase" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Talleres_Gastos" ADD COLUMN IF NOT EXISTS "PrecioIva" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (7ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Talleres_Gastos" ADD COLUMN IF NOT EXISTS "HoraInicio" character varying(8) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Talleres_Gastos" ADD COLUMN IF NOT EXISTS "HoraFin" character varying(8) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Gastos" ADD COLUMN IF NOT EXISTS "PrecioBase" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Gastos" ADD COLUMN IF NOT EXISTS "PrecioIva" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Gastos" ADD COLUMN IF NOT EXISTS "FechaEntregaFactura" timestamp without time zone NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (10ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Gastos" ADD COLUMN IF NOT EXISTS "FechaVencimientoFactura" timestamp without time zone NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Productos" ADD COLUMN IF NOT EXISTS "TipoProducto" character varying(100) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (7ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Productos" ADD COLUMN IF NOT EXISTS "stock" numeric(18,2) NOT NULL DEFAULT 0;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Planeacion_Gastos" ADD COLUMN IF NOT EXISTS "PrecioBase" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Planeacion_Gastos" ADD COLUMN IF NOT EXISTS "PrecioIva" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Diseno_Gastos" ADD COLUMN IF NOT EXISTS "PrecioBase" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Diseno_Gastos" ADD COLUMN IF NOT EXISTS "PrecioIva" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "GH_GastosMensuales" ADD COLUMN IF NOT EXISTS "PrecioBase" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (5ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "GH_GastosMensuales" ADD COLUMN IF NOT EXISTS "PrecioIva" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "SST_GastosMensuales" ADD COLUMN IF NOT EXISTS "PrecioBase" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "SST_GastosMensuales" ADD COLUMN IF NOT EXISTS "PrecioIva" numeric(18,2) NULL;
+[STARTUP] Parches cr¡ticos de gastos finalizados.
+[STARTUP] Tablas ProveedorRubros (N:M)...
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "Produccion_ProveedorRubros" (
+          "ProveedorId" integer NOT NULL,
+          "RubroId" integer NOT NULL,
+          PRIMARY KEY ("ProveedorId", "RubroId"),
+          CONSTRAINT "FK_Produccion_ProveedorRubros_Proveedor" FOREIGN KEY ("ProveedorId") REFERENCES "Produccion_Proveedores" ("Id") ON DELETE CASCADE,
+          CONSTRAINT "FK_Produccion_ProveedorRubros_Rubro" FOREIGN KEY ("RubroId") REFERENCES "Produccion_Rubros" ("Id") ON DELETE RESTRICT
+      );
+[STARTUP] Tablas ProveedorRubros listas.
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      INSERT INTO "Produccion_ProveedorRubros" ("ProveedorId", "RubroId")
+      SELECT "Id", "RubroId" FROM "Produccion_Proveedores"
+      WHERE "RubroId" IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM "Produccion_ProveedorRubros" j
+          WHERE j."ProveedorId" = "Produccion_Proveedores"."Id" AND j."RubroId" = "Produccion_Proveedores"."RubroId"
+        );
+[STARTUP] Parches Consolidado NC (Alcance, tipos reclamaci¢n)...
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "Talleres_ProveedorRubros" (
+          "ProveedorId" integer NOT NULL,
+          "RubroId" integer NOT NULL,
+          PRIMARY KEY ("ProveedorId", "RubroId"),
+          CONSTRAINT "FK_Talleres_ProveedorRubros_Proveedor" FOREIGN KEY ("ProveedorId") REFERENCES "Talleres_Proveedores" ("Id") ON DELETE CASCADE,
+          CONSTRAINT "FK_Talleres_ProveedorRubros_Rubro" FOREIGN KEY ("RubroId") REFERENCES "Talleres_Rubros" ("Id") ON DELETE RESTRICT
+      );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      INSERT INTO "Talleres_ProveedorRubros" ("ProveedorId", "RubroId")
+      SELECT "Id", "RubroId" FROM "Talleres_Proveedores"
+      WHERE "RubroId" IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM "Talleres_ProveedorRubros" j
+          WHERE j."ProveedorId" = "Talleres_Proveedores"."Id" AND j."RubroId" = "Talleres_Proveedores"."RubroId"
+        );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "Planeacion_ProveedorRubros" (
+          "ProveedorId" integer NOT NULL,
+          "RubroId" integer NOT NULL,
+          PRIMARY KEY ("ProveedorId", "RubroId"),
+          CONSTRAINT "FK_Planeacion_ProveedorRubros_Proveedor" FOREIGN KEY ("ProveedorId") REFERENCES "Planeacion_Proveedores" ("Id") ON DELETE CASCADE,
+          CONSTRAINT "FK_Planeacion_ProveedorRubros_Rubro" FOREIGN KEY ("RubroId") REFERENCES "Planeacion_Rubros" ("Id") ON DELETE RESTRICT
+      );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      INSERT INTO "Planeacion_ProveedorRubros" ("ProveedorId", "RubroId")
+      SELECT "Id", "RubroId" FROM "Planeacion_Proveedores"
+      WHERE "RubroId" IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM "Planeacion_ProveedorRubros" j
+          WHERE j."ProveedorId" = "Planeacion_Proveedores"."Id" AND j."RubroId" = "Planeacion_Proveedores"."RubroId"
+        );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "Diseno_ProveedorRubros" (
+          "ProveedorId" integer NOT NULL,
+          "RubroId" integer NOT NULL,
+          PRIMARY KEY ("ProveedorId", "RubroId"),
+          CONSTRAINT "FK_Diseno_ProveedorRubros_Proveedor" FOREIGN KEY ("ProveedorId") REFERENCES "Diseno_Proveedores" ("Id") ON DELETE CASCADE,
+          CONSTRAINT "FK_Diseno_ProveedorRubros_Rubro" FOREIGN KEY ("RubroId") REFERENCES "Diseno_Rubros" ("Id") ON DELETE RESTRICT
+      );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      INSERT INTO "Diseno_ProveedorRubros" ("ProveedorId", "RubroId")
+      SELECT "Id", "RubroId" FROM "Diseno_Proveedores"
+      WHERE "RubroId" IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM "Diseno_ProveedorRubros" j
+          WHERE j."ProveedorId" = "Diseno_Proveedores"."Id" AND j."RubroId" = "Diseno_Proveedores"."RubroId"
+        );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "Mantenimiento_ProveedorRubros" (
+          "ProveedorId" integer NOT NULL,
+          "RubroId" integer NOT NULL,
+          PRIMARY KEY ("ProveedorId", "RubroId"),
+          CONSTRAINT "FK_Mantenimiento_ProveedorRubros_Proveedor" FOREIGN KEY ("ProveedorId") REFERENCES "Mantenimiento_Proveedores" ("Id") ON DELETE CASCADE,
+          CONSTRAINT "FK_Mantenimiento_ProveedorRubros_Rubro" FOREIGN KEY ("RubroId") REFERENCES "Mantenimiento_Rubros" ("Id") ON DELETE RESTRICT
+      );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      INSERT INTO "Mantenimiento_ProveedorRubros" ("ProveedorId", "RubroId")
+      SELECT "Id", "RubroId" FROM "Mantenimiento_Proveedores"
+      WHERE "RubroId" IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM "Mantenimiento_ProveedorRubros" j
+          WHERE j."ProveedorId" = "Mantenimiento_Proveedores"."Id" AND j."RubroId" = "Mantenimiento_Proveedores"."RubroId"
+        );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "EncuestasCalidadProduccion" ADD COLUMN IF NOT EXISTS "Alcance" text NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "EncuestasCalidadProduccion" ADD COLUMN IF NOT EXISTS "TipoReclamacion" text NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (4ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "ConsolidadosNC" ADD COLUMN IF NOT EXISTS "Alcance" text NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "CalidadNC_TiposReclamacion" (
+          "Id" serial PRIMARY KEY,
+          "Nombre" character varying(120) NOT NULL,
+          "Activo" boolean NOT NULL DEFAULT true
+      );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      INSERT INTO "CalidadNC_TiposReclamacion" ("Nombre", "Activo")
+      SELECT v."Nombre", true FROM (VALUES
+          ('Queja'), ('Reclamo'), ('Devoluci¢n'), ('Otro')
+      ) AS v("Nombre")
+      WHERE NOT EXISTS (
+          SELECT 1 FROM "CalidadNC_TiposReclamacion" t WHERE LOWER(TRIM(t."Nombre")) = LOWER(TRIM(v."Nombre"))
+      );
+[STARTUP] Horario s bado 6am-10am (c¢digo 5) verificado.
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      UPDATE "ConsolidadosNC"
+      SET "Alcance" = CASE
+          WHEN UPPER(TRIM(COALESCE("TipoReclamacion", ''))) IN ('INTERNO', 'INTERNA', 'ALCANCE INTERNO') THEN 'Alcance interno'
+          WHEN UPPER(TRIM(COALESCE("TipoReclamacion", ''))) IN ('EXTERNO', 'EXTERNA', 'ALCANCE EXTERNO') THEN 'Alcance externo'
+          WHEN COALESCE("Alcance", '') = '' AND COALESCE("TipoReclamacion", '') <> '' THEN "TipoReclamacion"
+          ELSE "Alcance"
+      END
+      WHERE COALESCE("Alcance", '') = ''
+        AND COALESCE("TipoReclamacion", '') <> '';
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      UPDATE "ConsolidadosNC"
+      SET "TipoReclamacion" = NULL
+      WHERE UPPER(TRIM(COALESCE("TipoReclamacion", ''))) IN (
+          'INTERNO', 'INTERNA', 'EXTERNO', 'EXTERNA',
+          'ALCANCE INTERNO', 'ALCANCE EXTERNO', 'ALCANCE INTERNA', 'ALCANCE EXTERNA'
+      );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      DELETE FROM "ConsolidadosNC" a
+      USING "ConsolidadosNC" b
+      WHERE a."EncuestaProduccionId" = b."EncuestaProduccionId"
+        AND a."Id" < b."Id";
+[STARTUP] Horario 1pm-9pm (c¢digo 6) verificado.
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      INSERT INTO "Horarios" ("Codigo", "Nombre", "InicioSemana", "FinSemana", "InicioSabado", "FinSabado", "Activo")
+      SELECT '5', '6am - 10am (s bado)', '06:00:00'::interval, '10:00:00'::interval, '06:00:00'::interval, '10:00:00'::interval, TRUE
+      WHERE NOT EXISTS (SELECT 1 FROM "Horarios" WHERE "Codigo" = '5');
+[DB FIX] Adjunto_DocumentoExtraccion: Input string was not in a correct format. Failure to parse near offset 436. Expected an ASCII digit.
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      INSERT INTO "Horarios" ("Codigo", "Nombre", "InicioSemana", "FinSemana", "InicioSabado", "FinSabado", "Activo")
+      SELECT '6', '1pm - 9pm', '13:00:00'::interval, '21:00:00'::interval, '08:00:00'::interval, '12:00:00'::interval, TRUE
+      WHERE NOT EXISTS (SELECT 1 FROM "Horarios" WHERE "Codigo" = '6');
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (10ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "Catalogo_OrdenProduccion" (
+          "Id" SERIAL PRIMARY KEY,
+          "Numero" character varying(32) NOT NULL,
+          "Cliente" character varying(300) NULL,
+          "Referencia" character varying(500) NULL,
+          "CantidadPlanificada" numeric(18,2) NOT NULL DEFAULT 0,
+          "Mes" integer NOT NULL,
+          "Anio" integer NOT NULL,
+          "Fuente" character varying(20) NOT NULL DEFAULT 'Excel',
+          "FechaActualizacion" timestamp without time zone NOT NULL DEFAULT NOW()
+      );
+[STARTUP] Tabla Catalogo_OrdenProduccion verificada.
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE UNIQUE INDEX IF NOT EXISTS "IX_CatalogoOP_Numero_Mes_Anio"
+          ON "Catalogo_OrdenProduccion" ("Numero", "Mes", "Anio");
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "Mantenimiento_Consumos" (
+          "Id" serial PRIMARY KEY,
+          "productoid" integer NOT NULL,
+          "cantidad" numeric(18,2) NOT NULL DEFAULT 0,
+          "Fecha" timestamp without time zone NOT NULL,
+          "MaquinaId" integer NULL,
+          "tipomantenimiento" character varying(100) NULL,
+          "BitacoraId" integer NULL,
+          "ActividadesIds" text NULL,
+          "Responsable" character varying(200) NULL,
+          "Nota" text NULL,
+          "Activo" boolean NOT NULL DEFAULT true,
+          "Anio" integer NOT NULL DEFAULT 0,
+          "Mes" integer NOT NULL DEFAULT 0,
+          CONSTRAINT "FK_Mantenimiento_Consumos_Producto" FOREIGN KEY ("productoid") REFERENCES "Mantenimiento_Productos" ("Id") ON DELETE RESTRICT,
+          CONSTRAINT "FK_Mantenimiento_Consumos_Maquina" FOREIGN KEY ("MaquinaId") REFERENCES "Maquinas" ("Id") ON DELETE SET NULL
+      );
+[STARTUP] Tabla Mantenimiento_Consumos verificada.
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Consumos" ADD COLUMN IF NOT EXISTS "tipomantenimiento" character varying(100) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Consumos" ADD COLUMN IF NOT EXISTS "BitacoraId" integer NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Consumos" ADD COLUMN IF NOT EXISTS "ActividadesIds" text NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (11ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Consumos" ADD COLUMN IF NOT EXISTS "HojaVidaId" integer NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Consumos" ADD COLUMN IF NOT EXISTS "MantenimientoHojaVidaId" integer NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "Mantenimiento_AjustesInventario" (
+          "Id" serial PRIMARY KEY,
+          "productoid" integer NOT NULL,
+          "Tipo" character varying(20) NOT NULL DEFAULT 'ENTRADA',
+          "cantidad" numeric(18,2) NOT NULL DEFAULT 0,
+          "Razon" character varying(500) NOT NULL,
+          "Fecha" timestamp without time zone NOT NULL,
+          "Activo" boolean NOT NULL DEFAULT true,
+          CONSTRAINT "FK_Mantenimiento_Ajustes_Producto" FOREIGN KEY ("productoid") REFERENCES "Mantenimiento_Productos" ("Id") ON DELETE RESTRICT
+      );
+[STARTUP] Tabla Mantenimiento_AjustesInventario verificada.
+[STARTUP] Tablas Almac‚n (productos, proveedores, requisiciones, pedidos, recepciones)...
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "Almacen_Productos" (
+          "Id" serial PRIMARY KEY,
+          "Nombre" character varying(200) NOT NULL,
+          "TipoRequisicionId" character varying(50) NOT NULL,
+          "UnidadSugerida" character varying(30) NULL,
+          "Activo" boolean NOT NULL DEFAULT true
+      );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Productos" ADD COLUMN IF NOT EXISTS "Descripcion" character varying(500) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Productos" ADD COLUMN IF NOT EXISTS "CostoEstandar" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "Almacen_Proveedores" (
+          "Id" serial PRIMARY KEY,
+          "Nombre" character varying(200) NOT NULL,
+          "Nit" character varying(50) NOT NULL DEFAULT '',
+          "Telefono" character varying(50) NOT NULL DEFAULT '',
+          "Activo" boolean NOT NULL DEFAULT true
+      );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Proveedores" ADD COLUMN IF NOT EXISTS "Correo" character varying(200) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Proveedores" ADD COLUMN IF NOT EXISTS "TelefonoTrabajo" character varying(50) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Proveedores" ADD COLUMN IF NOT EXISTS "TelefonoMovil" character varying(50) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Proveedores" ADD COLUMN IF NOT EXISTS "Direccion" character varying(500) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (4ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Proveedores" ADD COLUMN IF NOT EXISTS "Categoria" character varying(50) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Proveedores" ADD COLUMN IF NOT EXISTS "ResponsableIva" boolean NOT NULL DEFAULT false;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "Almacen_Requisiciones" (
+          "Id" serial PRIMARY KEY,
+          "Codigo" character varying(20) NOT NULL,
+          "TipoRequisicionId" character varying(50) NOT NULL,
+          "FechaSolicitud" timestamp without time zone NOT NULL,
+          "OrdenProduccionNumero" character varying(50) NOT NULL,
+          "CatalogoOpId" integer NULL,
+          "Cliente" character varying(300) NOT NULL DEFAULT '',
+          "Referencia" character varying(500) NOT NULL DEFAULT '',
+          "ProductoId" integer NULL,
+          "ProductoNombre" character varying(200) NOT NULL,
+          "Cantidad" numeric(18,2) NOT NULL DEFAULT 0,
+          "Unidad" character varying(30) NOT NULL,
+          "FechaRequerida" timestamp without time zone NOT NULL,
+          "Observacion" text NULL,
+          "Estado" character varying(20) NOT NULL DEFAULT 'Pendiente',
+          "FechaRegistro" timestamp without time zone NOT NULL DEFAULT NOW(),
+          CONSTRAINT "FK_Almacen_Requisiciones_Producto" FOREIGN KEY ("ProductoId") REFERENCES "Almacen_Productos" ("Id") ON DELETE SET NULL,
+          CONSTRAINT "FK_Almacen_Requisiciones_CatalogoOP" FOREIGN KEY ("CatalogoOpId") REFERENCES "Catalogo_OrdenProduccion" ("Id") ON DELETE SET NULL
+      );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE UNIQUE INDEX IF NOT EXISTS "IX_Almacen_Requisiciones_Codigo" ON "Almacen_Requisiciones" ("Codigo");
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "Almacen_Pedidos" (
+          "Id" serial PRIMARY KEY,
+          "RequisicionId" integer NOT NULL,
+          "FechaPedido" timestamp without time zone NOT NULL,
+          "FechaEntregaEstimada" timestamp without time zone NULL,
+          CONSTRAINT "FK_Almacen_Pedidos_Requisicion" FOREIGN KEY ("RequisicionId") REFERENCES "Almacen_Requisiciones" ("Id") ON DELETE CASCADE
+      );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE UNIQUE INDEX IF NOT EXISTS "IX_Almacen_Pedidos_RequisicionId" ON "Almacen_Pedidos" ("RequisicionId");
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Pedidos" ADD COLUMN IF NOT EXISTS "PrecioUnitario" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_PedidoProveedores" ADD COLUMN IF NOT EXISTS "PrecioUnitario" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_PedidoProveedores" ADD COLUMN IF NOT EXISTS "NumeroOrdenCompra" integer NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_PedidoProveedores" ADD COLUMN IF NOT EXISTS "Pagado" boolean NOT NULL DEFAULT false;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_PedidoProveedores" ADD COLUMN IF NOT EXISTS "FormaPago" character varying(20) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Requisiciones" ADD COLUMN IF NOT EXISTS "CreadoPorId" integer NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Requisiciones" ADD COLUMN IF NOT EXISTS "CreadoPorNombre" character varying(200) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Requisiciones" ADD COLUMN IF NOT EXISTS "RecordatorioPedidoEnviado" boolean NOT NULL DEFAULT false;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Pedidos" ADD COLUMN IF NOT EXISTS "ProcesadoPorId" integer NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Pedidos" ADD COLUMN IF NOT EXISTS "ProcesadoPorNombre" character varying(200) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_RecepcionLineas" ADD COLUMN IF NOT EXISTS "RegistradoPorNombre" character varying(200) NULL;
+[DB FIX] Almacen_PedidoProveedores.NumeroOrdenCompra unique: 23505: could not create unique index "IX_Almacen_PedidoProveedores_NumeroOrdenCompra"
+
+DETAIL: Detail redacted as it may contain sensitive data. Specify 'Include Error Detail' in the connection string to include this information.
+fail: Microsoft.EntityFrameworkCore.Database.Command[20102]
+      Failed executing DbCommand (4ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE UNIQUE INDEX IF NOT EXISTS "IX_Almacen_PedidoProveedores_NumeroOrdenCompra"
+      ON "Almacen_PedidoProveedores" ("NumeroOrdenCompra") WHERE "NumeroOrdenCompra" IS NOT NULL;
+[STARTUP] Tablas Almac‚n listas.
+[STARTUP] Tabla Mantenimiento_Trazabilidad verificada.
+[STARTUP] Tabla Bitacora_MantenimientoDiaria verificada.
+[STARTUP] EncuestaNovedades.InformeObservaciones verificada.
+[STARTUP] EncuestaNovedades.InformeEstado verificada.
+[STARTUP] Tabla ParametrosJornadaOt verificada.
+[STARTUP] Columna RegistrosDesperdicio.RegistradoPor verificada.
+[STARTUP] Backfill Anio/Mes en gastos desde fecha...
+[TRAZABILIDAD] Ya hay registros; se omite backfill.
+[STARTUP] Applying manual fix: PlanesAccion.TipoTrabajo...
+[STARTUP] Applying manual fix: Usuarios.Salario...
+[STARTUP] Applying manual fix: Usuarios.Documento...
+[STARTUP] Applying manual fix: AdminUsuarios.Permissions...
+[STARTUP] Applying manual fix: Mantenimiento_Gastos (lowercase columns)...
+[STARTUP] Applying manual fix: Mantenimiento_Gastos (Capitalized columns)...
+[STARTUP] Applying manual fix: Mantenimiento_Productos...
+[STARTUP] Applying manual fix: Mantenimiento_Gastos (inventory fields)...
+[STARTUP] Applying manual fix: Indexes...
+[STARTUP] Applying manual fix: TiempoProcesos subcodigos...
+[STARTUP] Applying manual fix: TiempoProcesos pausa/estado...
+[STARTUP] Applying manual fix: Contabilidad_Ingresos...
+[STARTUP] Applying manual fix: Contabilidad_Gastos...
+[STARTUP] Applying manual fix: EvaluacionArea_Actividades...
+[STARTUP] Applying manual fix: Audit_Checklist_Items / Responsables...
+[STARTUP] Manual fixes completed.
+[STARTUP] Initializing Database via DbInitializer...
+[DB INIT] Taller tables checked/created.
+[DB INIT] Hoja de Vida and Cronograma tables checked/created.
+[DB INIT] ProgramacionesOP tables checked/created.
+[DB INIT] Maquinas HorasAlistamiento/HorasLavada checked.
+[STARTUP] DbInitializer finished.
+[STARTUP] Carpeta Adjuntos: G:\Proyecto-Tablets\Adjuntos
+fail: Microsoft.Extensions.Hosting.Internal.Host[11]
+      Hosting failed to start
+      System.IO.IOException: Failed to bind to address http://0.0.0.0:5144: address already in use.
+       ---> Microsoft.AspNetCore.Connections.AddressInUseException: Solo se permite un uso de cada direcci¢n de socket (protocolo/direcci¢n de red/puerto)
+       ---> System.Net.Sockets.SocketException (10048): Solo se permite un uso de cada direcci¢n de socket (protocolo/direcci¢n de red/puerto)
+         at System.Net.Sockets.Socket.UpdateStatusAfterSocketErrorAndThrowException(SocketError error, Boolean disconnectOnFailure, String callerName)
+         at System.Net.Sockets.Socket.DoBind(EndPoint endPointSnapshot, SocketAddress socketAddress)
+         at System.Net.Sockets.Socket.Bind(EndPoint localEP)
+         at Microsoft.AspNetCore.Server.Kestrel.Transport.Sockets.SocketTransportOptions.CreateDefaultBoundListenSocket(EndPoint endpoint)
+         at Microsoft.AspNetCore.Server.Kestrel.Transport.Sockets.SocketConnectionListener.Bind()
+         --- End of inner exception stack trace ---
+         at Microsoft.AspNetCore.Server.Kestrel.Transport.Sockets.SocketConnectionListener.Bind()
+         at Microsoft.AspNetCore.Server.Kestrel.Transport.Sockets.SocketTransportFactory.BindAsync(EndPoint endpoint, CancellationToken cancellationToken)
+         at Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Infrastructure.TransportManager.BindAsync(EndPoint endPoint, ConnectionDelegate connectionDelegate, EndpointConfig endpointConfig, CancellationToken cancellationToken)
+         at Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerImpl.<>c__DisplayClass28_0`1.<<StartAsync>g__OnBind|0>d.MoveNext()
+      --- End of stack trace from previous location ---
+         at Microsoft.AspNetCore.Server.Kestrel.Core.Internal.AddressBinder.BindEndpointAsync(ListenOptions endpoint, AddressBindContext context, CancellationToken cancellationToken)
+         --- End of inner exception stack trace ---
+         at Microsoft.AspNetCore.Server.Kestrel.Core.Internal.AddressBinder.BindEndpointAsync(ListenOptions endpoint, AddressBindContext context, CancellationToken cancellationToken)
+         at Microsoft.AspNetCore.Server.Kestrel.Core.ListenOptions.BindAsync(AddressBindContext context, CancellationToken cancellationToken)
+         at Microsoft.AspNetCore.Server.Kestrel.Core.Internal.AddressBinder.AddressesStrategy.BindAsync(AddressBindContext context, CancellationToken cancellationToken)
+         at Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerImpl.BindAsync(CancellationToken cancellationToken)
+         at Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerImpl.StartAsync[TContext](IHttpApplication`1 application, CancellationToken cancellationToken)
+         at Microsoft.AspNetCore.Hosting.GenericWebHostService.StartAsync(CancellationToken cancellationToken)
+         at Microsoft.Extensions.Hosting.Internal.Host.<StartAsync>b__14_1(IHostedService service, CancellationToken token)
+         at Microsoft.Extensions.Hosting.Internal.Host.ForeachService[T](IEnumerable`1 services, CancellationToken token, Boolean concurrent, Boolean abortOnFirstException, List`1 exceptions, Func`3 operation)
+fail: Microsoft.Extensions.Hosting.Internal.Host[9]
+      BackgroundService failed
+      System.Threading.Tasks.TaskCanceledException: A task was canceled.
+         at TiempoProcesos.API.Services.AlmacenRequisicionReminderHostedService.ExecuteAsync(CancellationToken stoppingToken) in G:\Proyecto-Tablets\ProduccionUnificado\backend\Services\AlmacenRequisicionReminderHostedService.cs:line 23
+         at Microsoft.Extensions.Hosting.Internal.Host.TryExecuteBackgroundServiceAsync(BackgroundService backgroundService)

@@ -6,6 +6,8 @@ import {
     type OrdenCompra,
     findProveedorCatalogoPorNombre,
     getSubtotalProveedor,
+    getSubtotalLineaOc,
+    redondearMonedaCop,
     formatFechaDisplay,
     formatearConsecutivoOrdenCompra,
     enriquecerProveedorFiscal,
@@ -35,9 +37,11 @@ export interface OrdenCompraConsolidadaPdfInput {
 }
 
 function formatearMonedaPdf(valor: number): string {
-    const partes = Math.abs(valor).toFixed(2).split('.');
+    const redondeado = redondearMonedaCop(valor);
+    const partes = Math.abs(redondeado).toFixed(2).split('.');
     const entero = partes[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-    return `$ ${entero},${partes[1]}`;
+    const prefijo = valor < 0 ? '- ' : '';
+    return `${prefijo}$ ${entero},${partes[1]}`;
 }
 
 function formatearCantidadPdf(valor: number): string {
@@ -200,6 +204,12 @@ export async function generarOrdenCompraPdf(input: OrdenCompraPdfInput): Promise
     const detallesProducto = [req.referencia?.trim(), req.ordenProduccion?.trim()]
         .filter(Boolean)
         .join(' · ');
+    const comentarioProv = prov.comentarioPrecioEspecial?.trim();
+    const precioEspecialNota = comentarioProv
+        ? (prov.precioEspecial ? `Precio especial: ${comentarioProv}` : `Comentario: ${comentarioProv}`)
+        : prov.precioEspecial
+          ? 'Precio especial acordado'
+          : '';
 
     autoTable(doc, {
         startY: y + Math.max(6, dirLineas.length * 4.5) + 6,
@@ -210,7 +220,9 @@ export async function generarOrdenCompraPdf(input: OrdenCompraPdfInput): Promise
                 detallesProducto || '—',
                 req.unidad,
                 formatearCantidadPdf(prov.cantidad),
-                precioUnitario > 0 ? formatearMonedaPdf(precioUnitario) : '—',
+                precioUnitario > 0
+                    ? `${formatearMonedaPdf(precioUnitario)}${prov.precioEspecial ? ' *' : ''}`
+                    : '—',
                 subtotal > 0 ? formatearMonedaPdf(subtotal) : '—',
             ],
         ],
@@ -275,10 +287,17 @@ export async function generarOrdenCompraPdf(input: OrdenCompraPdfInput): Promise
     doc.setFontSize(9);
     doc.text('Observaciones:', margin, obsY);
     doc.setFont('helvetica', 'normal');
-    const obs = req.observacion?.trim() || '';
+    const obsPartes = [req.observacion?.trim(), precioEspecialNota].filter(Boolean);
+    const obs = obsPartes.join('\n');
     if (obs) {
         const obsLineas = doc.splitTextToSize(obs, pageWidth * 0.55);
         doc.text(obsLineas, margin, obsY + 5);
+    }
+    if (prov.precioEspecial) {
+        doc.setFontSize(8);
+        doc.setTextColor(180, 83, 9);
+        doc.text('* Precio especial acordado con el proveedor.', margin, obsY + (obs ? 18 : 5));
+        doc.setTextColor(0, 0, 0);
     }
 
     const nombreArchivo = `Orden_Compra_${req.codigo}_${slugArchivo(prov.nombre)}.pdf`;
@@ -353,7 +372,10 @@ export async function generarOrdenCompraConsolidadaPdf(
         ? catalogoProveedores.find((c) => c.id === oc.catalogoId)
         : findProveedorCatalogoPorNombre(catalogoProveedores, oc.nombreProveedor);
     const provFiscal = enriquecerProveedorFiscal(provFiscalBase, catalogoProveedores);
-    const subtotal = oc.lineas.reduce((acc, l) => acc + (l.precioUnitario ?? 0) * l.cantidad, 0);
+    const subtotal = oc.lineas.reduce(
+        (acc, l) => acc + getSubtotalLineaOc(l.precioUnitario ?? 0, l.cantidad),
+        0
+    );
     const lineasFiscales = incluirIva
         ? getLineasFiscalesProveedor(provFiscal, catalogoProveedores)
         : [];
@@ -436,13 +458,13 @@ export async function generarOrdenCompraConsolidadaPdf(
             .filter(Boolean)
             .join(' · ');
         const pu = l.precioUnitario ?? 0;
-        const lineSub = pu * l.cantidad;
+        const lineSub = getSubtotalLineaOc(pu, l.cantidad);
         return [
             l.producto,
             detalles || '—',
             l.unidad,
             formatearCantidadPdf(l.cantidad),
-            pu > 0 ? formatearMonedaPdf(pu) : '—',
+            pu > 0 ? `${formatearMonedaPdf(pu)}${l.precioEspecial ? ' *' : ''}` : '—',
             lineSub > 0 ? formatearMonedaPdf(lineSub) : '—',
         ];
     });
@@ -505,9 +527,27 @@ export async function generarOrdenCompraConsolidadaPdf(
     doc.text(formatearMonedaPdf(totalPagar), pageWidth - margin, totalesY, { align: 'right' });
 
     const obsY = Math.min(totalesY + 14, pageHeight - 24);
+    const notasComentarios = oc.lineas
+        .filter((l) => l.comentarioPrecioEspecial?.trim())
+        .map((l) => {
+            const texto = l.comentarioPrecioEspecial!.trim();
+            const prefijo = l.precioEspecial ? 'Precio esp.' : 'Comentario';
+            return `${l.requisicionCodigo} (${prefijo}): ${texto}`;
+        });
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.text(`Productos incluidos: ${oc.lineas.length}`, margin, obsY);
+    if (notasComentarios.length > 0) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(180, 83, 9);
+        const notas = doc.splitTextToSize(
+            `Notas:\n${notasComentarios.join('\n')}`,
+            pageWidth * 0.7
+        );
+        doc.text(notas, margin, obsY + 6);
+        doc.setTextColor(0, 0, 0);
+    }
 
     const nombreArchivo = `Orden_Compra_${numOc}_${slugArchivo(oc.nombreProveedor)}.pdf`;
 

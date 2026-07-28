@@ -20,6 +20,8 @@ export const SECCIONES_RESUMEN_OP = [
         titulo: 'Material',
         campos: [
             ['material', 'Material'],
+            ['calibre', 'Calibre'],
+            ['gramaje', 'Gramaje (g)'],
             ['anchoRollo', 'Ancho rollo'],
             ['largoCorte', 'Largo corte'],
             ['anchoPliego', 'Ancho pliego'],
@@ -123,4 +125,16 @@ export function parseProcesosDetalle(campos) {
             }
             return { proceso: linea, notas: '', cantidad: '' };
         });
+}
+
+/** Parsea piezasJson (multi-pieza OP). */
+export function parsePiezasDesdeCampos(campos) {
+    const raw = valorCampo(campos, 'piezasJson');
+    if (!raw) return [];
+    try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
 }

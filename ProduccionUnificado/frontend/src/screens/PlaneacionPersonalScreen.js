@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import * as planeacionApi from '../services/planeacionApi';
+import { calcValorHoraLabor } from '../utils/laborHorasExtras';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 
@@ -154,10 +155,10 @@ export default function PlaneacionPersonalScreen() {
             // Generate Excel using xlsx
             const XLSX = await import('xlsx');
 
-            // Calculate Valor Hora: Salario / 220 (horas laborales mensuales legales Colombia)
+            // Valor Hora: Salario / 220 (<15/07/2026) o / 210 (≥15/07/2026)
             const excelData = horasExtras.map(item => {
                 const salario = item.personalSalario || 0;
-                const valorHora = salario > 0 ? salario / 220 : 0;
+                const valorHora = calcValorHoraLabor(salario, item.fecha);
                 const factor = item.tipoHoraFactor || item.tipoRecargoFactor || 1;
                 return {
                     'Fecha': new Date(item.fecha).toLocaleDateString('es-CO'),

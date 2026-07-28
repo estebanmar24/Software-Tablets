@@ -6,8 +6,16 @@ import PlanAccionView from './PlanAccionView';
 import ConsolidadoNCView from './ConsolidadoNCView';
 import CalidadExternaView from './CalidadExternaView';
 import ActasDestruccionView from './ActasDestruccionView';
+import InformeSemanalCalidadView from './InformeSemanalCalidadView';
 
-type CalidadTab = 'calidad_encuestas' | 'calidad_prod' | 'calidad_consolidado' | 'calidad_planes' | 'calidad_ext' | 'calidad_actas';
+type CalidadTab =
+    | 'calidad_encuestas'
+    | 'calidad_informe_semanal'
+    | 'calidad_prod'
+    | 'calidad_consolidado'
+    | 'calidad_planes'
+    | 'calidad_ext'
+    | 'calidad_actas';
 
 interface TabDef {
     key: CalidadTab;
@@ -17,6 +25,7 @@ interface TabDef {
 
 const tabs: TabDef[] = [
     { key: 'calidad_encuestas', label: 'Control en Proceso de Calidad y Novedades', icon: '✅' },
+    { key: 'calidad_informe_semanal', label: 'Informe Semanal', icon: '📊' },
     { key: 'calidad_prod', label: 'Reporte de NC a Calidad', icon: '📦' },
     { key: 'calidad_consolidado', label: 'Consolidado de NC', icon: '📋' },
     { key: 'calidad_planes', label: 'Planes de Acción', icon: '🚀' },
@@ -45,7 +54,12 @@ export default function CalidadDashboard({ onTabChange, navigation, userArea, us
 
         if (Object.keys(perms).length === 0) return tabs;
 
-        return tabs.filter(tab => perms[tab.key] === true);
+        return tabs.filter(tab => {
+            if (tab.key === 'calidad_informe_semanal') {
+                return perms[tab.key] === true || perms['calidad_encuestas'] === true;
+            }
+            return perms[tab.key] === true;
+        });
     }, [permissions]);
 
     const handleTabChange = (tab: TabDef) => {
@@ -59,6 +73,8 @@ export default function CalidadDashboard({ onTabChange, navigation, userArea, us
         switch (activeTab) {
             case 'calidad_encuestas':
                 return <QualityView navigation={navigation} />;
+            case 'calidad_informe_semanal':
+                return <InformeSemanalCalidadView />;
             case 'calidad_prod':
                 return <EncuestaCalidadProduccionView />;
             case 'calidad_planes':

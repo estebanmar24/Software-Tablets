@@ -409,8 +409,70 @@ public static class DbInitializer
 
                 ALTER TABLE ""ProgramacionesOPProcesos"" ADD COLUMN IF NOT EXISTS ""HorasEstimadas"" DECIMAL(18,2);
                 ALTER TABLE ""ProgramacionesOPProcesos"" ADD COLUMN IF NOT EXISTS ""TiemposAuxiliaresJson"" TEXT;
+
+                ALTER TABLE ""ProgramacionesOP"" ADD COLUMN IF NOT EXISTS ""NumeroOT"" TEXT;
+                ALTER TABLE ""ProgramacionesOP"" ADD COLUMN IF NOT EXISTS ""LineaTroquel"" TEXT;
+                ALTER TABLE ""ProgramacionesOP"" ADD COLUMN IF NOT EXISTS ""Referencia"" TEXT;
+                ALTER TABLE ""ProgramacionesOP"" ADD COLUMN IF NOT EXISTS ""EstadoGeneral"" TEXT NOT NULL DEFAULT 'programado';
+                ALTER TABLE ""ProgramacionesOP"" ADD COLUMN IF NOT EXISTS ""EsUrgencia"" BOOLEAN NOT NULL DEFAULT FALSE;
+                ALTER TABLE ""ProgramacionesOP"" ADD COLUMN IF NOT EXISTS ""Observaciones"" TEXT;
+                ALTER TABLE ""ProgramacionesOP"" ADD COLUMN IF NOT EXISTS ""UsuarioCreador"" TEXT;
+                ALTER TABLE ""ProgramacionesOP"" ADD COLUMN IF NOT EXISTS ""UsuarioModificador"" TEXT;
+                ALTER TABLE ""ProgramacionesOP"" ADD COLUMN IF NOT EXISTS ""FechaModificacion"" TIMESTAMP;
+
+                ALTER TABLE ""ProgramacionesOP"" ADD COLUMN IF NOT EXISTS ""TipoActividad"" TEXT NOT NULL DEFAULT 'op';
+                ALTER TABLE ""ProgramacionesOP"" ADD COLUMN IF NOT EXISTS ""Precio"" DECIMAL(18,2) NOT NULL DEFAULT 0;
+                ALTER TABLE ""ProgramacionesOP"" ADD COLUMN IF NOT EXISTS ""OrdenCompra"" TEXT;
+                ALTER TABLE ""ProgramacionesOP"" ADD COLUMN IF NOT EXISTS ""FechaEntrega"" TEXT;
+                ALTER TABLE ""ProgramacionesOP"" ADD COLUMN IF NOT EXISTS ""CalculoJson"" TEXT;
+
+                CREATE TABLE IF NOT EXISTS ""MetasFacturacionMes"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""Anio"" INTEGER NOT NULL,
+                    ""Mes"" INTEGER NOT NULL,
+                    ""Meta"" DECIMAL(18,2) NOT NULL DEFAULT 0,
+                    ""FechaModificacion"" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (""Anio"", ""Mes"")
+                );
+
+                ALTER TABLE ""ProgramacionesOPProcesos"" ADD COLUMN IF NOT EXISTS ""MaquinaId"" INTEGER;
+                ALTER TABLE ""ProgramacionesOPProcesos"" ADD COLUMN IF NOT EXISTS ""Observaciones"" TEXT;
+                ALTER TABLE ""ProgramacionesOPProcesos"" ADD COLUMN IF NOT EXISTS ""OrdenSecuencia"" INTEGER NOT NULL DEFAULT 0;
             ");
             Console.WriteLine("[DB INIT] ProgramacionesOP tables checked/created.");
+
+            context.Database.ExecuteSqlRaw(@"
+                ALTER TABLE ""Maquinas"" ADD COLUMN IF NOT EXISTS ""HorasAlistamiento"" DECIMAL(8,2) NOT NULL DEFAULT 1.00;
+                ALTER TABLE ""Maquinas"" ADD COLUMN IF NOT EXISTS ""HorasLavada"" DECIMAL(8,2) NOT NULL DEFAULT 0.50;
+                UPDATE ""Maquinas""
+                SET ""HorasAlistamiento"" = 1.00, ""HorasLavada"" = 0.50
+                WHERE UPPER(""Nombre"") LIKE '%CONVERTIDORA%'
+                  AND (""HorasAlistamiento"" IS NULL OR ""HorasAlistamiento"" = 1.00);
+            ");
+            Console.WriteLine("[DB INIT] Maquinas HorasAlistamiento/HorasLavada checked.");
+
+            context.Database.ExecuteSqlRaw(@"
+                CREATE TABLE IF NOT EXISTS ""ProcesosGantt"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""Nombre"" TEXT NOT NULL UNIQUE,
+                    ""Orden"" INTEGER NOT NULL DEFAULT 0,
+                    ""Activo"" BOOLEAN NOT NULL DEFAULT TRUE
+                );
+            ");
+
+            if (!context.ProcesosGantt.Any())
+            {
+                var defaults = new[] {
+                    "Conversion", "Corrugacion", "Corte", "Impresion", "Acabado",
+                    "Colaminado", "Troquelado", "Despique", "Pegadora", "Terminado Manual"
+                };
+                for (var i = 0; i < defaults.Length; i++)
+                {
+                    context.ProcesosGantt.Add(new ProcesoGantt { Nombre = defaults[i], Orden = i, Activo = true });
+                }
+                context.SaveChanges();
+                Console.WriteLine("[DB INIT] ProcesosGantt seeded.");
+            }
         }
         catch (Exception ex) { Console.WriteLine($"[DB ERROR] ProgramacionesOP: {ex.Message}"); }
     }

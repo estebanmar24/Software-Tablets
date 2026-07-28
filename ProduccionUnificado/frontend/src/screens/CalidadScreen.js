@@ -161,6 +161,7 @@ export default function CalidadScreen({ navigation }) {
     const [currentScreen, setCurrentScreen] = useState('list');
     const [editingId, setEditingId] = useState(null);
     const [encuestas, setEncuestas] = useState([]);
+    const [busquedaOP, setBusquedaOP] = useState('');
     const [loading, setLoading] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     const [fetchError, setFetchError] = useState(null);
@@ -193,6 +194,12 @@ export default function CalidadScreen({ navigation }) {
     // Modal para ver imagen en grande
     const [imageModalVisible, setImageModalVisible] = useState(false);
     const [selectedImage, setSelectedImage] = useState(null);
+
+    const encuestasFiltradas = useMemo(() => {
+        const q = busquedaOP.trim();
+        if (!q) return encuestas;
+        return encuestas.filter((e) => String(e.ordenProduccion ?? '').includes(q));
+    }, [encuestas, busquedaOP]);
 
     const abrirImagenGrande = (uri) => {
         setSelectedImage(uri);
@@ -711,6 +718,31 @@ export default function CalidadScreen({ navigation }) {
                     <Text style={styles.newBtnText}>Nueva Toma de Novedades / Calidad</Text>
                 </TouchableOpacity>
 
+                <View style={styles.searchSection}>
+                    <Text style={styles.searchLabel}>🔍 Buscar OP</Text>
+                    <View style={styles.searchBar}>
+                        <TextInput
+                            style={styles.searchInput}
+                            value={busquedaOP}
+                            onChangeText={setBusquedaOP}
+                            placeholder="Escriba el número de OP (ej: 7769)"
+                            placeholderTextColor="#6B7280"
+                            keyboardType="number-pad"
+                            returnKeyType="search"
+                        />
+                        {busquedaOP.length > 0 && (
+                            <TouchableOpacity style={styles.searchClearBtn} onPress={() => setBusquedaOP('')}>
+                                <Text style={styles.searchClearText}>✕</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                    {busquedaOP.trim().length > 0 && (
+                        <Text style={styles.searchResultHint}>
+                            {encuestasFiltradas.length} resultado{encuestasFiltradas.length !== 1 ? 's' : ''} para OP "{busquedaOP.trim()}"
+                        </Text>
+                    )}
+                </View>
+
                 <Text style={styles.listTitle}>📋 Historial de Controles en proceso</Text>
 
                 {encuestas.length === 0 && !loading ? (
@@ -719,9 +751,15 @@ export default function CalidadScreen({ navigation }) {
                         <Text style={styles.emptyText}>No hay encuestas registradas</Text>
                         <Text style={styles.emptySubtext}>Presiona el botón verde para crear una</Text>
                     </View>
+                ) : encuestasFiltradas.length === 0 ? (
+                    <View style={styles.emptyState}>
+                        <Text style={styles.emptyIcon}>🔍</Text>
+                        <Text style={styles.emptyText}>No se encontró la OP "{busquedaOP.trim()}"</Text>
+                        <Text style={styles.emptySubtext}>Verifica el número o limpia la búsqueda</Text>
+                    </View>
                 ) : (
                     <FlatList
-                        data={encuestas}
+                        data={encuestasFiltradas}
                         keyExtractor={(item) => item.id.toString()}
                         renderItem={renderEncuesta}
                         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#3B82F6']} />}
@@ -1060,6 +1098,13 @@ const styles = StyleSheet.create({
     deleteBtnText: { color: '#DC2626', fontSize: 14, fontWeight: '600' },
 
     listTitle: { fontSize: 18, fontWeight: 'bold', marginHorizontal: 16, marginBottom: 12, color: '#1F2937' },
+    searchSection: { marginHorizontal: 16, marginBottom: 12, backgroundColor: '#DBEAFE', borderRadius: 12, padding: 12, borderWidth: 1.5, borderColor: '#96BDF0' },
+    searchLabel: { fontSize: 15, fontWeight: 'bold', color: '#1E40AF', marginBottom: 8 },
+    searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', borderRadius: 10, borderWidth: 1.5, borderColor: '#93C5FD', paddingHorizontal: 12 },
+    searchInput: { flex: 1, paddingVertical: 12, fontSize: 16, color: '#1F2937' },
+    searchClearBtn: { padding: 6, marginLeft: 4 },
+    searchClearText: { fontSize: 16, color: '#9CA3AF', fontWeight: 'bold' },
+    searchResultHint: { fontSize: 13, color: '#1E40AF', marginTop: 8, fontWeight: '600' },
     listContent: { paddingHorizontal: 16, paddingBottom: 20 },
 
     historyCard: { backgroundColor: 'white', borderRadius: 16, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 3, overflow: 'hidden' },

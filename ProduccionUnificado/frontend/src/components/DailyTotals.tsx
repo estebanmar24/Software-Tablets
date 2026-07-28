@@ -1,5 +1,10 @@
-import { View, Text, StyleSheet } from 'react-native';
+import { useMemo, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
+import { OpInfoOperarioPanel } from './OpInfoOperarioPanel';
+import { VerProgramacionOperarioModal } from './VerProgramacionOperarioModal';
+import { getTirosProgramadosMaquina, parseNumFlexible } from '../utils/calculoMaquinaTiros';
+import { formatFechaEntregaDisplay, diasHastaEntrega, formatEntregaCountdown, entregaBadgeColor } from '../utils/fechaEntregaPlanner';
 
 interface DailyTotalsProps {
     tirosTotales: number;
@@ -7,7 +12,18 @@ interface DailyTotalsProps {
     meta?: number;
     valorPorTiro?: number;
     planeacionActual?: any;
+    planeacionMensaje?: string | null;
+    opNumero?: string;
+    maquinaId?: number | null;
+    maquinaNombre?: string | null;
 }
+
+const ESTADO_PROC_LABEL: Record<string, { label: string; color: string; icon: string }> = {
+    pendiente: { label: 'Pendiente', color: '#94A3B8', icon: '○' },
+    en_proceso: { label: 'En proceso', color: '#3B82F6', icon: '◉' },
+    completado: { label: 'Listo', color: '#22C55E', icon: '✓' },
+    atrasado: { label: 'Atrasado', color: '#EF4444', icon: '!' },
+};
 
 
 // Colombian holidays calculation (mirrors backend HorarioLaboralHelper)
@@ -44,6 +60,9 @@ function obtenerFestivosColombia(año: number): Date[] {
     festivos.push(trasladarALunes(new Date(año, 9, 12)));  // Día de la Raza
     festivos.push(trasladarALunes(new Date(año, 10, 1)));  // Todos los Santos
     festivos.push(trasladarALunes(new Date(año, 10, 11))); // Independencia de Cartagena
+
+    // Festivos excepcionales / decretados
+    if (año === 2026) festivos.push(new Date(2026, 6, 13));
 
     return festivos;
 }
@@ -105,9 +124,13 @@ function esHorarioBonificable(): { esBonificable: boolean; mensaje?: string } {
     return { esBonificable: false, mensaje: 'Fuera de horario (L-V 7am-4pm)' };
 }
 
-export function DailyTotals({ tirosTotales, desperdicioTotal, meta = 0, valorPorTiro = 0, planeacionActual }: DailyTotalsProps) {
+export function DailyTotals({
+    tirosTotales, desperdicioTotal, meta = 0, valorPorTiro = 0, planeacionActual,
+    planeacionMensaje = null, opNumero = '', maquinaId = null, maquinaNombre = null,
+}: DailyTotalsProps) {
 
     const { colors, isDarkMode } = useTheme();
+    const [showProgramacion, setShowProgramacion] = useState(false);
     const formatNumber = (num: number): string => {
         return num.toLocaleString('es-CO');
     };
@@ -119,9 +142,23 @@ export function DailyTotals({ tirosTotales, desperdicioTotal, meta = 0, valorPor
     // Check if current time is bonificable
     const { esBonificable, mensaje } = esHorarioBonificable();
 
-    // Calcular rendimiento (%) prioritizando la meta planeada
-    const metaEfectiva = (planeacionActual && planeacionActual.metaTiros > 0) ? planeacionActual.metaTiros : (meta || 0);
+    const tirosProg = useMemo(
+        () => getTirosProgramadosMaquina(planeacionActual?.calculoJson, maquinaId),
+        [planeacionActual?.calculoJson, maquinaId],
+    );
+
+    const metaTirosProgramados = tirosProg.total > 0 ? tirosProg.total : 0;
+    const cantidadEntregar = planeacionActual?.metaTiros || tirosProg.cantidadEntregar || 0;
+
+    // Meta efectiva para progreso: tiros programados en máquina (ej. 2957), no solo und. a entregar (1100)
+    const metaEfectiva = metaTirosProgramados > 0
+        ? metaTirosProgramados
+        : ((planeacionActual && planeacionActual.metaTiros > 0) ? planeacionActual.metaTiros : (meta || 0));
     const rendimiento = metaEfectiva > 0 ? ((tirosTotales / metaEfectiva) * 100) : 0;
+
+    const diasEntrega = planeacionActual?.fechaEntrega
+        ? diasHastaEntrega(planeacionActual.fechaEntrega)
+        : null;
 
 
     // Calcular bonificación: (tiros - meta) * valorPorTiro (solo si supera la meta Y es bonificable)
@@ -141,12 +178,41 @@ export function DailyTotals({ tirosTotales, desperdicioTotal, meta = 0, valorPor
 
             {/* Planeación Actual Banner */}
             {planeacionActual && (
-                <View style={[styles.planeacionBanner, { backgroundColor: isDarkMode ? '#062016' : '#DCFCE7', borderColor: '#22C55E' }]}>
-                    <Text style={[styles.planeacionText, { color: isDarkMode ? '#86EFAC' : '#166534' }]}>
-                        📅 TRABAJO PLANEADO: OP {planeacionActual.ordenProduccion?.numero} (Meta: {formatNumber(planeacionActual.metaTiros)} tiros)
-                    </Text>
+                <View style={{ marginBottom: 12 }}>
+                    <View style={[styles.planeacionBanner, { backgroundColor: isDarkMode ? '#062016' : '#DCFCE7', borderColor: '#22C55E', marginBottom: 8 }]}>
+                        <Text style={[styles.planeacionText, { color: isDarkMode ? '#86EFAC' : '#166534' }]}>
+                            📅 TRABAJO PLANEADO: OP {planeacionActual.numeroOP || planeacionActual.ordenProduccion?.numero}
+                            {planeacionActual.procesoActual?.proceso ? ` · ${planeacionActual.procesoActual.proceso}` : ''}
+                            {metaTirosProgramados > 0
+                                ? ` (Tiros prog.: ${formatNumber(metaTirosProgramados)})`
+                                : (planeacionActual.metaTiros > 0 ? ` (Meta: ${formatNumber(planeacionActual.metaTiros)} tiros)` : '')}
+                        </Text>
+                    </View>
+                    <TouchableOpacity
+                        style={[styles.verProgBtn, { backgroundColor: isDarkMode ? '#1E3A8A' : '#DBEAFE', borderColor: '#3B82F6' }]}
+                        onPress={() => setShowProgramacion(true)}
+                    >
+                        <Text style={[styles.verProgBtnTxt, { color: isDarkMode ? '#BFDBFE' : '#1D4ED8' }]}>
+                            Ver programación
+                        </Text>
+                    </TouchableOpacity>
+                    <VerProgramacionOperarioModal
+                        visible={showProgramacion}
+                        onClose={() => setShowProgramacion(false)}
+                        planeacionActual={planeacionActual}
+                        maquinaId={maquinaId}
+                        maquinaNombre={maquinaNombre}
+                    />
                 </View>
             )}
+
+            {!planeacionActual && planeacionMensaje ? (
+                <View style={[styles.planeacionBanner, { backgroundColor: isDarkMode ? '#1E1B10' : '#FEF3C7', borderColor: isDarkMode ? '#B45309' : '#F59E0B' }]}>
+                    <Text style={[styles.planeacionText, { color: isDarkMode ? '#FDE68A' : '#92400E' }]}>
+                        {planeacionMensaje}
+                    </Text>
+                </View>
+            ) : null}
 
 
             {/* Primera fila: Tiros y Desperdicio */}
@@ -172,27 +238,137 @@ export function DailyTotals({ tirosTotales, desperdicioTotal, meta = 0, valorPor
             {planeacionActual && (
                 <View style={[styles.planeacionDetalle, { backgroundColor: isDarkMode ? '#111827' : '#F9FAFB', borderColor: colors.border }]}>
                     <View style={styles.detalleRow}>
-                        <Text style={[styles.detalleLabel, { color: colors.subText }]}>Descripción OP:</Text>
-                        <Text style={[styles.detalleValue, { color: colors.text }]}>{planeacionActual.referencia || planeacionActual.ordenProduccion?.descripcion || 'Sin descripción'}</Text>
+                        <Text style={[styles.detalleLabel, { color: colors.subText }]}>Cliente:</Text>
+                        <Text style={[styles.detalleValue, { color: colors.text }]}>{planeacionActual.cliente || '—'}</Text>
                     </View>
-
                     <View style={styles.detalleRow}>
-                        <Text style={[styles.detalleLabel, { color: colors.subText }]}>Horario Asignado:</Text>
-                        <Text style={[styles.detalleValue, { color: colors.text }]}>
-                            {new Date(planeacionActual.fechaInicio).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(planeacionActual.fechaFin).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        <Text style={[styles.detalleLabel, { color: colors.subText }]}>OT:</Text>
+                        <Text style={[styles.detalleValue, { color: colors.text }]}>{planeacionActual.numeroOT || '—'}</Text>
+                    </View>
+                    <View style={styles.detalleRow}>
+                        <Text style={[styles.detalleLabel, { color: colors.subText }]}>Línea troquel:</Text>
+                        <Text style={[styles.detalleValue, { color: colors.text }]}>{planeacionActual.lineaTroquel || '—'}</Text>
+                    </View>
+                    <View style={styles.detalleRow}>
+                        <Text style={[styles.detalleLabel, { color: colors.subText }]}>Referencia / Ficha:</Text>
+                        <Text style={[styles.detalleValue, { color: colors.text }]}>{planeacionActual.referencia || planeacionActual.ordenProduccion?.descripcion || '—'}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginVertical: 6 }}>
+                        <Text style={[styles.docChip, { color: planeacionActual.tieneOp ? '#22C55E' : '#94A3B8', borderColor: planeacionActual.tieneOp ? '#22C55E' : '#64748B' }]}>
+                            {planeacionActual.tieneOp ? '✓' : '○'} OP
+                        </Text>
+                        <Text style={[styles.docChip, { color: planeacionActual.tieneOt ? '#22C55E' : '#94A3B8', borderColor: planeacionActual.tieneOt ? '#22C55E' : '#64748B' }]}>
+                            {planeacionActual.tieneOt ? '✓' : '○'} OT
+                        </Text>
+                        <Text style={[styles.docChip, { color: planeacionActual.tieneLineaTroquel ? '#22C55E' : '#94A3B8', borderColor: planeacionActual.tieneLineaTroquel ? '#22C55E' : '#64748B' }]}>
+                            {planeacionActual.tieneLineaTroquel ? '✓' : '○'} Troquel
+                        </Text>
+                        <Text style={[styles.docChip, { color: planeacionActual.tieneFicha ? '#22C55E' : '#94A3B8', borderColor: planeacionActual.tieneFicha ? '#22C55E' : '#64748B' }]}>
+                            {planeacionActual.tieneFicha ? '✓' : '○'} Ficha
                         </Text>
                     </View>
+                    {(planeacionActual.rosterOperarioNombre || planeacionActual.rosterHorarioNombre) ? (
+                        <View style={styles.detalleRow}>
+                            <Text style={[styles.detalleLabel, { color: colors.subText }]}>Roster hoy:</Text>
+                            <Text style={[styles.detalleValue, { color: colors.text }]}>
+                                {[planeacionActual.rosterOperarioNombre, planeacionActual.rosterHorarioNombre].filter(Boolean).join(' · ')}
+                            </Text>
+                        </View>
+                    ) : null}
                     <View style={styles.detalleRow}>
-                        <Text style={[styles.detalleLabel, { color: colors.subText }]}>Meta Planeada:</Text>
-                        <Text style={[styles.detalleValue, { color: colors.text, fontWeight: 'bold' }]}>{formatNumber(planeacionActual.metaTiros)} tiros</Text>
+                        <Text style={[styles.detalleLabel, { color: colors.subText }]}>Horario programado:</Text>
+                        <Text style={[styles.detalleValue, { color: colors.text }]}>
+                            {planeacionActual.fechaInicio
+                                ? `${new Date(planeacionActual.fechaInicio).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} – ${new Date(planeacionActual.fechaFin).toLocaleString([], { hour: '2-digit', minute: '2-digit' })}`
+                                : '—'}
+                        </Text>
                     </View>
+                    {planeacionActual.procesoActual?.proceso ? (
+                        <View style={styles.detalleRow}>
+                            <Text style={[styles.detalleLabel, { color: colors.subText }]}>Proceso en máquina:</Text>
+                            <Text style={[styles.detalleValue, { color: '#3B82F6', fontWeight: '700' }]}>
+                                {planeacionActual.procesoActual.proceso}
+                                {planeacionActual.procesoActual.maquinaNombre ? ` · ${planeacionActual.procesoActual.maquinaNombre}` : ''}
+                            </Text>
+                        </View>
+                    ) : null}
+                    {metaTirosProgramados > 0 ? (
+                        <View style={{ marginTop: 10 }}>
+                            <Text style={[styles.detalleLabel, { color: colors.subText, marginBottom: 6, fontWeight: '700' }]}>
+                                Tiros programados en {maquinaNombre || 'esta máquina'}:
+                            </Text>
+                            {tirosProg.lineas.map((linea) => (
+                                <View
+                                    key={linea.id}
+                                    style={[styles.lineaTirosRow, {
+                                        backgroundColor: isDarkMode ? '#0F172A' : '#EFF6FF',
+                                        borderColor: isDarkMode ? '#1E3A8A' : '#BFDBFE',
+                                    }]}
+                                >
+                                    <Text style={[styles.lineaTirosConcepto, { color: colors.text }]}>{linea.concepto}</Text>
+                                    <Text style={[styles.lineaTirosValor, { color: '#3B82F6' }]}>
+                                        {formatNumber(parseNumFlexible(linea.tirosBruto))} tiros
+                                    </Text>
+                                </View>
+                            ))}
+                            <View style={[styles.detalleRow, { marginTop: 6 }]}>
+                                <Text style={[styles.detalleLabel, { color: colors.subText, fontWeight: '700' }]}>Total programado:</Text>
+                                <Text style={[styles.detalleValue, { color: '#22C55E', fontWeight: '800' }]}>
+                                    {formatNumber(metaTirosProgramados)} tiros
+                                </Text>
+                            </View>
+                        </View>
+                    ) : null}
+                    {cantidadEntregar > 0 ? (
+                        <View style={styles.detalleRow}>
+                            <Text style={[styles.detalleLabel, { color: colors.subText }]}>Cantidad a entregar:</Text>
+                            <Text style={[styles.detalleValue, { color: colors.text }]}>{formatNumber(cantidadEntregar)} und.</Text>
+                        </View>
+                    ) : null}
+                    {planeacionActual.fechaEntrega ? (
+                        <View style={styles.detalleRow}>
+                            <Text style={[styles.detalleLabel, { color: colors.subText }]}>Fecha despacho:</Text>
+                            <Text style={[styles.detalleValue, { color: entregaBadgeColor(diasEntrega) }]}>
+                                {formatFechaEntregaDisplay(planeacionActual.fechaEntrega)}
+                                {' · '}
+                                {formatEntregaCountdown(diasEntrega)}
+                            </Text>
+                        </View>
+                    ) : null}
+                    <View style={styles.detalleRow}>
+                        <Text style={[styles.detalleLabel, { color: colors.subText }]}>Meta planeada:</Text>
+                        <Text style={[styles.detalleValue, { color: colors.text, fontWeight: 'bold' }]}>
+                            {formatNumber(metaEfectiva)} tiros
+                            {metaTirosProgramados > 0 && cantidadEntregar > 0 && metaTirosProgramados !== cantidadEntregar
+                                ? ` (${formatNumber(cantidadEntregar)} und.)`
+                                : ''}
+                        </Text>
+                    </View>
+
+                    {Array.isArray(planeacionActual.procesos) && planeacionActual.procesos.length > 0 ? (
+                        <View style={{ marginTop: 8 }}>
+                            <Text style={[styles.detalleLabel, { color: colors.subText, marginBottom: 4 }]}>Procesos de la OP:</Text>
+                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                                {planeacionActual.procesos.map((p: any) => {
+                                    const cfg = ESTADO_PROC_LABEL[p.estado] || ESTADO_PROC_LABEL.pendiente;
+                                    return (
+                                        <View key={p.id || p.proceso} style={[styles.procChip, { borderColor: cfg.color + '66', backgroundColor: cfg.color + '18' }]}>
+                                            <Text style={{ color: cfg.color, fontSize: 11, fontWeight: '800' }}>{cfg.icon}</Text>
+                                            <Text style={{ color: colors.text, fontSize: 10, fontWeight: '600' }}>{p.proceso}</Text>
+                                            <Text style={{ color: cfg.color, fontSize: 9 }}>{cfg.label}</Text>
+                                        </View>
+                                    );
+                                })}
+                            </View>
+                        </View>
+                    ) : null}
 
                     {/* Progress Bar */}
                     <View style={{ marginTop: 12 }}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
                             <Text style={{ fontSize: 13, fontWeight: 'bold', color: colors.text }}>Progreso de Producción:</Text>
                             <Text style={{ fontSize: 13, fontWeight: 'bold', color: colors.primary }}>
-                                {formatNumber(tirosTotales)} / {formatNumber(planeacionActual.metaTiros)}
+                                {formatNumber(tirosTotales)} / {formatNumber(metaEfectiva)}
                             </Text>
                         </View>
                         <View style={{ height: 12, backgroundColor: isDarkMode ? '#374151' : '#E5E7EB', borderRadius: 6, overflow: 'hidden' }}>
@@ -203,6 +379,13 @@ export function DailyTotals({ tirosTotales, desperdicioTotal, meta = 0, valorPor
                             }} />
                         </View>
                     </View>
+
+                    <OpInfoOperarioPanel
+                        opNumero={opNumero || planeacionActual.numeroOP || planeacionActual.ordenProduccion?.numero || ''}
+                        maquinaId={maquinaId}
+                        maquinaNombre={maquinaNombre}
+                        embedded
+                    />
                 </View>
             )}
 
@@ -229,6 +412,26 @@ const styles = StyleSheet.create({
     },
     detalleValue: {
         fontSize: 12,
+        flexShrink: 1,
+        textAlign: 'right',
+        maxWidth: '62%',
+    },
+    docChip: {
+        fontSize: 10,
+        fontWeight: '700',
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 6,
+        borderWidth: 1,
+    },
+    procChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 7,
+        paddingVertical: 4,
+        borderRadius: 8,
+        borderWidth: 1,
     },
 
     container: {
@@ -329,12 +532,42 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderRadius: 8,
         padding: 10,
-        marginBottom: 12,
         alignItems: 'center',
+    },
+    verProgBtn: {
+        borderWidth: 1,
+        borderRadius: 8,
+        paddingVertical: 9,
+        paddingHorizontal: 14,
+        alignItems: 'center',
+    },
+    verProgBtnTxt: {
+        fontWeight: '700',
+        fontSize: 13,
     },
     planeacionText: {
         fontWeight: 'bold',
         fontSize: 13,
+    },
+    lineaTirosRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 8,
+        paddingHorizontal: 10,
+        borderRadius: 8,
+        borderWidth: 1,
+        marginBottom: 6,
+    },
+    lineaTirosConcepto: {
+        fontSize: 12,
+        fontWeight: '600',
+        flex: 1,
+        paddingRight: 8,
+    },
+    lineaTirosValor: {
+        fontSize: 13,
+        fontWeight: '800',
     },
 });
 

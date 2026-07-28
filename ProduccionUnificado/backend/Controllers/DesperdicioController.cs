@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
 using Microsoft.AspNetCore.Authorization;
+using TiempoProcesos.API.Helpers;
 
 namespace TiempoProcesos.API.Controllers;
 
@@ -487,7 +488,9 @@ public class DesperdicioController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<RegistroDesperdicio>> CrearRegistro(RegistroDesperdicio registro)
     {
-        registro.FechaRegistro = DateTime.Now;
+        // Fecha de negocio en calendario Colombia (evita que toISOString del cliente pase al día siguiente)
+        registro.Fecha = ColombiaTime.ToLocalDate(registro.Fecha == default ? ColombiaTime.Now : registro.Fecha);
+        registro.FechaRegistro = ColombiaTime.Now;
         if (!string.IsNullOrWhiteSpace(registro.RegistradoPor))
             registro.RegistradoPor = registro.RegistradoPor.Trim();
         _context.RegistrosDesperdicio.Add(registro);
@@ -518,7 +521,7 @@ public class DesperdicioController : ControllerBase
         existente.MaquinaId = registro.EsTallerExterno ? null : registro.MaquinaId;
         existente.UsuarioId = registro.EsTallerExterno ? null : registro.UsuarioId;
         existente.EsTallerExterno = registro.EsTallerExterno;
-        existente.Fecha = registro.Fecha;
+        existente.Fecha = ColombiaTime.ToLocalDate(registro.Fecha);
         existente.OrdenProduccion = registro.OrdenProduccion;
         existente.CodigoDesperdicioId = registro.CodigoDesperdicioId;
         existente.Cantidad = registro.Cantidad;

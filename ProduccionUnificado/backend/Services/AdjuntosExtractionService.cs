@@ -350,6 +350,15 @@ public class AdjuntosExtractionService
             if (!usarOcr && tipoExtraccion.Equals("Ficha", StringComparison.OrdinalIgnoreCase))
                 usarOcr = AdjuntosDocumentParser.FichaNecesitaOcr(pdfText);
 
+            // OP con texto seleccionable: no mezclar OCR (introduce errores y rompe tablas).
+            if (tipoExtraccion.Equals("OP", StringComparison.OrdinalIgnoreCase)
+                && pdfText.Contains("Proceso", StringComparison.OrdinalIgnoreCase)
+                && pdfText.Contains("Notas", StringComparison.OrdinalIgnoreCase)
+                && pdfText.Length >= MinCharsParaConsiderarTextoPdf)
+            {
+                usarOcr = false;
+            }
+
             if (!usarOcr && pdfText.Length >= MinCharsParaConsiderarTextoPdf)
                 return (pdfText, "PdfText", null);
 

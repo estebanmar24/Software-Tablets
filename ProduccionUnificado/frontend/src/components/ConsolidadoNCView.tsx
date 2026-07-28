@@ -24,6 +24,7 @@ interface ConsolidadoRow {
     totalProcesos: number;
     // NC data
     ncId?: number;
+    alcance?: string;
     tipoReclamacion?: string;
     cantidadNC: number;
     item?: string;
@@ -65,7 +66,11 @@ const serializeAcciones = (acciones: AccionASeguir[]): string => {
     return JSON.stringify(filled);
 };
 
+const ALCANCE_OPCIONES = ['Alcance interno', 'Alcance externo'];
+const TIPO_OTRO = 'Otro';
+
 const emptyNCForm = {
+    alcance: '',
     tipoReclamacion: '',
     cantidadNC: '0',
     item: '',
@@ -87,6 +92,8 @@ export default function ConsolidadoNCView() {
     const [selectedRow, setSelectedRow] = useState<ConsolidadoRow | null>(null);
     const [formData, setFormData] = useState({ ...emptyNCForm });
     const [acciones, setAcciones] = useState<AccionASeguir[]>([emptyAccion()]);
+    const [tiposReclamacion, setTiposReclamacion] = useState<string[]>(['Queja', 'Reclamo', 'Devolución', 'Otro']);
+    const [otroTipoTexto, setOtroTipoTexto] = useState('');
 
     const meses = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
         'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -105,32 +112,94 @@ export default function ConsolidadoNCView() {
 
     useEffect(() => { loadData(); }, [loadData]);
 
+    const loadTiposReclamacion = useCallback(async () => {
+        try {
+            const res = await api.get('consolidadonc/tipos-reclamacion');
+            const tipos = Array.isArray(res.data) ? res.data : [];
+            if (tipos.length > 0) setTiposReclamacion(tipos);
+        } catch (err) {
+            console.error('Error loading tipos reclamación', err);
+        }
+    }, []);
+
+    useEffect(() => { loadTiposReclamacion(); }, [loadTiposReclamacion]);
+
+    const resolveAlcanceFromRow = (row: ConsolidadoRow) => {
+        if (row.alcance) return row.alcance;
+        const legacy = (row.tipoReclamacion || '').toUpperCase().trim();
+        if (legacy === 'INTERNO' || legacy === 'INTERNA') return 'Alcance interno';
+        if (legacy === 'EXTERNO' || legacy === 'EXTERNA') return 'Alcance externo';
+        return '';
+    };
+
+    const resolveTipoReclamacionFromRow = (row: ConsolidadoRow) => {
+        const alcance = resolveAlcanceFromRow(row);
+        const tipo = row.tipoReclamacion || '';
+        if (!tipo) return '';
+        if (tipo === alcance) return '';
+        const upper = tipo.toUpperCase();
+        if (['INTERNO', 'INTERNA', 'EXTERNO', 'EXTERNA'].includes(upper)) return '';
+        return tipo;
+    };
+
+    const resolveTipoReclamacionGuardado = () => {
+        if (formData.tipoReclamacion === TIPO_OTRO) {
+            return otroTipoTexto.trim() || TIPO_OTRO;
+        }
+        return formData.tipoReclamacion.trim();
+    };
+
     const openEdit = (row: ConsolidadoRow) => {
         setSelectedRow(row);
-        setFormData({
-            tipoReclamacion: row.tipoReclamacion || '',
-            cantidadNC: (row.cantidadNC || 0).toString(),
-            item: row.item || '',
-            tipoDefecto: row.tipoDefecto || '',
-            responsable: row.responsable || '',
-            areaInvolucrada: row.areaInvolucrada || '',
-            cargo: row.cargo || '',
-            valorNC: (row.valorNC || 0).toString(),
-            producto: row.producto || '',
-            salidaNC: row.salidaNC || '',
-        });
+        const alcanceResolved = resolveAlcanceFromRow(row);
+        const tipoResolved = resolveTipoReclamacionFromRow(row);
+        setOtroTipoTexto('');
+        if (tipoResolved && !tiposReclamacion.includes(tipoResolved)) {
+            setFormData({
+                ...emptyNCForm,
+                alcance: alcanceResolved,
+                tipoReclamacion: TIPO_OTRO,
+                cantidadNC: (row.cantidadNC || 0).toString(),
+                item: row.item || '',
+                tipoDefecto: row.tipoDefecto || '',
+                responsable: row.responsable || '',
+                areaInvolucrada: row.areaInvolucrada || '',
+                cargo: row.cargo || '',
+                valorNC: (row.valorNC || 0).toString(),
+                producto: row.producto || '',
+                salidaNC: row.salidaNC || '',
+            });
+            setOtroTipoTexto(tipoResolved);
+        } else {
+            setFormData({
+                alcance: alcanceResolved,
+                tipoReclamacion: tipoResolved,
+                cantidadNC: (row.cantidadNC || 0).toString(),
+                item: row.item || '',
+                tipoDefecto: row.tipoDefecto || '',
+                responsable: row.responsable || '',
+                areaInvolucrada: row.areaInvolucrada || '',
+                cargo: row.cargo || '',
+                valorNC: (row.valorNC || 0).toString(),
+                producto: row.producto || '',
+                salidaNC: row.salidaNC || '',
+            });
+        }
         setAcciones(parseAcciones(row.controles));
         setModalVisible(true);
     };
 
     const handleSave = async () => {
         if (!selectedRow) return;
+        const tipoFinal = resolveTipoReclamacionGuardado();
         const controlesStr = serializeAcciones(acciones);
         try {
             await api.post('consolidadonc/guardar', {
                 ncId: selectedRow.ncId || null,
                 encuestaProduccionId: selectedRow.encuestaId,
-                tipoReclamacion: formData.tipoReclamacion,
+                alcance: formData.alcance,
+                tipoReclamacion: tipoFinal,
+                tipoReclamacionNuevo: formData.tipoReclamacion === TIPO_OTRO ? otroTipoTexto.trim() : null,
                 cantidadNC: parseFloat(formData.cantidadNC) || 0,
                 item: formData.item,
                 tipoDefecto: formData.tipoDefecto,
@@ -144,8 +213,9 @@ export default function ConsolidadoNCView() {
             });
             setModalVisible(false);
             loadData();
+            loadTiposReclamacion();
         } catch (err: any) {
-            const msg = err?.response?.data?.message || 'Error al guardar';
+            const msg = err?.message || err?.response?.data?.message || 'Error al guardar';
             Platform.OS === 'web' ? alert(msg) : Alert.alert('Error', msg);
         }
     };
@@ -202,7 +272,7 @@ export default function ConsolidadoNCView() {
 
         const headers = [
             'NC #', 'Fecha', 'OP', 'Cliente', 'Referencia',
-            'Tipo Reclamación', 'Cant NC', 'Cant Total',
+            'Alcance', 'Tipo NC', 'Cant NC', 'Cant Total',
             'Item', 'Desc. Novedad', 'Tipo Defecto', 'Responsable',
             'Área', 'Cargo', 'Valor NC ($)', 'Producto', 'Salida NC', 'Acciones a Seguir', 'Estado'
         ];
@@ -213,7 +283,8 @@ export default function ConsolidadoNCView() {
             r.ordenProduccion,
             r.cliente || '',
             r.referencia || '',
-            r.tipoReclamacion || '',
+            resolveAlcanceFromRow(r),
+            resolveTipoReclamacionFromRow(r),
             r.cantidadNC,
             r.cantidadTotal,
             r.item || '',
@@ -322,7 +393,7 @@ export default function ConsolidadoNCView() {
         // SECTION 3: Name and Ref
         doc.text(`Nombre del producto y referencia:  ${row.producto || row.referencia || ''}`, margin, y);
         doc.line(margin + 58, y + 1, margin + 110, y + 1);
-        doc.text(`Detectado por: ${row.tipoReclamacion || ''}`, margin + 115, y);
+        doc.text(`Detectado por: ${resolveTipoReclamacionFromRow(row) || ''}`, margin + 115, y);
 
         y += 12;
         // SECTION 4: Description box
@@ -450,7 +521,8 @@ export default function ConsolidadoNCView() {
                             <Text style={[styles.th, { width: 65 }]}>OP</Text>
                             <Text style={[styles.th, { width: 120 }]}>Cliente</Text>
                             <Text style={[styles.th, { width: 150 }]}>Referencia</Text>
-                            <Text style={[styles.th, { width: 110 }]}>Tipo Reclam.</Text>
+                            <Text style={[styles.th, { width: 100 }]}>Alcance</Text>
+                            <Text style={[styles.th, { width: 110 }]}>Tipo NC</Text>
                             <Text style={[styles.th, { width: 70 }]}>Cant NC</Text>
                             <Text style={[styles.th, { width: 80 }]}>Cant Total</Text>
                             <Text style={[styles.th, { width: 90 }]}>Item</Text>
@@ -496,8 +568,11 @@ export default function ConsolidadoNCView() {
                                             <Text style={[styles.cell, { width: 65, fontWeight: 'bold' }]}>{row.ordenProduccion}</Text>
                                             <Text style={[styles.cell, { width: 120 }]}>{row.cliente || '-'}</Text>
                                             <Text style={[styles.cell, { width: 150 }]} numberOfLines={1}>{row.referencia || '-'}</Text>
-                                            <Text style={[styles.cell, { width: 110, color: row.tipoReclamacion ? '#2D3748' : '#E57373' }]}>
-                                                {row.tipoReclamacion || 'Sin llenar'}
+                                            <Text style={[styles.cell, { width: 100, color: resolveAlcanceFromRow(row) ? '#2D3748' : '#E57373' }]}>
+                                                {resolveAlcanceFromRow(row) || 'Sin llenar'}
+                                            </Text>
+                                            <Text style={[styles.cell, { width: 110, color: resolveTipoReclamacionFromRow(row) ? '#2D3748' : '#E57373' }]}>
+                                                {resolveTipoReclamacionFromRow(row) || 'Sin llenar'}
                                             </Text>
                                             <Text style={[styles.cell, { width: 70, fontWeight: 'bold', color: row.cantidadNC > 0 ? '#E53E3E' : '#E57373' }]}>
                                                 {row.cantidadNC}
@@ -586,20 +661,60 @@ export default function ConsolidadoNCView() {
                             {/* Manual fields in 2-column grid */}
                             <View style={styles.formGrid}>
                                 <View style={styles.formCol}>
-                                    <Text style={styles.formLabel}>Tipo Reclamación</Text>
-                                    <TextInput style={styles.input} value={formData.tipoReclamacion} onChangeText={(v) => setField('tipoReclamacion', v)} placeholder="Ej: Nuevo, Repetido..." />
+                                    <Text style={styles.formLabel}>Alcance</Text>
+                                    <View style={styles.pickerWrap}>
+                                        <Picker
+                                            selectedValue={formData.alcance}
+                                            onValueChange={(v) => setField('alcance', v)}
+                                            style={styles.picker}
+                                        >
+                                            <Picker.Item label="-- Seleccionar --" value="" />
+                                            {ALCANCE_OPCIONES.map((opt) => (
+                                                <Picker.Item key={opt} label={opt} value={opt} />
+                                            ))}
+                                        </Picker>
+                                    </View>
                                 </View>
                                 <View style={styles.formCol}>
-                                    <Text style={styles.formLabel}>Cantidad NC</Text>
-                                    <TextInput style={styles.input} value={formData.cantidadNC} onChangeText={(v) => setField('cantidadNC', v)} keyboardType="numeric" />
+                                    <Text style={styles.formLabel}>Tipo de reclamación</Text>
+                                    <View style={styles.pickerWrap}>
+                                        <Picker
+                                            selectedValue={formData.tipoReclamacion}
+                                            onValueChange={(v) => {
+                                                setField('tipoReclamacion', v);
+                                                if (v !== TIPO_OTRO) setOtroTipoTexto('');
+                                            }}
+                                            style={styles.picker}
+                                        >
+                                            <Picker.Item label="-- Seleccionar --" value="" />
+                                            {tiposReclamacion.map((opt) => (
+                                                <Picker.Item key={opt} label={opt} value={opt} />
+                                            ))}
+                                        </Picker>
+                                    </View>
+                                    {formData.tipoReclamacion === TIPO_OTRO && (
+                                        <TextInput
+                                            style={[styles.input, { marginTop: 8 }]}
+                                            value={otroTipoTexto}
+                                            onChangeText={setOtroTipoTexto}
+                                            placeholder="Especifique el tipo (quedará en la lista)"
+                                        />
+                                    )}
                                 </View>
                             </View>
 
                             <View style={styles.formGrid}>
                                 <View style={styles.formCol}>
+                                    <Text style={styles.formLabel}>Cantidad NC</Text>
+                                    <TextInput style={styles.input} value={formData.cantidadNC} onChangeText={(v) => setField('cantidadNC', v)} keyboardType="numeric" />
+                                </View>
+                                <View style={styles.formCol}>
                                     <Text style={styles.formLabel}>Item</Text>
                                     <TextInput style={styles.input} value={formData.item} onChangeText={(v) => setField('item', v)} placeholder="Item..." />
                                 </View>
+                            </View>
+
+                            <View style={styles.formGrid}>
                                 <View style={styles.formCol}>
                                     <Text style={styles.formLabel}>Tipo de Defecto</Text>
                                     <TextInput style={styles.input} value={formData.tipoDefecto} onChangeText={(v) => setField('tipoDefecto', v)} placeholder="Tipo de defecto..." />

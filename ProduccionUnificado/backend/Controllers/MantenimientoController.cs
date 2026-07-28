@@ -4,6 +4,7 @@ using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
 using TiempoProcesos.API.Helpers;
 using TiempoProcesos.API.DTOs;
+using TiempoProcesos.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 
@@ -16,11 +17,13 @@ public class MantenimientoController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly IWebHostEnvironment _env;
+    private readonly GastoAutorizacionService _gastoAutorizacion;
 
-    public MantenimientoController(AppDbContext context, IWebHostEnvironment env)
+    public MantenimientoController(AppDbContext context, IWebHostEnvironment env, GastoAutorizacionService gastoAutorizacion)
     {
         _context = context;
         _env = env;
+        _gastoAutorizacion = gastoAutorizacion;
     }
 
     private Task RegistrarTrazabilidadAsync(
@@ -290,9 +293,31 @@ public class MantenimientoController : ControllerBase
     }
 
     [HttpPost("gastos")]
-    public async Task<IActionResult> CreateGasto([FromBody] Mantenimiento_Gasto gasto)
+    public async Task<IActionResult> CreateGasto(
+        [FromBody] Mantenimiento_Gasto gasto,
+        [FromQuery] int? autorizacionId = null)
     {
         var esLabor = GastoMedioPagoHelper.EsGastoLaborHorasExtrasORecargo(gasto.TipoHoraId, gasto.TipoRecargoId);
+
+        var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == "Id");
+        int adminId = 0;
+        if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int parsedAdminId))
+        {
+            adminId = parsedAdminId;
+            gasto.CreadoPorId = parsedAdminId;
+        }
+        if (adminId <= 0 && !esLabor)
+            return BadRequest(new { message = "No se pudo identificar al usuario." });
+        try
+        {
+            await _gastoAutorizacion.ExigirAutorizacionParaGastoNormalAsync(
+                "mantenimiento", autorizacionId, adminId, esLabor);
+        }
+        catch (InvalidOperationException exAuth)
+        {
+            return BadRequest(new { message = exAuth.Message });
+        }
+
         var mp = GastoMedioPagoHelper.ValidateCreditoOExclusivoEfectivo(esLabor, gasto.EsSolicitudCredito, gasto.EsEfectivo);
         if (mp != null) return mp;
         var fechasCredito = ValidarFechasCredito(gasto, esLabor);
@@ -320,6 +345,8 @@ public class MantenimientoController : ControllerBase
 
         _context.Mantenimiento_Gastos.Add(gasto);
         await _context.SaveChangesAsync();
+        if (autorizacionId.HasValue && autorizacionId.Value > 0)
+            await _gastoAutorizacion.VincularGastoRegistradoAsync(autorizacionId.Value, gasto.Id);
         await MantenimientoInventarioHelper.AplicarMovimientoNuevoAsync(_context, gasto);
         await _context.SaveChangesAsync();
         await RegistrarTrazabilidadAsync("Gastos", "Gasto", "Crear", gasto.Id,

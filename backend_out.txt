@@ -1,0 +1,2121 @@
+[STARTUP] Getting DbContext...
+[STARTUP] DbContext acquired.
+[STARTUP] Parches criticos de columnas de gastos (EsEfectivo, Estado, PrecioBase, PrecioIva)...
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (23ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Produccion_Gastos" ADD COLUMN IF NOT EXISTS "EsEfectivo" boolean NOT NULL DEFAULT false;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Talleres_Gastos" ADD COLUMN IF NOT EXISTS "EsEfectivo" boolean NOT NULL DEFAULT false;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (14ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Planeacion_Gastos" ADD COLUMN IF NOT EXISTS "EsEfectivo" boolean NOT NULL DEFAULT false;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Gastos" ADD COLUMN IF NOT EXISTS "EsEfectivo" boolean NOT NULL DEFAULT false;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Diseno_Gastos" ADD COLUMN IF NOT EXISTS "EsEfectivo" boolean NOT NULL DEFAULT false;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "SST_GastosMensuales" ADD COLUMN IF NOT EXISTS "EsEfectivo" boolean NOT NULL DEFAULT false;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "GH_GastosMensuales" ADD COLUMN IF NOT EXISTS "EsEfectivo" boolean NOT NULL DEFAULT false;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Produccion_Gastos" ADD COLUMN IF NOT EXISTS "Estado" character varying(50) NOT NULL DEFAULT 'Montado';
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Talleres_Gastos" ADD COLUMN IF NOT EXISTS "Estado" character varying(50) NOT NULL DEFAULT 'Montado';
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Planeacion_Gastos" ADD COLUMN IF NOT EXISTS "Estado" character varying(50) NOT NULL DEFAULT 'Montado';
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Gastos" ADD COLUMN IF NOT EXISTS "Estado" character varying(50) NOT NULL DEFAULT 'Montado';
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Diseno_Gastos" ADD COLUMN IF NOT EXISTS "Estado" character varying(50) NOT NULL DEFAULT 'Montado';
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "GH_GastosMensuales" ADD COLUMN IF NOT EXISTS "Estado" character varying(50) NOT NULL DEFAULT 'Montado';
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "SST_GastosMensuales" ADD COLUMN IF NOT EXISTS "Estado" character varying(50) NOT NULL DEFAULT 'Montado';
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Produccion_Gastos" ADD COLUMN IF NOT EXISTS "PrecioBase" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Produccion_Gastos" ADD COLUMN IF NOT EXISTS "PrecioIva" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Produccion_Gastos" ADD COLUMN IF NOT EXISTS "HoraInicio" character varying(8) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Produccion_Gastos" ADD COLUMN IF NOT EXISTS "HoraFin" character varying(8) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Talleres_Gastos" ADD COLUMN IF NOT EXISTS "PrecioBase" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Talleres_Gastos" ADD COLUMN IF NOT EXISTS "PrecioIva" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Talleres_Gastos" ADD COLUMN IF NOT EXISTS "HoraInicio" character varying(8) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Talleres_Gastos" ADD COLUMN IF NOT EXISTS "HoraFin" character varying(8) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Gastos" ADD COLUMN IF NOT EXISTS "PrecioBase" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Gastos" ADD COLUMN IF NOT EXISTS "PrecioIva" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Gastos" ADD COLUMN IF NOT EXISTS "FechaEntregaFactura" timestamp without time zone NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Gastos" ADD COLUMN IF NOT EXISTS "FechaVencimientoFactura" timestamp without time zone NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Productos" ADD COLUMN IF NOT EXISTS "TipoProducto" character varying(100) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Productos" ADD COLUMN IF NOT EXISTS "stock" numeric(18,2) NOT NULL DEFAULT 0;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Planeacion_Gastos" ADD COLUMN IF NOT EXISTS "PrecioBase" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Planeacion_Gastos" ADD COLUMN IF NOT EXISTS "PrecioIva" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Diseno_Gastos" ADD COLUMN IF NOT EXISTS "PrecioBase" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Diseno_Gastos" ADD COLUMN IF NOT EXISTS "PrecioIva" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "GH_GastosMensuales" ADD COLUMN IF NOT EXISTS "PrecioBase" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "GH_GastosMensuales" ADD COLUMN IF NOT EXISTS "PrecioIva" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "SST_GastosMensuales" ADD COLUMN IF NOT EXISTS "PrecioBase" numeric(18,2) NULL;
+[STARTUP] Parches cr¡ticos de gastos finalizados.
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "SST_GastosMensuales" ADD COLUMN IF NOT EXISTS "PrecioIva" numeric(18,2) NULL;
+[STARTUP] Tablas ProveedorRubros (N:M)...
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "Produccion_ProveedorRubros" (
+          "ProveedorId" integer NOT NULL,
+          "RubroId" integer NOT NULL,
+          PRIMARY KEY ("ProveedorId", "RubroId"),
+          CONSTRAINT "FK_Produccion_ProveedorRubros_Proveedor" FOREIGN KEY ("ProveedorId") REFERENCES "Produccion_Proveedores" ("Id") ON DELETE CASCADE,
+          CONSTRAINT "FK_Produccion_ProveedorRubros_Rubro" FOREIGN KEY ("RubroId") REFERENCES "Produccion_Rubros" ("Id") ON DELETE RESTRICT
+      );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (7ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      INSERT INTO "Produccion_ProveedorRubros" ("ProveedorId", "RubroId")
+      SELECT "Id", "RubroId" FROM "Produccion_Proveedores"
+      WHERE "RubroId" IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM "Produccion_ProveedorRubros" j
+          WHERE j."ProveedorId" = "Produccion_Proveedores"."Id" AND j."RubroId" = "Produccion_Proveedores"."RubroId"
+        );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "Talleres_ProveedorRubros" (
+          "ProveedorId" integer NOT NULL,
+          "RubroId" integer NOT NULL,
+          PRIMARY KEY ("ProveedorId", "RubroId"),
+          CONSTRAINT "FK_Talleres_ProveedorRubros_Proveedor" FOREIGN KEY ("ProveedorId") REFERENCES "Talleres_Proveedores" ("Id") ON DELETE CASCADE,
+          CONSTRAINT "FK_Talleres_ProveedorRubros_Rubro" FOREIGN KEY ("RubroId") REFERENCES "Talleres_Rubros" ("Id") ON DELETE RESTRICT
+      );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (10ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      INSERT INTO "Talleres_ProveedorRubros" ("ProveedorId", "RubroId")
+      SELECT "Id", "RubroId" FROM "Talleres_Proveedores"
+      WHERE "RubroId" IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM "Talleres_ProveedorRubros" j
+          WHERE j."ProveedorId" = "Talleres_Proveedores"."Id" AND j."RubroId" = "Talleres_Proveedores"."RubroId"
+        );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "Planeacion_ProveedorRubros" (
+          "ProveedorId" integer NOT NULL,
+          "RubroId" integer NOT NULL,
+          PRIMARY KEY ("ProveedorId", "RubroId"),
+          CONSTRAINT "FK_Planeacion_ProveedorRubros_Proveedor" FOREIGN KEY ("ProveedorId") REFERENCES "Planeacion_Proveedores" ("Id") ON DELETE CASCADE,
+          CONSTRAINT "FK_Planeacion_ProveedorRubros_Rubro" FOREIGN KEY ("RubroId") REFERENCES "Planeacion_Rubros" ("Id") ON DELETE RESTRICT
+      );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      INSERT INTO "Planeacion_ProveedorRubros" ("ProveedorId", "RubroId")
+      SELECT "Id", "RubroId" FROM "Planeacion_Proveedores"
+      WHERE "RubroId" IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM "Planeacion_ProveedorRubros" j
+          WHERE j."ProveedorId" = "Planeacion_Proveedores"."Id" AND j."RubroId" = "Planeacion_Proveedores"."RubroId"
+        );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "Diseno_ProveedorRubros" (
+          "ProveedorId" integer NOT NULL,
+          "RubroId" integer NOT NULL,
+          PRIMARY KEY ("ProveedorId", "RubroId"),
+          CONSTRAINT "FK_Diseno_ProveedorRubros_Proveedor" FOREIGN KEY ("ProveedorId") REFERENCES "Diseno_Proveedores" ("Id") ON DELETE CASCADE,
+          CONSTRAINT "FK_Diseno_ProveedorRubros_Rubro" FOREIGN KEY ("RubroId") REFERENCES "Diseno_Rubros" ("Id") ON DELETE RESTRICT
+      );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      INSERT INTO "Diseno_ProveedorRubros" ("ProveedorId", "RubroId")
+      SELECT "Id", "RubroId" FROM "Diseno_Proveedores"
+      WHERE "RubroId" IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM "Diseno_ProveedorRubros" j
+          WHERE j."ProveedorId" = "Diseno_Proveedores"."Id" AND j."RubroId" = "Diseno_Proveedores"."RubroId"
+        );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "Mantenimiento_ProveedorRubros" (
+          "ProveedorId" integer NOT NULL,
+          "RubroId" integer NOT NULL,
+          PRIMARY KEY ("ProveedorId", "RubroId"),
+          CONSTRAINT "FK_Mantenimiento_ProveedorRubros_Proveedor" FOREIGN KEY ("ProveedorId") REFERENCES "Mantenimiento_Proveedores" ("Id") ON DELETE CASCADE,
+          CONSTRAINT "FK_Mantenimiento_ProveedorRubros_Rubro" FOREIGN KEY ("RubroId") REFERENCES "Mantenimiento_Rubros" ("Id") ON DELETE RESTRICT
+      );
+[STARTUP] Tablas ProveedorRubros listas.
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      INSERT INTO "Mantenimiento_ProveedorRubros" ("ProveedorId", "RubroId")
+      SELECT "Id", "RubroId" FROM "Mantenimiento_Proveedores"
+      WHERE "RubroId" IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM "Mantenimiento_ProveedorRubros" j
+          WHERE j."ProveedorId" = "Mantenimiento_Proveedores"."Id" AND j."RubroId" = "Mantenimiento_Proveedores"."RubroId"
+        );
+[STARTUP] Parches Consolidado NC (Alcance, tipos reclamaci¢n)...
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "EncuestasCalidadProduccion" ADD COLUMN IF NOT EXISTS "Alcance" text NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "EncuestasCalidadProduccion" ADD COLUMN IF NOT EXISTS "TipoReclamacion" text NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "ConsolidadosNC" ADD COLUMN IF NOT EXISTS "Alcance" text NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "CalidadNC_TiposReclamacion" (
+          "Id" serial PRIMARY KEY,
+          "Nombre" character varying(120) NOT NULL,
+          "Activo" boolean NOT NULL DEFAULT true
+      );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      INSERT INTO "CalidadNC_TiposReclamacion" ("Nombre", "Activo")
+      SELECT v."Nombre", true FROM (VALUES
+          ('Queja'), ('Reclamo'), ('Devoluci¢n'), ('Otro')
+      ) AS v("Nombre")
+      WHERE NOT EXISTS (
+          SELECT 1 FROM "CalidadNC_TiposReclamacion" t WHERE LOWER(TRIM(t."Nombre")) = LOWER(TRIM(v."Nombre"))
+      );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (14ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      UPDATE "ConsolidadosNC"
+      SET "Alcance" = CASE
+          WHEN UPPER(TRIM(COALESCE("TipoReclamacion", ''))) IN ('INTERNO', 'INTERNA', 'ALCANCE INTERNO') THEN 'Alcance interno'
+          WHEN UPPER(TRIM(COALESCE("TipoReclamacion", ''))) IN ('EXTERNO', 'EXTERNA', 'ALCANCE EXTERNO') THEN 'Alcance externo'
+          WHEN COALESCE("Alcance", '') = '' AND COALESCE("TipoReclamacion", '') <> '' THEN "TipoReclamacion"
+          ELSE "Alcance"
+      END
+      WHERE COALESCE("Alcance", '') = ''
+        AND COALESCE("TipoReclamacion", '') <> '';
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      UPDATE "ConsolidadosNC"
+      SET "TipoReclamacion" = NULL
+      WHERE UPPER(TRIM(COALESCE("TipoReclamacion", ''))) IN (
+          'INTERNO', 'INTERNA', 'EXTERNO', 'EXTERNA',
+          'ALCANCE INTERNO', 'ALCANCE EXTERNO', 'ALCANCE INTERNA', 'ALCANCE EXTERNA'
+      );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      DELETE FROM "ConsolidadosNC" a
+      USING "ConsolidadosNC" b
+      WHERE a."EncuestaProduccionId" = b."EncuestaProduccionId"
+        AND a."Id" < b."Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      INSERT INTO "Horarios" ("Codigo", "Nombre", "InicioSemana", "FinSemana", "InicioSabado", "FinSabado", "Activo")
+      SELECT '5', '6am - 10am (s bado)', '06:00:00'::interval, '10:00:00'::interval, '06:00:00'::interval, '10:00:00'::interval, TRUE
+      WHERE NOT EXISTS (SELECT 1 FROM "Horarios" WHERE "Codigo" = '5');
+[STARTUP] Horario s bado 6am-10am (c¢digo 5) verificado.
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      INSERT INTO "Horarios" ("Codigo", "Nombre", "InicioSemana", "FinSemana", "InicioSabado", "FinSabado", "Activo")
+      SELECT '6', '1pm - 9pm', '13:00:00'::interval, '21:00:00'::interval, '08:00:00'::interval, '12:00:00'::interval, TRUE
+      WHERE NOT EXISTS (SELECT 1 FROM "Horarios" WHERE "Codigo" = '6');
+[STARTUP] Horario 1pm-9pm (c¢digo 6) verificado.
+[DB FIX] Adjunto_DocumentoExtraccion: Input string was not in a correct format. Failure to parse near offset 436. Expected an ASCII digit.
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "Catalogo_OrdenProduccion" (
+          "Id" SERIAL PRIMARY KEY,
+          "Numero" character varying(32) NOT NULL,
+          "Cliente" character varying(300) NULL,
+          "Referencia" character varying(500) NULL,
+          "CantidadPlanificada" numeric(18,2) NOT NULL DEFAULT 0,
+          "Mes" integer NOT NULL,
+          "Anio" integer NOT NULL,
+          "Fuente" character varying(20) NOT NULL DEFAULT 'Excel',
+          "FechaActualizacion" timestamp without time zone NOT NULL DEFAULT NOW()
+      );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE UNIQUE INDEX IF NOT EXISTS "IX_CatalogoOP_Numero_Mes_Anio"
+          ON "Catalogo_OrdenProduccion" ("Numero", "Mes", "Anio");
+[STARTUP] Tabla Catalogo_OrdenProduccion verificada.
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "Mantenimiento_Consumos" (
+          "Id" serial PRIMARY KEY,
+          "productoid" integer NOT NULL,
+          "cantidad" numeric(18,2) NOT NULL DEFAULT 0,
+          "Fecha" timestamp without time zone NOT NULL,
+          "MaquinaId" integer NULL,
+          "tipomantenimiento" character varying(100) NULL,
+          "BitacoraId" integer NULL,
+          "ActividadesIds" text NULL,
+          "Responsable" character varying(200) NULL,
+          "Nota" text NULL,
+          "Activo" boolean NOT NULL DEFAULT true,
+          "Anio" integer NOT NULL DEFAULT 0,
+          "Mes" integer NOT NULL DEFAULT 0,
+          CONSTRAINT "FK_Mantenimiento_Consumos_Producto" FOREIGN KEY ("productoid") REFERENCES "Mantenimiento_Productos" ("Id") ON DELETE RESTRICT,
+          CONSTRAINT "FK_Mantenimiento_Consumos_Maquina" FOREIGN KEY ("MaquinaId") REFERENCES "Maquinas" ("Id") ON DELETE SET NULL
+      );
+[STARTUP] Tabla Mantenimiento_Consumos verificada.
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (11ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Consumos" ADD COLUMN IF NOT EXISTS "tipomantenimiento" character varying(100) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Consumos" ADD COLUMN IF NOT EXISTS "BitacoraId" integer NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Consumos" ADD COLUMN IF NOT EXISTS "ActividadesIds" text NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Consumos" ADD COLUMN IF NOT EXISTS "HojaVidaId" integer NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      ALTER TABLE "Mantenimiento_Consumos" ADD COLUMN IF NOT EXISTS "MantenimientoHojaVidaId" integer NULL;
+[STARTUP] Tabla Mantenimiento_AjustesInventario verificada.
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "Mantenimiento_AjustesInventario" (
+          "Id" serial PRIMARY KEY,
+          "productoid" integer NOT NULL,
+          "Tipo" character varying(20) NOT NULL DEFAULT 'ENTRADA',
+          "cantidad" numeric(18,2) NOT NULL DEFAULT 0,
+          "Razon" character varying(500) NOT NULL,
+          "Fecha" timestamp without time zone NOT NULL,
+          "Activo" boolean NOT NULL DEFAULT true,
+          CONSTRAINT "FK_Mantenimiento_Ajustes_Producto" FOREIGN KEY ("productoid") REFERENCES "Mantenimiento_Productos" ("Id") ON DELETE RESTRICT
+      );
+[STARTUP] Tablas Almac‚n (productos, proveedores, requisiciones, pedidos, recepciones)...
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "Almacen_Productos" (
+          "Id" serial PRIMARY KEY,
+          "Nombre" character varying(200) NOT NULL,
+          "TipoRequisicionId" character varying(50) NOT NULL,
+          "UnidadSugerida" character varying(30) NULL,
+          "Activo" boolean NOT NULL DEFAULT true
+      );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Productos" ADD COLUMN IF NOT EXISTS "Descripcion" character varying(500) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Productos" ADD COLUMN IF NOT EXISTS "CostoEstandar" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "Almacen_Proveedores" (
+          "Id" serial PRIMARY KEY,
+          "Nombre" character varying(200) NOT NULL,
+          "Nit" character varying(50) NOT NULL DEFAULT '',
+          "Telefono" character varying(50) NOT NULL DEFAULT '',
+          "Activo" boolean NOT NULL DEFAULT true
+      );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Proveedores" ADD COLUMN IF NOT EXISTS "Correo" character varying(200) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Proveedores" ADD COLUMN IF NOT EXISTS "TelefonoTrabajo" character varying(50) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Proveedores" ADD COLUMN IF NOT EXISTS "TelefonoMovil" character varying(50) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Proveedores" ADD COLUMN IF NOT EXISTS "Direccion" character varying(500) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Proveedores" ADD COLUMN IF NOT EXISTS "Categoria" character varying(50) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Proveedores" ADD COLUMN IF NOT EXISTS "ResponsableIva" boolean NOT NULL DEFAULT false;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "Almacen_Requisiciones" (
+          "Id" serial PRIMARY KEY,
+          "Codigo" character varying(20) NOT NULL,
+          "TipoRequisicionId" character varying(50) NOT NULL,
+          "FechaSolicitud" timestamp without time zone NOT NULL,
+          "OrdenProduccionNumero" character varying(50) NOT NULL,
+          "CatalogoOpId" integer NULL,
+          "Cliente" character varying(300) NOT NULL DEFAULT '',
+          "Referencia" character varying(500) NOT NULL DEFAULT '',
+          "ProductoId" integer NULL,
+          "ProductoNombre" character varying(200) NOT NULL,
+          "Cantidad" numeric(18,2) NOT NULL DEFAULT 0,
+          "Unidad" character varying(30) NOT NULL,
+          "FechaRequerida" timestamp without time zone NOT NULL,
+          "Observacion" text NULL,
+          "Estado" character varying(20) NOT NULL DEFAULT 'Pendiente',
+          "FechaRegistro" timestamp without time zone NOT NULL DEFAULT NOW(),
+          CONSTRAINT "FK_Almacen_Requisiciones_Producto" FOREIGN KEY ("ProductoId") REFERENCES "Almacen_Productos" ("Id") ON DELETE SET NULL,
+          CONSTRAINT "FK_Almacen_Requisiciones_CatalogoOP" FOREIGN KEY ("CatalogoOpId") REFERENCES "Catalogo_OrdenProduccion" ("Id") ON DELETE SET NULL
+      );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE UNIQUE INDEX IF NOT EXISTS "IX_Almacen_Requisiciones_Codigo" ON "Almacen_Requisiciones" ("Codigo");
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE TABLE IF NOT EXISTS "Almacen_Pedidos" (
+          "Id" serial PRIMARY KEY,
+          "RequisicionId" integer NOT NULL,
+          "FechaPedido" timestamp without time zone NOT NULL,
+          "FechaEntregaEstimada" timestamp without time zone NULL,
+          CONSTRAINT "FK_Almacen_Pedidos_Requisicion" FOREIGN KEY ("RequisicionId") REFERENCES "Almacen_Requisiciones" ("Id") ON DELETE CASCADE
+      );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE UNIQUE INDEX IF NOT EXISTS "IX_Almacen_Pedidos_RequisicionId" ON "Almacen_Pedidos" ("RequisicionId");
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Pedidos" ADD COLUMN IF NOT EXISTS "PrecioUnitario" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_PedidoProveedores" ADD COLUMN IF NOT EXISTS "PrecioUnitario" numeric(18,2) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_PedidoProveedores" ADD COLUMN IF NOT EXISTS "NumeroOrdenCompra" integer NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_PedidoProveedores" ADD COLUMN IF NOT EXISTS "Pagado" boolean NOT NULL DEFAULT false;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_PedidoProveedores" ADD COLUMN IF NOT EXISTS "FormaPago" character varying(20) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Requisiciones" ADD COLUMN IF NOT EXISTS "CreadoPorId" integer NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Requisiciones" ADD COLUMN IF NOT EXISTS "CreadoPorNombre" character varying(200) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Requisiciones" ADD COLUMN IF NOT EXISTS "RecordatorioPedidoEnviado" boolean NOT NULL DEFAULT false;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Pedidos" ADD COLUMN IF NOT EXISTS "ProcesadoPorId" integer NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_Pedidos" ADD COLUMN IF NOT EXISTS "ProcesadoPorNombre" character varying(200) NULL;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      ALTER TABLE "Almacen_RecepcionLineas" ADD COLUMN IF NOT EXISTS "RegistradoPorNombre" character varying(200) NULL;
+fail: Microsoft.EntityFrameworkCore.Database.Command[20102]
+      Failed executing DbCommand (11ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      
+      CREATE UNIQUE INDEX IF NOT EXISTS "IX_Almacen_PedidoProveedores_NumeroOrdenCompra"
+      ON "Almacen_PedidoProveedores" ("NumeroOrdenCompra") WHERE "NumeroOrdenCompra" IS NOT NULL;
+[DB FIX] Almacen_PedidoProveedores.NumeroOrdenCompra unique: 23505: could not create unique index "IX_Almacen_PedidoProveedores_NumeroOrdenCompra"
+
+DETAIL: Detail redacted as it may contain sensitive data. Specify 'Include Error Detail' in the connection string to include this information.
+[STARTUP] Tablas Almac‚n listas.
+[STARTUP] Tabla Mantenimiento_Trazabilidad verificada.
+[STARTUP] Tabla Bitacora_MantenimientoDiaria verificada.
+[STARTUP] EncuestaNovedades.InformeObservaciones verificada.
+[STARTUP] EncuestaNovedades.InformeEstado verificada.
+[STARTUP] Tabla ParametrosJornadaOt verificada.
+[STARTUP] ProcesosGantt cat logo sincronizado.
+[STARTUP] M quinas Despique / Terminado Manual ya existen.
+[STARTUP] Maquinas.EstadoOperativo verificada.
+[STARTUP] MaquinaTurnoConfig verificada.
+[STARTUP] RosterAsignaciones verificada.
+[STARTUP] PersonalNovedades verificada.
+[STARTUP] Columna RegistrosDesperdicio.RegistradoPor verificada.
+[STARTUP] Backfill Anio/Mes en gastos desde fecha...
+[TRAZABILIDAD] Ya hay registros; se omite backfill.
+[STARTUP] Applying manual fix: PlanesAccion.TipoTrabajo...
+[STARTUP] Applying manual fix: Usuarios.Salario...
+[STARTUP] Applying manual fix: Usuarios.Documento...
+[STARTUP] Applying manual fix: AdminUsuarios.Permissions...
+[STARTUP] Applying manual fix: Mantenimiento_Gastos (lowercase columns)...
+[STARTUP] Applying manual fix: Mantenimiento_Gastos (Capitalized columns)...
+[STARTUP] Applying manual fix: Mantenimiento_Productos...
+[STARTUP] Applying manual fix: Mantenimiento_Gastos (inventory fields)...
+[STARTUP] Applying manual fix: Indexes...
+[STARTUP] Applying manual fix: TiempoProcesos subcodigos...
+[STARTUP] Applying manual fix: TiempoProcesos pausa/estado...
+[STARTUP] Applying manual fix: Contabilidad_Ingresos...
+[STARTUP] Applying manual fix: Contabilidad_Gastos...
+[STARTUP] Applying manual fix: EvaluacionArea_Actividades...
+[STARTUP] Applying manual fix: Audit_Checklist_Items / Responsables...
+[STARTUP] Manual fixes completed.
+[STARTUP] Initializing Database via DbInitializer...
+[DB INIT] Taller tables checked/created.
+[DB INIT] Hoja de Vida and Cronograma tables checked/created.
+[DB INIT] ProgramacionesOP tables checked/created.
+[DB INIT] Maquinas HorasAlistamiento/HorasLavada checked.
+[STARTUP] DbInitializer finished.
+[STARTUP] Carpeta Adjuntos: G:\Proyecto-Tablets\Adjuntos
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://0.0.0.0:5144
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Production
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: G:\Proyecto-Tablets\ProduccionUnificado\backend\publish
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT h."Id", h."Codigo", h."Nombre", h."InicioSemana", h."FinSemana", h."InicioSabado", h."FinSabado", h."Activo"
+      FROM "Horarios" AS h
+      WHERE h."Activo"
+      ORDER BY h."Codigo", h."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (6ms) [Parameters=[@__codigo_0='?'], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "Horarios" AS h
+          WHERE h."Activo" AND h."Codigo" = @__codigo_0)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (25ms) [Parameters=[@p0='?' (DbType = Boolean), @p1='?', @p2='?' (DbType = Object), @p3='?' (DbType = Object), @p4='?' (DbType = Object), @p5='?' (DbType = Object), @p6='?'], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "Horarios" ("Activo", "Codigo", "FinSabado", "FinSemana", "InicioSabado", "InicioSemana", "Nombre")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__p_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT h."Id", h."Activo", h."Codigo", h."FinSabado", h."FinSemana", h."InicioSabado", h."InicioSemana", h."Nombre"
+      FROM "Horarios" AS h
+      WHERE h."Id" = @__p_0
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Activo", m."AuxiliaresRequeridos", m."HorarioId", m."MaquinaId", m."RequiereOperario"
+      FROM "MaquinaTurnoConfig" AS m
+      WHERE m."HorarioId" = @__id_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (5ms) [Parameters=[@p1='?' (DbType = Int32), @p0='?' (DbType = Boolean)], CommandType='Text', CommandTimeout='30']
+      UPDATE "Horarios" SET "Activo" = @p0
+      WHERE "Id" = @p1;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT h."Id", h."Codigo", h."Nombre"
+      FROM "Horarios" AS h
+      WHERE h."Activo"
+      ORDER BY h."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT h."Id", h."Codigo", h."Nombre"
+      FROM "Horarios" AS h
+      WHERE h."Activo"
+      ORDER BY h."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Nombre", m."MetaRendimiento", m."ValorPorTiro", m."Importancia", m."Meta100Porciento"
+      FROM "Maquinas" AS m
+      WHERE m."Activa"
+      ORDER BY m."Nombre"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."Nombre", u."Area"
+      FROM "Usuarios" AS u
+      WHERE u."Estado"
+      ORDER BY u."Nombre"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT o."Id", o."Numero", o."Descripcion", o."Estado"
+      FROM "OrdenesProduccion" AS o
+      WHERE o."Estado" <> 'Completada'
+      ORDER BY o."FechaCreacion" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT c."Id", c."Activo", c."Codigo", c."Descripcion", c."FechaCreacion"
+      FROM "CodigosDesperdicio" AS c
+      WHERE c."Activo"
+      ORDER BY c."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT a."Id", a."Codigo", a."Nombre", a."EsProductiva", a."Observaciones"
+      FROM "Actividades" AS a
+      ORDER BY a."Orden"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (203ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidad" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (68ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidadTalleres" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1,025ms) [Parameters=[@__fecha_Date_0='?' (DbType = DateTime), @__maquinaId_Value_1='?' (DbType = Int32), @__usuarioId_Value_2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") = @__fecha_Date_0 AND t."MaquinaId" = @__maquinaId_Value_1 AND t."UsuarioId" = @__usuarioId_Value_2
+      ORDER BY t."HoraFin" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (919ms) [Parameters=[@__fechaInicio_Date_0='?' (DbType = DateTime), @__fechaFin_Date_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") >= @__fechaInicio_Date_0 AND date_trunc('day', t."Fecha") <= @__fechaFin_Date_1
+      ORDER BY t."Fecha" DESC, t."HoraInicio" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__ToLower_0='?'], CommandType='Text', CommandTimeout='30']
+      SELECT a."Id", a."Activo", a."Area", a."Email", a."NombreMostrar", a."PasswordHash", a."Permissions", a."Role", a."Username"
+      FROM "AdminUsuarios" AS a
+      WHERE lower(a."Username") = @__ToLower_0
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Nombre", m."MetaRendimiento", m."ValorPorTiro", m."Importancia", m."Meta100Porciento"
+      FROM "Maquinas" AS m
+      WHERE m."Activa"
+      ORDER BY m."Nombre"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT p."Id", p."Activo", p."Nombre", p."Orden"
+      FROM "ProcesosGantt" AS p
+      WHERE p."Activo"
+      ORDER BY p."Orden"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__anio_0='?' (DbType = Int32), @__mes_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Anio", m."FechaModificacion", m."Mes", m."Meta"
+      FROM "MetasFacturacionMes" AS m
+      WHERE m."Anio" = @__anio_0 AND m."Mes" = @__mes_1
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro"
+      FROM "Maquinas" AS m
+      WHERE m."Activa"
+      ORDER BY m."Nombre"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__anio_0='?' (DbType = Int32), @__mes_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Anio", m."FechaModificacion", m."Mes", m."Meta"
+      FROM "MetasFacturacionMes" AS m
+      WHERE m."Anio" = @__anio_0 AND m."Mes" = @__mes_1
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT o."Id", o."Numero", o."Descripcion", o."Estado"
+      FROM "OrdenesProduccion" AS o
+      WHERE o."Estado" <> 'Completada'
+      ORDER BY o."FechaCreacion" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__area_0_contains='?'], CommandType='Text', CommandTimeout='30']
+      SELECT count(*)::int
+      FROM "PlanesAccion" AS p
+      WHERE p."Proceso" LIKE @__area_0_contains AND lower(p."Estado") <> 'cerrada'
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro"
+      FROM "Maquinas" AS m
+      WHERE m."Activa"
+      ORDER BY m."Nombre"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (27ms) [Parameters=[@__endDate_0='?' (DbType = DateTime), @__startDate_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT p."Id", p."Cliente", p."Color", p."EsUrgencia", p."EstadoGeneral", p."FechaCreacion", p."FechaModificacion", p."LineaTroquel", p."MetaTiros", p."NumeroOP", p."NumeroOT", p."Observaciones", p."OrdenProduccionId", p."Precio", p."Referencia", p."TipoActividad", p."UsuarioCreador", p."UsuarioModificador", o."Id", p1."Id", p1."FechaFin", p1."FechaInicio", p1."HorasEstimadas", p1."MaquinaId", p1."Observaciones", p1."OrdenSecuencia", p1."Proceso", p1."ProgramacionOPId", p1."TiemposAuxiliaresJson", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "ProgramacionesOP" AS p
+      LEFT JOIN "OrdenesProduccion" AS o ON p."OrdenProduccionId" = o."Id"
+      LEFT JOIN "ProgramacionesOPProcesos" AS p1 ON p."Id" = p1."ProgramacionOPId"
+      WHERE EXISTS (
+          SELECT 1
+          FROM "ProgramacionesOPProcesos" AS p0
+          WHERE p."Id" = p0."ProgramacionOPId" AND p0."FechaInicio" <= @__endDate_0 AND p0."FechaFin" >= @__startDate_1)
+      ORDER BY p."NumeroOP", p."Id", o."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (27ms) [Parameters=[@__endDate_0='?' (DbType = DateTime), @__startDate_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT p."Id", p."Cliente", p."Color", p."EsUrgencia", p."EstadoGeneral", p."FechaCreacion", p."FechaModificacion", p."LineaTroquel", p."MetaTiros", p."NumeroOP", p."NumeroOT", p."Observaciones", p."OrdenProduccionId", p."Precio", p."Referencia", p."TipoActividad", p."UsuarioCreador", p."UsuarioModificador", o."Id", p1."Id", p1."FechaFin", p1."FechaInicio", p1."HorasEstimadas", p1."MaquinaId", p1."Observaciones", p1."OrdenSecuencia", p1."Proceso", p1."ProgramacionOPId", p1."TiemposAuxiliaresJson", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "ProgramacionesOP" AS p
+      LEFT JOIN "OrdenesProduccion" AS o ON p."OrdenProduccionId" = o."Id"
+      LEFT JOIN "ProgramacionesOPProcesos" AS p1 ON p."Id" = p1."ProgramacionOPId"
+      WHERE EXISTS (
+          SELECT 1
+          FROM "ProgramacionesOPProcesos" AS p0
+          WHERE p."Id" = p0."ProgramacionOPId" AND p0."FechaInicio" <= @__endDate_0 AND p0."FechaFin" >= @__startDate_1)
+      ORDER BY p."NumeroOP", p."Id", o."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Nombre", m."MetaRendimiento", m."ValorPorTiro", m."Importancia", m."Meta100Porciento"
+      FROM "Maquinas" AS m
+      WHERE m."Activa"
+      ORDER BY m."Nombre"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT o."Id", o."Numero", o."Descripcion", o."Estado"
+      FROM "OrdenesProduccion" AS o
+      WHERE o."Estado" <> 'Completada'
+      ORDER BY o."FechaCreacion" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (67ms) [Parameters=[@__Select_0='?' (DbType = Object)], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."Alcance", e."Cabida", e."CantidadAProducir", e."CantidadParaDespacho", e."CantidadRecuperada", e."Cliente", e."Fecha", e."FechaCreacion", e."Material", e."Observaciones", e."OrdenProduccion", e."Referencia", e."TipoReclamacion", e0."Id", e0."CantidadProducida", e0."EncuestaId", e0."Observaciones", e0."Proceso"
+      FROM "EncuestasCalidadProduccion" AS e
+      LEFT JOIN "EncuestaCalidadProduccionProcesos" AS e0 ON e."Id" = e0."EncuestaId"
+      WHERE e."OrdenProduccion" = ANY (@__Select_0)
+      ORDER BY e."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (68ms) [Parameters=[@__Select_0='?' (DbType = Object)], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."Alcance", e."Cabida", e."CantidadAProducir", e."CantidadParaDespacho", e."CantidadRecuperada", e."Cliente", e."Fecha", e."FechaCreacion", e."Material", e."Observaciones", e."OrdenProduccion", e."Referencia", e."TipoReclamacion", e0."Id", e0."CantidadProducida", e0."EncuestaId", e0."Observaciones", e0."Proceso"
+      FROM "EncuestasCalidadProduccion" AS e
+      LEFT JOIN "EncuestaCalidadProduccionProcesos" AS e0 ON e."Id" = e0."EncuestaId"
+      WHERE e."OrdenProduccion" = ANY (@__Select_0)
+      ORDER BY e."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro"
+      FROM "Maquinas" AS m
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro"
+      FROM "Maquinas" AS m
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT h."Id", h."Codigo", h."Nombre", h."InicioSemana", h."FinSemana", h."InicioSabado", h."FinSabado", h."Activo"
+      FROM "Horarios" AS h
+      WHERE h."Activo"
+      ORDER BY h."Codigo", h."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."Nombre", u."Area"
+      FROM "Usuarios" AS u
+      WHERE u."Estado"
+      ORDER BY u."Nombre"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (3ms) [Parameters=[@__lunes_0='?' (DbType = Date), @__domingo_1='?' (DbType = Date)], CommandType='Text', CommandTimeout='30']
+      SELECT r."Id", r."Anio", r."SemanaIso", r."FechaDia", r."MaquinaId", m."Nombre", r."HorarioId", h."Codigo", h."Nombre", r."UsuarioId", u."Nombre", r."EsAuxiliar"
+      FROM "RosterAsignaciones" AS r
+      INNER JOIN "Maquinas" AS m ON r."MaquinaId" = m."Id"
+      INNER JOIN "Horarios" AS h ON r."HorarioId" = h."Id"
+      INNER JOIN "Usuarios" AS u ON r."UsuarioId" = u."Id"
+      WHERE r."FechaDia" >= @__lunes_0 AND r."FechaDia" <= @__domingo_1
+      ORDER BY r."FechaDia", r."MaquinaId", r."HorarioId", r."EsAuxiliar"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__d0_Date_0='?' (DbType = Date), @__d1_Date_1='?' (DbType = Date), @__p_2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT p0."Id", p0."UsuarioId", u."Nombre", p0."Tipo", p0."FechaInicio", p0."FechaFin", p0."Observacion"
+      FROM (
+          SELECT p."Id", p."FechaFin", p."FechaInicio", p."Observacion", p."Tipo", p."UsuarioId"
+          FROM "PersonalNovedades" AS p
+          WHERE p."FechaFin" >= @__d0_Date_0 AND p."FechaInicio" <= @__d1_Date_1
+          ORDER BY p."FechaInicio" DESC
+          LIMIT @__p_2
+      ) AS p0
+      INNER JOIN "Usuarios" AS u ON p0."UsuarioId" = u."Id"
+      ORDER BY p0."FechaInicio" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidad" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidadTalleres" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (6ms) [Parameters=[@__fechaInicio_Date_0='?' (DbType = DateTime), @__fechaFin_Date_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") >= @__fechaInicio_Date_0 AND date_trunc('day', t."Fecha") <= @__fechaFin_Date_1
+      ORDER BY t."Fecha" DESC, t."HoraInicio" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__fecha_Date_0='?' (DbType = DateTime), @__maquinaId_Value_1='?' (DbType = Int32), @__usuarioId_Value_2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") = @__fecha_Date_0 AND t."MaquinaId" = @__maquinaId_Value_1 AND t."UsuarioId" = @__usuarioId_Value_2
+      ORDER BY t."HoraFin" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT a."Id", a."Codigo", a."Nombre", a."EsProductiva", a."Observaciones"
+      FROM "Actividades" AS a
+      ORDER BY a."Orden"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (3ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."Nombre", u."Area"
+      FROM "Usuarios" AS u
+      WHERE u."Estado"
+      ORDER BY u."Nombre"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT o."Id", o."Numero", o."Descripcion", o."Estado"
+      FROM "OrdenesProduccion" AS o
+      WHERE o."Estado" <> 'Completada'
+      ORDER BY o."FechaCreacion" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT c."Id", c."Activo", c."Codigo", c."Descripcion", c."FechaCreacion"
+      FROM "CodigosDesperdicio" AS c
+      WHERE c."Activo"
+      ORDER BY c."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Nombre", m."MetaRendimiento", m."ValorPorTiro", m."Importancia", m."Meta100Porciento"
+      FROM "Maquinas" AS m
+      WHERE m."Activa"
+      ORDER BY m."Nombre"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (5ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT h."Id", h."Codigo", h."Nombre"
+      FROM "Horarios" AS h
+      WHERE h."Activo"
+      ORDER BY h."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__ToLower_0='?'], CommandType='Text', CommandTimeout='30']
+      SELECT a."Id", a."Activo", a."Area", a."Email", a."NombreMostrar", a."PasswordHash", a."Permissions", a."Role", a."Username"
+      FROM "AdminUsuarios" AS a
+      WHERE lower(a."Username") = @__ToLower_0
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT o."Id", o."Numero", o."Descripcion", o."Estado"
+      FROM "OrdenesProduccion" AS o
+      WHERE o."Estado" <> 'Completada'
+      ORDER BY o."FechaCreacion" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (4ms) [Parameters=[@__endDate_0='?' (DbType = DateTime), @__startDate_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT p."Id", p."Cliente", p."Color", p."EsUrgencia", p."EstadoGeneral", p."FechaCreacion", p."FechaModificacion", p."LineaTroquel", p."MetaTiros", p."NumeroOP", p."NumeroOT", p."Observaciones", p."OrdenProduccionId", p."Precio", p."Referencia", p."TipoActividad", p."UsuarioCreador", p."UsuarioModificador", o."Id", p1."Id", p1."FechaFin", p1."FechaInicio", p1."HorasEstimadas", p1."MaquinaId", p1."Observaciones", p1."OrdenSecuencia", p1."Proceso", p1."ProgramacionOPId", p1."TiemposAuxiliaresJson", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "ProgramacionesOP" AS p
+      LEFT JOIN "OrdenesProduccion" AS o ON p."OrdenProduccionId" = o."Id"
+      LEFT JOIN "ProgramacionesOPProcesos" AS p1 ON p."Id" = p1."ProgramacionOPId"
+      WHERE EXISTS (
+          SELECT 1
+          FROM "ProgramacionesOPProcesos" AS p0
+          WHERE p."Id" = p0."ProgramacionOPId" AND p0."FechaInicio" <= @__endDate_0 AND p0."FechaFin" >= @__startDate_1)
+      ORDER BY p."NumeroOP", p."Id", o."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Nombre", m."MetaRendimiento", m."ValorPorTiro", m."Importancia", m."Meta100Porciento"
+      FROM "Maquinas" AS m
+      WHERE m."Activa"
+      ORDER BY m."Nombre"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (6ms) [Parameters=[@__Select_0='?' (DbType = Object)], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."Alcance", e."Cabida", e."CantidadAProducir", e."CantidadParaDespacho", e."CantidadRecuperada", e."Cliente", e."Fecha", e."FechaCreacion", e."Material", e."Observaciones", e."OrdenProduccion", e."Referencia", e."TipoReclamacion", e0."Id", e0."CantidadProducida", e0."EncuestaId", e0."Observaciones", e0."Proceso"
+      FROM "EncuestasCalidadProduccion" AS e
+      LEFT JOIN "EncuestaCalidadProduccionProcesos" AS e0 ON e."Id" = e0."EncuestaId"
+      WHERE e."OrdenProduccion" = ANY (@__Select_0)
+      ORDER BY e."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro"
+      FROM "Maquinas" AS m
+      WHERE m."Activa"
+      ORDER BY m."Nombre"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (6ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro"
+      FROM "Maquinas" AS m
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@__endDate_0='?' (DbType = DateTime), @__startDate_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT p."Id", p."Cliente", p."Color", p."EsUrgencia", p."EstadoGeneral", p."FechaCreacion", p."FechaModificacion", p."LineaTroquel", p."MetaTiros", p."NumeroOP", p."NumeroOT", p."Observaciones", p."OrdenProduccionId", p."Precio", p."Referencia", p."TipoActividad", p."UsuarioCreador", p."UsuarioModificador", o."Id", p1."Id", p1."FechaFin", p1."FechaInicio", p1."HorasEstimadas", p1."MaquinaId", p1."Observaciones", p1."OrdenSecuencia", p1."Proceso", p1."ProgramacionOPId", p1."TiemposAuxiliaresJson", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "ProgramacionesOP" AS p
+      LEFT JOIN "OrdenesProduccion" AS o ON p."OrdenProduccionId" = o."Id"
+      LEFT JOIN "ProgramacionesOPProcesos" AS p1 ON p."Id" = p1."ProgramacionOPId"
+      WHERE EXISTS (
+          SELECT 1
+          FROM "ProgramacionesOPProcesos" AS p0
+          WHERE p."Id" = p0."ProgramacionOPId" AND p0."FechaInicio" <= @__endDate_0 AND p0."FechaFin" >= @__startDate_1)
+      ORDER BY p."NumeroOP", p."Id", o."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@__Select_0='?' (DbType = Object)], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."Alcance", e."Cabida", e."CantidadAProducir", e."CantidadParaDespacho", e."CantidadRecuperada", e."Cliente", e."Fecha", e."FechaCreacion", e."Material", e."Observaciones", e."OrdenProduccion", e."Referencia", e."TipoReclamacion", e0."Id", e0."CantidadProducida", e0."EncuestaId", e0."Observaciones", e0."Proceso"
+      FROM "EncuestasCalidadProduccion" AS e
+      LEFT JOIN "EncuestaCalidadProduccionProcesos" AS e0 ON e."Id" = e0."EncuestaId"
+      WHERE e."OrdenProduccion" = ANY (@__Select_0)
+      ORDER BY e."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro"
+      FROM "Maquinas" AS m
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (5ms) [Parameters=[@__anio_0='?' (DbType = Int32), @__mes_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Anio", m."FechaModificacion", m."Mes", m."Meta"
+      FROM "MetasFacturacionMes" AS m
+      WHERE m."Anio" = @__anio_0 AND m."Mes" = @__mes_1
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT o."Id", o."Numero", o."Descripcion", o."Estado"
+      FROM "OrdenesProduccion" AS o
+      WHERE o."Estado" <> 'Completada'
+      ORDER BY o."FechaCreacion" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT p."Id", p."Activo", p."Nombre", p."Orden"
+      FROM "ProcesosGantt" AS p
+      WHERE p."Activo"
+      ORDER BY p."Orden"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__area_0_contains='?'], CommandType='Text', CommandTimeout='30']
+      SELECT count(*)::int
+      FROM "PlanesAccion" AS p
+      WHERE p."Proceso" LIKE @__area_0_contains AND lower(p."Estado") <> 'cerrada'
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Nombre", m."MetaRendimiento", m."ValorPorTiro", m."Importancia", m."Meta100Porciento"
+      FROM "Maquinas" AS m
+      WHERE m."Activa"
+      ORDER BY m."Nombre"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__anio_0='?' (DbType = Int32), @__mes_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Anio", m."FechaModificacion", m."Mes", m."Meta"
+      FROM "MetasFacturacionMes" AS m
+      WHERE m."Anio" = @__anio_0 AND m."Mes" = @__mes_1
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro"
+      FROM "Maquinas" AS m
+      WHERE m."Activa"
+      ORDER BY m."Nombre"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT h."Id", h."Codigo", h."Nombre", h."InicioSemana", h."FinSemana", h."InicioSabado", h."FinSabado", h."Activo"
+      FROM "Horarios" AS h
+      WHERE h."Activo"
+      ORDER BY h."Codigo", h."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."Nombre", u."Area"
+      FROM "Usuarios" AS u
+      WHERE u."Estado"
+      ORDER BY u."Nombre"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@__lunes_0='?' (DbType = Date), @__domingo_1='?' (DbType = Date)], CommandType='Text', CommandTimeout='30']
+      SELECT r."Id", r."Anio", r."SemanaIso", r."FechaDia", r."MaquinaId", m."Nombre", r."HorarioId", h."Codigo", h."Nombre", r."UsuarioId", u."Nombre", r."EsAuxiliar"
+      FROM "RosterAsignaciones" AS r
+      INNER JOIN "Maquinas" AS m ON r."MaquinaId" = m."Id"
+      INNER JOIN "Horarios" AS h ON r."HorarioId" = h."Id"
+      INNER JOIN "Usuarios" AS u ON r."UsuarioId" = u."Id"
+      WHERE r."FechaDia" >= @__lunes_0 AND r."FechaDia" <= @__domingo_1
+      ORDER BY r."FechaDia", r."MaquinaId", r."HorarioId", r."EsAuxiliar"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__d0_Date_0='?' (DbType = Date), @__d1_Date_1='?' (DbType = Date), @__p_2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT p0."Id", p0."UsuarioId", u."Nombre", p0."Tipo", p0."FechaInicio", p0."FechaFin", p0."Observacion"
+      FROM (
+          SELECT p."Id", p."FechaFin", p."FechaInicio", p."Observacion", p."Tipo", p."UsuarioId"
+          FROM "PersonalNovedades" AS p
+          WHERE p."FechaFin" >= @__d0_Date_0 AND p."FechaInicio" <= @__d1_Date_1
+          ORDER BY p."FechaInicio" DESC
+          LIMIT @__p_2
+      ) AS p0
+      INNER JOIN "Usuarios" AS u ON p0."UsuarioId" = u."Id"
+      ORDER BY p0."FechaInicio" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (3ms) [Parameters=[@__fecha_Date_0='?' (DbType = DateTime), @__maquinaId_Value_1='?' (DbType = Int32), @__usuarioId_Value_2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") = @__fecha_Date_0 AND t."MaquinaId" = @__maquinaId_Value_1 AND t."UsuarioId" = @__usuarioId_Value_2
+      ORDER BY t."HoraFin" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidad" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidadTalleres" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (6ms) [Parameters=[@__fechaInicio_Date_0='?' (DbType = DateTime), @__fechaFin_Date_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") >= @__fechaInicio_Date_0 AND date_trunc('day', t."Fecha") <= @__fechaFin_Date_1
+      ORDER BY t."Fecha" DESC, t."HoraInicio" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@__fecha_Date_0='?' (DbType = DateTime), @__maquinaId_Value_1='?' (DbType = Int32), @__usuarioId_Value_2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") = @__fecha_Date_0 AND t."MaquinaId" = @__maquinaId_Value_1 AND t."UsuarioId" = @__usuarioId_Value_2
+      ORDER BY t."HoraFin" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidad" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidadTalleres" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (4ms) [Parameters=[@__fechaInicio_Date_0='?' (DbType = DateTime), @__fechaFin_Date_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") >= @__fechaInicio_Date_0 AND date_trunc('day', t."Fecha") <= @__fechaFin_Date_1
+      ORDER BY t."Fecha" DESC, t."HoraInicio" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@__fecha_Date_0='?' (DbType = DateTime), @__maquinaId_Value_1='?' (DbType = Int32), @__usuarioId_Value_2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") = @__fecha_Date_0 AND t."MaquinaId" = @__maquinaId_Value_1 AND t."UsuarioId" = @__usuarioId_Value_2
+      ORDER BY t."HoraFin" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (10ms) [Parameters=[@__fechaInicio_Date_0='?' (DbType = DateTime), @__fechaFin_Date_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") >= @__fechaInicio_Date_0 AND date_trunc('day', t."Fecha") <= @__fechaFin_Date_1
+      ORDER BY t."Fecha" DESC, t."HoraInicio" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (11ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidad" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidadTalleres" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT a."Id", a."Codigo", a."Nombre", a."EsProductiva", a."Observaciones"
+      FROM "Actividades" AS a
+      ORDER BY a."Orden"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Nombre", m."MetaRendimiento", m."ValorPorTiro", m."Importancia", m."Meta100Porciento"
+      FROM "Maquinas" AS m
+      WHERE m."Activa"
+      ORDER BY m."Nombre"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."Nombre", u."Area"
+      FROM "Usuarios" AS u
+      WHERE u."Estado"
+      ORDER BY u."Nombre"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT c."Id", c."Activo", c."Codigo", c."Descripcion", c."FechaCreacion"
+      FROM "CodigosDesperdicio" AS c
+      WHERE c."Activo"
+      ORDER BY c."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT h."Id", h."Codigo", h."Nombre"
+      FROM "Horarios" AS h
+      WHERE h."Activo"
+      ORDER BY h."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT o."Id", o."Numero", o."Descripcion", o."Estado"
+      FROM "OrdenesProduccion" AS o
+      WHERE o."Estado" <> 'Completada'
+      ORDER BY o."FechaCreacion" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@__ToLower_0='?'], CommandType='Text', CommandTimeout='30']
+      SELECT a."Id", a."Activo", a."Area", a."Email", a."NombreMostrar", a."PasswordHash", a."Permissions", a."Role", a."Username"
+      FROM "AdminUsuarios" AS a
+      WHERE lower(a."Username") = @__ToLower_0
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT o."Id", o."Numero", o."Descripcion", o."Estado"
+      FROM "OrdenesProduccion" AS o
+      WHERE o."Estado" <> 'Completada'
+      ORDER BY o."FechaCreacion" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (6ms) [Parameters=[@__endDate_0='?' (DbType = DateTime), @__startDate_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT p."Id", p."Cliente", p."Color", p."EsUrgencia", p."EstadoGeneral", p."FechaCreacion", p."FechaModificacion", p."LineaTroquel", p."MetaTiros", p."NumeroOP", p."NumeroOT", p."Observaciones", p."OrdenProduccionId", p."Precio", p."Referencia", p."TipoActividad", p."UsuarioCreador", p."UsuarioModificador", o."Id", p1."Id", p1."FechaFin", p1."FechaInicio", p1."HorasEstimadas", p1."MaquinaId", p1."Observaciones", p1."OrdenSecuencia", p1."Proceso", p1."ProgramacionOPId", p1."TiemposAuxiliaresJson", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "ProgramacionesOP" AS p
+      LEFT JOIN "OrdenesProduccion" AS o ON p."OrdenProduccionId" = o."Id"
+      LEFT JOIN "ProgramacionesOPProcesos" AS p1 ON p."Id" = p1."ProgramacionOPId"
+      WHERE EXISTS (
+          SELECT 1
+          FROM "ProgramacionesOPProcesos" AS p0
+          WHERE p."Id" = p0."ProgramacionOPId" AND p0."FechaInicio" <= @__endDate_0 AND p0."FechaFin" >= @__startDate_1)
+      ORDER BY p."NumeroOP", p."Id", o."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__anio_0='?' (DbType = Int32), @__mes_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Anio", m."FechaModificacion", m."Mes", m."Meta"
+      FROM "MetasFacturacionMes" AS m
+      WHERE m."Anio" = @__anio_0 AND m."Mes" = @__mes_1
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Nombre", m."MetaRendimiento", m."ValorPorTiro", m."Importancia", m."Meta100Porciento"
+      FROM "Maquinas" AS m
+      WHERE m."Activa"
+      ORDER BY m."Nombre"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro"
+      FROM "Maquinas" AS m
+      WHERE m."Activa"
+      ORDER BY m."Nombre"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (3ms) [Parameters=[@__Select_0='?' (DbType = Object)], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."Alcance", e."Cabida", e."CantidadAProducir", e."CantidadParaDespacho", e."CantidadRecuperada", e."Cliente", e."Fecha", e."FechaCreacion", e."Material", e."Observaciones", e."OrdenProduccion", e."Referencia", e."TipoReclamacion", e0."Id", e0."CantidadProducida", e0."EncuestaId", e0."Observaciones", e0."Proceso"
+      FROM "EncuestasCalidadProduccion" AS e
+      LEFT JOIN "EncuestaCalidadProduccionProcesos" AS e0 ON e."Id" = e0."EncuestaId"
+      WHERE e."OrdenProduccion" = ANY (@__Select_0)
+      ORDER BY e."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@__endDate_0='?' (DbType = DateTime), @__startDate_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT p."Id", p."Cliente", p."Color", p."EsUrgencia", p."EstadoGeneral", p."FechaCreacion", p."FechaModificacion", p."LineaTroquel", p."MetaTiros", p."NumeroOP", p."NumeroOT", p."Observaciones", p."OrdenProduccionId", p."Precio", p."Referencia", p."TipoActividad", p."UsuarioCreador", p."UsuarioModificador", o."Id", p1."Id", p1."FechaFin", p1."FechaInicio", p1."HorasEstimadas", p1."MaquinaId", p1."Observaciones", p1."OrdenSecuencia", p1."Proceso", p1."ProgramacionOPId", p1."TiemposAuxiliaresJson", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "ProgramacionesOP" AS p
+      LEFT JOIN "OrdenesProduccion" AS o ON p."OrdenProduccionId" = o."Id"
+      LEFT JOIN "ProgramacionesOPProcesos" AS p1 ON p."Id" = p1."ProgramacionOPId"
+      WHERE EXISTS (
+          SELECT 1
+          FROM "ProgramacionesOPProcesos" AS p0
+          WHERE p."Id" = p0."ProgramacionOPId" AND p0."FechaInicio" <= @__endDate_0 AND p0."FechaFin" >= @__startDate_1)
+      ORDER BY p."NumeroOP", p."Id", o."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro"
+      FROM "Maquinas" AS m
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT p."Id", p."Activo", p."Nombre", p."Orden"
+      FROM "ProcesosGantt" AS p
+      WHERE p."Activo"
+      ORDER BY p."Orden"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__area_0_contains='?'], CommandType='Text', CommandTimeout='30']
+      SELECT count(*)::int
+      FROM "PlanesAccion" AS p
+      WHERE p."Proceso" LIKE @__area_0_contains AND lower(p."Estado") <> 'cerrada'
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@__Select_0='?' (DbType = Object)], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."Alcance", e."Cabida", e."CantidadAProducir", e."CantidadParaDespacho", e."CantidadRecuperada", e."Cliente", e."Fecha", e."FechaCreacion", e."Material", e."Observaciones", e."OrdenProduccion", e."Referencia", e."TipoReclamacion", e0."Id", e0."CantidadProducida", e0."EncuestaId", e0."Observaciones", e0."Proceso"
+      FROM "EncuestasCalidadProduccion" AS e
+      LEFT JOIN "EncuestaCalidadProduccionProcesos" AS e0 ON e."Id" = e0."EncuestaId"
+      WHERE e."OrdenProduccion" = ANY (@__Select_0)
+      ORDER BY e."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Nombre", m."MetaRendimiento", m."ValorPorTiro", m."Importancia", m."Meta100Porciento"
+      FROM "Maquinas" AS m
+      WHERE m."Activa"
+      ORDER BY m."Nombre"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro"
+      FROM "Maquinas" AS m
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro"
+      FROM "Maquinas" AS m
+      WHERE m."Activa"
+      ORDER BY m."Nombre"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT o."Id", o."Numero", o."Descripcion", o."Estado"
+      FROM "OrdenesProduccion" AS o
+      WHERE o."Estado" <> 'Completada'
+      ORDER BY o."FechaCreacion" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__anio_0='?' (DbType = Int32), @__mes_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."Anio", m."FechaModificacion", m."Mes", m."Meta"
+      FROM "MetasFacturacionMes" AS m
+      WHERE m."Anio" = @__anio_0 AND m."Mes" = @__mes_1
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT u."Id", u."Nombre", u."Area"
+      FROM "Usuarios" AS u
+      WHERE u."Estado"
+      ORDER BY u."Nombre"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT h."Id", h."Codigo", h."Nombre", h."InicioSemana", h."FinSemana", h."InicioSabado", h."FinSabado", h."Activo"
+      FROM "Horarios" AS h
+      WHERE h."Activo"
+      ORDER BY h."Codigo", h."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (4ms) [Parameters=[@__d0_Date_0='?' (DbType = Date), @__d1_Date_1='?' (DbType = Date), @__p_2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT p0."Id", p0."UsuarioId", u."Nombre", p0."Tipo", p0."FechaInicio", p0."FechaFin", p0."Observacion"
+      FROM (
+          SELECT p."Id", p."FechaFin", p."FechaInicio", p."Observacion", p."Tipo", p."UsuarioId"
+          FROM "PersonalNovedades" AS p
+          WHERE p."FechaFin" >= @__d0_Date_0 AND p."FechaInicio" <= @__d1_Date_1
+          ORDER BY p."FechaInicio" DESC
+          LIMIT @__p_2
+      ) AS p0
+      INNER JOIN "Usuarios" AS u ON p0."UsuarioId" = u."Id"
+      ORDER BY p0."FechaInicio" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (3ms) [Parameters=[@__lunes_0='?' (DbType = Date), @__domingo_1='?' (DbType = Date)], CommandType='Text', CommandTimeout='30']
+      SELECT r."Id", r."Anio", r."SemanaIso", r."FechaDia", r."MaquinaId", m."Nombre", r."HorarioId", h."Codigo", h."Nombre", r."UsuarioId", u."Nombre", r."EsAuxiliar"
+      FROM "RosterAsignaciones" AS r
+      INNER JOIN "Maquinas" AS m ON r."MaquinaId" = m."Id"
+      INNER JOIN "Horarios" AS h ON r."HorarioId" = h."Id"
+      INNER JOIN "Usuarios" AS u ON r."UsuarioId" = u."Id"
+      WHERE r."FechaDia" >= @__lunes_0 AND r."FechaDia" <= @__domingo_1
+      ORDER BY r."FechaDia", r."MaquinaId", r."HorarioId", r."EsAuxiliar"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (6ms) [Parameters=[@__maquinaId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT m."Id", m."MaquinaId", m."HorarioId", h."Codigo" AS "horarioCodigo", h."Nombre" AS "horarioNombre", m."Activo", m."RequiereOperario", m."AuxiliaresRequeridos"
+      FROM "MaquinaTurnoConfig" AS m
+      INNER JOIN "Horarios" AS h ON m."HorarioId" = h."Id"
+      WHERE m."MaquinaId" = @__maquinaId_0
+      ORDER BY h."Codigo"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidad" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidadTalleres" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (3ms) [Parameters=[@__fecha_Date_0='?' (DbType = DateTime), @__maquinaId_Value_1='?' (DbType = Int32), @__usuarioId_Value_2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") = @__fecha_Date_0 AND t."MaquinaId" = @__maquinaId_Value_1 AND t."UsuarioId" = @__usuarioId_Value_2
+      ORDER BY t."HoraFin" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (8ms) [Parameters=[@__fechaInicio_Date_0='?' (DbType = DateTime), @__fechaFin_Date_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") >= @__fechaInicio_Date_0 AND date_trunc('day', t."Fecha") <= @__fechaFin_Date_1
+      ORDER BY t."Fecha" DESC, t."HoraInicio" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidad" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidadTalleres" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (3ms) [Parameters=[@__fecha_Date_0='?' (DbType = DateTime), @__maquinaId_Value_1='?' (DbType = Int32), @__usuarioId_Value_2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") = @__fecha_Date_0 AND t."MaquinaId" = @__maquinaId_Value_1 AND t."UsuarioId" = @__usuarioId_Value_2
+      ORDER BY t."HoraFin" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (8ms) [Parameters=[@__fechaInicio_Date_0='?' (DbType = DateTime), @__fechaFin_Date_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") >= @__fechaInicio_Date_0 AND date_trunc('day', t."Fecha") <= @__fechaFin_Date_1
+      ORDER BY t."Fecha" DESC, t."HoraInicio" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidad" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidadTalleres" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (6ms) [Parameters=[@__fechaInicio_Date_0='?' (DbType = DateTime), @__fechaFin_Date_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") >= @__fechaInicio_Date_0 AND date_trunc('day', t."Fecha") <= @__fechaFin_Date_1
+      ORDER BY t."Fecha" DESC, t."HoraInicio" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (3ms) [Parameters=[@__fecha_Date_0='?' (DbType = DateTime), @__maquinaId_Value_1='?' (DbType = Int32), @__usuarioId_Value_2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") = @__fecha_Date_0 AND t."MaquinaId" = @__maquinaId_Value_1 AND t."UsuarioId" = @__usuarioId_Value_2
+      ORDER BY t."HoraFin" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidad" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidadTalleres" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (4ms) [Parameters=[@__fechaInicio_Date_0='?' (DbType = DateTime), @__fechaFin_Date_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") >= @__fechaInicio_Date_0 AND date_trunc('day', t."Fecha") <= @__fechaFin_Date_1
+      ORDER BY t."Fecha" DESC, t."HoraInicio" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (3ms) [Parameters=[@__fecha_Date_0='?' (DbType = DateTime), @__maquinaId_Value_1='?' (DbType = Int32), @__usuarioId_Value_2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") = @__fecha_Date_0 AND t."MaquinaId" = @__maquinaId_Value_1 AND t."UsuarioId" = @__usuarioId_Value_2
+      ORDER BY t."HoraFin" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidad" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidadTalleres" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (6ms) [Parameters=[@__fechaInicio_Date_0='?' (DbType = DateTime), @__fechaFin_Date_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") >= @__fechaInicio_Date_0 AND date_trunc('day', t."Fecha") <= @__fechaFin_Date_1
+      ORDER BY t."Fecha" DESC, t."HoraInicio" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__fecha_Date_0='?' (DbType = DateTime), @__maquinaId_Value_1='?' (DbType = Int32), @__usuarioId_Value_2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") = @__fecha_Date_0 AND t."MaquinaId" = @__maquinaId_Value_1 AND t."UsuarioId" = @__usuarioId_Value_2
+      ORDER BY t."HoraFin" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (7ms) [Parameters=[@__fecha_Date_0='?' (DbType = DateTime), @__maquinaId_Value_1='?' (DbType = Int32), @__usuarioId_Value_2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") = @__fecha_Date_0 AND t."MaquinaId" = @__maquinaId_Value_1 AND t."UsuarioId" = @__usuarioId_Value_2
+      ORDER BY t."HoraFin" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidad" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidadTalleres" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (8ms) [Parameters=[@__fechaInicio_Date_0='?' (DbType = DateTime), @__fechaFin_Date_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") >= @__fechaInicio_Date_0 AND date_trunc('day', t."Fecha") <= @__fechaFin_Date_1
+      ORDER BY t."Fecha" DESC, t."HoraInicio" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (150ms) [Parameters=[@__fechaInicio_Date_0='?' (DbType = DateTime), @__fechaFin_Date_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") >= @__fechaInicio_Date_0 AND date_trunc('day', t."Fecha") <= @__fechaFin_Date_1
+      ORDER BY t."Fecha" DESC, t."HoraInicio" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (151ms) [Parameters=[@__fecha_Date_0='?' (DbType = DateTime), @__maquinaId_Value_1='?' (DbType = Int32), @__usuarioId_Value_2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") = @__fecha_Date_0 AND t."MaquinaId" = @__maquinaId_Value_1 AND t."UsuarioId" = @__usuarioId_Value_2
+      ORDER BY t."HoraFin" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (150ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidad" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (29ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidadTalleres" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidad" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidadTalleres" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@__fecha_Date_0='?' (DbType = DateTime), @__maquinaId_Value_1='?' (DbType = Int32), @__usuarioId_Value_2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") = @__fecha_Date_0 AND t."MaquinaId" = @__maquinaId_Value_1 AND t."UsuarioId" = @__usuarioId_Value_2
+      ORDER BY t."HoraFin" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (5ms) [Parameters=[@__fechaInicio_Date_0='?' (DbType = DateTime), @__fechaFin_Date_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") >= @__fechaInicio_Date_0 AND date_trunc('day', t."Fecha") <= @__fechaFin_Date_1
+      ORDER BY t."Fecha" DESC, t."HoraInicio" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidad" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (4ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidadTalleres" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (6ms) [Parameters=[@__fechaInicio_Date_0='?' (DbType = DateTime), @__fechaFin_Date_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") >= @__fechaInicio_Date_0 AND date_trunc('day', t."Fecha") <= @__fechaFin_Date_1
+      ORDER BY t."Fecha" DESC, t."HoraInicio" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@__fecha_Date_0='?' (DbType = DateTime), @__maquinaId_Value_1='?' (DbType = Int32), @__usuarioId_Value_2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") = @__fecha_Date_0 AND t."MaquinaId" = @__maquinaId_Value_1 AND t."UsuarioId" = @__usuarioId_Value_2
+      ORDER BY t."HoraFin" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (5ms) [Parameters=[@__fechaInicio_Date_0='?' (DbType = DateTime), @__fechaFin_Date_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") >= @__fechaInicio_Date_0 AND date_trunc('day', t."Fecha") <= @__fechaFin_Date_1
+      ORDER BY t."Fecha" DESC, t."HoraInicio" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (66ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidad" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT e."Id", e."OrdenProduccion"
+      FROM "EncuestasCalidadTalleres" AS e
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (69ms) [Parameters=[@__fechaInicio_Date_0='?' (DbType = DateTime), @__fechaFin_Date_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") >= @__fechaInicio_Date_0 AND date_trunc('day', t."Fecha") <= @__fechaFin_Date_1
+      ORDER BY t."Fecha" DESC, t."HoraInicio" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (54ms) [Parameters=[@__fechaInicio_Date_0='?' (DbType = DateTime), @__fechaFin_Date_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") >= @__fechaInicio_Date_0 AND date_trunc('day', t."Fecha") <= @__fechaFin_Date_1
+      ORDER BY t."Fecha" DESC, t."HoraInicio" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (5ms) [Parameters=[@__fechaInicio_Date_0='?' (DbType = DateTime), @__fechaFin_Date_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") >= @__fechaInicio_Date_0 AND date_trunc('day', t."Fecha") <= @__fechaFin_Date_1
+      ORDER BY t."Fecha" DESC, t."HoraInicio" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (5ms) [Parameters=[@__fechaInicio_Date_0='?' (DbType = DateTime), @__fechaFin_Date_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") >= @__fechaInicio_Date_0 AND date_trunc('day', t."Fecha") <= @__fechaFin_Date_1
+      ORDER BY t."Fecha" DESC, t."HoraInicio" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (4ms) [Parameters=[@__fechaInicio_Date_0='?' (DbType = DateTime), @__fechaFin_Date_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") >= @__fechaInicio_Date_0 AND date_trunc('day', t."Fecha") <= @__fechaFin_Date_1
+      ORDER BY t."Fecha" DESC, t."HoraInicio" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (4ms) [Parameters=[@__fechaInicio_Date_0='?' (DbType = DateTime), @__fechaFin_Date_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") >= @__fechaInicio_Date_0 AND date_trunc('day', t."Fecha") <= @__fechaFin_Date_1
+      ORDER BY t."Fecha" DESC, t."HoraInicio" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (4ms) [Parameters=[@__fechaInicio_Date_0='?' (DbType = DateTime), @__fechaFin_Date_1='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      SELECT t."Id", t."ActividadId", t."Desperdicio", t."Duracion", t."Estado", t."Fecha", t."HoraFin", t."HoraInicio", t."HorarioId", t."MaquinaId", t."Observaciones", t."OrdenProduccionId", t."PausadoEn", t."SubCodigoActividad", t."SubCodigoDetalle", t."TiempoPausadoSegundos", t."Tiros", t."UsuarioId", a."Id", a."Codigo", a."EsProductiva", a."Nombre", a."Observaciones", a."Orden", u."Id", u."Estado", u."Area", u."Documento", u."Email", u."EsPorHoras", u."FechaCreacion", u."Nombre", u."Salario", m."Id", m."Activa", m."EstadoOperativo", m."HorasAlistamiento", m."HorasLavada", m."Importancia", m."Meta100Porciento", m."MetaDesperdicio", m."MetaRendimiento", m."Nombre", m."SemaforoMax", m."SemaforoMin", m."SemaforoNormal", m."Tarifa", m."TirosReferencia", m."ValorPorTiro", o."Id", o."Descripcion", o."Estado", o."FechaCreacion", o."Numero"
+      FROM "TiempoProcesos" AS t
+      INNER JOIN "Actividades" AS a ON t."ActividadId" = a."Id"
+      INNER JOIN "Usuarios" AS u ON t."UsuarioId" = u."Id"
+      INNER JOIN "Maquinas" AS m ON t."MaquinaId" = m."Id"
+      LEFT JOIN "OrdenesProduccion" AS o ON t."OrdenProduccionId" = o."Id"
+      WHERE date_trunc('day', t."Fecha") >= @__fechaInicio_Date_0 AND date_trunc('day', t."Fecha") <= @__fechaFin_Date_1
+      ORDER BY t."Fecha" DESC, t."HoraInicio" DESC

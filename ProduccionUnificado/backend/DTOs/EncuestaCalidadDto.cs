@@ -73,3 +73,17 @@ public class NovedadDetalleDto
     public string? Descripcion { get; set; }
     public int CantidadDefectuosa { get; set; }
 }
+
+public class InformeSemanalLineaDto
+{
+    public int NovedadId { get; set; }
+    public int Numero { get; set; }
+    public string? FotoUrl { get; set; }
+    public string Referencia { get; set; } = string.Empty;
+    public string DefectoEncontrado { get; set; } = string.Empty;
+    public string? Observaciones { get; set; }
+    public string? Cantidad { get; set; }
+    public string? Estado { get; set; }
+    public DateTime FechaEncuesta { get; set; }
+    public string OrdenProduccion { get; set; } = string.Empty;
+}

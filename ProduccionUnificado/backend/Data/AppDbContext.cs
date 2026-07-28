@@ -64,6 +64,7 @@ public class AppDbContext : DbContext
     public DbSet<Produccion_PresupuestoMensual> Produccion_PresupuestosMensuales { get; set; }
     public DbSet<Produccion_TipoRecargo> Produccion_TiposRecargo { get; set; }
     public DbSet<Produccion_Producto> Produccion_Productos { get; set; }
+    public DbSet<ParametrosJornadaOt> ParametrosJornadaOt { get; set; }
 
     // Talleres y Despachos
     public DbSet<Talleres_Rubro> Talleres_Rubros { get; set; }
@@ -115,6 +116,14 @@ public class AppDbContext : DbContext
     public DbSet<PlaneacionMaquina> PlaneacionesMaquinas { get; set; }
     public DbSet<ProgramacionOP> ProgramacionesOP { get; set; }
     public DbSet<ProgramacionOPProceso> ProgramacionesOPProcesos { get; set; }
+    public DbSet<ProcesoGantt> ProcesosGantt { get; set; }
+    public DbSet<MetaFacturacionMes> MetasFacturacionMes { get; set; }
+    // Roster / disponibilidad planta
+    public DbSet<MaquinaTurnoConfig> MaquinaTurnoConfigs { get; set; }
+    public DbSet<RosterAsignacion> RosterAsignaciones { get; set; }
+    public DbSet<PersonalNovedad> PersonalNovedades { get; set; }
+    public DbSet<RosterTurnoDia> RosterTurnoDias { get; set; }
+    public DbSet<RosterDiaFestivo> RosterDiasFestivos { get; set; }
 
     // Calidad Talleres Externos
     public DbSet<TallerExterno> TalleresExternos { get; set; }
@@ -167,6 +176,9 @@ public class AppDbContext : DbContext
     public DbSet<AlmacenRecepcionLinea> AlmacenRecepcionLineas { get; set; }
     public DbSet<AlmacenOrdenCompra> AlmacenOrdenesCompra { get; set; }
     public DbSet<AlmacenOrdenCompraLinea> AlmacenOrdenCompraLineas { get; set; }
+    public DbSet<AlmacenRequisicionComentario> AlmacenRequisicionComentarios { get; set; }
+    public DbSet<GastoAutorizacionSolicitud> GastoAutorizacionSolicitudes { get; set; }
+    public DbSet<GastoAutorizacionComentario> GastoAutorizacionComentarios { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -383,6 +395,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Produccion_Gasto>().ToTable("Produccion_Gastos");
         modelBuilder.Entity<Produccion_PresupuestoMensual>().ToTable("Produccion_PresupuestosMensuales");
         modelBuilder.Entity<Produccion_Producto>().ToTable("Produccion_Productos");
+        modelBuilder.Entity<ParametrosJornadaOt>().ToTable("ParametrosJornadaOt");
         
         modelBuilder.Entity<Produccion_Cotizacion>()
             .HasOne(c => c.Producto)
@@ -642,6 +655,43 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<ProgramacionOP>().ToTable("ProgramacionesOP");
         modelBuilder.Entity<ProgramacionOPProceso>().ToTable("ProgramacionesOPProcesos");
+        modelBuilder.Entity<ProcesoGantt>().ToTable("ProcesosGantt");
+        modelBuilder.Entity<MetaFacturacionMes>().ToTable("MetasFacturacionMes");
+        modelBuilder.Entity<MaquinaTurnoConfig>(e =>
+        {
+            e.ToTable("MaquinaTurnoConfig");
+            e.HasIndex(x => new { x.MaquinaId, x.HorarioId }).IsUnique();
+            e.HasOne(x => x.Maquina).WithMany().HasForeignKey(x => x.MaquinaId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Horario).WithMany().HasForeignKey(x => x.HorarioId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<RosterAsignacion>(e =>
+        {
+            e.ToTable("RosterAsignaciones");
+            e.HasIndex(x => new { x.FechaDia, x.MaquinaId, x.HorarioId, x.UsuarioId }).IsUnique();
+            e.HasIndex(x => new { x.Anio, x.SemanaIso });
+            e.HasOne(x => x.Maquina).WithMany().HasForeignKey(x => x.MaquinaId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Horario).WithMany().HasForeignKey(x => x.HorarioId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Usuario).WithMany().HasForeignKey(x => x.UsuarioId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<PersonalNovedad>(e =>
+        {
+            e.ToTable("PersonalNovedades");
+            e.HasIndex(x => new { x.UsuarioId, x.FechaInicio, x.FechaFin });
+            e.HasOne(x => x.Usuario).WithMany().HasForeignKey(x => x.UsuarioId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<RosterTurnoDia>(e =>
+        {
+            e.ToTable("RosterTurnoDias");
+            e.HasIndex(x => new { x.FechaDia, x.MaquinaId, x.HorarioId }).IsUnique();
+            e.HasOne(x => x.Maquina).WithMany().HasForeignKey(x => x.MaquinaId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Horario).WithMany().HasForeignKey(x => x.HorarioId).OnDelete(DeleteBehavior.Restrict);
+        });
+                modelBuilder.Entity<RosterDiaFestivo>(e =>
+        {
+            e.ToTable("RosterDiasFestivos");
+            e.HasIndex(x => x.FechaDia).IsUnique();
+        });
+        modelBuilder.Entity<MetaFacturacionMes>().HasIndex(m => new { m.Anio, m.Mes }).IsUnique();
 
         modelBuilder.Entity<ProgramacionOP>()
             .HasOne(p => p.OrdenProduccion)
@@ -877,5 +927,29 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<AlmacenRequisicion>()
             .HasIndex(r => r.Codigo)
             .IsUnique();
+
+        modelBuilder.Entity<AlmacenRequisicionComentario>()
+            .HasOne(c => c.Requisicion)
+            .WithMany(r => r.Comentarios)
+            .HasForeignKey(c => c.RequisicionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<AlmacenRequisicionComentario>()
+            .HasOne(c => c.Parent)
+            .WithMany(c => c.Respuestas)
+            .HasForeignKey(c => c.ParentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<GastoAutorizacionComentario>()
+            .HasOne(c => c.Solicitud)
+            .WithMany(s => s.Comentarios)
+            .HasForeignKey(c => c.SolicitudId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<GastoAutorizacionComentario>()
+            .HasOne(c => c.Parent)
+            .WithMany(c => c.Respuestas)
+            .HasForeignKey(c => c.ParentId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

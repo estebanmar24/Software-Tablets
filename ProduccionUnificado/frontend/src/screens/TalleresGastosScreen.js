@@ -35,13 +35,17 @@ import * as Sharing from 'expo-sharing';
 import { Asset } from 'expo-asset';
 import { parseMontoInput, GastoListaPrecios } from '../utils/gastoPrecioForm';
 import { gastoPermiteEdicionTrasContabilidad } from '../utils/gastoEditPermission';
-import { resolveOvertimeShiftContext, applyLegacyLunchDiscount } from '../utils/overtimeLunch';
+import { resolveOvertimeShiftContext, pickDaySchedulesFromVersion, addDayScheduleCutPoints, isWithinOrdinaryShift, resolveLunchDiscountHours, appendLunchInfoLine } from '../utils/overtimeLunch';
+import { produccionApi } from '../services/produccionApi';
 import {
     MSG_GASTO_HORAS_DUPLICADO,
     findDuplicateOvertimeAmongCandidates,
     buildOvertimeCandidatesFromForm,
 } from '../utils/duplicateOvertimeGasto';
 import { extractApiErrorMessage, isOvertimeDuplicateMessage } from '../utils/appAlert';
+import GastoAutorizacionBloque from '../components/GastoAutorizacionBloque';
+import GastosCapturaBodyScroll from '../components/GastosCapturaBodyScroll';
+import { MODULOS_GASTO } from '../services/gastosAutorizacionApi';
 import { calcValorAPagarLabor, calcValorHoraLabor, parseNumeroLabor } from '../utils/laborHorasExtras';
 
 // TABS - Same structure as Produccion (sin Presupuesto)
@@ -107,11 +111,11 @@ const COLOMBIAN_HOLIDAYS = [
     '2025-10-13', '2025-11-03', '2025-11-17', '2025-12-08', '2025-12-25',
     // 2026
     '2026-01-01', '2026-01-12', '2026-03-23', '2026-04-02', '2026-04-03', '2026-05-01',
-    '2026-05-18', '2026-06-08', '2026-06-15', '2026-06-29', '2026-07-20', '2026-08-07',
+    '2026-05-18', '2026-06-08', '2026-06-15', '2026-06-29', '2026-07-13', '2026-07-20', '2026-08-07',
     '2026-08-17', '2026-10-12', '2026-11-02', '2026-11-16', '2026-12-08', '2026-12-25'
 ];
 
-export default function TalleresGastosScreen({ navigation }) {
+export default function TalleresGastosScreen({ navigation, displayName }) {
     const { colors } = useTheme();
     const [activeTab, setActiveTab] = useState('gastos');
 
@@ -134,7 +138,7 @@ export default function TalleresGastosScreen({ navigation }) {
             </View>
 
             {/* Content based on active tab */}
-            {activeTab === 'gastos' && <GastosTab />}
+            {activeTab === 'gastos' && <GastosTab displayName={displayName} />}
             {activeTab === 'graficas' && <GraficasTab />}
             {activeTab === 'rubros' && <RubrosTab />}
             {activeTab === 'cotizaciones' && <CotizacionesTab />}
@@ -145,7 +149,7 @@ export default function TalleresGastosScreen({ navigation }) {
 }
 
 // ===================== GASTOS TAB =====================
-function GastosTab() {
+function GastosTab({ displayName }) {
     const { colors: themeColors } = useTheme();
     const [loading, setLoading] = useState(true);
     const [serverUrl, setServerUrl] = useState('');
@@ -168,6 +172,7 @@ function GastosTab() {
     const [tiposRecargo, setTiposRecargo] = useState([]);
     const [breakdown, setBreakdown] = useState([]); // Smart OT breakdown
     const [formOvertimeError, setFormOvertimeError] = useState('');
+    const [jornadaOt, setJornadaOt] = useState(null);
     const [gastos, setGastos] = useState([]);
     const [resumen, setResumen] = useState(null);
     const [resumenAnual, setResumenAnual] = useState(null);
@@ -284,6 +289,8 @@ function GastosTab() {
     const [editItem, setEditItem] = useState(null);
     const [isLegalizing, setIsLegalizing] = useState(false); // State for UI
     const isLegalizingRef = useRef(false); // Ref for logic
+    const autorizacionActivaRef = useRef(null);
+    const [authRefreshKey, setAuthRefreshKey] = useState(0);
     // Quote Selector State
     const [showQuoteSelector, setShowQuoteSelector] = useState(false);
 
@@ -291,12 +298,26 @@ function GastosTab() {
         rubroId: '', proveedorId: '', numeroFactura: '', precio: '', precioBase: '', precioIva: '',
         fecha: new Date().toISOString().split('T')[0], observaciones: '', facturaPdfUrl: '',
         personalId: '', tipoHoraId: '', tipoRecargoId: '', cantidadHoras: '', numeroOP: '', esPendiente: false, esSolicitudCredito: false,
-        horaInicio: '', horaFin: ''
+        horaInicio: '', horaFin: '', desdeAutorizacion: false
     });
     const [medioPago, setMedioPago] = useState(null);
     const [saving, setSaving] = useState(false);
     // Auto-fill price logic
     const [cotizaciones, setCotizaciones] = useState([]);
+
+    useEffect(() => {
+        let cancelled = false;
+        const load = async () => {
+            try {
+                const data = await produccionApi.getParametrosJornadaOt(formData.fecha);
+                if (!cancelled) setJornadaOt(data);
+            } catch (e) {
+                if (!cancelled) setJornadaOt(null);
+            }
+        };
+        if (formData.fecha) load();
+        return () => { cancelled = true; };
+    }, [formData.fecha]);
 
     const anios = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
 
@@ -370,7 +391,7 @@ function GastosTab() {
             let sRaw = worker.salario || worker.Salario || 0;
             if (typeof sRaw === 'string') sRaw = sRaw.replace(/\./g, '').replace(/,/g, '.');
             const salario = parseFloat(sRaw) || 0;
-            const valorHoraBase = salario / 220;
+            const valorHoraBase = calcValorHoraLabor(salario, formData.fecha);
             const horas = parseFloat(formData.cantidadHoras) || 0;
             let factor = 0;
 
@@ -445,10 +466,12 @@ function GastosTab() {
         const isSpecialDayStart = isSunday || isHoliday;
         const isSaturday = date.getDay() === 6;
 
-        const { shiftEndMin, lunchWindow: lunchWindowCtx, usesScheduledShift } = resolveOvertimeShiftContext(startFull, endFull, {
+        const otCtx = resolveOvertimeShiftContext(startFull, endFull, {
             isSpecialDay: isSpecialDayStart,
             isSaturday,
+            daySchedules: pickDaySchedulesFromVersion(jornadaOt, date),
         });
+        const { lunchWindow: lunchWindowCtx, usesScheduledShift, usesDaySchedule, lunchDiscountHours } = otCtx;
 
         const breakdownItems = [];
 
@@ -494,9 +517,7 @@ function GastosTab() {
 
         // Generar todos los puntos de corte relevantes en el rango [startFull, endFull]
         const cutPoints = new Set([startFull, endFull]);
-
-        // Añadir límite de turno base
-        if (shiftEndMin > startFull && shiftEndMin < endFull) cutPoints.add(shiftEndMin);
+        addDayScheduleCutPoints(cutPoints, otCtx, startFull, endFull);
 
         // Añadir límites nocturnos (19:00 y 06:00) y medianoche, en escala extendida
         [NIGHT_END, NIGHT_START, 1440, NIGHT_END + 1440, NIGHT_START + 1440].forEach(boundary => {
@@ -524,8 +545,8 @@ function GastosTab() {
             // Para turnos que cruzan medianoche, se respeta la regla del día de inicio del turno.
             const isSpecialDay = isSpecialDayStart;
 
-            // ¿Está dentro del turno base?
-            const isWithinShift = s < shiftEndMin;
+            // ¿Está dentro del turno base? (soporta varios bloques por día)
+            const isWithinShift = isWithinOrdinaryShift(mid, otCtx, s);
 
             // ¿Es horario nocturno? (19:00-06:00)
             const timeInDay = mid % 1440;
@@ -547,23 +568,13 @@ function GastosTab() {
             }
         }
 
-        // --- LÓGICA DE DESCUENTO DE COMIDA (-1 HORA) ---
+        // --- COMIDA (solo informativa, no resta de HE) ---
         const totalDurationMin = endFull - startFull;
-        const lunchDiscountApplied = lunchWindowCtx || usesScheduledShift
-            ? 0
-            : (totalDurationMin >= 6 * 60 && !isSaturday
-                ? applyLegacyLunchDiscount(breakdownItems, 1.0)
-                : 0);
-        if (lunchDiscountApplied > 0 && breakdownItems.some(item => item.hours > 0)) {
-                // Agregar línea informativa de COMIDA (solo visual)
-                breakdownItems.push({ 
-                    type: '- COMIDA (Descuento)', 
-                    typeId: 0, 
-                    hours: -lunchDiscountApplied, 
-                    isHe: false,
-                    isLunch: true 
-                });
-        }
+        const lunchHoursToApply = resolveLunchDiscountHours(
+            { lunchWindow: lunchWindowCtx, lunchDiscountHours, usesScheduledShift, usesDaySchedule },
+            { totalDurationMin, isSaturday }
+        );
+        appendLunchInfoLine(breakdownItems, lunchHoursToApply);
 
         const cleanedBreakdownItems = breakdownItems.filter(item => item.isLunch || item.hours > 0);
         setBreakdown(cleanedBreakdownItems.map(item => ({ ...item, formattedHours: formatHours(item.hours) })));
@@ -573,7 +584,7 @@ function GastosTab() {
         let sRaw = worker.salario || worker.Salario || 0;
         if (typeof sRaw === 'string') sRaw = sRaw.replace(/\./g, '').replace(/,/g, '.');
         const salario = parseFloat(sRaw) || 0;
-        const valorHoraBase = salario / 220;
+        const valorHoraBase = calcValorHoraLabor(salario, formData.fecha);
 
         cleanedBreakdownItems.filter(item => !item.isLunch).forEach(item => {
             const list = item.isHe ? tiposHora : tiposRecargo;
@@ -592,7 +603,7 @@ function GastosTab() {
             const safeTotal = Math.max(0, Math.round(totalCost));
             setFormData(prev => ({ ...prev, precio: safeTotal.toString() }));
         }
-    }, [formData.personalId, formData.horaInicio, formData.horaFin, formData.fecha, formData.rubroId, personal, tiposHora, tiposRecargo, rubros]);
+    }, [formData.personalId, formData.horaInicio, formData.horaFin, formData.fecha, formData.rubroId, personal, tiposHora, tiposRecargo, rubros, jornadaOt]);
 
     useEffect(() => {
         calculateSmartBreakdown();
@@ -656,7 +667,7 @@ function GastosTab() {
             fecha: new Date().toISOString().split('T')[0], observaciones: '', facturaPdfUrl: '',
             personalId: '', tipoHoraId: '', tipoRecargoId: '', cantidadHoras: '', numeroOP: '', esPendiente: false,
             esSolicitudCredito: false,
-            horaInicio: '', horaFin: ''
+            horaInicio: '', horaFin: '', desdeAutorizacion: false
         });
         setMedioPago(null);
         setFormOvertimeError('');
@@ -733,6 +744,40 @@ function GastosTab() {
         setShowModal(true);
     };
 
+    const handleRegistrarDirecto = (rubroId) => {
+        autorizacionActivaRef.current = null;
+        resetForm();
+        setFormData((prev) => ({ ...prev, rubroId: String(rubroId) }));
+        setShowModal(true);
+    };
+
+    const handleRegistrarDesdeAutorizacion = (sol) => {
+        autorizacionActivaRef.current = sol;
+        setEditItem(null);
+        setIsLegalizing(false);
+        isLegalizingRef.current = false;
+        resetForm();
+        const fecha = sol.fechaAproximada?.split('T')[0] || new Date().toISOString().split('T')[0];
+        setFormData({
+            rubroId: sol.rubroId ? String(sol.rubroId) : '',
+            proveedorId: sol.proveedorId ? String(sol.proveedorId) : '',
+            numeroFactura: '',
+            precio: String(sol.cantidad ?? ''),
+            precioBase: String(sol.cantidad ?? ''),
+            precioIva: '0',
+            fecha,
+            observaciones: sol.razon || '',
+            facturaPdfUrl: '',
+            personalId: '', tipoHoraId: '', tipoRecargoId: '', cantidadHoras: '', numeroOP: '',
+            esPendiente: false,
+            esSolicitudCredito: sol.esSolicitudCredito || false,
+            horaInicio: '', horaFin: '',
+            desdeAutorizacion: true,
+        });
+        setMedioPago(flagsToMedioPago(!!sol.esSolicitudCredito, !!sol.esEfectivo));
+        setShowModal(true);
+    };
+
     const handleSubmit = async () => {
         if (!formData.rubroId) { showAlert('Error', 'Seleccione un Rubro'); return; }
 
@@ -795,7 +840,7 @@ function GastosTab() {
                 let sRaw = worker?.salario || worker?.Salario || 0;
                 if (typeof sRaw === 'string') sRaw = sRaw.replace(/\./g, '').replace(/,/g, '.');
                 const salario = parseFloat(sRaw) || 0;
-                const valorHoraBase = salario / 220;
+                const valorHoraBase = calcValorHoraLabor(salario, formData.fecha);
 
                 const promises = breakdown.filter(item => !item.isLunch).map(item => {
                     const list = item.isHe ? tiposHora : tiposRecargo;
@@ -878,7 +923,10 @@ function GastosTab() {
                 if (editItem) {
                     await talleresApi.updateGasto(editItem.id, { ...gastoData, id: editItem.id });
                 } else {
-                    await talleresApi.createGasto(gastoData);
+                    const authId = autorizacionActivaRef.current?.id;
+                    await talleresApi.createGasto(gastoData, authId);
+                    autorizacionActivaRef.current = null;
+                    setAuthRefreshKey((k) => k + 1);
                 }
             }
 
@@ -965,7 +1013,7 @@ function GastosTab() {
             salarioRaw = salarioRaw.replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(/,/g, '.');
         }
         const salario = parseFloat(salarioRaw) || 0;
-        const valorHoraBase = salario > 0 ? salario / 220 : 0;
+        const valorHoraBase = calcValorHoraLabor(salario, gasto?.fecha ?? gasto?.Fecha);
 
         // Regla fija: para gastos de nomina con datos completos, el reloj se basa en precio/factor/salario.
         if (precio > 0 && factor > 0 && valorHoraBase > 0 && personalId) {
@@ -1163,12 +1211,23 @@ function GastosTab() {
                     </View>
                 </View>
 
-                <TouchableOpacity style={styles.addButton} onPress={() => setShowModal(true)}>
-                    <Text style={styles.addButtonText}>+ Agregar Gasto</Text>
-                </TouchableOpacity>
+                <GastosCapturaBodyScroll>
+                <GastoAutorizacionBloque
+                    modulo={MODULOS_GASTO.talleres}
+                    anio={anio}
+                    mes={mes}
+                    displayName={displayName}
+                    proveedores={proveedores}
+                    rubros={rubros}
+                    formatCurrency={formatCurrency}
+                    formatDate={formatDate}
+                    onRegistrarGasto={handleRegistrarDesdeAutorizacion}
+                    onRegistrarDirecto={handleRegistrarDirecto}
+                    refreshKey={authRefreshKey}
+                />
 
                 {loading ? <ActivityIndicator size="large" color="#2563EB" style={styles.loading} /> : (
-                    <ScrollView style={styles.listContainer}>
+                    <View style={styles.listContainer}>
                         {filteredGastos.length === 0 ? (
                             <View style={styles.emptyState}><Text style={styles.emptyText}>No hay gastos registrados (con estos filtros)</Text></View>
                         ) : (
@@ -1303,8 +1362,9 @@ function GastosTab() {
                                 );
                             })
                         )}
-                    </ScrollView>
+                    </View>
                 )}
+                </GastosCapturaBodyScroll>
 
                 {/* History Modal */}
                 <ExpenseHistoryModal
@@ -2791,7 +2851,7 @@ const styles = StyleSheet.create({
     loading: { marginTop: 40 },
 
     // LIST
-    listContainer: { flex: 1, paddingHorizontal: 16 },
+    listContainer: { paddingHorizontal: 16 },
     emptyState: { padding: 40, alignItems: 'center' },
     emptyText: { color: '#9CA3AF', fontSize: 16 },
 
@@ -3083,7 +3143,7 @@ function PersonalTab() {
             const excelData = combinedData.map(item => {
                 const horasNum = getHorasParaCalculo(item);
                 const salario = parseNumeroLabor(item.salario);
-                const valorHora = calcValorHoraLabor(salario);
+                const valorHora = calcValorHoraLabor(salario, item.fecha);
                 const factorNum = parseNumeroLabor(item.factor ?? item.Factor ?? 0);
                 return {
                 'Fecha': new Date(item.fecha).toLocaleDateString('es-CO'),

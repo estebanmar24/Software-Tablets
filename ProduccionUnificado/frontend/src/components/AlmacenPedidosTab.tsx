@@ -9,6 +9,7 @@ import {
     Modal,
     Platform,
     useWindowDimensions,
+    ActivityIndicator,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { almacenAlert } from '../utils/almacenAlert';
@@ -51,7 +52,11 @@ import {
     getLineasFiscalesProveedor,
     resolverCostoEstandarProducto,
     resolverPrecioInicialProveedor,
+    getSubtotalLineaOc,
     formatearMonedaCop,
+    formatearCantidad,
+    sanitizarCantidadInput,
+    parseCantidadInput,
     formatearPrecioCopMientrasEscribe,
     formatPrecioCopInput,
     getPrecioUnitarioDisplay,
@@ -63,8 +68,10 @@ import {
     labelFormaPagoAlmacen,
     textoIngresadoPorPedido,
 } from '../data/almacenMockData';
-import { extraerMensajeErrorApi, importarProveedoresExcel, getOrdenCompra, listarOrdenesCompraPorProveedor } from '../services/almacenApi';
+import { extraerMensajeErrorApi, importarProveedoresExcel, getOrdenCompra, listarOrdenesCompraPorProveedor, uploadProformaAlmacen } from '../services/almacenApi';
+import { getFileServerUrl } from '../services/apiConfig';
 import AlmacenEstadoBadge from './AlmacenEstadoBadge';
+import AlmacenComentariosCelda from './AlmacenComentariosCelda';
 import AlmacenContadorBadge from './AlmacenContadorBadge';
 import AlmacenFiltroEstado, { type FiltroEstadoValor } from './AlmacenFiltroEstado';
 import AlmacenCampoFecha from './AlmacenCampoFecha';
@@ -376,7 +383,7 @@ interface AlmacenPedidosTabProps {
         requisicionId: string,
         proveedorId: string,
         pagado: boolean,
-        formaPago?: 'credito' | 'efectivo'
+        formaPago?: 'credito' | 'efectivo' | 'contado'
     ) => Promise<void>;
     onGuardarProveedorCatalogo: (payload: {
         id?: string;
@@ -390,7 +397,7 @@ interface AlmacenPedidosTabProps {
         responsableIva?: boolean;
     }) => Promise<ProveedorCatalogo>;
     onRecargarCatalogoProveedores: () => Promise<void>;
-    onRecargarCatalogoProductos: () => Promise<void>;
+    onRecargarCatalogoProductos: () => Promise<ProductoInsumo[]>;
     onGuardarProductoCatalogo: (payload: {
         id?: string;
         nombre: string;
@@ -407,17 +414,30 @@ interface AlmacenPedidosTabProps {
     isDarkMode: boolean;
     cardBg: string;
     isWide: boolean;
+    onAbrirComentarios: (req: Requisicion) => void;
 }
 
 const emptyProveedor = (fechaReferencia = '', precioUnitario?: number): ProveedorAsignado => ({
     id: String(Date.now() + Math.random()),
     nombre: '',
     cantidad: 0,
+    cantidadTexto: '',
     fechaEntregaEstimada: fechaReferencia,
     precioUnitario,
     precioUnitarioTexto: formatPrecioCopInput(precioUnitario),
     responsableIva: false,
 });
+
+function resolveProformaUrl(fileServerUrl: string, url?: string): string {
+    if (!url?.trim()) return '';
+    const path = url.startsWith('/') ? url : `/${url}`;
+    const base = fileServerUrl.endsWith('/') ? fileServerUrl.slice(0, -1) : fileServerUrl;
+    return `${base}${path}`;
+}
+
+function esProformaImagen(url: string): boolean {
+    return /\.(jpe?g|png|webp)(\?|$)/i.test(url);
+}
 
 type ParcialPendienteEdit = {
     id: string;
@@ -432,10 +452,14 @@ type LineaConsolidarEdit = {
     requisicionId: string;
     codigo: string;
     producto: string;
+    cantidadRequerida: number;
     cantidad: number;
+    cantidadTexto: string;
     unidad: string;
     precioUnitario?: number;
     precioUnitarioTexto: string;
+    precioEspecial?: boolean;
+    comentarioPrecioEspecial?: string;
     fechaEntregaEstimada: string;
 };
 
@@ -457,6 +481,7 @@ export default function AlmacenPedidosTab({
     isDarkMode,
     cardBg,
     isWide,
+    onAbrirComentarios,
 }: AlmacenPedidosTabProps) {
     const { height: windowHeight, width: windowWidth } = useWindowDimensions();
     const catalogoScrollMax = Math.max(320, Math.min(windowHeight * 0.68, 680));
@@ -490,6 +515,7 @@ export default function AlmacenPedidosTab({
     const [prodUnidad, setProdUnidad] = useState('');
     const [errorProductoForm, setErrorProductoForm] = useState<string | null>(null);
     const [guardandoProducto, setGuardandoProducto] = useState(false);
+    const [actualizandoPrecioCatalogoId, setActualizandoPrecioCatalogoId] = useState<string | null>(null);
     const [confirmEliminarProducto, setConfirmEliminarProducto] = useState<ProductoInsumo | null>(null);
     const [confirmEliminarProveedor, setConfirmEliminarProveedor] = useState<ProveedorCatalogo | null>(null);
     const [eliminandoProveedor, setEliminandoProveedor] = useState(false);
@@ -529,6 +555,13 @@ export default function AlmacenPedidosTab({
     const [busquedaConsolidarProv, setBusquedaConsolidarProv] = useState('');
     const [paginaConsolidarProv, setPaginaConsolidarProv] = useState(1);
     const [pickerConsolidarProvAbierto, setPickerConsolidarProvAbierto] = useState(false);
+    const [fileServerUrl, setFileServerUrl] = useState('');
+    const [uploadingProformaId, setUploadingProformaId] = useState<string | null>(null);
+    const [proformaPreviewAbierta, setProformaPreviewAbierta] = useState<Record<string, boolean>>({});
+
+    useEffect(() => {
+        void getFileServerUrl().then((url) => setFileServerUrl(url || ''));
+    }, []);
 
     const pedidosElegibles = useMemo(
         () => requisiciones.filter((r) => esRequisicionEnPedidos(r.estado)),
@@ -652,6 +685,7 @@ export default function AlmacenPedidosTab({
             ...p,
             precioUnitario: precio,
             precioUnitarioTexto: formatPrecioCopInput(precio),
+            cantidadTexto: p.cantidad > 0 ? formatearCantidad(p.cantidad) : (p.cantidadTexto ?? ''),
         };
     };
 
@@ -679,9 +713,10 @@ export default function AlmacenPedidosTab({
 
     const abrirModalPedido = async (req: Requisicion, editar: boolean) => {
         await onRecargarCatalogoProveedores();
+        const productosFresh = await onRecargarCatalogoProductos();
         setModalPedidoId(req.id);
         setErrorValidacion(null);
-        const costoCatalogo = resolverCostoEstandarProducto(req.producto, productos);
+        const costoCatalogo = resolverCostoEstandarProducto(req.producto, productosFresh);
         if (editar && req.pedido) {
             const pedidoNorm = normalizarPedido(req.pedido);
             setFechaPedido(pedidoNorm.fechaPedido);
@@ -733,6 +768,8 @@ export default function AlmacenPedidosTab({
         setBusquedaPickerPorProveedor({});
         setPaginaPickerPorProveedor({});
         setErrorValidacion(null);
+        setUploadingProformaId(null);
+        setProformaPreviewAbierta({});
     };
 
     const getBusquedaPicker = (provId: string) => busquedaPickerPorProveedor[provId] ?? '';
@@ -853,8 +890,16 @@ export default function AlmacenPedidosTab({
                     const { display, numero } = formatearPrecioCopMientrasEscribe(valor);
                     return { ...p, precioUnitarioTexto: display, precioUnitario: numero };
                 }
-                const n = parseFloat(valor.replace(',', '.'));
-                return { ...p, cantidad: isNaN(n) ? 0 : n };
+                if (campo === 'cantidad') {
+                    const limpio = sanitizarCantidadInput(valor);
+                    const n = parseCantidadInput(limpio);
+                    return {
+                        ...p,
+                        cantidadTexto: limpio,
+                        cantidad: Number.isFinite(n) && n > 0 ? n : 0,
+                    };
+                }
+                return p;
             })
         );
     };
@@ -875,6 +920,133 @@ export default function AlmacenPedidosTab({
             })
         );
     };
+
+    const aplicarPrecioCatalogoProveedor = (prov: ProveedorAsignado): ProveedorAsignado => {
+        const costo = reqModal
+            ? resolverCostoEstandarProducto(reqModal.producto, productos)
+            : undefined;
+        return {
+            ...prov,
+            precioEspecial: false,
+            precioUnitario: costo,
+            precioUnitarioTexto: formatPrecioCopInput(costo),
+        };
+    };
+
+    const togglePrecioEspecialProveedor = (id: string) => {
+        setProveedores((prev) =>
+            prev.map((p) => {
+                if (p.id !== id) return p;
+                return { ...p, precioEspecial: !p.precioEspecial };
+            })
+        );
+        setErrorValidacion(null);
+    };
+
+    const actualizarComentarioPrecioEspecial = (id: string, valor: string) => {
+        setProveedores((prev) =>
+            prev.map((p) => (p.id === id ? { ...p, comentarioPrecioEspecial: valor } : p))
+        );
+        setErrorValidacion(null);
+    };
+
+    const quitarProformaProveedor = (id: string) => {
+        setProveedores((prev) =>
+            prev.map((p) =>
+                p.id === id ? { ...p, proformaUrl: undefined, proformaNombre: undefined } : p
+            )
+        );
+        setProformaPreviewAbierta((prev) => {
+            const next = { ...prev };
+            delete next[id];
+            return next;
+        });
+        setErrorValidacion(null);
+    };
+
+    const togglePreviewProforma = (id: string) => {
+        setProformaPreviewAbierta((prev) => ({ ...prev, [id]: !prev[id] }));
+    };
+
+    const subirProformaProveedor = async (id: string, file: File) => {
+        setUploadingProformaId(id);
+        try {
+            const result = await uploadProformaAlmacen(file);
+            if (!result.url?.trim()) {
+                throw new Error('El servidor no devolvió la URL del archivo.');
+            }
+            setProveedores((prev) =>
+                prev.map((p) =>
+                    p.id === id
+                        ? {
+                              ...p,
+                              proformaUrl: result.url,
+                              proformaNombre: result.nombre || file.name || 'proforma',
+                          }
+                        : p
+                )
+            );
+            setProformaPreviewAbierta((prev) => ({ ...prev, [id]: true }));
+            setErrorValidacion(null);
+        } catch (error) {
+            almacenAlert(
+                'Error al subir proforma',
+                extraerMensajeErrorApi(error, 'No se pudo subir el documento.')
+            );
+        } finally {
+            setUploadingProformaId(null);
+        }
+    };
+
+    const getPrecioNumericoProveedor = (prov: ProveedorAsignado): number | undefined => {
+        const fromText = parsePrecioCopInput(getPrecioUnitarioDisplay(prov));
+        if (fromText != null && fromText > 0) return fromText;
+        return prov.precioUnitario != null && prov.precioUnitario > 0 ? prov.precioUnitario : undefined;
+    };
+
+    const precioProveedorDifiereCatalogo = (prov: ProveedorAsignado): boolean => {
+        const precio = getPrecioNumericoProveedor(prov);
+        if (!precio) return false;
+        if (costoCatalogoModal == null || costoCatalogoModal <= 0) return true;
+        return Math.abs(precio - costoCatalogoModal) > 0.009;
+    };
+
+    const aplicarPrecioCatalogoAProveedor = async (prov: ProveedorAsignado) => {
+        if (!reqModal) return;
+        setActualizandoPrecioCatalogoId(prov.id);
+        try {
+            const productosFresh = await onRecargarCatalogoProductos();
+            const costo = resolverCostoEstandarProducto(reqModal.producto, productosFresh);
+            if (!costo || costo <= 0) {
+                almacenAlert('Catálogo', 'No hay costo estándar definido en el catálogo para este producto.');
+                return;
+            }
+            setProveedores((prev) =>
+                prev.map((p) =>
+                    p.id === prov.id
+                        ? {
+                              ...p,
+                              precioUnitario: costo,
+                              precioUnitarioTexto: formatPrecioCopInput(costo),
+                              precioEspecial: false,
+                          }
+                        : p
+                )
+            );
+            setErrorValidacion(null);
+            almacenAlert('Precio aplicado', `Precio del catálogo aplicado: ${formatearMonedaCop(costo)}.`);
+        } catch (error) {
+            almacenAlert('Error', extraerMensajeErrorApi(error, 'No se pudo obtener el precio del catálogo.'));
+        } finally {
+            setActualizandoPrecioCatalogoId(null);
+        }
+    };
+
+    const prepararProveedoresParaGuardar = (provs: ProveedorAsignado[]): ProveedorAsignado[] =>
+        provs.map((p) => ({
+            ...p,
+            comentarioPrecioEspecial: p.comentarioPrecioEspecial?.trim() || undefined,
+        }));
 
     const actualizarClasificacionProveedor = (
         id: string,
@@ -1003,7 +1175,7 @@ export default function AlmacenPedidosTab({
         setProductoEditandoId(p.id);
         setProdNombre(p.nombre);
         setProdDescripcion(descripcionProductoVisible(p));
-        setProdCosto(p.costoEstandar != null && p.costoEstandar > 0 ? String(p.costoEstandar) : '');
+        setProdCosto(p.costoEstandar != null && p.costoEstandar > 0 ? formatPrecioCopInput(p.costoEstandar) : '');
         setProdTipo(p.tipoRequisicion);
         setProdUnidad(p.unidadSugerida?.trim() ?? '');
         setErrorProductoForm(null);
@@ -1022,9 +1194,8 @@ export default function AlmacenPedidosTab({
             setErrorProductoForm('El nombre del producto es obligatorio.');
             return;
         }
-        const costoRaw = prodCosto.trim().replace(/\./g, '').replace(',', '.');
-        const costoNum = costoRaw ? Number(costoRaw) : undefined;
-        if (costoRaw && (Number.isNaN(costoNum) || (costoNum ?? 0) < 0)) {
+        const costoNum = parsePrecioCopInput(prodCosto);
+        if (prodCosto.trim() && (costoNum == null || costoNum < 0)) {
             setErrorProductoForm('El costo estimado no es válido.');
             return;
         }
@@ -1372,7 +1543,24 @@ export default function AlmacenPedidosTab({
             return;
         }
 
-        const proveedoresNorm = normalizarProveedoresPedido(provValidos);
+        for (const p of provValidos) {
+            if (!p.precioUnitario || p.precioUnitario <= 0) {
+                mostrarError(
+                    `Indique el precio unitario para ${p.nombre.trim() || 'el proveedor'}.`
+                );
+                setProveedorExpandidoId(p.id);
+                return;
+            }
+            if (p.precioEspecial && !p.comentarioPrecioEspecial?.trim()) {
+                mostrarError(
+                    `Indique el motivo del precio especial para ${p.nombre.trim() || 'el proveedor'}.`
+                );
+                setProveedorExpandidoId(p.id);
+                return;
+            }
+        }
+
+        const proveedoresNorm = normalizarProveedoresPedido(prepararProveedoresParaGuardar(provValidos));
         const fechasOrdenadas = proveedoresNorm
             .map((p) => p.fechaEntregaEstimada!)
             .filter(Boolean)
@@ -1452,10 +1640,14 @@ export default function AlmacenPedidosTab({
                     requisicionId: r.id,
                     codigo: r.codigo,
                     producto: r.producto,
+                    cantidadRequerida: r.cantidad,
                     cantidad: r.cantidad,
+                    cantidadTexto: formatearCantidad(r.cantidad),
                     unidad: r.unidad,
                     precioUnitario: costo,
                     precioUnitarioTexto: formatPrecioCopInput(costo),
+                    precioEspecial: false,
+                    comentarioPrecioEspecial: undefined,
                     fechaEntregaEstimada: hoy,
                 };
             })
@@ -1488,8 +1680,17 @@ export default function AlmacenPedidosTab({
             return;
         }
         for (const l of lineasConsolidar) {
+            const cantidad = l.cantidad > 0 ? l.cantidad : parseCantidadInput(l.cantidadTexto);
+            if (!cantidad || cantidad <= 0) {
+                setErrorConsolidar(`Indique la cantidad para ${l.codigo}.`);
+                return;
+            }
             if (!l.precioUnitario || l.precioUnitario <= 0) {
                 setErrorConsolidar(`Indique el precio unitario para ${l.codigo}.`);
+                return;
+            }
+            if (l.precioEspecial && !l.comentarioPrecioEspecial?.trim()) {
+                setErrorConsolidar(`Indique el motivo del precio especial para ${l.codigo}.`);
                 return;
             }
         }
@@ -1507,8 +1708,10 @@ export default function AlmacenPedidosTab({
             },
             lineas: lineasConsolidar.map((l) => ({
                 requisicionId: l.requisicionId,
-                cantidad: l.cantidad,
+                cantidad: l.cantidad > 0 ? l.cantidad : parseCantidadInput(l.cantidadTexto),
                 precioUnitario: l.precioUnitario,
+                precioEspecial: l.precioEspecial === true,
+                comentarioPrecioEspecial: l.comentarioPrecioEspecial?.trim() || undefined,
                 fechaEntregaEstimada: l.fechaEntregaEstimada || fechaEntregaConsolidar,
             })),
         };
@@ -1536,7 +1739,7 @@ export default function AlmacenPedidosTab({
     const handleMarcarPagado = async (
         reqId: string,
         prov: ProveedorAsignado,
-        formaPago?: 'credito' | 'efectivo'
+        formaPago?: 'credito' | 'efectivo' | 'contado'
     ) => {
         const key = `${reqId}-${prov.id}`;
         const nuevoPagado = formaPago != null ? true : !prov.pagado;
@@ -1565,7 +1768,7 @@ export default function AlmacenPedidosTab({
         setModalFormaPago({ reqId, prov });
     };
 
-    const confirmarFormaPago = (formaPago: 'credito' | 'efectivo') => {
+    const confirmarFormaPago = (formaPago: 'credito' | 'efectivo' | 'contado') => {
         if (!modalFormaPago) return;
         void handleMarcarPagado(modalFormaPago.reqId, modalFormaPago.prov, formaPago);
     };
@@ -1627,6 +1830,7 @@ export default function AlmacenPedidosTab({
                     'LLEGADA ESTIMADA',
                     'PROVEEDORES',
                     'PRECIO / TOTAL',
+                    'COMENTARIOS',
                     'INGRESADO POR',
                     'ESTADO',
                     'ACCIONES',
@@ -1645,6 +1849,7 @@ export default function AlmacenPedidosTab({
                                 col === 'LLEGADA ESTIMADA' && { width: 130 },
                                 col === 'PROVEEDORES' && { flex: 1.4, minWidth: 200 },
                                 col === 'PRECIO / TOTAL' && { width: 160 },
+                                col === 'COMENTARIOS' && { flex: 1.1, minWidth: 140 },
                                 col === 'INGRESADO POR' && { width: 120 },
                                 col === 'ESTADO' && { width: 150 },
                                 col === 'ACCIONES' && { width: 130 },
@@ -1690,7 +1895,7 @@ export default function AlmacenPedidosTab({
                                 <Text style={{ color: colors.subText, fontSize: 13 }}>
                                     (
                                     <Text style={{ fontWeight: '700', color: colors.text }}>
-                                        {req.cantidad} {req.unidad}
+                                        {formatearCantidad(req.cantidad)} {req.unidad}
                                     </Text>
                                     )
                                 </Text>
@@ -1763,6 +1968,18 @@ export default function AlmacenPedidosTab({
                                                     >
                                                         {subtotal > 0 ? formatearMonedaCop(subtotal) : '—'}
                                                     </Text>
+                                                    {p.precioEspecial ? (
+                                                        <Text
+                                                            style={{
+                                                                color: '#F59E0B',
+                                                                fontSize: 10,
+                                                                fontWeight: '700',
+                                                                marginTop: 2,
+                                                            }}
+                                                        >
+                                                            Precio esp.
+                                                        </Text>
+                                                    ) : null}
                                                 </View>
                                             );
                                         })}
@@ -1791,6 +2008,13 @@ export default function AlmacenPedidosTab({
                                 ) : (
                                     <Text style={{ color: colors.subText }}>—</Text>
                                 )}
+                            </View>
+                            <View style={{ flex: 1.1, minWidth: 140, paddingRight: 8 }}>
+                                <AlmacenComentariosCelda
+                                    requisicion={req}
+                                    onPress={() => onAbrirComentarios(req)}
+                                    colors={colors}
+                                />
                             </View>
                             <Text
                                 style={[pedidoStyles.td, { width: 120, color: colors.text, paddingRight: 8 }]}
@@ -1850,7 +2074,7 @@ export default function AlmacenPedidosTab({
                                         ['Referencia', req.referencia],
                                         ['Fecha solicitud', req.fechaSolicitud],
                                         ['Fecha requerida', req.fechaRequerida],
-                                        ['Cantidad solicitada', `${req.cantidad} ${req.unidad}`],
+                                        ['Cantidad solicitada', `${formatearCantidad(req.cantidad)} ${req.unidad}`],
                                         [
                                             'Cantidad pedida',
                                             req.pedido
@@ -1944,14 +2168,23 @@ export default function AlmacenPedidosTab({
                                                               ],
                                                           ] as const)
                                                         : []),
-                                                    ['Cantidad', `${p.cantidad} ${req.unidad}`, colors.text],
+                                                    ['Cantidad', `${formatearCantidad(p.cantidad)} ${req.unidad}`, colors.text],
                                                     [
                                                         'Precio unit.',
                                                         p.precioUnitario != null && p.precioUnitario > 0
-                                                            ? `${formatearMonedaCop(p.precioUnitario)} / ${req.unidad}`
+                                                            ? `${formatearMonedaCop(p.precioUnitario)} / ${req.unidad}${p.precioEspecial ? ' · Precio esp.' : ''}`
                                                             : '—',
-                                                        colors.text,
+                                                        p.precioEspecial ? '#F59E0B' : colors.text,
                                                     ],
+                                                    ...(p.comentarioPrecioEspecial?.trim()
+                                                        ? ([
+                                                              [
+                                                                  p.precioEspecial ? 'Motivo precio esp.' : 'Comentario',
+                                                                  p.comentarioPrecioEspecial.trim(),
+                                                                  p.precioEspecial ? '#F59E0B' : colors.text,
+                                                              ],
+                                                          ] as const)
+                                                        : []),
                                                     [
                                                         'Subtotal',
                                                         subtotal > 0 ? formatearMonedaCop(subtotal) : '—',
@@ -2509,15 +2742,16 @@ export default function AlmacenPedidosTab({
                                                         placeholderTextColor={colors.subText}
                                                         value={p.cantidadPendienteTexto}
                                                         onChangeText={(t) => {
-                                                            const limpio = t.replace(/[^0-9.,]/g, '');
-                                                            const n = parseFloat(limpio.replace(',', '.'));
+                                                            const limpio = sanitizarCantidadInput(t);
+                                                            const n = parseCantidadInput(limpio);
                                                             setParcialPendientes((prev) =>
                                                                 prev.map((x) =>
                                                                     x.id === p.id
                                                                         ? {
                                                                               ...x,
                                                                               cantidadPendienteTexto: limpio,
-                                                                              cantidadPendiente: isNaN(n) ? 0 : n,
+                                                                              cantidadPendiente:
+                                                                                  Number.isFinite(n) && n > 0 ? n : 0,
                                                                           }
                                                                         : x
                                                                 )
@@ -2643,7 +2877,7 @@ export default function AlmacenPedidosTab({
                                                         {prov.cantidad > 0 ? (
                                                             <>
                                                                 <Text style={{ fontWeight: '700', color: colors.text }}>
-                                                                    {prov.cantidad} {reqModal?.unidad ?? ''}
+                                                                    {formatearCantidad(prov.cantidad)} {reqModal?.unidad ?? ''}
                                                                 </Text>
                                                                 {prov.precioUnitario != null && prov.precioUnitario > 0 ? (
                                                                     <>
@@ -2825,6 +3059,21 @@ export default function AlmacenPedidosTab({
                                                             />
                                                             <View style={pedidoStyles.provDetalleFila}>
                                                                 <View style={{ flex: 1 }}>
+                                                                    {reqModal?.estado !== 'Parcial' ? (
+                                                                        <Text
+                                                                            style={{
+                                                                                color: colors.subText,
+                                                                                fontSize: 12,
+                                                                                marginBottom: 6,
+                                                                            }}
+                                                                        >
+                                                                            Cantidad requerida (requisición):{' '}
+                                                                            <Text style={{ fontWeight: '700', color: colors.text }}>
+                                                                                {formatearCantidad(reqModal?.cantidad ?? 0)}{' '}
+                                                                                {reqModal?.unidad}
+                                                                            </Text>
+                                                                        </Text>
+                                                                    ) : null}
                                                                     <Text
                                                                         style={[
                                                                             pedidoStyles.labelMini,
@@ -2834,7 +3083,7 @@ export default function AlmacenPedidosTab({
                                                                         {reqModal?.estado === 'Parcial' &&
                                                                         getSaldoPendienteProveedor(reqModal.recepcion, prov) > 0
                                                                             ? 'Cantidad pendiente *'
-                                                                            : 'Cantidad *'}
+                                                                            : 'Cantidad a pedir *'}
                                                                     </Text>
                                                                     <View
                                                                         style={[
@@ -2853,9 +3102,11 @@ export default function AlmacenPedidosTab({
                                                                             placeholder="0"
                                                                             placeholderTextColor={colors.subText}
                                                                             value={
-                                                                                prov.cantidad > 0
-                                                                                    ? String(prov.cantidad)
-                                                                                    : ''
+                                                                                prov.cantidadTexto != null
+                                                                                    ? prov.cantidadTexto
+                                                                                    : prov.cantidad > 0
+                                                                                      ? formatearCantidad(prov.cantidad)
+                                                                                      : ''
                                                                             }
                                                                             editable={!pedidoSoloLectura}
                                                                             onChangeText={(t) => {
@@ -2885,6 +3136,18 @@ export default function AlmacenPedidosTab({
                                                                     >
                                                                         Precio unitario
                                                                     </Text>
+                                                                    <TouchableOpacity
+                                                                        style={pedidoStyles.checkboxRow}
+                                                                        onPress={() => togglePrecioEspecialProveedor(prov.id)}
+                                                                        disabled={pedidoSoloLectura}
+                                                                    >
+                                                                        <Text style={pedidoStyles.checkboxIcon}>
+                                                                            {prov.precioEspecial ? '☑' : '☐'}
+                                                                        </Text>
+                                                                        <Text style={{ color: colors.text, fontSize: 13 }}>
+                                                                            Precio especial
+                                                                        </Text>
+                                                                    </TouchableOpacity>
                                                                     <TextInput
                                                                         style={[
                                                                             pedidoStyles.inputCompact,
@@ -2906,9 +3169,58 @@ export default function AlmacenPedidosTab({
                                                                             );
                                                                             setErrorValidacion(null);
                                                                         }}
-                                                                        onBlur={() => finalizarPrecioProveedor(prov.id)}
+                                                                        onBlur={() => {
+                                                                            if (getPrecioUnitarioDisplay(prov).trim()) {
+                                                                                finalizarPrecioProveedor(prov.id);
+                                                                            }
+                                                                        }}
                                                                         keyboardType="decimal-pad"
                                                                     />
+                                                                    {!prov.precioEspecial && costoCatalogoModal != null ? (
+                                                                        <Text
+                                                                            style={{
+                                                                                color: colors.subText,
+                                                                                fontSize: 11,
+                                                                                marginTop: 4,
+                                                                            }}
+                                                                        >
+                                                                            Costo estándar del catálogo
+                                                                        </Text>
+                                                                    ) : null}
+                                                                    {precioProveedorDifiereCatalogo(prov) ? (
+                                                                        <TouchableOpacity
+                                                                            style={[
+                                                                                pedidoStyles.btnCatalogoSecundario,
+                                                                                {
+                                                                                    borderColor: colors.primary,
+                                                                                    marginTop: 6,
+                                                                                    alignSelf: 'flex-start',
+                                                                                    paddingVertical: 6,
+                                                                                    paddingHorizontal: 10,
+                                                                                    opacity:
+                                                                                        actualizandoPrecioCatalogoId === prov.id
+                                                                                            ? 0.6
+                                                                                            : 1,
+                                                                                },
+                                                                            ]}
+                                                                            onPress={() => aplicarPrecioCatalogoAProveedor(prov)}
+                                                                            disabled={
+                                                                                pedidoSoloLectura
+                                                                                || actualizandoPrecioCatalogoId === prov.id
+                                                                            }
+                                                                        >
+                                                                            <Text
+                                                                                style={[
+                                                                                    pedidoStyles.btnCatalogoSecundarioText,
+                                                                                    { color: colors.primary, fontSize: 12 },
+                                                                                ]}
+                                                                            >
+                                                                                {actualizandoPrecioCatalogoId === prov.id
+                                                                                    ? 'Aplicando…'
+                                                                                    : '↻ Aplicar precio del catálogo'}
+                                                                            </Text>
+                                                                        </TouchableOpacity>
+                                                                    ) : null}
                                                                     {subtotalProv > 0 ? (
                                                                         <Text
                                                                             style={{
@@ -2922,6 +3234,205 @@ export default function AlmacenPedidosTab({
                                                                                 {formatearMonedaCop(subtotalProv)}
                                                                             </Text>
                                                                         </Text>
+                                                                    ) : null}
+                                                                </View>
+                                                            </View>
+                                                            <View style={pedidoStyles.provDetalleFila}>
+                                                                <View style={{ flex: 1 }}>
+                                                                    <Text
+                                                                        style={[
+                                                                            pedidoStyles.labelMini,
+                                                                            { color: colors.subText },
+                                                                        ]}
+                                                                    >
+                                                                        {prov.precioEspecial
+                                                                            ? 'Motivo del precio especial *'
+                                                                            : 'Comentario (opcional)'}
+                                                                    </Text>
+                                                                    <TextInput
+                                                                        style={[
+                                                                            pedidoStyles.inputCompact,
+                                                                            {
+                                                                                backgroundColor: cardBg,
+                                                                                borderColor: colors.border,
+                                                                                color: colors.text,
+                                                                                minHeight: 56,
+                                                                                textAlignVertical: 'top',
+                                                                            },
+                                                                        ]}
+                                                                        placeholder={
+                                                                            prov.precioEspecial
+                                                                                ? 'Explique por qué el precio difiere del estándar'
+                                                                                : 'Notas sobre el pedido, entrega, negociación…'
+                                                                        }
+                                                                        placeholderTextColor={colors.subText}
+                                                                        value={prov.comentarioPrecioEspecial ?? ''}
+                                                                        editable={!pedidoSoloLectura}
+                                                                        multiline
+                                                                        onChangeText={(t) =>
+                                                                            actualizarComentarioPrecioEspecial(
+                                                                                prov.id,
+                                                                                t
+                                                                            )
+                                                                        }
+                                                                    />
+                                                                </View>
+                                                            </View>
+                                                            <View style={pedidoStyles.provDetalleFila}>
+                                                                <View style={{ flex: 1 }}>
+                                                                    <Text
+                                                                        style={[
+                                                                            pedidoStyles.labelMini,
+                                                                            { color: colors.subText },
+                                                                        ]}
+                                                                    >
+                                                                        Proforma (opcional)
+                                                                    </Text>
+                                                                    {Platform.OS === 'web' ? (
+                                                                        <View style={pedidoStyles.proformaUploadRow}>
+                                                                            {!pedidoSoloLectura ? (
+                                                                                <>
+                                                                                    {/* @ts-expect-error input nativo web */}
+                                                                                    <input
+                                                                                        type="file"
+                                                                                        accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*"
+                                                                                        disabled={uploadingProformaId === prov.id}
+                                                                                        onChange={(e) => {
+                                                                                            const file = e.target.files?.[0];
+                                                                                            if (!file) return;
+                                                                                            void subirProformaProveedor(prov.id, file);
+                                                                                            e.target.value = '';
+                                                                                        }}
+                                                                                        style={{
+                                                                                            padding: 8,
+                                                                                            maxWidth: '100%',
+                                                                                        }}
+                                                                                    />
+                                                                                    {uploadingProformaId === prov.id ? (
+                                                                                        <ActivityIndicator
+                                                                                            size="small"
+                                                                                            color={colors.primary}
+                                                                                        />
+                                                                                    ) : null}
+                                                                                </>
+                                                                            ) : null}
+                                                                            {prov.proformaUrl ? (
+                                                                                <View style={pedidoStyles.proformaArchivoRow}>
+                                                                                    <Text
+                                                                                        style={{
+                                                                                            flex: 1,
+                                                                                            color: colors.text,
+                                                                                            fontSize: 13,
+                                                                                        }}
+                                                                                        numberOfLines={1}
+                                                                                    >
+                                                                                        📄 {prov.proformaNombre || 'Proforma'}
+                                                                                    </Text>
+                                                                                    <TouchableOpacity
+                                                                                        style={[
+                                                                                            pedidoStyles.btnProformaVer,
+                                                                                            { borderColor: colors.primary },
+                                                                                        ]}
+                                                                                        onPress={() => togglePreviewProforma(prov.id)}
+                                                                                    >
+                                                                                        <Text
+                                                                                            style={{
+                                                                                                color: colors.primary,
+                                                                                                fontWeight: '600',
+                                                                                                fontSize: 12,
+                                                                                            }}
+                                                                                        >
+                                                                                            {proformaPreviewAbierta[prov.id]
+                                                                                                ? 'Ocultar'
+                                                                                                : 'Ver'}
+                                                                                        </Text>
+                                                                                    </TouchableOpacity>
+                                                                                    {!pedidoSoloLectura ? (
+                                                                                        <TouchableOpacity
+                                                                                            onPress={() => quitarProformaProveedor(prov.id)}
+                                                                                        >
+                                                                                            <Text
+                                                                                                style={{
+                                                                                                    color: '#DC2626',
+                                                                                                    fontSize: 12,
+                                                                                                    fontWeight: '600',
+                                                                                                }}
+                                                                                            >
+                                                                                                Quitar
+                                                                                            </Text>
+                                                                                        </TouchableOpacity>
+                                                                                    ) : null}
+                                                                                </View>
+                                                                            ) : (
+                                                                                <Text
+                                                                                    style={{
+                                                                                        color: colors.subText,
+                                                                                        fontSize: 12,
+                                                                                        marginTop: 4,
+                                                                                    }}
+                                                                                >
+                                                                                    {pedidoSoloLectura
+                                                                                        ? 'Sin proforma adjunta.'
+                                                                                        : 'PDF o imagen de la cotización del proveedor.'}
+                                                                                </Text>
+                                                                            )}
+                                                                        </View>
+                                                                    ) : (
+                                                                        <Text
+                                                                            style={{
+                                                                                color: colors.subText,
+                                                                                fontSize: 12,
+                                                                                marginTop: 4,
+                                                                            }}
+                                                                        >
+                                                                            {prov.proformaUrl
+                                                                                ? prov.proformaNombre || 'Proforma adjunta'
+                                                                                : 'Suba la proforma desde la versión web.'}
+                                                                        </Text>
+                                                                    )}
+                                                                    {Platform.OS === 'web' &&
+                                                                    prov.proformaUrl &&
+                                                                    (proformaPreviewAbierta[prov.id] ?? pedidoSoloLectura) ? (
+                                                                        <View
+                                                                            style={[
+                                                                                pedidoStyles.proformaPreviewBox,
+                                                                                { borderColor: colors.border },
+                                                                            ]}
+                                                                        >
+                                                                            {esProformaImagen(prov.proformaUrl) ? (
+                                                                                // @ts-expect-error img nativo web
+                                                                                <img
+                                                                                    src={resolveProformaUrl(
+                                                                                        fileServerUrl,
+                                                                                        prov.proformaUrl
+                                                                                    )}
+                                                                                    alt={prov.proformaNombre || 'Proforma'}
+                                                                                    style={{
+                                                                                        width: '100%',
+                                                                                        maxHeight: 420,
+                                                                                        objectFit: 'contain',
+                                                                                        borderRadius: 8,
+                                                                                    }}
+                                                                                />
+                                                                            ) : (
+                                                                                <>
+                                                                                    {/* @ts-expect-error iframe solo en web */}
+                                                                                    <iframe
+                                                                                        src={resolveProformaUrl(
+                                                                                            fileServerUrl,
+                                                                                            prov.proformaUrl
+                                                                                        )}
+                                                                                        title={prov.proformaNombre || 'Proforma'}
+                                                                                        style={{
+                                                                                            width: '100%',
+                                                                                            height: 420,
+                                                                                            border: 'none',
+                                                                                            borderRadius: 8,
+                                                                                        }}
+                                                                                    />
+                                                                                </>
+                                                                            )}
+                                                                        </View>
                                                                     ) : null}
                                                                 </View>
                                                             </View>
@@ -3854,14 +4365,15 @@ export default function AlmacenPedidosTab({
                                     pedidoStyles.catalogoInput,
                                     { backgroundColor: inputBg, borderColor: colors.border, color: colors.text },
                                 ]}
-                                placeholder="Ej. 15000"
+                                placeholder="Ej. 15.000 o 15.000,50"
                                 placeholderTextColor={colors.subText}
                                 value={prodCosto}
                                 onChangeText={(t) => {
-                                    setProdCosto(t);
+                                    const { display } = formatearPrecioCopMientrasEscribe(t);
+                                    setProdCosto(display);
                                     setErrorProductoForm(null);
                                 }}
-                                keyboardType="numeric"
+                                keyboardType="decimal-pad"
                             />
 
                             {errorProductoForm ? (
@@ -4093,6 +4605,24 @@ export default function AlmacenPedidosTab({
                                     {marcandoPagadoKey ? '…' : 'Efectivo'}
                                 </Text>
                             </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[
+                                    pedidoStyles.formaPagoBtn,
+                                    {
+                                        borderColor: '#D97706',
+                                        backgroundColor: isDarkMode
+                                            ? 'rgba(217, 119, 6, 0.15)'
+                                            : 'rgba(217, 119, 6, 0.08)',
+                                    },
+                                    marcandoPagadoKey && { opacity: 0.6 },
+                                ]}
+                                onPress={() => confirmarFormaPago('contado')}
+                                disabled={!!marcandoPagadoKey}
+                            >
+                                <Text style={[pedidoStyles.formaPagoBtnText, { color: '#D97706' }]}>
+                                    {marcandoPagadoKey ? '…' : 'Contado'}
+                                </Text>
+                            </TouchableOpacity>
                         </View>
                         <TouchableOpacity
                             style={[
@@ -4259,10 +4789,88 @@ export default function AlmacenPedidosTab({
                                     <Text style={{ color: colors.text, fontWeight: '700' }}>
                                         {l.codigo} · {l.producto}
                                     </Text>
-                                    <Text style={{ color: colors.subText, fontSize: 12, marginBottom: 8 }}>
-                                        Cantidad: {l.cantidad} {l.unidad}
+                                    <Text style={{ color: colors.subText, fontSize: 13, marginTop: 6, marginBottom: 4 }}>
+                                        Cantidad requerida (requisición):{' '}
+                                        <Text style={{ fontWeight: '700', color: colors.text }}>
+                                            {formatearCantidad(l.cantidadRequerida)} {l.unidad}
+                                        </Text>
                                     </Text>
-                                    <Text style={[pedidoStyles.label, { color: colors.subText }]}>Precio unitario *</Text>
+                                    <Text style={[pedidoStyles.label, { color: colors.subText, marginTop: 4 }]}>
+                                        Cantidad a pedir *
+                                    </Text>
+                                    <View
+                                        style={[
+                                            pedidoStyles.cantidadConUnidad,
+                                            {
+                                                backgroundColor: cardBg,
+                                                borderColor: colors.border,
+                                                maxWidth: 220,
+                                            },
+                                        ]}
+                                    >
+                                        <TextInput
+                                            style={[pedidoStyles.cantidadInput, { color: colors.text }]}
+                                            placeholder="0"
+                                            placeholderTextColor={colors.subText}
+                                            value={l.cantidadTexto}
+                                            onChangeText={(t) => {
+                                                const texto = sanitizarCantidadInput(t);
+                                                const n = parseCantidadInput(texto);
+                                                setLineasConsolidar((prev) =>
+                                                    prev.map((x) =>
+                                                        x.requisicionId === l.requisicionId
+                                                            ? {
+                                                                  ...x,
+                                                                  cantidadTexto: texto,
+                                                                  cantidad: n > 0 ? n : 0,
+                                                              }
+                                                            : x
+                                                    )
+                                                );
+                                            }}
+                                            keyboardType="decimal-pad"
+                                        />
+                                        <Text style={[pedidoStyles.unidadProveedor, { color: colors.subText }]}>
+                                            {l.unidad}
+                                        </Text>
+                                    </View>
+                                    {(() => {
+                                        const cantidadPedir =
+                                            l.cantidad > 0 ? l.cantidad : parseCantidadInput(l.cantidadTexto);
+                                        const pu = l.precioUnitario ?? 0;
+                                        const subtotalLinea =
+                                            cantidadPedir > 0 && pu > 0
+                                                ? getSubtotalLineaOc(pu, cantidadPedir)
+                                                : 0;
+                                        return subtotalLinea > 0 ? (
+                                            <Text style={{ color: colors.subText, fontSize: 12, marginTop: 6 }}>
+                                                Subtotal línea:{' '}
+                                                <Text style={{ fontWeight: '700', color: colors.text }}>
+                                                    {formatearMonedaCop(subtotalLinea)}
+                                                </Text>
+                                            </Text>
+                                        ) : null;
+                                    })()}
+                                    <Text style={[pedidoStyles.label, { color: colors.subText, marginTop: 10 }]}>
+                                        Precio unitario *
+                                    </Text>
+                                    <TouchableOpacity
+                                        style={pedidoStyles.checkboxRow}
+                                        onPress={() =>
+                                            setLineasConsolidar((prev) =>
+                                                prev.map((x) =>
+                                                    x.requisicionId === l.requisicionId
+                                                        ? { ...x, precioEspecial: !x.precioEspecial }
+                                                        : x
+                                                )
+                                            )
+                                        }
+                                    >
+                                        <Text style={pedidoStyles.checkboxIcon}>
+                                            {l.precioEspecial ? '☑' : '☐'}
+                                        </Text>
+                                        <Text style={{ color: colors.text, fontSize: 13 }}>Precio especial</Text>
+                                    </TouchableOpacity>
                                     <TextInput
                                         style={[
                                             pedidoStyles.input,
@@ -4273,25 +4881,62 @@ export default function AlmacenPedidosTab({
                                                 maxWidth: 200,
                                             },
                                         ]}
-                                        placeholder="0"
+                                        placeholder="Ej. 64033,61"
                                         placeholderTextColor={colors.subText}
                                         value={l.precioUnitarioTexto}
+                                        editable
                                         onChangeText={(t) => {
-                                            const fmt = formatearPrecioCopMientrasEscribe(t);
-                                            const n = parsePrecioCopInput(fmt);
+                                            const { display, numero } = formatearPrecioCopMientrasEscribe(t);
                                             setLineasConsolidar((prev) =>
                                                 prev.map((x) =>
                                                     x.requisicionId === l.requisicionId
                                                         ? {
                                                               ...x,
-                                                              precioUnitarioTexto: fmt,
-                                                              precioUnitario: n > 0 ? n : undefined,
+                                                              precioUnitarioTexto: display,
+                                                              precioUnitario: numero,
                                                           }
                                                         : x
                                                 )
                                             );
                                         }}
                                         keyboardType="decimal-pad"
+                                    />
+                                    <Text
+                                        style={[
+                                            pedidoStyles.label,
+                                            { color: colors.subText, marginTop: 8 },
+                                        ]}
+                                    >
+                                        {l.precioEspecial ? 'Motivo del precio especial *' : 'Comentario (opcional)'}
+                                    </Text>
+                                    <TextInput
+                                        style={[
+                                            pedidoStyles.input,
+                                            {
+                                                backgroundColor: cardBg,
+                                                borderColor: colors.border,
+                                                color: colors.text,
+                                                minHeight: 56,
+                                                textAlignVertical: 'top',
+                                            },
+                                        ]}
+                                        placeholder={
+                                            l.precioEspecial
+                                                ? 'Explique por qué el precio difiere del estándar'
+                                                : 'Notas sobre el pedido, entrega, negociación…'
+                                        }
+                                        placeholderTextColor={colors.subText}
+                                        value={l.comentarioPrecioEspecial ?? ''}
+                                        multiline
+                                        onChangeText={(t) =>
+                                            setLineasConsolidar((prev) =>
+                                                prev.map((x) =>
+                                                    x.requisicionId === l.requisicionId
+                                                        ? { ...x, comentarioPrecioEspecial: t }
+                                                        : x
+                                                )
+                                            )
+                                        }
                                     />
                                 </View>
                             ))}
@@ -4859,14 +5504,16 @@ const pedidoStyles = StyleSheet.create({
     badgePagadoText: { color: '#047857', fontSize: 12, fontWeight: '700' },
     formaPagoOpciones: {
         flexDirection: 'row',
+        flexWrap: 'wrap',
         gap: 10,
         width: '100%',
         marginTop: 12,
     },
     formaPagoBtn: {
         flex: 1,
+        minWidth: 90,
         paddingVertical: 14,
-        paddingHorizontal: 12,
+        paddingHorizontal: 8,
         borderRadius: 10,
         borderWidth: 1.5,
         alignItems: 'center',
@@ -4901,6 +5548,35 @@ const pedidoStyles = StyleSheet.create({
         borderRadius: 8,
         borderWidth: 1,
         alignItems: 'center',
+    },
+    proformaUploadRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        gap: 10,
+        marginTop: 4,
+    },
+    proformaArchivoRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        gap: 10,
+        marginTop: 6,
+        width: '100%',
+    },
+    btnProformaVer: {
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 8,
+        borderWidth: 1,
+    },
+    proformaPreviewBox: {
+        marginTop: 10,
+        borderWidth: 1,
+        borderRadius: 10,
+        overflow: 'hidden',
+        minHeight: 240,
+        backgroundColor: '#F8FAFC',
     },
     ocPickerItem: {
         padding: 12,

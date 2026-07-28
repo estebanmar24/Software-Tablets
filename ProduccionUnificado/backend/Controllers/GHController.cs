@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
 using TiempoProcesos.API.Helpers;
+using TiempoProcesos.API.Services;
 using Microsoft.AspNetCore.Authorization;
 
 namespace TiempoProcesos.API.Controllers;
@@ -17,10 +18,12 @@ namespace TiempoProcesos.API.Controllers;
 public class GHController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly GastoAutorizacionService _gastoAutorizacion;
 
-    public GHController(AppDbContext context)
+    public GHController(AppDbContext context, GastoAutorizacionService gastoAutorizacion)
     {
         _context = context;
+        _gastoAutorizacion = gastoAutorizacion;
     }
 
     #region Rubros
@@ -500,8 +503,28 @@ public class GHController : ControllerBase
     }
 
     [HttpPost("gastos")]
-    public async Task<ActionResult<GH_GastoMensual>> CreateGasto([FromBody] GH_GastoMensual gasto)
+    public async Task<ActionResult<GH_GastoMensual>> CreateGasto(
+        [FromBody] GH_GastoMensual gasto,
+        [FromQuery] int? autorizacionId = null)
     {
+        var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == "Id");
+        int adminId = 0;
+        if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int parsedAdminId))
+        {
+            adminId = parsedAdminId;
+            gasto.CreadoPorId = parsedAdminId;
+        }
+        if (adminId <= 0)
+            return BadRequest(new { message = "No se pudo identificar al usuario." });
+        try
+        {
+            await _gastoAutorizacion.ExigirAutorizacionParaGastoNormalAsync("gh", autorizacionId, adminId, false);
+        }
+        catch (InvalidOperationException exAuth)
+        {
+            return BadRequest(new { message = exAuth.Message });
+        }
+
         var mpG = GastoMedioPagoHelper.ValidateCreditoOExclusivoEfectivo(false, gasto.EsSolicitudCredito, gasto.EsEfectivo);
         if (mpG != null) return (ActionResult<GH_GastoMensual>)(object)mpG;
 
@@ -515,18 +538,13 @@ public class GHController : ControllerBase
         gasto.PrecioBase = pbG;
         gasto.PrecioIva = piG;
 
-        // Set Creator
-        var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == "Id");
-        if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int adminId))
-        {
-            gasto.CreadoPorId = adminId;
-        }
-
         GastoPeriodoHelper.AplicarAnioMesDesdeFecha(gasto.FechaCompra, (a, m) => { gasto.Anio = a; gasto.Mes = m; });
 
         gasto.FechaCreacion = DateTime.UtcNow;
         _context.GH_GastosMensuales.Add(gasto);
         await _context.SaveChangesAsync();
+        if (autorizacionId.HasValue && autorizacionId.Value > 0)
+            await _gastoAutorizacion.VincularGastoRegistradoAsync(autorizacionId.Value, gasto.Id);
         return Ok(new { id = gasto.Id });
     }
 

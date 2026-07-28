@@ -82,10 +82,14 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 // Register Services
 builder.Services.AddScoped<ITiempoProcesoService, TiempoProcesoService>();
+builder.Services.AddScoped<IProgramacionEjecucionService, ProgramacionEjecucionService>();
 builder.Services.AddScoped<AlephEmailService>();
 builder.Services.AddScoped<AdjuntosExtractionService>();
 builder.Services.AddScoped<AlmacenService>();
 builder.Services.AddScoped<AlmacenEmailService>();
+builder.Services.AddScoped<GastoAutorizacionService>();
+builder.Services.AddScoped<GastoAutorizacionEmailService>();
+builder.Services.AddHostedService<AlmacenRequisicionReminderHostedService>();
 builder.Services.Configure<TiempoProcesos.API.Options.HikvisionOptions>(
     builder.Configuration.GetSection(TiempoProcesos.API.Options.HikvisionOptions.SectionName));
 builder.Services.AddHttpClient();
@@ -191,8 +195,15 @@ using (var scope = app.Services.CreateScope())
             StartupSchemaPatches.ApplyMantenimientoConsumosExtraColumns(context);
             StartupSchemaPatches.ApplyMantenimientoAjustesInventarioTable(context);
             StartupSchemaPatches.ApplyAlmacenTables(context);
+            StartupSchemaPatches.ApplyGastoAutorizacionTable(context);
             StartupSchemaPatches.ApplyMantenimientoTrazabilidadTable(context);
             StartupSchemaPatches.ApplyBitacoraMantenimientoDiariaTable(context);
+            StartupSchemaPatches.ApplyEncuestaNovedadInformeColumns(context);
+            StartupSchemaPatches.ApplyParametrosJornadaOtTable(context);
+            StartupSchemaPatches.ApplyProcesosGanttCatalog(context);
+            StartupSchemaPatches.EnsureMaquinasDesperdicioProcesos(context);
+            StartupSchemaPatches.EnsureMaquinasCalculoManualSinEstandar(context);
+            StartupSchemaPatches.ApplyRosterDisponibilidadTables(context);
             StartupSchemaPatches.ApplyRegistroDesperdicioRegistradoPorColumn(context);
             StartupSchemaPatches.BackfillGastosAnioMesDesdeFecha(context);
             MantenimientoTrazabilidadHelper.BackfillSiVacioAsync(context).GetAwaiter().GetResult();

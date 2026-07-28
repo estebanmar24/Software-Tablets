@@ -105,12 +105,18 @@ export interface ProveedorAsignado {
     recibido?: boolean;
     /** Pago registrado a este proveedor. */
     pagado?: boolean;
-    /** Medio de pago: credito | efectivo */
-    formaPago?: 'credito' | 'efectivo';
+    /** Medio de pago: credito | efectivo | contado */
+    formaPago?: 'credito' | 'efectivo' | 'contado';
     /** Precio unitario acordado con este proveedor para el producto. */
     precioUnitario?: number;
+    /** Si true, el precio difiere del costo estándar del catálogo. */
+    precioEspecial?: boolean;
+    /** Motivo obligatorio cuando precioEspecial es true. */
+    comentarioPrecioEspecial?: string;
     /** Texto del precio mientras se edita (ej. 64033,61); no se persiste en API. */
     precioUnitarioTexto?: string;
+    /** Texto de la cantidad mientras se edita (permite 20,9); no se persiste en API. */
+    cantidadTexto?: string;
     /** Consecutivo global de orden de compra (cabecera Almacen_OrdenesCompra). */
     numeroOrdenCompra?: number;
     /** Id de la orden de compra consolidada (varias requisiciones pueden compartirla). */
@@ -119,6 +125,10 @@ export interface ProveedorAsignado {
     agregarAOrdenCompraId?: string;
     /** Número visible de la OC elegida (solo UI). */
     agregarAOrdenCompraNumero?: number;
+    /** Ruta relativa del documento proforma subido. */
+    proformaUrl?: string;
+    /** Nombre original del archivo proforma. */
+    proformaNombre?: string;
 }
 
 export function formatearConsecutivoOrdenCompra(numero: number): string {
@@ -129,6 +139,7 @@ export function formatearConsecutivoOrdenCompra(numero: number): string {
 export function labelFormaPagoAlmacen(forma?: string): string {
     if (forma === 'credito') return 'Crédito';
     if (forma === 'efectivo') return 'Efectivo';
+    if (forma === 'contado') return 'Contado';
     return '';
 }
 
@@ -167,20 +178,69 @@ export function resolverCostoEstandarProducto(
     productoNombre: string,
     productos: ProductoInsumo[]
 ): number | undefined {
-    const clave = productoNombre.trim().toLowerCase();
-    if (!clave) return undefined;
-    const prod = productos.find((p) => p.nombre.trim().toLowerCase() === clave);
+    const prod = findProductoPorNombre(productoNombre, productos);
     return prod?.costoEstandar != null && prod.costoEstandar > 0 ? prod.costoEstandar : undefined;
 }
 
+export function findProductoPorNombre(
+    productoNombre: string,
+    productos: ProductoInsumo[]
+): ProductoInsumo | undefined {
+    const clave = productoNombre.trim().toLowerCase();
+    if (!clave) return undefined;
+    return productos.find((p) => p.nombre.trim().toLowerCase() === clave);
+}
+
+/** Monto COP al peso entero más cercano (regla comercial para totales de OC). */
+export function redondearMonedaCop(valor: number): number {
+    if (!Number.isFinite(valor)) return 0;
+    return Math.round(valor);
+}
+
+export function getSubtotalLineaOc(precioUnitario: number, cantidad: number): number {
+    if (precioUnitario <= 0 || cantidad <= 0) return 0;
+    return redondearMonedaCop(precioUnitario * cantidad);
+}
+
 export function formatearMonedaCop(valor: number): string {
-    const tieneCentavos = Math.abs(valor % 1) > 0.0001;
+    const redondeado = redondearMonedaCop(valor);
+    const tieneCentavos = Math.abs(valor - redondeado) > 0.0001 && Math.abs(valor % 1) > 0.0001;
     return new Intl.NumberFormat('es-CO', {
         style: 'currency',
         currency: 'COP',
         minimumFractionDigits: tieneCentavos ? 2 : 0,
         maximumFractionDigits: 2,
-    }).format(valor);
+    }).format(tieneCentavos ? valor : redondeado);
+}
+
+/** Cantidad con hasta 3 decimales, coma decimal (ej. 20,9 kg). */
+export function formatearCantidad(valor: number | null | undefined): string {
+    if (valor == null || !Number.isFinite(valor)) return '0';
+    const n = Math.round(valor * 1000) / 1000;
+    if (Math.abs(n % 1) < 0.0000001) return String(Math.trunc(n));
+    return String(n).replace('.', ',');
+}
+
+/** Limpia input de cantidad permitiendo dígitos y una sola coma/punto decimal. */
+export function sanitizarCantidadInput(valor: string): string {
+    let s = valor.replace(/[^\d.,]/g, '');
+    const sepIdx = Math.max(s.lastIndexOf(','), s.lastIndexOf('.'));
+    if (sepIdx >= 0) {
+        const entero = s.slice(0, sepIdx).replace(/[.,]/g, '');
+        let dec = s.slice(sepIdx + 1).replace(/[.,]/g, '').slice(0, 3);
+        s = `${entero},${dec}`;
+        if (valor.endsWith(',') || valor.endsWith('.')) {
+            if (!s.endsWith(',')) s += ',';
+        }
+    } else {
+        s = s.replace(/[.,]/g, '');
+    }
+    return s;
+}
+
+export function parseCantidadInput(valor: string): number {
+    const n = parseFloat(String(valor || '').trim().replace(/\s/g, '').replace(',', '.'));
+    return Number.isFinite(n) ? n : NaN;
 }
 
 /** Solo dígitos, puntos de miles y una coma decimal (máx. 2 decimales). */
@@ -256,7 +316,7 @@ export function formatearPrecioCopMientrasEscribe(valor: string): { display: str
 }
 
 export function getPrecioUnitarioDisplay(prov: ProveedorAsignado): string {
-    if (prov.precioUnitarioTexto !== undefined && prov.precioUnitarioTexto !== '') {
+    if (prov.precioUnitarioTexto !== undefined) {
         return prov.precioUnitarioTexto;
     }
     return formatPrecioCopInput(prov.precioUnitario);
@@ -326,8 +386,7 @@ export function getCantidadTotalPedido(pedido?: DatosPedido | null): number {
 export function getSubtotalProveedor(prov: ProveedorAsignado): number {
     const precio = prov.precioUnitario ?? 0;
     const cantidad = prov.cantidad ?? 0;
-    if (precio <= 0 || cantidad <= 0) return 0;
-    return Math.round(precio * cantidad * 100) / 100;
+    return getSubtotalLineaOc(precio, cantidad);
 }
 
 export function getTotalPedidoMonetario(pedido?: DatosPedido | null): number {
@@ -351,11 +410,16 @@ export function normalizarProveedoresPedido(
     fechaGlobal?: string
 ): ProveedorAsignado[] {
     return proveedores.map((p) => {
-        const { precioUnitarioTexto, ...rest } = p;
+        const { precioUnitarioTexto, cantidadTexto, ...rest } = p;
         const precioResuelto =
             rest.precioUnitario ?? parsePrecioCopInput(precioUnitarioTexto ?? '');
+        const cantidadResuelta =
+            cantidadTexto != null && String(cantidadTexto).trim() !== ''
+                ? parseCantidadInput(cantidadTexto)
+                : rest.cantidad;
         return {
             ...rest,
+            cantidad: Number.isFinite(cantidadResuelta) && cantidadResuelta > 0 ? cantidadResuelta : rest.cantidad,
             precioUnitario: precioResuelto,
             fechaEntregaEstimada: rest.fechaEntregaEstimada || fechaGlobal || '',
             recibido: rest.recibido ?? false,
@@ -750,6 +814,8 @@ export interface OrdenCompraLinea {
     cantidad: number;
     unidad: string;
     precioUnitario?: number;
+    precioEspecial?: boolean;
+    comentarioPrecioEspecial?: string;
     fechaEntregaEstimada?: string;
     recibido?: boolean;
     pagado?: boolean;
@@ -789,9 +855,45 @@ export interface ConsolidarPedidoPayload {
         requisicionId: string;
         cantidad: number;
         precioUnitario?: number;
+        precioEspecial?: boolean;
+        comentarioPrecioEspecial?: string;
         fechaEntregaEstimada?: string;
     }>;
     agregarAOrdenCompraId?: string;
+}
+
+export interface RequisicionComentario {
+    id: string;
+    texto: string;
+    usuarioNombre?: string;
+    fecha: string;
+    hora: string;
+    esLegacy?: boolean;
+    respuestas?: RequisicionComentario[];
+}
+
+export function contarComentariosRequisicion(comentarios?: RequisicionComentario[]): number {
+    if (!comentarios?.length) return 0;
+    return comentarios.reduce(
+        (acc, c) => acc + 1 + contarComentariosRequisicion(c.respuestas),
+        0
+    );
+}
+
+export function previewUltimoComentario(req: Pick<Requisicion, 'comentarios' | 'observacion'>): string {
+    const flat = aplanarComentariosRequisicion(req.comentarios);
+    if (flat.length > 0) return flat[flat.length - 1].texto;
+    return req.observacion?.trim() ?? '';
+}
+
+function aplanarComentariosRequisicion(comentarios?: RequisicionComentario[]): RequisicionComentario[] {
+    if (!comentarios?.length) return [];
+    const out: RequisicionComentario[] = [];
+    for (const c of comentarios) {
+        out.push(c);
+        if (c.respuestas?.length) out.push(...aplanarComentariosRequisicion(c.respuestas));
+    }
+    return out;
 }
 
 export interface Requisicion {
@@ -809,6 +911,9 @@ export interface Requisicion {
     unidad: string;
     fechaRequerida: string;
     observacion?: string;
+    /** Comentarios con respuestas (usuario, fecha y hora). */
+    comentarios?: RequisicionComentario[];
+    totalComentarios?: number;
     estado: EstadoRequisicion;
     /** Usuario que registró la requisición. */
     creadoPorNombre?: string;
@@ -936,7 +1041,7 @@ export const ALMACEN_IVA_TASA = 0.19;
 export const ALMACEN_RETEFUENTE_TASA_DECLARANTE = 0.025;
 export const ALMACEN_RETEFUENTE_TASA_NO_DECLARANTE = 0.035;
 export const ALMACEN_RETEFUENTE_UMBRAL = 1_414_000;
-export const ALMACEN_RETEICA_TASA = 0.077;
+export const ALMACEN_RETEICA_TASA = 7.7;
 export const ALMACEN_RETEICA_UMBRAL = 786_000;
 export const ALMACEN_RETEIVA_TASA_RST = 0.0285;
 
@@ -1022,7 +1127,7 @@ export function getLineasFiscalesProveedor(
 
     const tasaRetefuente = tasaRetefuenteCategoria(categoria);
     if (tasaRetefuente != null && subtotal > ALMACEN_RETEFUENTE_UMBRAL) {
-        const retefuente = Math.round(subtotal * tasaRetefuente * 100) / 100;
+        const retefuente = redondearMonedaCop(subtotal * tasaRetefuente);
         lineas.push({
             etiqueta: `Retefuente (${(tasaRetefuente * 100).toFixed(1)}%)`,
             monto: retefuente,
@@ -1032,9 +1137,9 @@ export function getLineasFiscalesProveedor(
     }
 
     if (categoria && CATEGORIAS_CON_RETEICA.has(categoria) && subtotal > ALMACEN_RETEICA_UMBRAL) {
-        const reteica = Math.round(subtotal * ALMACEN_RETEICA_TASA * 100) / 100;
+        const reteica = redondearMonedaCop((subtotal * ALMACEN_RETEICA_TASA) / 1000);
         lineas.push({
-            etiqueta: `ReteICA (${(ALMACEN_RETEICA_TASA * 100).toFixed(1)}%)`,
+            etiqueta: `ReteICA (${ALMACEN_RETEICA_TASA.toFixed(1)} por mil)`,
             monto: reteica,
             esRetencion: true,
         });
@@ -1042,7 +1147,7 @@ export function getLineasFiscalesProveedor(
     }
 
     if (categoria === 'rst' && subtotal > ALMACEN_RETEFUENTE_UMBRAL) {
-        const reteiva = Math.round(subtotal * ALMACEN_RETEIVA_TASA_RST * 100) / 100;
+        const reteiva = redondearMonedaCop(subtotal * ALMACEN_RETEIVA_TASA_RST);
         lineas.push({
             etiqueta: `ReteIVA (${(ALMACEN_RETEIVA_TASA_RST * 100).toFixed(2)}%)`,
             monto: reteiva,
@@ -1053,7 +1158,7 @@ export function getLineasFiscalesProveedor(
 
     if (lineas.length === 0) return [];
 
-    const totalPagar = Math.round((subtotal + iva - totalRetenciones) * 100) / 100;
+    const totalPagar = redondearMonedaCop(subtotal + iva - totalRetenciones);
     lineas.push({ etiqueta: 'Total a pagar', monto: totalPagar, esTotal: true });
     return lineas;
 }

@@ -36,6 +36,8 @@ import MantenimientoTrazabilidadScreen from '../screens/MantenimientoTrazabilida
 import ContabilidadScreen from '../screens/ContabilidadScreen';
 import EvaluacionAreaScreen from '../screens/EvaluacionAreaScreen';
 import AlmacenScreen from '../screens/AlmacenScreen';
+import SolicitudesGastosAutorizadorView from './SolicitudesGastosAutorizadorView';
+import { esAutorizadorGastos, getAutorizacionesGastoConsolidado, ESTADOS_AUTORIZACION } from '../services/gastosAutorizacionApi';
 import { api } from '../services/productionApi';
 
 
@@ -145,11 +147,11 @@ function MaintenanceCard({ disabled, onPress }: { disabled?: boolean, onPress: (
 function AdminDashboardContent({ onBack, role = '', displayName, area, permissions }: AdminDashboardProps) {
     const { colors, isDarkMode } = useTheme();
     // Mode: 'MENU' | 'CONTENT' ...
-    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'MANTENIMIENTO_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS' | 'TICKETS' | 'CALIDAD_EXTERNA' | 'PLANES_ACCION' | 'USUARIOS' | 'MAQUINAS' | 'MANTENIMIENTO_SELECTOR' | 'INVENTARIO_MANTENIMIENTO' | 'CONSUMOS_MANTENIMIENTO' | 'MANTENIMIENTO_TRAZABILIDAD' | 'CONTABILIDAD' | 'EVALUACION_AREA' | 'ALMACEN'>(() => {
+    const [mode, setMode] = useState<'MENU' | 'CONTENT' | 'EQUIPOS' | 'SST_PRESUPUESTO' | 'SST_GASTOS' | 'GH_GASTOS' | 'PRODUCCION_GASTOS' | 'MANTENIMIENTO_GASTOS' | 'TALLERES_GASTOS' | 'CALIDAD' | 'PLANEACION_GASTOS' | 'DISENO_GASTOS' | 'TICKETS' | 'CALIDAD_EXTERNA' | 'PLANES_ACCION' | 'SOLICITUDES_GASTOS' | 'USUARIOS' | 'MAQUINAS' | 'MANTENIMIENTO_SELECTOR' | 'INVENTARIO_MANTENIMIENTO' | 'CONSUMOS_MANTENIMIENTO' | 'MANTENIMIENTO_TRAZABILIDAD' | 'CONTABILIDAD' | 'EVALUACION_AREA' | 'ALMACEN'>(() => {
 
         if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
             const savedMode = window.localStorage.getItem('adminDashboardMode');
-            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS' || savedMode === 'PRODUCCION_GASTOS' || savedMode === 'MANTENIMIENTO_GASTOS' || savedMode === 'TALLERES_GASTOS' || savedMode === 'CALIDAD' || savedMode === 'PLANEACION_GASTOS' || savedMode === 'DISENO_GASTOS' || savedMode === 'TICKETS' || savedMode === 'CALIDAD_EXTERNA' || savedMode === 'PLANES_ACCION' || savedMode === 'USUARIOS' || savedMode === 'MAQUINAS' || savedMode === 'MANTENIMIENTO_SELECTOR' || savedMode === 'INVENTARIO_MANTENIMIENTO' || savedMode === 'CONSUMOS_MANTENIMIENTO' || savedMode === 'MANTENIMIENTO_TRAZABILIDAD' || savedMode === 'CONTABILIDAD' || savedMode === 'EVALUACION_AREA' || savedMode === 'ALMACEN') {
+            if (savedMode === 'CONTENT' || savedMode === 'EQUIPOS' || savedMode === 'MENU' || savedMode === 'SST_PRESUPUESTO' || savedMode === 'SST_GASTOS' || savedMode === 'GH_GASTOS' || savedMode === 'PRODUCCION_GASTOS' || savedMode === 'MANTENIMIENTO_GASTOS' || savedMode === 'TALLERES_GASTOS' || savedMode === 'CALIDAD' || savedMode === 'PLANEACION_GASTOS' || savedMode === 'DISENO_GASTOS' || savedMode === 'TICKETS' || savedMode === 'CALIDAD_EXTERNA' || savedMode === 'PLANES_ACCION' || savedMode === 'SOLICITUDES_GASTOS' || savedMode === 'USUARIOS' || savedMode === 'MAQUINAS' || savedMode === 'MANTENIMIENTO_SELECTOR' || savedMode === 'INVENTARIO_MANTENIMIENTO' || savedMode === 'CONSUMOS_MANTENIMIENTO' || savedMode === 'MANTENIMIENTO_TRAZABILIDAD' || savedMode === 'CONTABILIDAD' || savedMode === 'EVALUACION_AREA' || savedMode === 'ALMACEN') {
 
                 return savedMode as any;
             }
@@ -159,9 +161,11 @@ function AdminDashboardContent({ onBack, role = '', displayName, area, permissio
     const [activeTab, setActiveTab] = useState<string>('prod_captura');
     const [qualityTitle, setQualityTitle] = useState<string>('Módulo de Calidad');
     const [pendingPlansCount, setPendingPlansCount] = useState(0);
+    const [pendingSolicitudesCount, setPendingSolicitudesCount] = useState(0);
     const [resumen, setResumen] = useState<any>(null);
     const { width } = useWindowDimensions();
     const isMobile = width < 768;
+    const esAutorizadorGastosPanel = esAutorizadorGastos(displayName, role);
 
     const { userRoles, tabs, userPermissions } = useMemo(() => {
         const roles = (role || '').split(',').map(r => r.trim().toLowerCase());
@@ -232,6 +236,23 @@ function AdminDashboardContent({ onBack, role = '', displayName, area, permissio
             fetchCount();
         }
     }, [area]);
+
+    useEffect(() => {
+        if (!esAutorizadorGastosPanel) return;
+        const fetchPendingSolicitudes = async () => {
+            try {
+                const data = await getAutorizacionesGastoConsolidado({
+                    anio: new Date().getFullYear(),
+                    mes: new Date().getMonth() + 1,
+                    estado: ESTADOS_AUTORIZACION.pendiente,
+                });
+                setPendingSolicitudesCount(Array.isArray(data) ? data.length : 0);
+            } catch {
+                // ignore
+            }
+        };
+        void fetchPendingSolicitudes();
+    }, [esAutorizadorGastosPanel, mode, role]);
 
     useEffect(() => {
         // Save to localStorage on web, AsyncStorage on mobile
@@ -371,7 +392,7 @@ function AdminDashboardContent({ onBack, role = '', displayName, area, permissio
                         resizeMode="contain"
                     />
                 </View>
-                <SSTGastosScreen navigation={mockNavigation} />
+                <SSTGastosScreen navigation={mockNavigation} displayName={displayName} />
             </View>
         );
     }
@@ -396,7 +417,7 @@ function AdminDashboardContent({ onBack, role = '', displayName, area, permissio
                         resizeMode="contain"
                     />
                 </View>
-                <GHGastosScreen navigation={mockNavigation} />
+                <GHGastosScreen navigation={mockNavigation} displayName={displayName} />
             </View>
         );
     }
@@ -421,7 +442,7 @@ function AdminDashboardContent({ onBack, role = '', displayName, area, permissio
                         resizeMode="contain"
                     />
                 </View>
-                <ProduccionGastosScreen />
+                <ProduccionGastosScreen displayName={displayName} />
             </View>
         );
     }
@@ -446,7 +467,7 @@ function AdminDashboardContent({ onBack, role = '', displayName, area, permissio
                         resizeMode="contain"
                     />
                 </View>
-                <PlaneacionGastosScreen navigation={{ goBack: () => setMode('MENU') } as any} />
+                <PlaneacionGastosScreen navigation={{ goBack: () => setMode('MENU') } as any} displayName={displayName} />
             </View>
         );
     }
@@ -497,7 +518,7 @@ function AdminDashboardContent({ onBack, role = '', displayName, area, permissio
                         resizeMode="contain"
                     />
                 </View>
-                <DisenoGastosScreen />
+                <DisenoGastosScreen displayName={displayName} />
             </View>
         );
     }
@@ -522,7 +543,7 @@ function AdminDashboardContent({ onBack, role = '', displayName, area, permissio
                         resizeMode="contain"
                     />
                 </View>
-                <TalleresGastosScreen navigation={{ goBack: () => setMode('MENU') } as any} />
+                <TalleresGastosScreen navigation={{ goBack: () => setMode('MENU') } as any} displayName={displayName} />
             </View>
         );
     }
@@ -605,7 +626,7 @@ function AdminDashboardContent({ onBack, role = '', displayName, area, permissio
                     />
                 </View>
                 {/* @ts-ignore */}
-                <MantenimientoGastosScreen />
+                <MantenimientoGastosScreen displayName={displayName} />
             </View>
         );
     }
@@ -638,6 +659,35 @@ function AdminDashboardContent({ onBack, role = '', displayName, area, permissio
                     onClose={() => {
                         setMode('MENU');
                         if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                    }}
+                />
+            </View>
+        );
+    }
+
+    // --- VISTA SOLICITUDES DE GASTOS (NOHORA) ---
+    if (mode === 'SOLICITUDES_GASTOS') {
+        return (
+            <View style={[styles.container, { backgroundColor: colors.background }]}>
+                <View style={[styles.header, { backgroundColor: colors.headerBackground }]}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => {
+                        setMode('MENU');
+                        if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'MENU');
+                    }}>
+                        <Text style={styles.backButtonText}>← Volver al Panel</Text>
+                    </TouchableOpacity>
+                    <View style={styles.centeredTitleContainer} pointerEvents="box-none">
+                        <Text style={styles.title}>Solicitudes de gastos</Text>
+                    </View>
+                    <Image
+                        source={require('../../assets/logo_perla.png')}
+                        style={[styles.contentHeaderLogo, isDarkMode && { opacity: 0.95 }]}
+                        resizeMode="contain"
+                    />
+                </View>
+                <SolicitudesGastosAutorizadorView
+                    onPendingCountChange={(count) => {
+                        if (count != null) setPendingSolicitudesCount(count);
                     }}
                 />
             </View>
@@ -1178,6 +1228,28 @@ function AdminDashboardContent({ onBack, role = '', displayName, area, permissio
                                 )}
                             </TouchableOpacity>
 
+                            {esAutorizadorGastosPanel && (
+                            <TouchableOpacity
+                                style={[styles.ticketHeaderBtn, { marginRight: 15 }]}
+                                onPress={() => {
+                                    setMode('SOLICITUDES_GASTOS');
+                                    if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'SOLICITUDES_GASTOS');
+                                }}
+                            >
+                                <Text style={{ fontSize: 20 }}>💰</Text>
+                                <Text style={[styles.ticketHeaderBtnText, { color: colors.text }]}>Solicitudes de gastos</Text>
+                                {pendingSolicitudesCount > 0 && (
+                                    <View style={{
+                                        position: 'absolute', top: -10, right: -10, backgroundColor: 'red',
+                                        borderRadius: 15, paddingHorizontal: 8, paddingVertical: 2,
+                                        minWidth: 24, alignItems: 'center'
+                                    }}>
+                                        <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>{pendingSolicitudesCount}</Text>
+                                    </View>
+                                )}
+                            </TouchableOpacity>
+                            )}
+
                             <TouchableOpacity
                                 style={styles.ticketHeaderBtn}
                                 onPress={() => {
@@ -1198,6 +1270,28 @@ function AdminDashboardContent({ onBack, role = '', displayName, area, permissio
                 </View>
 
                 {isMobile && (
+                    <>
+                    {esAutorizadorGastosPanel && (
+                    <TouchableOpacity
+                        style={[styles.ticketHeaderBtn, { alignSelf: 'center', marginBottom: 12, width: '100%', justifyContent: 'center' }]}
+                        onPress={() => {
+                            setMode('SOLICITUDES_GASTOS');
+                            if (Platform.OS === 'web') localStorage.setItem('adminDashboardMode', 'SOLICITUDES_GASTOS');
+                        }}
+                    >
+                        <Text style={{ fontSize: 20 }}>💰</Text>
+                        <Text style={[styles.ticketHeaderBtnText, { color: colors.text }]}>Solicitudes de gastos</Text>
+                        {pendingSolicitudesCount > 0 && (
+                            <View style={{
+                                marginLeft: 8, backgroundColor: 'red',
+                                borderRadius: 15, paddingHorizontal: 8, paddingVertical: 2,
+                                minWidth: 24, alignItems: 'center'
+                            }}>
+                                <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>{pendingSolicitudesCount}</Text>
+                            </View>
+                        )}
+                    </TouchableOpacity>
+                    )}
                     <TouchableOpacity
                         style={[styles.ticketHeaderBtn, { alignSelf: 'center', marginBottom: 20, width: '100%', justifyContent: 'center' }]}
                         onPress={() => {
@@ -1208,6 +1302,7 @@ function AdminDashboardContent({ onBack, role = '', displayName, area, permissio
                         <Text style={{ fontSize: 20 }}>🎫</Text>
                         <Text style={[styles.ticketHeaderBtnText, { color: colors.text }]}>Tickets de Errores</Text>
                     </TouchableOpacity>
+                    </>
                 )}
 
                 <ScrollView contentContainerStyle={styles.cardsGrid} showsVerticalScrollIndicator={false}>

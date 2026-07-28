@@ -33,4 +33,16 @@ public class Maquina
 
     // Tarifa por hora (entero, miles)
     public int Tarifa { get; set; } = 0;
+
+    /// <summary>Horas de alistamiento por defecto al programar (editable).</summary>
+    [Column(TypeName = "decimal(8, 2)")]
+    public decimal HorasAlistamiento { get; set; } = 1.0m;
+
+    /// <summary>Horas de lavada por defecto al programar (editable).</summary>
+    [Column(TypeName = "decimal(8, 2)")]
+    public decimal HorasLavada { get; set; } = 0.5m;
+
+    /// <summary>Operativa | Dañada | Mantenimiento</summary>
+    [Column(TypeName = "character varying(32)")]
+    public string EstadoOperativo { get; set; } = "Operativa";
 }

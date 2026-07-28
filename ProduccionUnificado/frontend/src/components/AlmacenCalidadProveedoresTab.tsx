@@ -190,7 +190,7 @@ export default function AlmacenCalidadProveedoresTab({
 
     return (
         <View style={[calStyles.card, { backgroundColor: cardBg, borderColor: colors.border }]}>
-            <Text style={[calStyles.titulo, { color: colors.text }]}>Calidad y puntualidad de proveedores</Text>
+            <Text style={[calStyles.titulo, { color: colors.text }]}>Puntualidad de proveedores</Text>
             <Text style={[calStyles.ayuda, { color: colors.subText }]}>
                 Cada recepción guardada (incluidos parciales) queda registrada con fecha y cantidad. Aquí
                 compara la 1ª y la última llegada, los días entre envíos y el retraso respecto a la fecha

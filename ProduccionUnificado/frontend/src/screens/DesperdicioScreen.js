@@ -197,7 +197,7 @@ export default function DesperdicioScreen({ navigation, registradoPorNombre = ''
                     ordenProduccion: firstItem.ordenProduccion,
                     codigoDesperdicioId: firstItem.codigoDesperdicioId ? parseInt(firstItem.codigoDesperdicioId) : null,
                     cantidad: parseFloat(firstItem.cantidad),
-                    fecha: newRegistro.fecha.toISOString(),
+                    fecha: toLocalDatePayload(newRegistro.fecha),
                     nota: firstItem.nota
                 };
                 await api.put(`desperdicio/${newRegistro.id}`, body);
@@ -213,7 +213,7 @@ export default function DesperdicioScreen({ navigation, registradoPorNombre = ''
                             ordenProduccion: item.ordenProduccion,
                             codigoDesperdicioId: item.codigoDesperdicioId ? parseInt(item.codigoDesperdicioId) : null,
                             cantidad: parseFloat(item.cantidad),
-                            fecha: newRegistro.fecha.toISOString(),
+                            fecha: toLocalDatePayload(newRegistro.fecha),
                             nota: item.nota,
                             registradoPor,
                         };
@@ -230,7 +230,7 @@ export default function DesperdicioScreen({ navigation, registradoPorNombre = ''
                         ordenProduccion: item.ordenProduccion,
                         codigoDesperdicioId: item.codigoDesperdicioId ? parseInt(item.codigoDesperdicioId) : null,
                         cantidad: parseFloat(item.cantidad),
-                        fecha: newRegistro.fecha.toISOString(),
+                        fecha: toLocalDatePayload(newRegistro.fecha),
                         nota: item.nota,
                         registradoPor,
                     };
@@ -367,10 +367,21 @@ export default function DesperdicioScreen({ navigation, registradoPorNombre = ''
         return usuarios.filter(u => validIds.includes(u.id));
     };
 
-    // Render helpers
+    // Render helpers — fecha calendario local (no UTC / toISOString)
+    const toLocalDatePayload = (date) => {
+        if (!date || isNaN(date.getTime())) return '';
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}T12:00:00`;
+    };
+
     const formatDate = (date) => {
         if (!date || isNaN(date.getTime())) return '';
-        return date.toISOString().split('T')[0];
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
     };
 
     const getBase64FromUrl = async (url) => {

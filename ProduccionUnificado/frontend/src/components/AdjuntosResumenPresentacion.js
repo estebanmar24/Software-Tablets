@@ -9,6 +9,7 @@ import {
     CAMPOS_RESUMEN_FICHA,
     entradasResumen,
     parseProcesosDetalle,
+    parsePiezasDesdeCampos,
     valorCampo,
 } from '../utils/adjuntosCamposResumen';
 
@@ -35,6 +36,8 @@ function FilaCampo({ label, val, colors, destacado }) {
 function SeccionMaterial({ campos, colors }) {
     const material = valorCampo(campos, 'material');
     const medidas = [
+        ['calibre', 'Calibre'],
+        ['gramaje', 'Gramaje (g)'],
         ['anchoRollo', 'Ancho rollo'],
         ['largoCorte', 'Largo corte'],
         ['anchoPliego', 'Ancho pliego'],
@@ -181,6 +184,53 @@ export default function AdjuntosResumenPresentacion({ campos, tipoDoc, colors })
             return <FilaCampo label="Vista previa OCR" val={vista} colors={colors} />;
         }
         return <Text style={{ fontSize: 11, color: colors.subText }}>Documento almacenado (sin texto OCR).</Text>;
+    }
+
+    const piezas = parsePiezasDesdeCampos(campos);
+    if (piezas.length > 1) {
+        return (
+            <View style={{ marginTop: 4 }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: colors.primary, marginBottom: 10 }}>
+                    OP con {piezas.length} piezas
+                </Text>
+                {piezas.map((pieza) => {
+                    const pseudoCampos = {
+                        material: pieza.material?.material,
+                        calibre: pieza.material?.calibre,
+                        gramaje: pieza.material?.gramaje,
+                        anchoRollo: pieza.material?.anchoRollo,
+                        largoCorte: pieza.material?.largoCorte,
+                        anchoPliego: pieza.material?.anchoPliego,
+                        altoPliego: pieza.material?.altoPliego,
+                        hojas: pieza.material?.hojas,
+                        cb: pieza.material?.cabidad,
+                        tamanoFinal: pieza.material?.tamanoFinal,
+                        procesosDetalle: (pieza.procesos || [])
+                            .map((p) => `${p.proceso} | ${p.notas || '—'} | ${p.cantidad || '0,00'}`)
+                            .join('\n'),
+                    };
+                    return (
+                        <View
+                            key={`pieza-${pieza.id}`}
+                            style={{
+                                marginBottom: 14,
+                                padding: 10,
+                                borderRadius: 10,
+                                borderWidth: 1,
+                                borderColor: colors.border,
+                                backgroundColor: colors.card,
+                            }}
+                        >
+                            <Text style={{ fontSize: 12, fontWeight: '800', color: colors.text, marginBottom: 8 }}>
+                                Pieza {pieza.id}: {pieza.nombre || '—'}
+                            </Text>
+                            <SeccionMaterial campos={pseudoCampos} colors={colors} />
+                            <SeccionProcesos campos={pseudoCampos} colors={colors} />
+                        </View>
+                    );
+                })}
+            </View>
+        );
     }
 
     const tieneAlgo = SECCIONES_RESUMEN_OP.some((sec) => {
