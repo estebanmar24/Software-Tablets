@@ -111,8 +111,38 @@ public class AlmacenRequisicion
     [MaxLength(200)]
     public string? CreadoPorNombre { get; set; }
 
+    /// <summary>Evita reenviar el recordatorio de pedido pendiente (faltan 2 días).</summary>
+    public bool RecordatorioPedidoEnviado { get; set; }
+
     public AlmacenPedido? Pedido { get; set; }
     public ICollection<AlmacenRecepcionLinea> RecepcionLineas { get; set; } = new List<AlmacenRecepcionLinea>();
+    public ICollection<AlmacenRequisicionComentario> Comentarios { get; set; } = new List<AlmacenRequisicionComentario>();
+}
+
+[Table("Almacen_RequisicionComentarios")]
+public class AlmacenRequisicionComentario
+{
+    public int Id { get; set; }
+
+    public int RequisicionId { get; set; }
+
+    public int? ParentId { get; set; }
+
+    [Required]
+    public string Texto { get; set; } = string.Empty;
+
+    public int? UsuarioId { get; set; }
+
+    [MaxLength(200)]
+    public string? UsuarioNombre { get; set; }
+
+    public DateTime FechaRegistro { get; set; } = DateTime.UtcNow;
+
+    public AlmacenRequisicion Requisicion { get; set; } = null!;
+
+    public AlmacenRequisicionComentario? Parent { get; set; }
+
+    public ICollection<AlmacenRequisicionComentario> Respuestas { get; set; } = new List<AlmacenRequisicionComentario>();
 }
 
 [Table("Almacen_Pedidos")]
@@ -162,6 +192,11 @@ public class AlmacenPedidoProveedor
     [Column(TypeName = "decimal(18,2)")]
     public decimal? PrecioUnitario { get; set; }
 
+    public bool PrecioEspecial { get; set; }
+
+    [MaxLength(500)]
+    public string? ComentarioPrecioEspecial { get; set; }
+
     public DateTime? FechaEntregaEstimada { get; set; }
 
     public bool Recibido { get; set; }
@@ -176,6 +211,14 @@ public class AlmacenPedidoProveedor
     public int? NumeroOrdenCompra { get; set; }
 
     public int? OrdenCompraId { get; set; }
+
+    /** Ruta relativa del documento proforma (PDF o imagen). */
+    [MaxLength(500)]
+    public string? ProformaUrl { get; set; }
+
+    /** Nombre original del archivo subido. */
+    [MaxLength(260)]
+    public string? ProformaNombre { get; set; }
 
     public AlmacenPedido Pedido { get; set; } = null!;
     public AlmacenOrdenCompra? OrdenCompra { get; set; }

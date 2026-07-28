@@ -103,6 +103,8 @@ export function OpInfoOperarioPanel({
 
     const medidas = material
         ? [
+              material.calibre && { l: 'Calibre', v: material.calibre },
+              material.gramaje && { l: 'Gramaje (g)', v: material.gramaje },
               material.anchoRollo && { l: 'Ancho rollo', v: material.anchoRollo },
               material.largoCorte && { l: 'Largo corte', v: material.largoCorte },
               material.anchoPliego && { l: 'Ancho pliego', v: material.anchoPliego },

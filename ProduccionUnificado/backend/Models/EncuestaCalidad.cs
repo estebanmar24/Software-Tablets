@@ -16,7 +16,7 @@ public class EncuestaCalidad
     public bool AprobacionArranque { get; set; }
     public string? Observacion { get; set; }
     public bool ContieneMuestraFisica { get; set; } = true;
-    public DateTime FechaCreacion { get; set; } = DateTime.Now;
+    public DateTime FechaCreacion { get; set; } = Helpers.ColombiaTime.Now;
     public string? CreadoPor { get; set; }
     
     // Navigation properties

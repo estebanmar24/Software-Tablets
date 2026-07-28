@@ -119,3 +119,12 @@ public class AjustarTiempoRequest
     /// <summary>Si true, marca el registro como Finalizado y recalcula la duración.</summary>
     public bool Finalizar { get; set; }
 }
+
+/// <summary>
+/// Actualización en vivo de tiros/desperdicio mientras el operario sigue en curso.
+/// </summary>
+public class ActualizarProgresoRequest
+{
+    public int Tiros { get; set; }
+    public int Desperdicio { get; set; }
+}

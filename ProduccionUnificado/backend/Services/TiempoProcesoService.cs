@@ -21,6 +21,7 @@ public interface ITiempoProcesoService
     Task<TiempoProcesoDto> FinalizarTiempoAsync(long id, RegistrarTiempoRequest request);
     Task<TiempoProcesoDto> PausarTiempoAsync(long id);
     Task<TiempoProcesoDto> ReanudarTiempoAsync(long id);
+    Task<TiempoProcesoDto?> ActualizarProgresoAsync(long id, ActualizarProgresoRequest request);
     Task<TiempoProcesoDto> AjustarTiempoAsync(long id, AjustarTiempoRequest request);
     Task<int> RepararProcesosAbiertosAsync(DateTime fecha, int? maquinaId, int? usuarioId);
 }
@@ -32,10 +33,12 @@ public class TiempoProcesoService : ITiempoProcesoService
     // public async Task<TiempoProcesoDto> FinalizarTiempoAsync(long id, RegistrarTiempoRequest request)
 
     private readonly AppDbContext _context;
+    private readonly IProgramacionEjecucionService _programacionEjecucion;
 
-    public TiempoProcesoService(AppDbContext context)
+    public TiempoProcesoService(AppDbContext context, IProgramacionEjecucionService programacionEjecucion)
     {
         _context = context;
+        _programacionEjecucion = programacionEjecucion;
     }
 
     public async Task<List<ActividadDto>> GetActividadesAsync()
@@ -846,6 +849,7 @@ public class TiempoProcesoService : ITiempoProcesoService
             .Include(t => t.Usuario)
             .Include(t => t.Maquina)
             .Include(t => t.Actividad)
+            .Include(t => t.OrdenProduccion)
             .FirstOrDefaultAsync(t => t.Id == id);
 
         if (tiempo == null) throw new Exception("Registro no encontrado");
@@ -876,6 +880,15 @@ public class TiempoProcesoService : ITiempoProcesoService
         await _context.SaveChangesAsync();
         await ActualizarProduccionDiaria(tiempo.Fecha, tiempo.MaquinaId, tiempo.UsuarioId);
 
+        try
+        {
+            await _programacionEjecucion.OnTiempoFinalizadoAsync(tiempo);
+        }
+        catch
+        {
+            // No bloquear la finalización del operario si falla el ajuste del planeador.
+        }
+
         return new TiempoProcesoDto
         {
             Id = tiempo.Id,
@@ -887,6 +900,8 @@ public class TiempoProcesoService : ITiempoProcesoService
             UsuarioNombre = tiempo.Usuario?.Nombre ?? "",
             MaquinaId = tiempo.MaquinaId,
             MaquinaNombre = tiempo.Maquina?.Nombre ?? "",
+            OrdenProduccionId = tiempo.OrdenProduccionId,
+            OrdenProduccionNumero = tiempo.OrdenProduccion?.Numero,
             ActividadId = tiempo.ActividadId,
             ActividadNombre = tiempo.Actividad?.Nombre ?? "",
             ActividadCodigo = tiempo.Actividad?.Codigo ?? "",
@@ -952,6 +967,23 @@ public class TiempoProcesoService : ITiempoProcesoService
             await _context.SaveChangesAsync();
         }
 
+        return ToDto(tiempo);
+    }
+
+    public async Task<TiempoProcesoDto?> ActualizarProgresoAsync(long id, ActualizarProgresoRequest request)
+    {
+        var tiempo = await _context.TiemposProceso
+            .Include(t => t.Usuario)
+            .Include(t => t.Maquina)
+            .Include(t => t.Actividad)
+            .Include(t => t.OrdenProduccion)
+            .FirstOrDefaultAsync(t => t.Id == id);
+
+        if (tiempo == null || tiempo.Estado == "Finalizado") return null;
+
+        tiempo.Tiros = Math.Max(0, request.Tiros);
+        tiempo.Desperdicio = Math.Max(0, request.Desperdicio);
+        await _context.SaveChangesAsync();
         return ToDto(tiempo);
     }
 

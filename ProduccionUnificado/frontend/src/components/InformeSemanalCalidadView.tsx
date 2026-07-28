@@ -113,10 +113,10 @@ export default function InformeSemanalCalidadView() {
                 <View style={styles.previewCard}>
                     <Text style={styles.previewTitle}>Columnas del informe</Text>
                     <Text style={[styles.previewCols, { color: colors.subText }]}>
-                        N° · FOTO · REFERENCIA · DEFECTO ENCONTRADO · OBSERVACIONES · ESTADO
+                        N° · FOTO · REFERENCIA · DEFECTO · OBSERVACIONES · CANTIDAD · ESTADO · celda libre
                     </Text>
                     <Text style={[styles.previewHint, { color: colors.subText }]}>
-                        Observaciones se llena con el texto de la encuesta. Estado incluye lista: Conforme, No conforme, En revisión.
+                        Una sola hoja con fotos. La última columna queda vacía para anotaciones manuales.
                     </Text>
                 </View>
             </ScrollView>

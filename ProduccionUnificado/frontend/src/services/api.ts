@@ -124,4 +124,25 @@ export async function registrarDesperdicio(data: import('../types').RegistroDesp
     return response.data;
 }
 
+export async function pausarTiempo(id: number): Promise<TiempoProceso> {
+    const response = await api.put<TiempoProceso>(`${API_BASE_URL}/pausar/${id}`);
+    return response.data;
+}
+
+export async function reanudarTiempo(id: number): Promise<TiempoProceso> {
+    const response = await api.put<TiempoProceso>(`${API_BASE_URL}/reanudar/${id}`);
+    return response.data;
+}
+
+export async function actualizarProgreso(
+    id: number,
+    data: { tiros: number; desperdicio: number }
+): Promise<TiempoProceso> {
+    const response = await api.put<TiempoProceso>(`${API_BASE_URL}/progreso/${id}`, {
+        tiros: data.tiros,
+        desperdicio: data.desperdicio,
+    });
+    return response.data;
+}
+
 export { API_URL } from './apiConfig';

@@ -126,6 +126,10 @@ public static class HorarioLaboralHelper
         festivos.Add(TrasladarALunes(new DateTime(año, 11, 1)));  // Todos los Santos
         festivos.Add(TrasladarALunes(new DateTime(año, 11, 11))); // Independencia de Cartagena
 
+        // Festivos excepcionales / decretados (no están del calendario estándar)
+        if (año == 2026)
+            festivos.Add(new DateTime(2026, 7, 13));
+
         return festivos.Distinct().OrderBy(f => f).ToList();
     }
 

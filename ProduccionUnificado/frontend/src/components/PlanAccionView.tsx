@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity,
     TextInput, ActivityIndicator, Alert, Modal, Platform, Image
@@ -10,6 +10,22 @@ import { api } from '../services/productionApi';
 import { getFileServerUrl } from '../services/apiConfig';
 
 const AREAS = ["Gerencia", "SST", "Planeacion", "Gestion Humana", "Talleres y Despachos", "Calidad", "Produccion", "Almacen", "Diseño", "Contabilidad"];
+
+const ESTADOS_FILTRO = [
+    { value: 'pendiente', label: 'Pendiente' },
+    { value: 'en proceso', label: 'En Proceso' },
+    { value: 'pausado', label: 'Pausado' },
+    { value: 'cerrada', label: 'Cerrada' },
+    { value: 'vencida', label: 'Vencida' },
+];
+
+const AVANCE_FILTRO = [
+    { value: '', label: 'Todos' },
+    { value: '0', label: '0%' },
+    { value: '1-49', label: '1% – 49%' },
+    { value: '50-99', label: '50% – 99%' },
+    { value: '100', label: '100%' },
+];
 
 interface PlanAccion {
     id: number;
@@ -89,8 +105,75 @@ export default function PlanAccionView({ onClose, userArea, userRole, canCreate 
     const [selectedResponsables, setSelectedResponsables] = useState<{ nombre: string, email: string }[]>([]);
     const [manualResponsableText, setManualResponsableText] = useState('');
 
+    // Filtros de listado
+    const [filtroProceso, setFiltroProceso] = useState('');
+    const [filtroResponsable, setFiltroResponsable] = useState('');
+    const [filtroEstado, setFiltroEstado] = useState('');
+    const [filtroAvance, setFiltroAvance] = useState('');
+    const [filtroFechaDesde, setFiltroFechaDesde] = useState('');
+    const [filtroFechaHasta, setFiltroFechaHasta] = useState('');
+
     // canCreate=false means we came from the dashboard shortcut (Consultative/Execution mode)
     const canEditCore = canCreate || !editingId;
+
+    const responsablesDisponibles = useMemo(() => {
+        const set = new Set<string>();
+        planes.forEach((p) => {
+            (p.responsable || '')
+                .split(',')
+                .map((r) => r.trim())
+                .filter(Boolean)
+                .forEach((r) => set.add(r));
+        });
+        return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
+    }, [planes]);
+
+    const tieneFiltrosActivos = !!(
+        filtroProceso || filtroResponsable || filtroEstado || filtroAvance || filtroFechaDesde || filtroFechaHasta
+    );
+
+    const limpiarFiltros = () => {
+        setFiltroProceso('');
+        setFiltroResponsable('');
+        setFiltroEstado('');
+        setFiltroAvance('');
+        setFiltroFechaDesde('');
+        setFiltroFechaHasta('');
+    };
+
+    const planesFiltrados = useMemo(() => {
+        return planes.filter((plan) => {
+            if (filtroProceso) {
+                const procs = (plan.proceso || '').split(',').map((x) => x.trim().toLowerCase());
+                if (!procs.includes(filtroProceso.toLowerCase())) return false;
+            }
+            if (filtroResponsable) {
+                const reps = (plan.responsable || '').split(',').map((x) => x.trim().toLowerCase());
+                if (!reps.includes(filtroResponsable.toLowerCase())) return false;
+            }
+            if (filtroEstado) {
+                const est = (plan.estado || '').toLowerCase().replace(/\s+/g, ' ');
+                const target = filtroEstado.toLowerCase();
+                if (est !== target && est.replace(' ', '') !== target.replace(' ', '')) return false;
+            }
+            if (filtroAvance) {
+                const av = Number(plan.porcentajeAvance) || 0;
+                if (filtroAvance === '0' && av !== 0) return false;
+                if (filtroAvance === '1-49' && (av < 1 || av > 49)) return false;
+                if (filtroAvance === '50-99' && (av < 50 || av > 99)) return false;
+                if (filtroAvance === '100' && av !== 100) return false;
+            }
+            if (filtroFechaDesde) {
+                const fc = (plan.fechaCompromiso || '').slice(0, 10);
+                if (!fc || fc < filtroFechaDesde) return false;
+            }
+            if (filtroFechaHasta) {
+                const fc = (plan.fechaCompromiso || '').slice(0, 10);
+                if (!fc || fc > filtroFechaHasta) return false;
+            }
+            return true;
+        });
+    }, [planes, filtroProceso, filtroResponsable, filtroEstado, filtroAvance, filtroFechaDesde, filtroFechaHasta]);
 
     const addManualResponsable = () => {
         const val = manualResponsableText.trim();
@@ -370,6 +453,119 @@ export default function PlanAccionView({ onClose, userArea, userRole, canCreate 
                 )}
             </View>
 
+            <View style={styles.filtersCard}>
+                <Text style={styles.filtersTitle}>Filtros</Text>
+                <View style={styles.filtersRow}>
+                    <View style={styles.filterGroup}>
+                        <Text style={styles.filterLabel}>Proceso</Text>
+                        <View style={styles.filterPickerWrap}>
+                            <Picker selectedValue={filtroProceso} onValueChange={setFiltroProceso} style={styles.filterPicker}>
+                                <Picker.Item label="Todos" value="" />
+                                {AREAS.map((a) => (
+                                    <Picker.Item key={a} label={a} value={a} />
+                                ))}
+                            </Picker>
+                        </View>
+                    </View>
+                    <View style={styles.filterGroup}>
+                        <Text style={styles.filterLabel}>Responsable</Text>
+                        <View style={styles.filterPickerWrap}>
+                            <Picker selectedValue={filtroResponsable} onValueChange={setFiltroResponsable} style={styles.filterPicker}>
+                                <Picker.Item label="Todos" value="" />
+                                {responsablesDisponibles.map((r) => (
+                                    <Picker.Item key={r} label={r} value={r} />
+                                ))}
+                            </Picker>
+                        </View>
+                    </View>
+                    <View style={styles.filterGroup}>
+                        <Text style={styles.filterLabel}>Estado</Text>
+                        <View style={styles.filterPickerWrap}>
+                            <Picker selectedValue={filtroEstado} onValueChange={setFiltroEstado} style={styles.filterPicker}>
+                                <Picker.Item label="Todos" value="" />
+                                {ESTADOS_FILTRO.map((e) => (
+                                    <Picker.Item key={e.value} label={e.label} value={e.value} />
+                                ))}
+                            </Picker>
+                        </View>
+                    </View>
+                    <View style={styles.filterGroup}>
+                        <Text style={styles.filterLabel}>% Avance</Text>
+                        <View style={styles.filterPickerWrap}>
+                            <Picker selectedValue={filtroAvance} onValueChange={setFiltroAvance} style={styles.filterPicker}>
+                                {AVANCE_FILTRO.map((a) => (
+                                    <Picker.Item key={a.value || 'all'} label={a.label} value={a.value} />
+                                ))}
+                            </Picker>
+                        </View>
+                    </View>
+                    <View style={styles.filterGroup}>
+                        <Text style={styles.filterLabel}>F. compromiso desde</Text>
+                        {Platform.OS === 'web' ? (
+                            <input
+                                type="date"
+                                value={filtroFechaDesde}
+                                onChange={(e: any) => setFiltroFechaDesde(e.target.value)}
+                                style={{
+                                    padding: 8,
+                                    borderRadius: 6,
+                                    border: '1px solid #CBD5E0',
+                                    fontSize: 13,
+                                    backgroundColor: '#fff',
+                                    width: '100%',
+                                    boxSizing: 'border-box',
+                                    height: 40,
+                                }}
+                            />
+                        ) : (
+                            <TextInput
+                                style={styles.input}
+                                value={filtroFechaDesde}
+                                onChangeText={setFiltroFechaDesde}
+                                placeholder="YYYY-MM-DD"
+                            />
+                        )}
+                    </View>
+                    <View style={styles.filterGroup}>
+                        <Text style={styles.filterLabel}>F. compromiso hasta</Text>
+                        {Platform.OS === 'web' ? (
+                            <input
+                                type="date"
+                                value={filtroFechaHasta}
+                                onChange={(e: any) => setFiltroFechaHasta(e.target.value)}
+                                style={{
+                                    padding: 8,
+                                    borderRadius: 6,
+                                    border: '1px solid #CBD5E0',
+                                    fontSize: 13,
+                                    backgroundColor: '#fff',
+                                    width: '100%',
+                                    boxSizing: 'border-box',
+                                    height: 40,
+                                }}
+                            />
+                        ) : (
+                            <TextInput
+                                style={styles.input}
+                                value={filtroFechaHasta}
+                                onChangeText={setFiltroFechaHasta}
+                                placeholder="YYYY-MM-DD"
+                            />
+                        )}
+                    </View>
+                </View>
+                <View style={styles.filtersFooter}>
+                    <Text style={styles.filtersCount}>
+                        {planesFiltrados.length} de {planes.length} plan(es)
+                    </Text>
+                    {tieneFiltrosActivos && (
+                        <TouchableOpacity style={styles.btnClearFilters} onPress={limpiarFiltros}>
+                            <Text style={styles.btnClearFiltersText}>Limpiar filtros</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
+            </View>
+
             {loading ? (
                 <ActivityIndicator size="large" color="#3182CE" style={{ marginTop: 40 }} />
             ) : (
@@ -390,10 +586,14 @@ export default function PlanAccionView({ onClose, userArea, userRole, canCreate 
                         </View>
 
                         <ScrollView style={{ maxHeight: 600 }}>
-                            {planes.length === 0 ? (
-                                <Text style={styles.emptyText}>No hay planes de acción registrados</Text>
+                            {planesFiltrados.length === 0 ? (
+                                <Text style={styles.emptyText}>
+                                    {planes.length === 0
+                                        ? 'No hay planes de acción registrados'
+                                        : 'Ningún plan coincide con los filtros'}
+                                </Text>
                             ) : (
-                                planes.map((plan, idx) => (
+                                planesFiltrados.map((plan, idx) => (
                                     <View key={plan.id} style={[styles.row, { backgroundColor: idx % 2 === 0 ? '#fff' : '#F7FAFC' }]}>
                                         <Text style={[styles.cell, { width: 40 }]}>{plan.id}</Text>
                                         <Text style={[styles.cell, { width: 140 }]}>{plan.proceso}</Text>
@@ -738,6 +938,45 @@ const styles = StyleSheet.create({
     btnNew: { backgroundColor: '#3182CE', paddingHorizontal: 15, paddingVertical: 10, borderRadius: 6 },
     btnFilter: { paddingHorizontal: 15, paddingVertical: 10, borderRadius: 6 },
     btnNewText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
+    filtersCard: {
+        backgroundColor: '#fff',
+        borderRadius: 10,
+        padding: 14,
+        marginBottom: 14,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    filtersTitle: { fontSize: 14, fontWeight: '700', color: '#2D3748', marginBottom: 10 },
+    filtersRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+    filterGroup: { minWidth: 160, flexGrow: 1, flexBasis: 160 },
+    filterLabel: { fontSize: 12, fontWeight: '600', color: '#718096', marginBottom: 4 },
+    filterPickerWrap: {
+        borderWidth: 1,
+        borderColor: '#CBD5E0',
+        borderRadius: 6,
+        height: 40,
+        justifyContent: 'center',
+        backgroundColor: '#fff',
+        overflow: 'hidden',
+    },
+    filterPicker: { height: 40 },
+    filtersFooter: {
+        marginTop: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+    },
+    filtersCount: { fontSize: 13, color: '#4A5568', fontWeight: '600' },
+    btnClearFilters: {
+        backgroundColor: '#EDF2F7',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: '#CBD5E0',
+    },
+    btnClearFiltersText: { color: '#4A5568', fontWeight: '700', fontSize: 12 },
     btnAddManual: { paddingHorizontal: 15, height: 45, justifyContent: 'center', borderRadius: 6, elevation: 2 },
     tableHeader: { flexDirection: 'row', backgroundColor: '#2D3748', padding: 10, borderTopLeftRadius: 6, borderTopRightRadius: 6 },
     th: { color: '#fff', fontWeight: 'bold', fontSize: 13 },

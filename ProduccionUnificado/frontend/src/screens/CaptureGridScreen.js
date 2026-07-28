@@ -907,6 +907,9 @@ export default function CaptureGridScreen({ navigation }) {
         festivos.push(trasladarALunes(new Date(year, 10, 1)));  // Todos los Santos
         festivos.push(trasladarALunes(new Date(year, 10, 11))); // Independencia de Cartagena
 
+        // Festivos excepcionales / decretados
+        if (year === 2026) festivos.push(new Date(2026, 6, 13));
+
         return festivos;
     };
 

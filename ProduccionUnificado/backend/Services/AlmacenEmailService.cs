@@ -67,10 +67,26 @@ public class AlmacenEmailService
         return lista;
     }
 
-    public Task NotificarNuevaRequisicionAsync(AlmacenRequisicionDto req) =>
+    public Task NotificarNuevaRequisicionAsync(AlmacenRequisicionDto req)
+    {
+        var urgente = EsUrgenteDesdeDto(req);
+        var subject = urgente
+            ? $"[Almacén] URGENTE! Nueva requisición {req.Codigo} — pendiente de pedido"
+            : $"[Almacén] Nueva requisición {req.Codigo} — pendiente de pedido";
+        return EnviarAsync(subject, BuildNuevaRequisicionBody(req, urgente));
+    }
+
+    public Task NotificarRecordatorioPedidoPendienteAsync(AlmacenRequisicionDto req, int diasRestantes) =>
         EnviarAsync(
-            $"[Almacén] Nueva requisición {req.Codigo} — pendiente de pedido",
-            BuildNuevaRequisicionBody(req));
+            $"[Almacén] Recordatorio — faltan {diasRestantes} días para pedir {req.Codigo}",
+            BuildRecordatorioPedidoBody(req, diasRestantes));
+
+    private static bool EsUrgenteDesdeDto(AlmacenRequisicionDto req)
+    {
+        if (!DateTime.TryParse(req.FechaSolicitud, out var sol)) return false;
+        if (!DateTime.TryParse(req.FechaRequerida, out var reqF)) return false;
+        return AlmacenService.EsRequisicionUrgente(sol, reqF);
+    }
 
     public Task NotificarPedidoAsync(AlmacenRequisicionDto req) =>
         EnviarAsync(
@@ -99,6 +115,27 @@ public class AlmacenEmailService
 
     private static string H(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "—" : WebUtility.HtmlEncode(value);
+
+    private static string HtmlComentariosRequisicion(AlmacenRequisicionDto req)
+    {
+        if (req.Comentarios.Count == 0)
+            return H(req.Observacion);
+
+        static string Render(AlmacenRequisicionComentarioDto c, int nivel)
+        {
+            var indent = nivel * 16;
+            var meta = $"{H(c.UsuarioNombre)} · {H(c.Fecha)} {H(c.Hora)}";
+            var hijos = string.Concat(c.Respuestas.Select(r => Render(r, nivel + 1)));
+            return $@"
+            <div style='margin:0 0 10px {indent}px;padding:10px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;'>
+                <div style='font-size:12px;color:#64748b;margin-bottom:4px;'>{meta}</div>
+                <div style='color:#334155;white-space:pre-wrap;'>{H(c.Texto)}</div>
+                {hijos}
+            </div>";
+        }
+
+        return string.Concat(req.Comentarios.Select(c => Render(c, 0)));
+    }
 
     private static string LabelTipo(string id) =>
         AlmacenCatalog.TiposRequisicion.FirstOrDefault(t => t.Id == id)?.Label ?? id;
@@ -165,20 +202,52 @@ public class AlmacenEmailService
             <tr><td style='padding:6px 0;color:#718096;'>Referencia</td><td>{H(req.Referencia)}</td></tr>
             <tr><td style='padding:6px 0;color:#718096;'>Producto</td><td style='font-weight:600;'>{H(req.Producto)}</td></tr>
             <tr><td style='padding:6px 0;color:#718096;'>Cantidad</td><td><strong>{F(req.Cantidad)}</strong> {H(req.Unidad)}</td></tr>
-            <tr><td style='padding:6px 0;color:#718096;vertical-align:top;'>Observación</td><td>{H(req.Observacion)}</td></tr>
+            <tr><td style='padding:6px 0;color:#718096;vertical-align:top;'>Observaciones</td><td>{HtmlComentariosRequisicion(req)}</td></tr>
         </table>";
     }
 
-    private string BuildNuevaRequisicionBody(AlmacenRequisicionDto req)
+    private string BuildNuevaRequisicionBody(AlmacenRequisicionDto req, bool urgente)
     {
+        var bannerUrgente = urgente
+            ? @"
+        <div style='background:#FEE2E2;border:2px solid #EF4444;border-radius:10px;padding:16px;margin-bottom:18px;text-align:center;'>
+            <p style='margin:0;font-size:20px;font-weight:800;color:#B91C1C;letter-spacing:.5px;'>URGENTE!</p>
+            <p style='margin:8px 0 0;color:#7F1D1D;font-size:14px;'>
+                La fecha requerida es a <strong>1 o 2 días</strong> de la solicitud. Priorizar el pedido a proveedores.
+            </p>
+        </div>"
+            : "";
+
         var contenido = $@"
+        {bannerUrgente}
         <p style='color:#4a5568;line-height:1.6;'>
             Se registró una <strong>nueva requisición</strong> en el sistema. Queda <strong>a la espera de realizar el pedido</strong> a proveedores.
         </p>
         <div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-top:16px;'>
             {TablaRequisicion(req)}
         </div>";
-        return Wrap($"Requisición {req.Codigo}", "Nueva requisición", "#3182ce", contenido);
+        var badge = urgente ? "URGENTE — Nueva requisición" : "Nueva requisición";
+        var badgeColor = urgente ? "#DC2626" : "#3182ce";
+        return Wrap($"Requisición {req.Codigo}", badge, badgeColor, contenido);
+    }
+
+    private string BuildRecordatorioPedidoBody(AlmacenRequisicionDto req, int diasRestantes)
+    {
+        var contenido = $@"
+        <div style='background:#FEF3C7;border:2px solid #F59E0B;border-radius:10px;padding:16px;margin-bottom:18px;text-align:center;'>
+            <p style='margin:0;font-size:18px;font-weight:800;color:#B45309;'>RECORDATORIO DE PEDIDO PENDIENTE</p>
+            <p style='margin:8px 0 0;color:#92400E;font-size:14px;'>
+                Faltan <strong>{diasRestantes} día(s)</strong> para la fecha requerida y <strong>aún no se ha registrado el pedido</strong>.
+            </p>
+        </div>
+        <p style='color:#4a5568;line-height:1.6;'>
+            La requisición <strong>{H(req.Codigo)}</strong> sigue en estado <strong>Pendiente</strong>.
+            Por favor realice el pedido a proveedores antes de la fecha requerida.
+        </p>
+        <div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-top:16px;'>
+            {TablaRequisicion(req)}
+        </div>";
+        return Wrap($"Recordatorio — {req.Codigo}", "Pedido pendiente", "#D97706", contenido);
     }
 
     private string BuildPedidoBody(AlmacenRequisicionDto req)

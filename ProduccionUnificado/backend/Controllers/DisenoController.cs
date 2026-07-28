@@ -5,6 +5,7 @@ using TiempoProcesos.API.Data;
 using TiempoProcesos.API.Models;
 using TiempoProcesos.API.Helpers;
 using TiempoProcesos.API.DTOs;
+using TiempoProcesos.API.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using System.IO;
@@ -23,11 +24,13 @@ public class DisenoController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly IWebHostEnvironment _env;
+    private readonly GastoAutorizacionService _gastoAutorizacion;
 
-    public DisenoController(AppDbContext context, IWebHostEnvironment env)
+    public DisenoController(AppDbContext context, IWebHostEnvironment env, GastoAutorizacionService gastoAutorizacion)
     {
         _context = context;
         _env = env;
+        _gastoAutorizacion = gastoAutorizacion;
     }
 
     #region Rubros
@@ -227,8 +230,28 @@ public class DisenoController : ControllerBase
     }
 
     [HttpPost("gastos")]
-    public async Task<ActionResult<Diseno_Gasto>> CreateGasto(Diseno_Gasto gasto)
+    public async Task<ActionResult<Diseno_Gasto>> CreateGasto(
+        Diseno_Gasto gasto,
+        [FromQuery] int? autorizacionId = null)
     {
+        var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == "Id");
+        int adminId = 0;
+        if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int parsedAdminId))
+        {
+            adminId = parsedAdminId;
+            gasto.CreadoPorId = parsedAdminId;
+        }
+        if (adminId <= 0)
+            return BadRequest(new { message = "No se pudo identificar al usuario." });
+        try
+        {
+            await _gastoAutorizacion.ExigirAutorizacionParaGastoNormalAsync("diseno", autorizacionId, adminId, false);
+        }
+        catch (InvalidOperationException exAuth)
+        {
+            return BadRequest(new { message = exAuth.Message });
+        }
+
         var mpD = GastoMedioPagoHelper.ValidateCreditoOExclusivoEfectivo(false, gasto.EsSolicitudCredito, gasto.EsEfectivo);
         if (mpD != null) return (ActionResult<Diseno_Gasto>)(object)mpD;
 
@@ -242,15 +265,13 @@ public class DisenoController : ControllerBase
         gasto.PrecioBase = pbD;
         gasto.PrecioIva = piD;
 
-        var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == "Id");
-        if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int adminId))
-            gasto.CreadoPorId = adminId;
-
         GastoPeriodoHelper.AplicarAnioMesDesdeFecha(gasto.Fecha, (a, m) => { gasto.Anio = a; gasto.Mes = m; });
 
         gasto.FechaCreacion = DateTime.UtcNow;
         _context.Diseno_Gastos.Add(gasto);
         await _context.SaveChangesAsync();
+        if (autorizacionId.HasValue && autorizacionId.Value > 0)
+            await _gastoAutorizacion.VincularGastoRegistradoAsync(autorizacionId.Value, gasto.Id);
         return Ok(new { id = gasto.Id });
     }
 

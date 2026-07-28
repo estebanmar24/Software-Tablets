@@ -13,8 +13,9 @@ export const mantenimientoApi = {
         return response.data;
     },
 
-    createGasto: async (gasto) => {
-        const response = await api.post(`${BASE_URL}/gastos`, gasto);
+    createGasto: async (gasto, autorizacionId) => {
+        const q = autorizacionId ? `?autorizacionId=${encodeURIComponent(autorizacionId)}` : '';
+        const response = await api.post(`${BASE_URL}/gastos${q}`, gasto);
         return response.data;
     },
 

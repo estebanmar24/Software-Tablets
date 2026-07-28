@@ -19,6 +19,8 @@ interface EncuestaResumen {
     referencia?: string;
     material?: string;
     cliente?: string;
+    alcance?: string;
+    tipoReclamacion?: string;
     cantidadAProducir: number;
     cantidadRecuperada: number;
     cantidadParaDespacho: number;
@@ -34,6 +36,8 @@ interface EncuestaDetalle {
     material?: string;
     cliente?: string;
     cabida?: string;
+    alcance?: string;
+    tipoReclamacion?: string;
     cantidadAProducir: number;
     cantidadRecuperada: number;
     cantidadParaDespacho: number;
@@ -41,6 +45,9 @@ interface EncuestaDetalle {
     fechaCreacion: string;
     procesos: { proceso: string; cantidadProducida: number; observaciones?: string }[];
 }
+
+const ALCANCE_OPCIONES = ['Alcance interno', 'Alcance externo'];
+const TIPO_OTRO = 'Otro';
 
 export default function EncuestaCalidadProduccionView() {
     // Form state
@@ -53,6 +60,10 @@ export default function EncuestaCalidadProduccionView() {
     const [referencia, setReferencia] = useState('');
     const [material, setMaterial] = useState('');
     const [cabida, setCabida] = useState('');
+    const [alcance, setAlcance] = useState('');
+    const [tipoReclamacion, setTipoReclamacion] = useState('');
+    const [otroTipoTexto, setOtroTipoTexto] = useState('');
+    const [tiposReclamacion, setTiposReclamacion] = useState<string[]>(['Queja', 'Reclamo', 'Devolución', 'Otro']);
     const [cantidadAProducir, setCantidadAProducir] = useState('');
     const [cantidadRecuperada, setCantidadRecuperada] = useState('');
     const [cantidadParaDespacho, setCantidadParaDespacho] = useState('');
@@ -90,11 +101,29 @@ export default function EncuestaCalidadProduccionView() {
     useEffect(() => {
         loadProcesos();
         loadEncuestas();
+        loadTiposReclamacion();
     }, []);
 
     useEffect(() => {
         loadEncuestas();
     }, [filterMes, filterAnio]);
+
+    const loadTiposReclamacion = async () => {
+        try {
+            const res = await api.get('consolidadonc/tipos-reclamacion');
+            const tipos = Array.isArray(res.data) ? res.data : [];
+            if (tipos.length > 0) setTiposReclamacion(tipos);
+        } catch (e) {
+            console.error('Error cargando tipos de reclamación:', e);
+        }
+    };
+
+    const resolveTipoReclamacionGuardado = () => {
+        if (tipoReclamacion === TIPO_OTRO) {
+            return otroTipoTexto.trim() || TIPO_OTRO;
+        }
+        return tipoReclamacion.trim();
+    };
 
     const loadProcesos = async () => {
         try {
@@ -141,6 +170,9 @@ export default function EncuestaCalidadProduccionView() {
         setReferencia('');
         setMaterial('');
         setCabida('');
+        setAlcance('');
+        setTipoReclamacion('');
+        setOtroTipoTexto('');
         setCantidadAProducir('');
         setCantidadRecuperada('');
         setCantidadParaDespacho('');
@@ -175,6 +207,19 @@ export default function EncuestaCalidadProduccionView() {
             if (Platform.OS === 'web') { window.alert('Debe ingresar la cantidad a producir'); } else { Alert.alert('Error', 'Debe ingresar la cantidad a producir'); }
             return;
         }
+        if (!alcance.trim()) {
+            if (Platform.OS === 'web') { window.alert('Seleccione el alcance (interno o externo)'); } else { Alert.alert('Error', 'Seleccione el alcance'); }
+            return;
+        }
+        const tipoFinal = resolveTipoReclamacionGuardado();
+        if (!tipoFinal) {
+            if (Platform.OS === 'web') { window.alert('Seleccione el tipo de reclamación (queja, reclamo, etc.)'); } else { Alert.alert('Error', 'Seleccione el tipo de reclamación'); }
+            return;
+        }
+        if (tipoReclamacion === TIPO_OTRO && !otroTipoTexto.trim()) {
+            if (Platform.OS === 'web') { window.alert('Especifique el tipo cuando selecciona Otro'); } else { Alert.alert('Error', 'Especifique el tipo cuando selecciona Otro'); }
+            return;
+        }
 
         const validProcesos = procesosEntries.filter(p => p.proceso && p.cantidadProducida);
 
@@ -186,6 +231,9 @@ export default function EncuestaCalidadProduccionView() {
                 referencia: referencia ? referencia.toUpperCase() : null,
                 material: material ? material.toUpperCase() : null,
                 cliente: cliente ? cliente.toUpperCase() : null,
+                alcance: alcance || null,
+                tipoReclamacion: tipoFinal || null,
+                tipoReclamacionNuevo: tipoReclamacion === TIPO_OTRO ? otroTipoTexto.trim() : null,
                 cabida: cabida || null,
                 cantidadAProducir: parseFloat(cantidadAProducir) || 0,
                 cantidadRecuperada: parseFloat(cantidadRecuperada) || 0,
@@ -208,6 +256,7 @@ export default function EncuestaCalidadProduccionView() {
             resetForm();
             setShowForm(false);
             loadEncuestas();
+            loadTiposReclamacion();
         } catch (e: any) {
             console.error('Error guardando:', e);
             const msg = (editingId ? 'No se pudo actualizar: ' : 'No se pudo guardar: ') + (e?.message || '');
@@ -239,6 +288,18 @@ export default function EncuestaCalidadProduccionView() {
             setReferencia(e.referencia || '');
             setMaterial(e.material || '');
             setCabida(e.cabida || '');
+            setAlcance(e.alcance || '');
+            const tipo = e.tipoReclamacion || '';
+            if (tipo && !tiposReclamacion.includes(tipo) && tipo !== TIPO_OTRO) {
+                setTipoReclamacion(TIPO_OTRO);
+                setOtroTipoTexto(tipo);
+            } else if (tipo && !tiposReclamacion.includes(tipo)) {
+                setTipoReclamacion(TIPO_OTRO);
+                setOtroTipoTexto(tipo);
+            } else {
+                setTipoReclamacion(tipo);
+                setOtroTipoTexto('');
+            }
             setCantidadAProducir(e.cantidadAProducir.toString());
             setCantidadRecuperada(e.cantidadRecuperada.toString());
             setCantidadParaDespacho(e.cantidadParaDespacho.toString());
@@ -403,6 +464,47 @@ export default function EncuestaCalidadProduccionView() {
                                 <TextInput style={styles.input} value={cabida} onChangeText={setCabida} placeholder="Cabida" />
                             </View>
 
+                            {/* Alcance */}
+                            <View style={styles.fieldBox}>
+                                <Text style={styles.fieldLabel}>Alcance *</Text>
+                                <View style={styles.pickerWrap}>
+                                    <Picker selectedValue={alcance} onValueChange={setAlcance} style={styles.picker}>
+                                        <Picker.Item label="-- Seleccionar --" value="" />
+                                        {ALCANCE_OPCIONES.map((opt) => (
+                                            <Picker.Item key={opt} label={opt} value={opt} />
+                                        ))}
+                                    </Picker>
+                                </View>
+                            </View>
+
+                            {/* Tipo de reclamación */}
+                            <View style={styles.fieldBox}>
+                                <Text style={styles.fieldLabel}>Tipo de reclamación *</Text>
+                                <View style={styles.pickerWrap}>
+                                    <Picker
+                                        selectedValue={tipoReclamacion}
+                                        onValueChange={(v) => {
+                                            setTipoReclamacion(v);
+                                            if (v !== TIPO_OTRO) setOtroTipoTexto('');
+                                        }}
+                                        style={styles.picker}
+                                    >
+                                        <Picker.Item label="-- Seleccionar --" value="" />
+                                        {tiposReclamacion.map((opt) => (
+                                            <Picker.Item key={opt} label={opt} value={opt} />
+                                        ))}
+                                    </Picker>
+                                </View>
+                                {tipoReclamacion === TIPO_OTRO && (
+                                    <TextInput
+                                        style={[styles.input, { marginTop: 8 }]}
+                                        value={otroTipoTexto}
+                                        onChangeText={setOtroTipoTexto}
+                                        placeholder="Especifique el tipo (quedará guardado en la lista)"
+                                    />
+                                )}
+                            </View>
+
                             {/* Cantidad a producir */}
                             <View style={styles.fieldBox}>
                                 <Text style={styles.fieldLabel}>Cantidad a Producir</Text>
@@ -533,8 +635,10 @@ export default function EncuestaCalidadProduccionView() {
                             <Text style={[styles.th, { flex: 0.8 }]}>Fecha</Text>
                             <Text style={[styles.th, { flex: 0.6 }]}>OP</Text>
                             <Text style={[styles.th, { flex: 1 }]}>Referencia</Text>
-                            <Text style={[styles.th, { flex: 1 }]}>Cliente</Text>
-                            <Text style={[styles.th, { flex: 1 }]}>Material</Text>
+                            <Text style={[styles.th, { flex: 0.8 }]}>Cliente</Text>
+                            <Text style={[styles.th, { flex: 0.7 }]}>Alcance</Text>
+                            <Text style={[styles.th, { flex: 0.7 }]}>Tipo NC</Text>
+                            <Text style={[styles.th, { flex: 0.8 }]}>Material</Text>
                             <Text style={[styles.th, { flex: 0.8 }]}>Cant. Producir</Text>
                             <Text style={[styles.th, { flex: 0.5 }]}>Procesos</Text>
                             <Text style={[styles.th, { flex: 0.8 }]}>Cant. Recuperada</Text>
@@ -550,8 +654,10 @@ export default function EncuestaCalidadProduccionView() {
                                     <Text style={[styles.td, { flex: 0.8 }]}>{formatDate(item.fecha)}</Text>
                                     <Text style={[styles.td, { flex: 0.6 }]}>{item.ordenProduccion}</Text>
                                     <Text style={[styles.td, { flex: 1 }]} numberOfLines={1}>{item.referencia || '-'}</Text>
-                                    <Text style={[styles.td, { flex: 1 }]} numberOfLines={1}>{item.cliente || '-'}</Text>
-                                    <Text style={[styles.td, { flex: 1 }]} numberOfLines={1}>{item.material || '-'}</Text>
+                                    <Text style={[styles.td, { flex: 0.8 }]} numberOfLines={1}>{item.cliente || '-'}</Text>
+                                    <Text style={[styles.td, { flex: 0.7 }]} numberOfLines={1}>{item.alcance || '-'}</Text>
+                                    <Text style={[styles.td, { flex: 0.7 }]} numberOfLines={1}>{item.tipoReclamacion || '-'}</Text>
+                                    <Text style={[styles.td, { flex: 0.8 }]} numberOfLines={1}>{item.material || '-'}</Text>
                                     <Text style={[styles.td, { flex: 0.8, textAlign: 'center' }]}>{item.cantidadAProducir}</Text>
                                     <Text style={[styles.td, { flex: 0.5, textAlign: 'center', fontWeight: 'bold', color: '#3182CE' }]}>{item.totalProcesos}</Text>
                                     <Text style={[styles.td, { flex: 0.8, textAlign: 'center' }]}>{item.cantidadRecuperada}</Text>
@@ -598,6 +704,14 @@ export default function EncuestaCalidadProduccionView() {
                                         <View style={styles.detailItem}>
                                             <Text style={styles.detailLabel}>Cliente</Text>
                                             <Text style={styles.detailValue}>{selectedEncuesta.cliente || '-'}</Text>
+                                        </View>
+                                        <View style={styles.detailItem}>
+                                            <Text style={styles.detailLabel}>Alcance</Text>
+                                            <Text style={styles.detailValue}>{selectedEncuesta.alcance || '-'}</Text>
+                                        </View>
+                                        <View style={styles.detailItem}>
+                                            <Text style={styles.detailLabel}>Tipo de reclamación</Text>
+                                            <Text style={styles.detailValue}>{selectedEncuesta.tipoReclamacion || '-'}</Text>
                                         </View>
                                         <View style={styles.detailItem}>
                                             <Text style={styles.detailLabel}>Material</Text>

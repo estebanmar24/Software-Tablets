@@ -1,0 +1,364 @@
+{
+  "maquinas": [
+    {
+      "Id": -1,
+      "Nombre": "MANUAL / TERMINADOS"
+    },
+    {
+      "Id": 2,
+      "Nombre": "1B CONVERTIDORA"
+    },
+    {
+      "Id": 3,
+      "Nombre": "2A Guillotina polar132"
+    },
+    {
+      "Id": 5,
+      "Nombre": "3 Sord Z"
+    },
+    {
+      "Id": 6,
+      "Nombre": "4 Sord Z"
+    },
+    {
+      "Id": 8,
+      "Nombre": "6 SpeedMaster"
+    },
+    {
+      "Id": 9,
+      "Nombre": "7 SpeedMaster"
+    },
+    {
+      "Id": 12,
+      "Nombre": "8C Estampadora"
+    },
+    {
+      "Id": 4,
+      "Nombre": "2B Guillotina org- Perfecta 107"
+    },
+    {
+      "Id": 1,
+      "Nombre": "1A CONVERTIDORA"
+    },
+    {
+      "Id": 7,
+      "Nombre": "5 Sord Z"
+    },
+    {
+      "Id": 18,
+      "Nombre": "12 Cortadora de Manijas"
+    },
+    {
+      "Id": 10,
+      "Nombre": "8A Troqueladora de Papel"
+    },
+    {
+      "Id": 11,
+      "Nombre": "8B Troqueladora de Papel"
+    },
+    {
+      "Id": 13,
+      "Nombre": "9 Troqueladora Rollo"
+    },
+    {
+      "Id": 14,
+      "Nombre": "10A Colaminadora Carton"
+    },
+    {
+      "Id": 16,
+      "Nombre": "11 Laminadora BOPP"
+    },
+    {
+      "Id": 23,
+      "Nombre": "16 Barnizadora UV"
+    },
+    {
+      "Id": 19,
+      "Nombre": "13A Corrugadora FLTE"
+    },
+    {
+      "Id": 20,
+      "Nombre": "13b Corrugadora FLTB"
+    },
+    {
+      "Id": 21,
+      "Nombre": "14 Pegadora de Cajas"
+    },
+    {
+      "Id": 15,
+      "Nombre": "10B Colaminadora Carton"
+    },
+    {
+      "Id": 17,
+      "Nombre": "12 Maquina de Cordon"
+    }
+  ],
+  "usuarios": [
+    {
+      "Id": 10,
+      "Nombre": "Obando Higuita Jose Luis"
+    },
+    {
+      "Id": 23,
+      "Nombre": "Renteria Mejia Nestor Alfonso"
+    },
+    {
+      "Id": 19,
+      "Nombre": "Rodriguez Castaño Maria Alejandra"
+    },
+    {
+      "Id": 16,
+      "Nombre": "Bedoya Maria Fernanda"
+    },
+    {
+      "Id": 3,
+      "Nombre": "Enrique Muñoz Hector Hilde"
+    },
+    {
+      "Id": 18,
+      "Nombre": "Gomez Ruiz William Hernan"
+    },
+    {
+      "Id": 17,
+      "Nombre": "Morales Grueso Claudia Patricia"
+    },
+    {
+      "Id": 5,
+      "Nombre": "Martinez Osorno Karen Lizeth"
+    },
+    {
+      "Id": 26,
+      "Nombre": "Uran Quintero Yohao Alexander"
+    },
+    {
+      "Id": 43,
+      "Nombre": "NOGUERA VALENCIA FABIAN"
+    },
+    {
+      "Id": 40,
+      "Nombre": "Josue lopez"
+    },
+    {
+      "Id": 41,
+      "Nombre": "SANDRA VIVIANA PEREZ"
+    },
+    {
+      "Id": 42,
+      "Nombre": "VELEZ GOYES JONATHAN ALEZANDER"
+    },
+    {
+      "Id": 44,
+      "Nombre": "Jose Camilo Velasco"
+    },
+    {
+      "Id": 45,
+      "Nombre": "TATIANA ANDREA TABORDA"
+    },
+    {
+      "Id": 46,
+      "Nombre": "Juan Carlos Preciado"
+    },
+    {
+      "Id": 47,
+      "Nombre": "milton felipe  suarez"
+    },
+    {
+      "Id": 48,
+      "Nombre": "prueb"
+    },
+    {
+      "Id": 49,
+      "Nombre": "Mina Sinisterra Jhon Jairo"
+    },
+    {
+      "Id": 50,
+      "Nombre": "wayfford"
+    },
+    {
+      "Id": 51,
+      "Nombre": "Jaramillo Luis Felipe"
+    },
+    {
+      "Id": 35,
+      "Nombre": "helder valencia"
+    },
+    {
+      "Id": 36,
+      "Nombre": "santiago agudelo"
+    },
+    {
+      "Id": 28,
+      "Nombre": "Jose Fernando Ruiz"
+    },
+    {
+      "Id": 25,
+      "Nombre": "Valencia Mirquez Nicol"
+    },
+    {
+      "Id": 24,
+      "Nombre": "Mina Sinisterra Jhon Jairo"
+    },
+    {
+      "Id": 39,
+      "Nombre": "juan"
+    },
+    {
+      "Id": 29,
+      "Nombre": "Johan Alexander Preciado"
+    },
+    {
+      "Id": 1,
+      "Nombre": "Blandon Moreno Jose Lizandro"
+    },
+    {
+      "Id": 2,
+      "Nombre": "Cruz Pinto Alberto"
+    },
+    {
+      "Id": 4,
+      "Nombre": "Escobar Cardona John Fredy"
+    },
+    {
+      "Id": 37,
+      "Nombre": "Juan Ochoa"
+    },
+    {
+      "Id": 6,
+      "Nombre": "Millan Salazar Magaly"
+    },
+    {
+      "Id": 15,
+      "Nombre": "Moriano Chiguas Yurde Arley"
+    },
+    {
+      "Id": 9,
+      "Nombre": "Motta Talaga Leidy Jhoanna"
+    },
+    {
+      "Id": 14,
+      "Nombre": "Perdomo Rincon Gustavo Adolfo"
+    },
+    {
+      "Id": 27,
+      "Nombre": "Preciado Rivas Johan Alexander"
+    },
+    {
+      "Id": 11,
+      "Nombre": "Ramirez Romero Andres Mauricio"
+    },
+    {
+      "Id": 21,
+      "Nombre": "Riascos Castillo Andres Felipe"
+    },
+    {
+      "Id": 20,
+      "Nombre": "Rojas Collazos Joan Mauricio"
+    },
+    {
+      "Id": 13,
+      "Nombre": "Velez Arana Robert De Jesus"
+    },
+    {
+      "Id": 30,
+      "Nombre": "Cristian Felipe Echavarria"
+    },
+    {
+      "Id": 22,
+      "Nombre": "Roldan Barona Erik Esteban"
+    },
+    {
+      "Id": 12,
+      "Nombre": "Sarmiento Rincon Yhan Otoniel"
+    },
+    {
+      "Id": 7,
+      "Nombre": "Moreno Mendez Angel Julio"
+    },
+    {
+      "Id": 8,
+      "Nombre": "Moreno Urrea Marlene"
+    }
+  ],
+  "codigos": [
+    {
+      "Id": 17,
+      "Codigo": "sin codigo",
+      "Descripcion": ""
+    },
+    {
+      "Id": 11,
+      "Codigo": "10",
+      "Descripcion": "Desperdicios por troquel y/o plancha en malas condiciones"
+    },
+    {
+      "Id": 12,
+      "Codigo": "11",
+      "Descripcion": "Desperdicios por despiece"
+    },
+    {
+      "Id": 13,
+      "Codigo": "12",
+      "Descripcion": "Desperdicios por fallos o falta de mantenimiento en las máquinas"
+    },
+    {
+      "Id": 14,
+      "Codigo": "13",
+      "Descripcion": "Desperdicios por condiciones ambientales inadecuadas (temperatura, polvo, humedad)"
+    },
+    {
+      "Id": 15,
+      "Codigo": "14",
+      "Descripcion": "Desperdicios por insumos defectuosos o en mal estado"
+    },
+    {
+      "Id": 16,
+      "Codigo": "15",
+      "Descripcion": "Otros desperdicios"
+    },
+    {
+      "Id": 2,
+      "Codigo": "01",
+      "Descripcion": "Desperdicio por errores operativos (fallos humanos o de configuración de la máquina)"
+    },
+    {
+      "Id": 3,
+      "Codigo": "02",
+      "Descripcion": "Desperdicio durante la configuración o pruebas iniciales de la máquina"
+    },
+    {
+      "Id": 4,
+      "Codigo": "03",
+      "Descripcion": "Desperdicios por cortes inexactos o mal aprovechamiento del material"
+    },
+    {
+      "Id": 5,
+      "Codigo": "04",
+      "Descripcion": "Desperdicios por material en malas condiciones (por almacenamiento o recepción inadecuada)"
+    },
+    {
+      "Id": 6,
+      "Codigo": "05",
+      "Descripcion": "Desperdicios por errores en la planificación de la producción (sobrestock o trabajo incorrecto)"
+    },
+    {
+      "Id": 7,
+      "Codigo": "06",
+      "Descripcion": "Desperdicios por órdenes de producción con especificaciones incorrectas"
+    },
+    {
+      "Id": 8,
+      "Codigo": "07",
+      "Descripcion": "Desperdicios por mala manipulación de materiales o productos en proceso (daños, caídas, dobleces)"
+    },
+    {
+      "Id": 9,
+      "Codigo": "08",
+      "Descripcion": "Desperdicios por errores en el diseño o arte"
+    },
+    {
+      "Id": 10,
+      "Codigo": "09",
+      "Descripcion": "Desperdicios por pruebas y/o revisiones de impresión o troquelado"
+    }
+  ]
+}

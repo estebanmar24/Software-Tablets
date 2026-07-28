@@ -8,6 +8,7 @@ using TiempoProcesos.API.DTOs;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using System.IO;
+using TiempoProcesos.API.Services;
 
 namespace TiempoProcesos.API.Controllers;
 
@@ -23,11 +24,13 @@ public class TalleresController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly IWebHostEnvironment _env;
+    private readonly GastoAutorizacionService _gastoAutorizacion;
 
-    public TalleresController(AppDbContext context, IWebHostEnvironment env)
+    public TalleresController(AppDbContext context, IWebHostEnvironment env, GastoAutorizacionService gastoAutorizacion)
     {
         _context = context;
         _env = env;
+        _gastoAutorizacion = gastoAutorizacion;
     }
 
     #region Rubros
@@ -175,7 +178,9 @@ public class TalleresController : ControllerBase
     /// Create a new gasto
     /// </summary>
     [HttpPost("gastos")]
-    public async Task<ActionResult<Talleres_Gasto>> CreateGasto(Talleres_Gasto gasto)
+    public async Task<ActionResult<Talleres_Gasto>> CreateGasto(
+        Talleres_Gasto gasto,
+        [FromQuery] int? autorizacionId = null)
     {
         if (!ModelState.IsValid)
         {
@@ -192,6 +197,24 @@ public class TalleresController : ControllerBase
         var mpT = GastoMedioPagoHelper.ValidateCreditoOExclusivoEfectivo(esLaborT, gasto.EsSolicitudCredito, gasto.EsEfectivo);
         if (mpT != null) return (ActionResult<Talleres_Gasto>)(object)mpT;
 
+        var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == "Id");
+        int adminId = 0;
+        if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int parsedAdminId))
+        {
+            adminId = parsedAdminId;
+            gasto.CreadoPorId = parsedAdminId;
+        }
+
+        try
+        {
+            await _gastoAutorizacion.ExigirAutorizacionParaGastoNormalAsync(
+                "talleres", autorizacionId, adminId, esLaborT);
+        }
+        catch (InvalidOperationException exAuth)
+        {
+            return BadRequest(new { message = exAuth.Message });
+        }
+
         try 
         {
             var rubroT = await _context.Talleres_Rubros.FindAsync(gasto.RubroId);
@@ -203,13 +226,6 @@ public class TalleresController : ControllerBase
             gasto.Precio = pT;
             gasto.PrecioBase = pbT;
             gasto.PrecioIva = piT;
-
-            // Set Creator
-            var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == "Id");
-            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int adminId))
-            {
-                gasto.CreadoPorId = adminId;
-            }
 
             GastoPeriodoHelper.AplicarAnioMesDesdeFecha(gasto.Fecha, (a, m) => { gasto.Anio = a; gasto.Mes = m; });
 
@@ -223,6 +239,10 @@ public class TalleresController : ControllerBase
 
             _context.Talleres_Gastos.Add(gasto);
             await _context.SaveChangesAsync();
+
+            if (autorizacionId.HasValue && autorizacionId.Value > 0)
+                await _gastoAutorizacion.VincularGastoRegistradoAsync(autorizacionId.Value, gasto.Id);
+
             return Ok(new { id = gasto.Id });
         }
         catch (Exception ex)
@@ -412,12 +432,12 @@ public class TalleresController : ControllerBase
                 PersonalNombre = g.Personal?.Nombre ?? "N/A",
                 PersonalDocumento = g.Personal?.Documento ?? "",
                 Salario = salario,
-                ValorHora = LaborHorasExtrasHelper.ValorHora(salario),
+                ValorHora = LaborHorasExtrasHelper.ValorHora(salario, g.Fecha),
                 NumeroOP = g.NumeroOP ?? "",
                 TipoHoraNombre = g.TipoHora?.Nombre ?? "N/A",
                 Factor = factor,
                 CantidadHoras = horas,
-                Precio = LaborHorasExtrasHelper.CalcularValorAPagar(salario, factor, horas),
+                Precio = LaborHorasExtrasHelper.CalcularValorAPagar(salario, factor, horas, g.Fecha),
                 Nota = g.Observaciones ?? ""
             };
         }).ToList();
@@ -459,12 +479,12 @@ public class TalleresController : ControllerBase
                 PersonalNombre = g.Personal?.Nombre ?? "N/A",
                 PersonalDocumento = g.Personal?.Documento ?? "",
                 Salario = salario,
-                ValorHora = LaborHorasExtrasHelper.ValorHora(salario),
+                ValorHora = LaborHorasExtrasHelper.ValorHora(salario, g.Fecha),
                 NumeroOP = g.NumeroOP ?? "",
                 TipoRecargoNombre = g.TipoRecargo?.Nombre ?? "N/A",
                 Factor = factor,
                 CantidadHoras = horas,
-                Precio = LaborHorasExtrasHelper.CalcularValorAPagar(salario, factor, horas),
+                Precio = LaborHorasExtrasHelper.CalcularValorAPagar(salario, factor, horas, g.Fecha),
                 Nota = g.Observaciones ?? ""
             };
         }).ToList();
@@ -777,7 +797,7 @@ public class TalleresController : ControllerBase
             
             if (factor > 0 && g.CantidadHoras > 0)
             {
-                decimal hourlyRate = g.Personal.Salario / 220m;
+                decimal hourlyRate = LaborHorasExtrasHelper.ValorHora(g.Personal.Salario, g.Fecha);
                 g.Precio = Math.Round(hourlyRate * factor * g.CantidadHoras.Value, 2);
                 count++;
             }

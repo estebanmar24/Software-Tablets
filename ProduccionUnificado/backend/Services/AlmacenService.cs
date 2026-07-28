@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using TiempoProcesos.API.Data;
 using TiempoProcesos.API.DTOs;
+using TiempoProcesos.API.Helpers;
 using TiempoProcesos.API.Models;
 
 namespace TiempoProcesos.API.Services;
@@ -113,6 +114,21 @@ public class AlmacenService
 
     public static string FormatoFecha(DateTime d) => d.ToString("yyyy-MM-dd");
 
+    /// <summary>
+    /// Urgente si la fecha requerida cae 1 o 2 días calendario después de la fecha de solicitud.
+    /// </summary>
+    public static bool EsRequisicionUrgente(DateTime fechaSolicitud, DateTime fechaRequerida)
+    {
+        var dias = (fechaRequerida.Date - fechaSolicitud.Date).Days;
+        return dias is 1 or 2;
+    }
+
+    public static int DiasHastaFechaRequerida(DateTime fechaRequerida, DateTime? desde = null)
+    {
+        var baseDia = (desde ?? ColombiaTime.Today).Date;
+        return (fechaRequerida.Date - baseDia).Days;
+    }
+
     private static TimeZoneInfo ColombiaTz()
     {
         foreach (var id in new[] { "America/Bogota", "SA Pacific Standard Time" })
@@ -210,6 +226,23 @@ public class AlmacenService
             CreadoPorNombre = r.CreadoPorNombre,
         };
 
+        var comentariosTree = ConstruirArbolComentarios(r.Comentarios);
+        if (comentariosTree.Count == 0 && !string.IsNullOrWhiteSpace(r.Observacion))
+        {
+            comentariosTree.Add(new AlmacenRequisicionComentarioDto
+            {
+                Id = "legacy",
+                Texto = r.Observacion.Trim(),
+                UsuarioNombre = string.IsNullOrWhiteSpace(r.CreadoPorNombre) ? "—" : r.CreadoPorNombre,
+                Fecha = FormatoFecha(r.FechaRegistro),
+                Hora = FormatoHoraColombia(r.FechaRegistro),
+                EsLegacy = true,
+            });
+        }
+
+        dto.Comentarios = comentariosTree;
+        dto.TotalComentarios = ContarComentarios(comentariosTree);
+
         if (r.Pedido != null)
         {
             var provs = r.Pedido.Proveedores.OrderBy(p => p.Id).ToList();
@@ -234,11 +267,15 @@ public class AlmacenService
                     CatalogoId = p.ProveedorCatalogoId?.ToString(),
                     FechaEntregaEstimada = p.FechaEntregaEstimada.HasValue ? FormatoFecha(p.FechaEntregaEstimada.Value) : null,
                     PrecioUnitario = p.PrecioUnitario ?? r.Pedido.PrecioUnitario,
+                    PrecioEspecial = p.PrecioEspecial,
+                    ComentarioPrecioEspecial = p.ComentarioPrecioEspecial,
                     Recibido = p.Recibido,
                     Pagado = p.Pagado,
                     FormaPago = p.FormaPago,
                     NumeroOrdenCompra = p.OrdenCompra?.NumeroOrdenCompra ?? p.NumeroOrdenCompra,
                     OrdenCompraId = p.OrdenCompraId?.ToString(),
+                    ProformaUrl = p.ProformaUrl,
+                    ProformaNombre = p.ProformaNombre,
                 }).ToList(),
             };
         }
@@ -273,9 +310,131 @@ public class AlmacenService
         return dto;
     }
 
+    private static int ContarComentarios(IEnumerable<AlmacenRequisicionComentarioDto> comentarios)
+    {
+        var total = 0;
+        foreach (var c in comentarios)
+        {
+            total += 1 + ContarComentarios(c.Respuestas);
+        }
+        return total;
+    }
+
+    private static List<AlmacenRequisicionComentarioDto> ConstruirArbolComentarios(
+        IEnumerable<AlmacenRequisicionComentario>? comentarios)
+    {
+        var lista = (comentarios ?? Array.Empty<AlmacenRequisicionComentario>())
+            .OrderBy(c => c.FechaRegistro)
+            .ToList();
+        if (lista.Count == 0) return new List<AlmacenRequisicionComentarioDto>();
+
+        var porId = lista.ToDictionary(c => c.Id);
+        var hijosPorPadre = lista
+            .Where(c => c.ParentId.HasValue)
+            .GroupBy(c => c.ParentId!.Value)
+            .ToDictionary(g => g.Key, g => g.OrderBy(c => c.FechaRegistro).ToList());
+
+        AlmacenRequisicionComentarioDto MapNodo(AlmacenRequisicionComentario c)
+        {
+            var respuestas = hijosPorPadre.TryGetValue(c.Id, out var hijos)
+                ? hijos.Select(MapNodo).ToList()
+                : new List<AlmacenRequisicionComentarioDto>();
+
+            return new AlmacenRequisicionComentarioDto
+            {
+                Id = c.Id.ToString(),
+                Texto = c.Texto,
+                UsuarioNombre = c.UsuarioNombre,
+                Fecha = FormatoFecha(c.FechaRegistro),
+                Hora = FormatoHoraColombia(c.FechaRegistro),
+                Respuestas = respuestas,
+            };
+        }
+
+        return lista
+            .Where(c => !c.ParentId.HasValue || !porId.ContainsKey(c.ParentId.Value))
+            .Select(MapNodo)
+            .ToList();
+    }
+
+    public async Task<AlmacenRequisicionComentarioDto> AgregarComentarioRequisicionAsync(
+        int requisicionId,
+        AlmacenRequisicionComentarioWriteDto dto,
+        int? usuarioId,
+        string? usuarioNombre)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Texto))
+            throw new InvalidOperationException("El comentario no puede estar vacío.");
+
+        var req = await _context.AlmacenRequisiciones.FindAsync(requisicionId)
+            ?? throw new InvalidOperationException("Requisición no encontrada.");
+
+        int? parentId = null;
+        if (!string.IsNullOrWhiteSpace(dto.ParentId))
+        {
+            if (dto.ParentId.Equals("legacy", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("No se puede responder a una observación antigua. Agregue un comentario nuevo.");
+
+            if (!int.TryParse(dto.ParentId, out var parsedParent))
+                throw new InvalidOperationException("Comentario padre no válido.");
+
+            var parent = await _context.AlmacenRequisicionComentarios
+                .FirstOrDefaultAsync(c => c.Id == parsedParent && c.RequisicionId == requisicionId)
+                ?? throw new InvalidOperationException("Comentario padre no encontrado.");
+
+            parentId = parent.Id;
+        }
+
+        var entity = new AlmacenRequisicionComentario
+        {
+            RequisicionId = req.Id,
+            ParentId = parentId,
+            Texto = dto.Texto.Trim(),
+            UsuarioId = usuarioId,
+            UsuarioNombre = string.IsNullOrWhiteSpace(usuarioNombre) ? null : usuarioNombre.Trim(),
+            FechaRegistro = DateTime.UtcNow,
+        };
+
+        _context.AlmacenRequisicionComentarios.Add(entity);
+        await _context.SaveChangesAsync();
+
+        return new AlmacenRequisicionComentarioDto
+        {
+            Id = entity.Id.ToString(),
+            Texto = entity.Texto,
+            UsuarioNombre = entity.UsuarioNombre,
+            Fecha = FormatoFecha(entity.FechaRegistro),
+            Hora = FormatoHoraColombia(entity.FechaRegistro),
+            Respuestas = new List<AlmacenRequisicionComentarioDto>(),
+        };
+    }
+
+    public async Task<List<AlmacenRequisicionComentarioDto>> ListarComentariosRequisicionAsync(int requisicionId)
+    {
+        var req = await CargarRequisicionCompletaAsync(requisicionId);
+        if (req == null) return new List<AlmacenRequisicionComentarioDto>();
+
+        var tree = ConstruirArbolComentarios(req.Comentarios);
+        if (tree.Count == 0 && !string.IsNullOrWhiteSpace(req.Observacion))
+        {
+            tree.Add(new AlmacenRequisicionComentarioDto
+            {
+                Id = "legacy",
+                Texto = req.Observacion.Trim(),
+                UsuarioNombre = string.IsNullOrWhiteSpace(req.CreadoPorNombre) ? "—" : req.CreadoPorNombre,
+                Fecha = FormatoFecha(req.FechaRegistro),
+                Hora = FormatoHoraColombia(req.FechaRegistro),
+                EsLegacy = true,
+            });
+        }
+
+        return tree;
+    }
+
     public async Task<AlmacenRequisicion?> CargarRequisicionCompletaAsync(int id)
     {
         var req = await _context.AlmacenRequisiciones
+            .Include(r => r.Comentarios)
             .Include(r => r.Pedido!)
                 .ThenInclude(p => p.Proveedores)
                     .ThenInclude(pv => pv.OrdenCompra)
@@ -560,9 +719,37 @@ public class AlmacenService
         return new string(nit.Where(char.IsDigit).ToArray());
     }
 
+    private static string StripSufijosLegalesProveedor(string nombreClave)
+    {
+        var s = nombreClave.Trim();
+        foreach (var suf in new[] { " s.a.s", " sas", " s.a", " sa", " ltda", " s.c.a", " e.u.", " inc" })
+        {
+            if (s.EndsWith(suf, StringComparison.Ordinal))
+                s = s[..^suf.Length].TrimEnd();
+        }
+        return s;
+    }
+
+    private static bool NombresProveedorCompatibles(string nombreClave, string ocNombreClave)
+    {
+        if (string.IsNullOrEmpty(nombreClave) || string.IsNullOrEmpty(ocNombreClave))
+            return false;
+        if (nombreClave == ocNombreClave)
+            return true;
+        if (nombreClave.StartsWith(ocNombreClave, StringComparison.Ordinal)
+            || ocNombreClave.StartsWith(nombreClave, StringComparison.Ordinal))
+            return true;
+
+        var coreA = StripSufijosLegalesProveedor(nombreClave);
+        var coreB = StripSufijosLegalesProveedor(ocNombreClave);
+        if (coreA == coreB)
+            return true;
+        return !string.IsNullOrEmpty(coreA) && !string.IsNullOrEmpty(coreB)
+            && (coreA.StartsWith(coreB, StringComparison.Ordinal) || coreB.StartsWith(coreA, StringComparison.Ordinal));
+    }
+
     /// <summary>
-    /// Mismo proveedor: catálogo id, o nombre normalizado (+ NIT si ambos lo tienen).
-    /// Nunca fusionar solo por NIT si el nombre difiere.
+    /// Mismo proveedor: catálogo id, nombre compatible (+ NIT si ambos lo tienen).
     /// </summary>
     private static bool EsMismoProveedorParaOc(
         AlmacenOrdenCompra oc,
@@ -575,11 +762,16 @@ public class AlmacenService
 
         var nombreClave = AlmacenCatalog.NormalizarTextoClave(nombreProveedor);
         var ocNombreClave = AlmacenCatalog.NormalizarTextoClave(oc.NombreProveedor);
-        if (string.IsNullOrEmpty(nombreClave) || nombreClave != ocNombreClave)
-            return false;
-
         var nitClave = NormalizarNitClave(nit);
         var ocNitClave = NormalizarNitClave(oc.Nit);
+
+        if (!string.IsNullOrEmpty(nitClave) && nitClave == ocNitClave
+            && NombresProveedorCompatibles(nombreClave, ocNombreClave))
+            return true;
+
+        if (!NombresProveedorCompatibles(nombreClave, ocNombreClave))
+            return false;
+
         if (!string.IsNullOrEmpty(nitClave) && !string.IsNullOrEmpty(ocNitClave) && nitClave != ocNitClave)
             return false;
 
@@ -832,6 +1024,8 @@ public class AlmacenService
                     Cantidad = prov.Cantidad,
                     Unidad = req.Unidad,
                     PrecioUnitario = prov.PrecioUnitario,
+                    PrecioEspecial = prov.PrecioEspecial,
+                    ComentarioPrecioEspecial = prov.ComentarioPrecioEspecial,
                     FechaEntregaEstimada = prov.FechaEntregaEstimada.HasValue
                         ? FormatoFecha(prov.FechaEntregaEstimada.Value)
                         : null,
@@ -852,16 +1046,26 @@ public class AlmacenService
         if (!string.IsNullOrWhiteSpace(estado))
             query = query.Where(o => o.Estado == estado);
 
-        var list = await query
-            .OrderByDescending(o => o.NumeroOrdenCompra)
-            .Take(200)
-            .ToListAsync();
+        var filtrarProveedor = proveedorCatalogoId is > 0 || !string.IsNullOrWhiteSpace(nombreProveedor);
 
-        if (proveedorCatalogoId is > 0 || !string.IsNullOrWhiteSpace(nombreProveedor))
+        // Al filtrar por proveedor, no limitar antes: OC antiguas (p. ej. 007) quedaban fuera del Top 200 global.
+        List<AlmacenOrdenCompra> list;
+        if (filtrarProveedor)
         {
-            list = list
+            var candidatas = await query
+                .OrderByDescending(o => o.NumeroOrdenCompra)
+                .ToListAsync();
+            list = candidatas
                 .Where(o => EsMismoProveedorParaOc(o, proveedorCatalogoId, nombreProveedor ?? "", nit))
+                .Take(100)
                 .ToList();
+        }
+        else
+        {
+            list = await query
+                .OrderByDescending(o => o.NumeroOrdenCompra)
+                .Take(200)
+                .ToListAsync();
         }
 
         var ids = list.Select(o => o.Id).ToList();
@@ -892,6 +1096,12 @@ public class AlmacenService
             .ToList();
         if (lineasWrite.Count < 2)
             throw new InvalidOperationException("Seleccione al menos dos requisiciones para consolidar.");
+
+        foreach (var linea in lineasWrite)
+        {
+            if (linea.PrecioEspecial == true && string.IsNullOrWhiteSpace(linea.ComentarioPrecioEspecial))
+                throw new InvalidOperationException("Indique el motivo del precio especial en cada línea marcada.");
+        }
 
         int? catalogoIdHint = null;
         if (!string.IsNullOrWhiteSpace(provDto.CatalogoId) && int.TryParse(provDto.CatalogoId, out var cid))
@@ -992,6 +1202,10 @@ public class AlmacenService
                 Telefono = provDto.Telefono?.Trim(),
                 Cantidad = lineaWrite.Cantidad,
                 PrecioUnitario = lineaWrite.PrecioUnitario,
+                PrecioEspecial = lineaWrite.PrecioEspecial == true,
+                ComentarioPrecioEspecial = string.IsNullOrWhiteSpace(lineaWrite.ComentarioPrecioEspecial)
+                    ? null
+                    : lineaWrite.ComentarioPrecioEspecial.Trim(),
                 FechaEntregaEstimada = fechaEntrega,
                 Recibido = false,
             };

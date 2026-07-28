@@ -4,7 +4,7 @@
  * Includes Cotizaciones (Quotations) feature for price comparison
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import {
     View,
@@ -35,6 +35,10 @@ import MedioPagoGastoControls, {
 } from '../components/MedioPagoGastoControls';
 import { parseMontoInput, GastoListaPrecios } from '../utils/gastoPrecioForm';
 import { gastoPermiteEdicionTrasContabilidad } from '../utils/gastoEditPermission';
+import GastoAutorizacionBloque from '../components/GastoAutorizacionBloque';
+import GastosCapturaBodyScroll from '../components/GastosCapturaBodyScroll';
+import { puedeEditarMontosGasto } from '../utils/gastoAutorizacionIntegracion';
+import { MODULOS_GASTO } from '../services/gastosAutorizacionApi';
 
 const TABS = [
     { key: 'gastos', label: 'Captura de Gastos', icon: '💰' },
@@ -54,7 +58,7 @@ const getEstadoColor = (estado) => {
     }
 };
 
-export default function GHGastosScreen({ navigation }) {
+export default function GHGastosScreen({ navigation, displayName }) {
     const { colors } = useTheme();
     const [activeTab, setActiveTab] = useState('gastos');
 
@@ -77,7 +81,7 @@ export default function GHGastosScreen({ navigation }) {
             </View>
 
             {/* Content based on active tab */}
-            {activeTab === 'gastos' && <GastosTab />}
+            {activeTab === 'gastos' && <GastosTab displayName={displayName} />}
             {activeTab === 'cotizaciones' && <CotizacionesTab />}
             {activeTab === 'graficas' && <GraficasTab />}
             {activeTab === 'rubros' && <RubrosTab />}
@@ -88,7 +92,7 @@ export default function GHGastosScreen({ navigation }) {
 }
 
 // ===================== GASTOS TAB =====================
-function GastosTab() {
+function GastosTab({ displayName }) {
     const { colors: themeColors } = useTheme();
     const [loading, setLoading] = useState(true);
     const [anio, setAnio] = useState(new Date().getFullYear());
@@ -115,6 +119,8 @@ function GastosTab() {
     // Form state
     const [showModal, setShowModal] = useState(false);
     const [editItem, setEditItem] = useState(null);
+    const autorizacionActivaRef = useRef(null);
+    const [authRefreshKey, setAuthRefreshKey] = useState(0);
     const [formData, setFormData] = useState({
         rubroId: '',
         tipoServicioId: '',
@@ -129,7 +135,8 @@ function GastosTab() {
         archivoFactura: null,
         archivoNombre: '',
         esPendiente: false,
-        esSolicitudCredito: false
+        esSolicitudCredito: false,
+        desdeAutorizacion: false
     });
     const [medioPago, setMedioPago] = useState(null);
     const [isLegalizing, setIsLegalizing] = useState(false);
@@ -363,7 +370,8 @@ function GastosTab() {
             archivoFactura: null,
             archivoNombre: '',
             esPendiente: false,
-            esSolicitudCredito: false
+            esSolicitudCredito: false,
+            desdeAutorizacion: false
         });
         setMedioPago(null);
         setIsLegalizing(false);
@@ -445,6 +453,34 @@ function GastosTab() {
         const numericValue = value.replace(/[^0-9]/g, '');
         const formatted = formatCurrencyInput(value);
         setFormData(prev => ({ ...prev, precio: numericValue, precioDisplay: formatted }));
+    };
+
+    const handleRegistrarDesdeAutorizacion = (sol) => {
+        autorizacionActivaRef.current = sol;
+        setEditItem(null);
+        setIsLegalizing(false);
+        resetForm();
+        const fechaCompra = sol.fechaAproximada?.split('T')[0] || new Date().toISOString().split('T')[0];
+        const montoStr = String(sol.cantidad ?? '');
+        setFormData({
+            rubroId: sol.rubroId ? String(sol.rubroId) : '',
+            tipoServicioId: '',
+            proveedorId: sol.proveedorId ? String(sol.proveedorId) : '',
+            numeroFactura: '',
+            precio: montoStr,
+            precioDisplay: formatCurrencyInput(montoStr),
+            precioBase: montoStr,
+            precioIva: '0',
+            fechaCompra,
+            nota: sol.razon || '',
+            archivoFactura: null,
+            archivoNombre: '',
+            esPendiente: false,
+            esSolicitudCredito: sol.esSolicitudCredito || false,
+            desdeAutorizacion: true,
+        });
+        setMedioPago(flagsToMedioPago(!!sol.esSolicitudCredito, !!sol.esEfectivo));
+        setShowModal(true);
     };
 
     // Pick PDF file
@@ -587,7 +623,10 @@ function GastosTab() {
                 await ghApi.updateGasto(editItem.id, gastoData);
                 Alert.alert('Éxito', 'Gasto actualizado correctamente');
             } else {
-                await ghApi.createGasto(gastoData);
+                const authId = autorizacionActivaRef.current?.id;
+                await ghApi.createGasto(gastoData, authId);
+                autorizacionActivaRef.current = null;
+                setAuthRefreshKey((k) => k + 1);
                 Alert.alert('Éxito', 'Gasto registrado correctamente');
             }
             setShowModal(false);
@@ -892,16 +931,27 @@ function GastosTab() {
                 );
             })()}
 
-            {/* Add Button */}
-            <TouchableOpacity style={styles.addButton} onPress={() => setShowModal(true)}>
-                <Text style={styles.addButtonText}>+ Agregar Gasto</Text>
-            </TouchableOpacity>
+            {/* Autorizaciones previas al registro de pago */}
+            <GastosCapturaBodyScroll>
+            <GastoAutorizacionBloque
+                modulo={MODULOS_GASTO.gh}
+                anio={anio}
+                mes={mes}
+                displayName={displayName}
+                proveedores={proveedores}
+                rubros={rubros}
+                tiposServicio={tiposServicio}
+                formatCurrency={formatCurrency}
+                formatDate={formatDate}
+                onRegistrarGasto={handleRegistrarDesdeAutorizacion}
+                refreshKey={authRefreshKey}
+            />
 
             {/* Gastos List */}
             {loading ? (
                 <ActivityIndicator size="large" color="#2563EB" style={styles.loading} />
             ) : (
-                <ScrollView style={styles.listContainer}>
+                <View style={styles.listContainer}>
                     {filteredGastos.length === 0 ? (
                         <View style={styles.emptyState}>
                             <Text style={styles.emptyText}>No hay gastos registrados (con estos filtros)</Text>
@@ -1036,8 +1086,9 @@ function GastosTab() {
                             );
                         })
                     )}
-                </ScrollView>
+                </View>
             )}
+            </GastosCapturaBodyScroll>
 
             {/* Add Modal */}
             <Modal
@@ -1169,35 +1220,35 @@ function GastosTab() {
                                     {/* Precio: nómina HE/recargo un solo monto; resto base + IVA */}
                                     {isNominaHeORecargoTipo ? (
                                         <>
-                                            <Text style={styles.label}>Precio {formData.esPendiente ? '(Opcional por ahora)' : '*'} {(!formData.esPendiente && !formData.numeroFactura.trim()) ? '(ingrese factura primero)' : ''}</Text>
+                                            <Text style={styles.label}>Precio {formData.esPendiente ? '(Opcional por ahora)' : '*'} {!puedeEditarMontosGasto(formData, editItem) ? '(ingrese factura primero)' : formData.desdeAutorizacion ? '(puede ajustar el monto real)' : ''}</Text>
                                             <TextInput
-                                                style={[styles.input, (!formData.esPendiente && !formData.numeroFactura.trim()) && styles.inputDisabled]}
+                                                style={[styles.input, !puedeEditarMontosGasto(formData, editItem) && styles.inputDisabled]}
                                                 placeholder="$ 0"
                                                 keyboardType="numeric"
                                                 value={formData.precioDisplay}
                                                 onChangeText={handlePriceChange}
-                                                editable={formData.esPendiente || !!formData.numeroFactura.trim()}
+                                                editable={puedeEditarMontosGasto(formData, editItem)}
                                             />
                                         </>
                                     ) : (
                                         <>
-                                            <Text style={styles.label}>Precio base {formData.esPendiente ? '(Opcional por ahora)' : '*'} {(!formData.esPendiente && !formData.numeroFactura.trim()) ? '(ingrese factura primero)' : ''}</Text>
+                                            <Text style={styles.label}>Precio base {formData.esPendiente ? '(Opcional por ahora)' : '*'} {!puedeEditarMontosGasto(formData, editItem) ? '(ingrese factura primero)' : formData.desdeAutorizacion ? '(puede ajustar el monto real)' : ''}</Text>
                                             <TextInput
-                                                style={[styles.input, (!formData.esPendiente && !formData.numeroFactura.trim()) && styles.inputDisabled]}
+                                                style={[styles.input, !puedeEditarMontosGasto(formData, editItem) && styles.inputDisabled]}
                                                 value={formData.precioBase}
                                                 onChangeText={(t) => setFormData(p => ({ ...p, precioBase: t }))}
                                                 keyboardType="decimal-pad"
                                                 placeholder="0"
-                                                editable={formData.esPendiente || !!formData.numeroFactura.trim() || !!editItem}
+                                                editable={puedeEditarMontosGasto(formData, editItem)}
                                             />
                                             <Text style={[styles.label, { marginTop: 10 }]}>IVA {formData.esPendiente ? '(Opcional)' : '*'} (puede ser 0)</Text>
                                             <TextInput
-                                                style={[styles.input, (!formData.esPendiente && !formData.numeroFactura.trim()) && styles.inputDisabled]}
+                                                style={[styles.input, !puedeEditarMontosGasto(formData, editItem) && styles.inputDisabled]}
                                                 value={formData.precioIva}
                                                 onChangeText={(t) => setFormData(p => ({ ...p, precioIva: t }))}
                                                 keyboardType="decimal-pad"
                                                 placeholder="0"
-                                                editable={formData.esPendiente || !!formData.numeroFactura.trim() || !!editItem}
+                                                editable={puedeEditarMontosGasto(formData, editItem)}
                                             />
                                             <Text style={{ marginTop: 8, fontSize: 14, fontWeight: 'bold', color: '#059669' }}>
                                                 Total: {formatCurrency((parseMontoInput(formData.precioBase) ?? 0) + (parseMontoInput(formData.precioIva) ?? 0))}
@@ -3267,7 +3318,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     listContainer: {
-        flex: 1,
         paddingHorizontal: 16,
     },
     emptyState: {

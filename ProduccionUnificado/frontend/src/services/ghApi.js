@@ -154,8 +154,9 @@ export async function getGastosResumen(anio, mes = null) {
     return response.data;
 }
 
-export async function createGasto(gasto) {
-    const response = await api.post(`${API_BASE_URL}gh/gastos`, gasto);
+export async function createGasto(gasto, autorizacionId) {
+    const q = autorizacionId ? `?autorizacionId=${encodeURIComponent(autorizacionId)}` : '';
+    const response = await api.post(`${API_BASE_URL}gh/gastos${q}`, gasto);
     return response.data;
 }
 

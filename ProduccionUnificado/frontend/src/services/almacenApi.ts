@@ -10,6 +10,7 @@ import type {
     RecepcionLineaProveedor,
     OrdenCompra,
     ConsolidarPedidoPayload,
+    RequisicionComentario,
 } from '../data/almacenMockData';
 
 const BASE = 'almacen';
@@ -76,6 +77,22 @@ function mapProveedor(p: Record<string, unknown>): ProveedorCatalogo {
     };
 }
 
+function mapComentario(raw: Record<string, unknown>): RequisicionComentario {
+    const respuestasRaw = (raw.respuestas ?? raw.Respuestas ?? []) as Record<string, unknown>[];
+    return {
+        id: String(raw.id ?? raw.Id ?? ''),
+        texto: String(raw.texto ?? raw.Texto ?? ''),
+        usuarioNombre: (() => {
+            const s = String(raw.usuarioNombre ?? raw.UsuarioNombre ?? '').trim();
+            return s || undefined;
+        })(),
+        fecha: String(raw.fecha ?? raw.Fecha ?? ''),
+        hora: String(raw.hora ?? raw.Hora ?? ''),
+        esLegacy: Boolean(raw.esLegacy ?? raw.EsLegacy ?? false),
+        respuestas: respuestasRaw.map(mapComentario),
+    };
+}
+
 /** Normaliza la respuesta del backend al tipo usado en pantallas. */
 export function mapRequisicionApi(raw: Record<string, unknown>): Requisicion {
     const r = raw as Requisicion;
@@ -138,8 +155,29 @@ export function mapRequisicionApi(raw: Record<string, unknown>): Requisicion {
                               )
                                   .trim()
                                   .toLowerCase();
-                              if (raw === 'credito' || raw === 'efectivo') return raw;
+                              if (raw === 'credito' || raw === 'efectivo' || raw === 'contado') return raw;
                               return undefined;
+                          })(),
+                          precioEspecial: Boolean(
+                              p.precioEspecial ?? rawProv.precioEspecial ?? rawProv.PrecioEspecial ?? false
+                          ),
+                          comentarioPrecioEspecial: (() => {
+                              const val =
+                                  p.comentarioPrecioEspecial ??
+                                  rawProv.comentarioPrecioEspecial ??
+                                  rawProv.ComentarioPrecioEspecial;
+                              const s = val != null ? String(val).trim() : '';
+                              return s || undefined;
+                          })(),
+                          proformaUrl: (() => {
+                              const val = p.proformaUrl ?? rawProv.proformaUrl ?? rawProv.ProformaUrl;
+                              const s = val != null ? String(val).trim() : '';
+                              return s || undefined;
+                          })(),
+                          proformaNombre: (() => {
+                              const val = p.proformaNombre ?? rawProv.proformaNombre ?? rawProv.ProformaNombre;
+                              const s = val != null ? String(val).trim() : '';
+                              return s || undefined;
                           })(),
                       };
                   }),
@@ -171,6 +209,16 @@ export function mapRequisicionApi(raw: Record<string, unknown>): Requisicion {
                   })),
               }
             : undefined,
+        comentarios: (() => {
+            const list = (raw.comentarios ?? raw.Comentarios ?? []) as Record<string, unknown>[];
+            return list.length ? list.map(mapComentario) : undefined;
+        })(),
+        totalComentarios: (() => {
+            const val = raw.totalComentarios ?? raw.TotalComentarios;
+            if (val == null || val === '') return undefined;
+            const n = Number(val);
+            return Number.isFinite(n) ? n : undefined;
+        })(),
     };
 }
 
@@ -379,6 +427,19 @@ export async function updateRequisicion(id: string | number, payload: Requisicio
     return mapRequisicionApi(res.data);
 }
 
+export async function getComentariosRequisicion(id: string | number): Promise<RequisicionComentario[]> {
+    const res = await api.get(`${BASE}/requisiciones/${id}/comentarios`);
+    return (res.data ?? []).map((c: Record<string, unknown>) => mapComentario(c));
+}
+
+export async function agregarComentarioRequisicion(
+    id: string | number,
+    payload: { texto: string; parentId?: string }
+): Promise<RequisicionComentario> {
+    const res = await api.post(`${BASE}/requisiciones/${id}/comentarios`, payload);
+    return mapComentario(res.data);
+}
+
 export async function guardarPedidoRequisicion(requisicionId: string | number, pedido: DatosPedido): Promise<Requisicion> {
     const res = await api.put(`${BASE}/requisiciones/${requisicionId}/pedido`, {
         fechaPedido: pedido.fechaPedido,
@@ -392,20 +453,37 @@ export async function guardarPedidoRequisicion(requisicionId: string | number, p
             catalogoId: p.catalogoId,
             fechaEntregaEstimada: p.fechaEntregaEstimada,
             precioUnitario: p.precioUnitario ?? null,
+            precioEspecial: p.precioEspecial === true,
+            comentarioPrecioEspecial: p.comentarioPrecioEspecial?.trim() || null,
             recibido: p.recibido ?? false,
             categoria: p.categoria ?? null,
             responsableIva: p.responsableIva ?? false,
             agregarAOrdenCompraId: p.agregarAOrdenCompraId ?? null,
+            proformaUrl: p.proformaUrl?.trim() || null,
+            proformaNombre: p.proformaNombre?.trim() || null,
         })),
     });
     return mapRequisicionApi(res.data);
+}
+
+export async function uploadProformaAlmacen(file: File): Promise<{ url: string; nombre?: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await api.post(`${BASE}/upload-proforma`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const d = res.data ?? {};
+    return {
+        url: String(d.url ?? d.Url ?? ''),
+        nombre: String(d.nombre ?? d.Nombre ?? file.name ?? '').trim() || undefined,
+    };
 }
 
 export async function marcarProveedorPagado(
     requisicionId: string | number,
     proveedorId: string | number,
     pagado = true,
-    formaPago?: 'credito' | 'efectivo'
+    formaPago?: 'credito' | 'efectivo' | 'contado'
 ): Promise<Requisicion> {
     const res = await api.patch(`${BASE}/requisiciones/${requisicionId}/pedido/proveedores/${proveedorId}/pagado`, {
         pagado,
@@ -469,6 +547,12 @@ function mapOrdenCompraLineaApi(raw: Record<string, unknown>) {
         unidad: String(raw.unidad ?? raw.Unidad ?? ''),
         precioUnitario:
             precioNum != null && Number.isFinite(precioNum) && precioNum > 0 ? precioNum : undefined,
+        precioEspecial: Boolean(raw.precioEspecial ?? raw.PrecioEspecial ?? false),
+        comentarioPrecioEspecial: (() => {
+            const val = raw.comentarioPrecioEspecial ?? raw.ComentarioPrecioEspecial;
+            const s = val != null ? String(val).trim() : '';
+            return s || undefined;
+        })(),
         fechaEntregaEstimada: String(
             raw.fechaEntregaEstimada ?? raw.FechaEntregaEstimada ?? ''
         ).trim() || undefined,
@@ -548,6 +632,8 @@ export async function consolidarPedidoOc(payload: ConsolidarPedidoPayload): Prom
             requisicionId: l.requisicionId,
             cantidad: l.cantidad,
             precioUnitario: l.precioUnitario ?? null,
+            precioEspecial: l.precioEspecial === true,
+            comentarioPrecioEspecial: l.comentarioPrecioEspecial?.trim() || null,
             fechaEntregaEstimada: l.fechaEntregaEstimada,
         })),
         agregarAOrdenCompraId: payload.agregarAOrdenCompraId,

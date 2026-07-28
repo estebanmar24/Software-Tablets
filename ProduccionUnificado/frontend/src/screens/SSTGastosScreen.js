@@ -37,6 +37,9 @@ import MedioPagoGastoControls, {
 import { parseMontoInput, GastoListaPrecios } from '../utils/gastoPrecioForm';
 import { gastoPermiteEdicionTrasContabilidad } from '../utils/gastoEditPermission';
 import { getApiBaseUrl, getFileServerUrl } from '../services/apiConfig';
+import GastoAutorizacionBloque from '../components/GastoAutorizacionBloque';
+import GastosCapturaBodyScroll from '../components/GastosCapturaBodyScroll';
+import { MODULOS_GASTO } from '../services/gastosAutorizacionApi';
 
 const TABS = [
     { key: 'gastos', label: 'Captura de Gastos', icon: '💰' },
@@ -48,7 +51,7 @@ const TABS = [
     { key: 'ordenaseo', label: 'Orden y Aseo', icon: '🧹' } // New Tab
 ];
 
-export default function SSTGastosScreen({ navigation }) {
+export default function SSTGastosScreen({ navigation, displayName }) {
     const { colors } = useTheme();
     const [activeTab, setActiveTab] = useState('gastos');
     const [apiBaseUrl, setApiBaseUrl] = useState('');
@@ -86,7 +89,7 @@ export default function SSTGastosScreen({ navigation }) {
             </View>
 
             {/* Content based on active tab */}
-            {activeTab === 'gastos' && <GastosTab fileServerUrl={fileServerUrl} />}
+            {activeTab === 'gastos' && <GastosTab fileServerUrl={fileServerUrl} displayName={displayName} />}
             {activeTab === 'cotizaciones' && <CotizacionesTab />}
             {activeTab === 'graficas' && <GraficasTab />}
             {activeTab === 'rubros' && <RubrosTab />}
@@ -116,7 +119,7 @@ function resolveFacturaUrl(fileServerUrl, archivoFactura) {
     return `${fileServerUrl || ''}${path}`;
 }
 
-function GastosTab({ fileServerUrl }) {
+function GastosTab({ fileServerUrl, displayName }) {
     const { colors: themeColors } = useTheme();
     const [loading, setLoading] = useState(true);
     const [anio, setAnio] = useState(new Date().getFullYear());
@@ -143,6 +146,8 @@ function GastosTab({ fileServerUrl }) {
     // Form state
     const [showModal, setShowModal] = useState(false);
     const [editItem, setEditItem] = useState(null);
+    const autorizacionActivaRef = useRef(null);
+    const [authRefreshKey, setAuthRefreshKey] = useState(0);
     const [formData, setFormData] = useState({
         rubroId: '',
         tipoServicioId: '',
@@ -157,7 +162,8 @@ function GastosTab({ fileServerUrl }) {
         archivoFactura: null,
         archivoNombre: '',
         esPendiente: false,
-        esSolicitudCredito: false
+        esSolicitudCredito: false,
+        desdeAutorizacion: false
     });
     const [medioPago, setMedioPago] = useState(null);
     const [saving, setSaving] = useState(false);
@@ -404,7 +410,8 @@ function GastosTab({ fileServerUrl }) {
             archivoFactura: null,
             archivoNombre: '',
             esPendiente: false,
-            esSolicitudCredito: false
+            esSolicitudCredito: false,
+            desdeAutorizacion: false
         });
         setMedioPago(null);
         setIsLegalizing(false);
@@ -486,6 +493,34 @@ function GastosTab({ fileServerUrl }) {
         const numericValue = value.replace(/[^0-9]/g, '');
         const formatted = formatCurrencyInput(value);
         setFormData(prev => ({ ...prev, precio: numericValue, precioDisplay: formatted }));
+    };
+
+    const handleRegistrarDesdeAutorizacion = (sol) => {
+        autorizacionActivaRef.current = sol;
+        setEditItem(null);
+        setIsLegalizing(false);
+        resetForm();
+        const fechaCompra = sol.fechaAproximada?.split('T')[0] || new Date().toISOString().split('T')[0];
+        const montoStr = String(sol.cantidad ?? '');
+        setFormData({
+            rubroId: sol.rubroId ? String(sol.rubroId) : '',
+            tipoServicioId: '',
+            proveedorId: sol.proveedorId ? String(sol.proveedorId) : '',
+            numeroFactura: '',
+            precio: montoStr,
+            precioDisplay: formatCurrencyInput(montoStr),
+            precioBase: montoStr,
+            precioIva: '0',
+            fechaCompra,
+            nota: sol.razon || '',
+            archivoFactura: null,
+            archivoNombre: '',
+            esPendiente: false,
+            esSolicitudCredito: sol.esSolicitudCredito || false,
+            desdeAutorizacion: true,
+        });
+        setMedioPago(flagsToMedioPago(!!sol.esSolicitudCredito, !!sol.esEfectivo));
+        setShowModal(true);
     };
 
     // Pick PDF file
@@ -629,7 +664,10 @@ function GastosTab({ fileServerUrl }) {
                 await sstApi.updateGasto(editItem.id, gastoData);
                 Alert.alert('Éxito', 'Gasto actualizado correctamente');
             } else {
-                await sstApi.createGasto(gastoData);
+                const authId = autorizacionActivaRef.current?.id;
+                await sstApi.createGasto(gastoData, authId);
+                autorizacionActivaRef.current = null;
+                setAuthRefreshKey((k) => k + 1);
                 Alert.alert('Éxito', 'Gasto registrado correctamente');
             }
             setShowModal(false);
@@ -879,17 +917,28 @@ function GastosTab({ fileServerUrl }) {
                 );
             })()}
 
-            {/* Add Button */}
-            <TouchableOpacity style={styles.addButton} onPress={() => setShowModal(true)}>
-                <Text style={styles.addButtonText}>+ Agregar Gasto</Text>
-            </TouchableOpacity>
+            {/* Autorizaciones previas al registro de pago */}
+            <GastosCapturaBodyScroll>
+            <GastoAutorizacionBloque
+                modulo={MODULOS_GASTO.sst}
+                anio={anio}
+                mes={mes}
+                displayName={displayName}
+                proveedores={proveedores}
+                rubros={rubros}
+                tiposServicio={tiposServicio}
+                formatCurrency={formatCurrency}
+                formatDate={formatDate}
+                onRegistrarGasto={handleRegistrarDesdeAutorizacion}
+                refreshKey={authRefreshKey}
+            />
 
             {/* Gastos List */}
             {
                 loading ? (
                     <ActivityIndicator size="large" color="#2563EB" style={styles.loading} />
                 ) : (
-                    <ScrollView style={styles.listContainer}>
+                    <View style={styles.listContainer}>
                         {filteredGastos.length === 0 ? (
                             <View style={styles.emptyState}>
                                 <Text style={styles.emptyText}>No hay gastos que coincidan con los filtros</Text>
@@ -1030,9 +1079,10 @@ function GastosTab({ fileServerUrl }) {
                                 )
                             })
                         )}
-                    </ScrollView>
+                    </View>
                 )
             }
+            </GastosCapturaBodyScroll>
 
             {/* Add Modal */}
             <Modal
@@ -4061,7 +4111,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     listContainer: {
-        flex: 1,
         paddingHorizontal: 16,
     },
     emptyState: {

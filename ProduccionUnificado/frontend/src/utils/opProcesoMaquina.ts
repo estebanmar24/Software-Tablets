@@ -39,6 +39,73 @@ export function codigoPerlaDesdeNombre(nombre: string | null | undefined): strin
     return num + letter;
 }
 
+/** Normaliza código a forma comparable: "01a" → "1a", "03" → "3". */
+export function normalizeCodigoMaquina(codigo: string | null | undefined): string {
+    if (!codigo) return '';
+    const m = String(codigo).trim().toLowerCase().match(/^0*(\d{1,2})([a-z]?)$/);
+    if (!m) return String(codigo).trim().toLowerCase();
+    return `${parseInt(m[1], 10)}${m[2] || ''}`;
+}
+
+export function normalizarNombreProceso(nombre: string | null | undefined): string {
+    return (nombre || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+}
+
+/**
+ * Máquinas permitidas por proceso del Gantt (códigos Perla).
+ * `null` = solo "Sin máquina".
+ */
+export const PROCESO_A_CODIGOS_MAQUINA: Record<string, string[] | null> = {
+    conversion: ['1a', '1b'],
+    corrugacion: ['13a', '13b'],
+    corte: ['2a', '2b'],
+    impresion: ['3', '4', '5', '6', '7'],
+    acabado: ['11', '16', '8c'],
+    colaminado: ['10a', '10b'],
+    troquelado: ['8a', '8b', '9'],
+    despique: null,
+    pegadora: ['14'],
+    terminado: null,
+    'terminado manual': null,
+};
+
+/** Códigos permitidos, null (sin máquina) o undefined (sin regla → todas). */
+export function codigosMaquinaParaProceso(proceso: string | null | undefined): string[] | null | undefined {
+    const key = normalizarNombreProceso(proceso);
+    if (!key) return undefined;
+    if (Object.prototype.hasOwnProperty.call(PROCESO_A_CODIGOS_MAQUINA, key)) {
+        return PROCESO_A_CODIGOS_MAQUINA[key];
+    }
+    return undefined;
+}
+
+export function procesoRequiereSinMaquina(proceso: string | null | undefined): boolean {
+    return codigosMaquinaParaProceso(proceso) === null;
+}
+
+/**
+ * Filtra máquinas del catálogo según el proceso.
+ * Si el proceso no tiene mapeo, devuelve todas.
+ */
+export function maquinasParaProceso<T extends { nombre?: string; Nombre?: string }>(
+    proceso: string | null | undefined,
+    maquinas: T[] | null | undefined
+): T[] {
+    const list = Array.isArray(maquinas) ? maquinas : [];
+    const codes = codigosMaquinaParaProceso(proceso);
+    if (codes === null) return [];
+    if (!codes?.length) return list;
+    const wanted = new Set(codes.map(normalizeCodigoMaquina));
+    return list.filter((m) => {
+        const cod = normalizeCodigoMaquina(codigoPerlaDesdeNombre(m.nombre ?? m.Nombre));
+        return !!cod && wanted.has(cod);
+    });
+}
+
 /**
  * Código de proceso a buscar en la OP según la máquina seleccionada en Perla.
  */
@@ -95,6 +162,8 @@ export function buscarProcesoOpParaMaquina(
 
 export type MaterialOpResumen = {
     material: string;
+    calibre: string;
+    gramaje: string;
     anchoRollo: string;
     largoCorte: string;
     anchoPliego: string;
@@ -108,9 +177,13 @@ export function materialDesdeOp(campos: Record<string, string> | null | undefine
     if (!campos) return null;
     const material = valorCampo(campos, 'material');
     const anchoRollo = valorCampo(campos, 'anchoRollo');
-    if (!material && !anchoRollo) return null;
+    const calibre = valorCampo(campos, 'calibre');
+    const gramaje = valorCampo(campos, 'gramaje');
+    if (!material && !anchoRollo && !calibre && !gramaje) return null;
     return {
         material,
+        calibre,
+        gramaje,
         anchoRollo: valorCampo(campos, 'anchoRollo'),
         largoCorte: valorCampo(campos, 'largoCorte'),
         anchoPliego: valorCampo(campos, 'anchoPliego'),

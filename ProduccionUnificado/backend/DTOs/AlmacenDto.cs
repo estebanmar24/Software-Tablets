@@ -102,11 +102,15 @@ public class AlmacenProveedorPedidoWriteDto
     public string? CatalogoId { get; set; }
     public string? FechaEntregaEstimada { get; set; }
     public decimal? PrecioUnitario { get; set; }
+    public bool? PrecioEspecial { get; set; }
+    public string? ComentarioPrecioEspecial { get; set; }
     public bool? Recibido { get; set; }
     public string? Categoria { get; set; }
     public bool? ResponsableIva { get; set; }
     /// <summary>Si se indica, agrega la línea a esa OC existente del mismo proveedor.</summary>
     public string? AgregarAOrdenCompraId { get; set; }
+    public string? ProformaUrl { get; set; }
+    public string? ProformaNombre { get; set; }
 }
 
 public class AlmacenPedidoWriteDto
@@ -144,11 +148,15 @@ public class AlmacenProveedorAsignadoDto
     public string? CatalogoId { get; set; }
     public string? FechaEntregaEstimada { get; set; }
     public decimal? PrecioUnitario { get; set; }
+    public bool PrecioEspecial { get; set; }
+    public string? ComentarioPrecioEspecial { get; set; }
     public bool Recibido { get; set; }
     public bool Pagado { get; set; }
     public string? FormaPago { get; set; }
     public int? NumeroOrdenCompra { get; set; }
     public string? OrdenCompraId { get; set; }
+    public string? ProformaUrl { get; set; }
+    public string? ProformaNombre { get; set; }
 }
 
 public class AlmacenMarcarPagadoDto
@@ -208,6 +216,25 @@ public class AlmacenRequisicionDto
     public string? CreadoPorNombre { get; set; }
     public AlmacenDatosPedidoDto? Pedido { get; set; }
     public AlmacenDatosRecepcionDto? Recepcion { get; set; }
+    public List<AlmacenRequisicionComentarioDto> Comentarios { get; set; } = new();
+    public int TotalComentarios { get; set; }
+}
+
+public class AlmacenRequisicionComentarioDto
+{
+    public string Id { get; set; } = string.Empty;
+    public string Texto { get; set; } = string.Empty;
+    public string? UsuarioNombre { get; set; }
+    public string Fecha { get; set; } = string.Empty;
+    public string Hora { get; set; } = string.Empty;
+    public bool EsLegacy { get; set; }
+    public List<AlmacenRequisicionComentarioDto> Respuestas { get; set; } = new();
+}
+
+public class AlmacenRequisicionComentarioWriteDto
+{
+    public string Texto { get; set; } = string.Empty;
+    public string? ParentId { get; set; }
 }
 
 public class AlmacenOrdenCompraLineaDto
@@ -223,6 +250,8 @@ public class AlmacenOrdenCompraLineaDto
     public decimal Cantidad { get; set; }
     public string Unidad { get; set; } = string.Empty;
     public decimal? PrecioUnitario { get; set; }
+    public bool PrecioEspecial { get; set; }
+    public string? ComentarioPrecioEspecial { get; set; }
     public string? FechaEntregaEstimada { get; set; }
     public bool Recibido { get; set; }
     public bool Pagado { get; set; }
@@ -250,6 +279,8 @@ public class AlmacenConsolidarPedidoLineaWriteDto
     public string RequisicionId { get; set; } = string.Empty;
     public decimal Cantidad { get; set; }
     public decimal? PrecioUnitario { get; set; }
+    public bool? PrecioEspecial { get; set; }
+    public string? ComentarioPrecioEspecial { get; set; }
     public string? FechaEntregaEstimada { get; set; }
 }
 

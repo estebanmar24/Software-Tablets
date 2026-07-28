@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, FlatList, Platform, Linking, TextInput, Modal, Alert, Switch } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -14,7 +14,35 @@ import MedioPagoGastoControls, {
 import { gastoPermiteEdicionTrasContabilidad } from '../utils/gastoEditPermission';
 import { getFileServerUrl } from '../services/apiConfig';
 import { GastoListaPrecios, parseMontoInput } from '../utils/gastoPrecioForm';
+import {
+    getAutorizacionesGastoConsolidado,
+    colorEstadoAutorizacion,
+    labelEstadoAutorizacion,
+    etiquetaModuloGasto,
+    moduloContabilidadToKey,
+    ESTADOS_AUTORIZACION,
+    materializarMovimientosAutorizacion,
+} from '../services/gastosAutorizacionApi';
 import * as DocumentPicker from 'expo-document-picker';
+
+interface SolicitudAutorizacion {
+    id: string;
+    modulo: string;
+    rubroNombre?: string;
+    proveedorNombre?: string;
+    fechaAproximada?: string;
+    cantidad: number;
+    razon: string;
+    esSolicitudCredito: boolean;
+    esEfectivo: boolean;
+    estadoAutorizacion: string;
+    solicitadoPorNombre?: string;
+    autorizadoPorNombre?: string;
+    fechaSolicitud?: string;
+    fechaResolucion?: string;
+    motivoRechazo?: string;
+    gastoId?: string | null;
+}
 
 interface GastoConsolidado {
     id: number;
@@ -60,6 +88,10 @@ export default function ContabilidadScreen() {
     const [proveedoresCatalogo, setProveedoresCatalogo] = useState<string[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [fechaFiltro, setFechaFiltro] = useState('');
+    const [vistaPrincipal, setVistaPrincipal] = useState<'movimientos' | 'solicitudes'>('movimientos');
+    const materializadoMovimientosRef = useRef(false);
+    const [solicitudes, setSolicitudes] = useState<SolicitudAutorizacion[]>([]);
+    const [loadingSolicitudes, setLoadingSolicitudes] = useState(false);
     const [showIngresoModal, setShowIngresoModal] = useState(false);
     const [showExportModal, setShowExportModal] = useState(false);
     const [savingIngreso, setSavingIngreso] = useState(false);
@@ -230,6 +262,15 @@ export default function ContabilidadScreen() {
     const fetchData = async () => {
         setLoading(true);
         try {
+            if (!materializadoMovimientosRef.current) {
+                try {
+                    await materializarMovimientosAutorizacion();
+                } catch (syncErr) {
+                    console.warn('Sincronización autorizaciones → movimientos:', syncErr);
+                }
+                materializadoMovimientosRef.current = true;
+            }
+
             const params: any = { anio: filtroAnio };
             if (filtroMes > 0) params.mes = filtroMes;
             if (filtroModulo) params.modulo = filtroModulo;
@@ -254,12 +295,63 @@ export default function ContabilidadScreen() {
         }
     };
 
+    const fetchSolicitudes = async () => {
+        setLoadingSolicitudes(true);
+        try {
+            const moduloKey = filtroModulo && filtroModulo !== 'Contabilidad'
+                ? moduloContabilidadToKey(filtroModulo)
+                : filtroModulo === 'Contabilidad'
+                    ? '__none__'
+                    : '';
+            if (moduloKey === '__none__') {
+                setSolicitudes([]);
+                return;
+            }
+            const data = await getAutorizacionesGastoConsolidado({
+                anio: filtroAnio,
+                mes: filtroMes > 0 ? filtroMes : undefined,
+                modulo: moduloKey || undefined,
+                estado: filtroEstado || undefined,
+                soloPendientesRevision: !filtroEstado,
+                search: searchQuery || undefined,
+                proveedor: filtroProveedor || undefined,
+                fechaFiltro: fechaFiltro || undefined,
+            });
+            setSolicitudes(data);
+            const fromSolicitudes = data
+                .map((s) => (s.proveedorNombre || '').trim())
+                .filter(Boolean);
+            if (fromSolicitudes.length > 0) {
+                setProveedoresCatalogo((prev) => {
+                    const next = [...new Set([...prev, ...fromSolicitudes])];
+                    return next.sort((a, b) => a.localeCompare(b, 'es'));
+                });
+            }
+        } catch (error) {
+            console.error('Error fetching solicitudes autorización:', error);
+        } finally {
+            setLoadingSolicitudes(false);
+        }
+    };
+
     useEffect(() => {
         const timer = setTimeout(() => {
-            fetchData();
+            if (vistaPrincipal === 'movimientos') {
+                fetchData();
+            } else {
+                fetchSolicitudes();
+            }
         }, 500);
         return () => clearTimeout(timer);
-    }, [filtroAnio, filtroMes, filtroModulo, filtroPendiente, filtroCredito, filtroRubro, searchQuery, fechaFiltro, filtroEstado, filtroProveedor]);
+    }, [vistaPrincipal, filtroAnio, filtroMes, filtroModulo, filtroPendiente, filtroCredito, filtroRubro, searchQuery, fechaFiltro, filtroEstado, filtroProveedor]);
+
+    const resumenSolicitudes = useMemo(() => {
+        const pendientes = solicitudes.filter((s) => s.estadoAutorizacion === ESTADOS_AUTORIZACION.pendiente).length;
+        const autorizadas = solicitudes.filter((s) => s.estadoAutorizacion === ESTADOS_AUTORIZACION.autorizada).length;
+        const noAutorizadas = solicitudes.filter((s) => s.estadoAutorizacion === ESTADOS_AUTORIZACION.noAutorizada).length;
+        const totalMonto = solicitudes.reduce((acc, s) => acc + (s.cantidad || 0), 0);
+        return { total: solicitudes.length, pendientes, autorizadas, noAutorizadas, totalMonto };
+    }, [solicitudes]);
 
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('es-CO', {
@@ -619,14 +711,16 @@ export default function ContabilidadScreen() {
         }
     };
 
-    const renderResumenCard = (title: string, value: number, icon: string, color: string) => (
+    const renderResumenCard = (title: string, value: number, icon: string, color: string, asCount = false) => (
         <View style={[styles.resumenCard, { backgroundColor: isDarkMode ? '#111827' : '#FFFFFF', borderColor: isDarkMode ? '#1F2937' : '#E2E8F0' }]}>
             <View style={[styles.iconCircle, { backgroundColor: color + '20' }]}>
                 <MaterialCommunityIcons name={icon as any} size={24} color={color} />
             </View>
             <View style={styles.resumenInfo}>
                 <Text style={[styles.resumenLabel, { color: colors.subText }]}>{title}</Text>
-                <Text style={[styles.resumenValue, { color: colors.text }]}>{formatCurrency(value)}</Text>
+                <Text style={[styles.resumenValue, { color: colors.text }]}>
+                    {asCount ? String(value) : formatCurrency(value)}
+                </Text>
             </View>
         </View>
     );
@@ -1113,6 +1207,68 @@ export default function ContabilidadScreen() {
     );
     };
 
+    const renderSolicitudItem = ({ item }: { item: SolicitudAutorizacion }) => {
+        const moduloLabel = etiquetaModuloGasto(item.modulo);
+        const estadoColor = colorEstadoAutorizacion(item.estadoAutorizacion);
+        const fechaSol = item.fechaSolicitud ? new Date(item.fechaSolicitud).toLocaleDateString() : '—';
+        return (
+            <View style={[styles.gastoItem, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF', borderBottomColor: isDarkMode ? '#374151' : '#F3F4F6' }]}>
+                <View style={styles.gastoMain}>
+                    <View style={styles.gastoHeader}>
+                        <View style={[styles.moduloTag, { backgroundColor: getModuloColor(moduloLabel) + '20' }]}>
+                            <Text style={[styles.moduloTagText, { color: getModuloColor(moduloLabel) }]}>{moduloLabel.toUpperCase()}</Text>
+                        </View>
+                        <Text style={[styles.gastoFecha, { color: colors.subText }]}>{fechaSol}</Text>
+                        <View style={[styles.statusTag, { backgroundColor: estadoColor + '20' }]}>
+                            <Text style={[styles.statusTagText, { color: estadoColor }]}>
+                                {labelEstadoAutorizacion(item.estadoAutorizacion).toUpperCase()}
+                            </Text>
+                        </View>
+                        <MedioPagoBadge
+                            esSolicitudCredito={!!item.esSolicitudCredito}
+                            esEfectivo={!!item.esEfectivo}
+                            compact
+                        />
+                        {item.gastoId && (
+                            <View style={[styles.statusTag, { backgroundColor: '#10B98120' }]}>
+                                <Text style={[styles.statusTagText, { color: '#10B981' }]}>GASTO REGISTRADO</Text>
+                            </View>
+                        )}
+                    </View>
+                    <Text style={[styles.gastoRubro, { color: colors.text }]}>{item.rubroNombre || 'Sin rubro'}</Text>
+                    <Text style={[styles.gastoProveedor, { color: colors.subText }]}>
+                        {item.proveedorNombre || 'Sin proveedor'}
+                        {item.fechaAproximada ? ` • Fecha aprox.: ${new Date(item.fechaAproximada).toLocaleDateString()}` : ''}
+                    </Text>
+                    {item.solicitadoPorNombre && (
+                        <Text style={[styles.gastoAutor, { color: colors.subText }]}>
+                            Solicitado por: {item.solicitadoPorNombre}
+                        </Text>
+                    )}
+                    {item.autorizadoPorNombre && item.estadoAutorizacion !== ESTADOS_AUTORIZACION.pendiente && (
+                        <Text style={[styles.gastoAutor, { color: colors.subText }]}>
+                            {item.estadoAutorizacion === ESTADOS_AUTORIZACION.autorizada ? 'Autorizado' : 'Revisado'} por: {item.autorizadoPorNombre}
+                            {item.fechaResolucion ? ` • ${new Date(item.fechaResolucion).toLocaleDateString()}` : ''}
+                        </Text>
+                    )}
+                    {item.motivoRechazo && item.estadoAutorizacion === ESTADOS_AUTORIZACION.noAutorizada && (
+                        <Text style={[styles.gastoNota, { color: '#EF4444' }]} numberOfLines={2}>
+                            Motivo: {item.motivoRechazo}
+                        </Text>
+                    )}
+                    {item.razon && (
+                        <Text style={[styles.gastoNota, { color: colors.subText }]} numberOfLines={2}>{item.razon}</Text>
+                    )}
+                </View>
+                <View style={styles.gastoPriceContainer}>
+                    <Text style={[styles.gastoPrice, { color: colors.text }]}>
+                        {formatCurrency(item.cantidad || 0)}
+                    </Text>
+                </View>
+            </View>
+        );
+    };
+
     const getModuloColor = (modulo: string) => {
         switch (modulo) {
             case 'Producción': return '#3B82F6';
@@ -1127,7 +1283,7 @@ export default function ContabilidadScreen() {
         }
     };
 
-    if (loading && !resumen) {
+    if (loading && !resumen && vistaPrincipal === 'movimientos') {
         return (
             <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color={colors.primary} />
@@ -1136,10 +1292,44 @@ export default function ContabilidadScreen() {
         );
     }
 
+    if (loadingSolicitudes && solicitudes.length === 0 && vistaPrincipal === 'solicitudes') {
+        return (
+            <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={{ marginTop: 10, color: colors.subText }}>Cargando solicitudes...</Text>
+            </View>
+        );
+    }
+
     return (
         <View style={[styles.container, { backgroundColor: isDarkMode ? colors.background : '#F8FAFC' }]}>
             {/* Minimalist Interactive Filter Toolbar */}
             <View style={[styles.toolbar, { backgroundColor: isDarkMode ? '#111827' : '#FFFFFF', borderBottomColor: isDarkMode ? '#1F2937' : '#E2E8F0' }]}>
+                {/* Vista: Movimientos | Solicitudes */}
+                <View style={[styles.toolbarRow, { marginBottom: 8 }]}>
+                    <TouchableOpacity
+                        style={[
+                            styles.vistaTab,
+                            { backgroundColor: isDarkMode ? '#1F2937' : '#F1F5F9', borderColor: isDarkMode ? '#374151' : '#CBD5E1' },
+                            vistaPrincipal === 'movimientos' && styles.vistaTabActive,
+                        ]}
+                        onPress={() => { setVistaPrincipal('movimientos'); setFiltroEstado(''); }}
+                    >
+                        <MaterialCommunityIcons name="cash-multiple" size={16} color={vistaPrincipal === 'movimientos' ? '#FFF' : colors.subText} />
+                        <Text style={[styles.vistaTabText, vistaPrincipal === 'movimientos' && styles.vistaTabTextActive]}>Movimientos</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[
+                            styles.vistaTab,
+                            { backgroundColor: isDarkMode ? '#1F2937' : '#F1F5F9', borderColor: isDarkMode ? '#374151' : '#CBD5E1' },
+                            vistaPrincipal === 'solicitudes' && styles.vistaTabActive,
+                        ]}
+                        onPress={() => { setVistaPrincipal('solicitudes'); setFiltroEstado(''); setFiltroRubro(''); setFiltroPendiente(null); setFiltroCredito(null); }}
+                    >
+                        <MaterialCommunityIcons name="clipboard-text-clock" size={16} color={vistaPrincipal === 'solicitudes' ? '#FFF' : colors.subText} />
+                        <Text style={[styles.vistaTabText, vistaPrincipal === 'solicitudes' && styles.vistaTabTextActive]}>Solicitudes</Text>
+                    </TouchableOpacity>
+                </View>
                 {/* Row 1: Period, Search & Date */}
                 <View style={styles.toolbarRow}>
                     <View style={styles.periodGroup}>
@@ -1229,6 +1419,7 @@ export default function ContabilidadScreen() {
                         </select>
                     </View>
 
+                    {vistaPrincipal === 'movimientos' && (
                     <View style={[styles.compactSelect, { backgroundColor: isDarkMode ? '#1F2937' : '#F1F5F9', overflow: 'hidden' }]}>
                         <Text style={styles.miniLabel}>TIPO:</Text>
                         <select 
@@ -1255,6 +1446,7 @@ export default function ContabilidadScreen() {
                             ))}
                         </select>
                     </View>
+                    )}
                     
                     <View style={[styles.compactSelect, { backgroundColor: isDarkMode ? '#1F2937' : '#F1F5F9', overflow: 'hidden' }]}>
                         <Text style={styles.miniLabel}>ESTADO:</Text>
@@ -1274,10 +1466,22 @@ export default function ContabilidadScreen() {
                                 colorScheme: isDarkMode ? 'dark' : 'light'
                             }}
                         >
-                            <option value="" style={{ background: isDarkMode ? '#111827' : '#FFF', color: isDarkMode ? '#FFF' : '#334155' }}>Todos</option>
-                            <option value="Montado" style={{ background: isDarkMode ? '#111827' : '#FFF', color: isDarkMode ? '#FFF' : '#334155' }}>Montado</option>
-                            <option value="Entregado" style={{ background: isDarkMode ? '#111827' : '#FFF', color: isDarkMode ? '#FFF' : '#334155' }}>Entregado</option>
-                            <option value="Pagado" style={{ background: isDarkMode ? '#111827' : '#FFF', color: isDarkMode ? '#FFF' : '#334155' }}>Pagado</option>
+                            <option value="" style={{ background: isDarkMode ? '#111827' : '#FFF', color: isDarkMode ? '#FFF' : '#334155' }}>
+                                {vistaPrincipal === 'solicitudes' ? 'Activas (sin autorizar)' : 'Todos'}
+                            </option>
+                            {vistaPrincipal === 'movimientos' ? (
+                                <>
+                                    <option value="Montado" style={{ background: isDarkMode ? '#111827' : '#FFF', color: isDarkMode ? '#FFF' : '#334155' }}>Montado</option>
+                                    <option value="Entregado" style={{ background: isDarkMode ? '#111827' : '#FFF', color: isDarkMode ? '#FFF' : '#334155' }}>Entregado</option>
+                                    <option value="Pagado" style={{ background: isDarkMode ? '#111827' : '#FFF', color: isDarkMode ? '#FFF' : '#334155' }}>Pagado</option>
+                                </>
+                            ) : (
+                                <>
+                                    <option value={ESTADOS_AUTORIZACION.pendiente} style={{ background: isDarkMode ? '#111827' : '#FFF', color: isDarkMode ? '#FFF' : '#334155' }}>Pendiente</option>
+                                    <option value={ESTADOS_AUTORIZACION.autorizada} style={{ background: isDarkMode ? '#111827' : '#FFF', color: isDarkMode ? '#FFF' : '#334155' }}>Autorizada</option>
+                                    <option value={ESTADOS_AUTORIZACION.noAutorizada} style={{ background: isDarkMode ? '#111827' : '#FFF', color: isDarkMode ? '#FFF' : '#334155' }}>No autorizada</option>
+                                </>
+                            )}
                         </select>
                     </View>
 
@@ -1308,6 +1512,8 @@ export default function ContabilidadScreen() {
                         </select>
                     </View>
 
+                    {vistaPrincipal === 'movimientos' && (
+                    <>
                     <TouchableOpacity 
                         style={[
                             styles.toggleBtn, 
@@ -1329,8 +1535,10 @@ export default function ContabilidadScreen() {
                     >
                         <Text style={[styles.toggleBtnText, { color: isDarkMode ? '#E2E8F0' : '#475569' }, filtroCredito && { color: '#FFF' }]}>Crédito</Text>
                     </TouchableOpacity>
+                    </>
+                    )}
 
-                    {(filtroModulo || filtroRubro || searchQuery || fechaFiltro || filtroEstado || filtroProveedor) && (
+                    {(filtroModulo || filtroRubro || searchQuery || fechaFiltro || filtroEstado || filtroProveedor || filtroPendiente || filtroCredito) && (
                         <TouchableOpacity 
                             onPress={() => {
                                 setFiltroModulo('');
@@ -1350,21 +1558,35 @@ export default function ContabilidadScreen() {
             </View>
 
             <ScrollView contentContainerStyle={styles.scrollContent}>
-                {/* Resumen Seccion - More Compact */}
+                {/* Resumen */}
                 <View style={styles.headerSection}>
+                    {vistaPrincipal === 'movimientos' ? (
                     <View style={styles.resumenGrid}>
                         {renderResumenCard('Total', resumenLocal.totalGeneral || resumen?.totalGeneral || 0, 'cash-multiple', colors.primary)}
                         {modulos.filter(m => m.value !== '').map(m => (
                             renderResumenCard(m.label, resumenLocal.porModulo?.[m.value] || resumen?.porModulo?.[m.value] || 0, m.icon, getModuloColor(m.value))
                         ))}
                     </View>
+                    ) : (
+                    <View style={styles.resumenGrid}>
+                        {renderResumenCard('Total solicitudes', resumenSolicitudes.total, 'clipboard-list', colors.primary, true)}
+                        {renderResumenCard('Pendientes', resumenSolicitudes.pendientes, 'clock-outline', '#F59E0B', true)}
+                        {renderResumenCard('Autorizadas', resumenSolicitudes.autorizadas, 'check-circle', '#10B981', true)}
+                        {renderResumenCard('No autorizadas', resumenSolicitudes.noAutorizadas, 'close-circle', '#EF4444', true)}
+                        {renderResumenCard('Monto estimado', resumenSolicitudes.totalMonto, 'cash', '#3B82F6', false)}
+                    </View>
+                    )}
                 </View>
 
-                {/* Listado de Gastos */}
+                {/* Listado */}
                 <View style={styles.listSection}>
                     <View style={styles.listHeader}>
-                        <Text style={[styles.sectionTitle, { color: colors.text, fontSize: 18 }]}>Últimos Movimientos</Text>
+                        <Text style={[styles.sectionTitle, { color: colors.text, fontSize: 18 }]}>
+                            {vistaPrincipal === 'movimientos' ? 'Últimos Movimientos' : 'Solicitudes de autorización'}
+                        </Text>
                         <View style={styles.listHeaderActions}>
+                            {vistaPrincipal === 'movimientos' && (
+                            <>
                             <TouchableOpacity style={styles.exportButton} onPress={() => setShowExportModal(true)}>
                                 <MaterialCommunityIcons name="file-excel" size={16} color="#FFFFFF" />
                                 <Text style={styles.exportButtonText}>Exportar Excel</Text>
@@ -1403,11 +1625,14 @@ export default function ContabilidadScreen() {
                                 <MaterialCommunityIcons name="plus-circle" size={16} color="#FFFFFF" />
                                 <Text style={styles.newIngresoButtonText}>Nuevo Ingreso</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity onPress={fetchData}>
+                            </>
+                            )}
+                            <TouchableOpacity onPress={vistaPrincipal === 'movimientos' ? fetchData : fetchSolicitudes}>
                                 <MaterialCommunityIcons name="refresh" size={20} color={colors.primary} />
                             </TouchableOpacity>
                         </View>
                     </View>
+                    {vistaPrincipal === 'movimientos' ? (
                     <FlatList
                         data={gastos}
                         renderItem={renderGastoItem}
@@ -1419,6 +1644,23 @@ export default function ContabilidadScreen() {
                             </View>
                         }
                     />
+                    ) : (
+                    <FlatList
+                        data={solicitudes}
+                        renderItem={renderSolicitudItem}
+                        keyExtractor={(item) => `sol-${item.modulo}-${item.id}`}
+                        scrollEnabled={false}
+                        ListEmptyComponent={
+                            <View style={styles.emptyContainer}>
+                                <Text style={{ color: colors.subText }}>
+                                    {filtroModulo === 'Contabilidad'
+                                        ? 'Las solicitudes de autorización no aplican al área Contabilidad.'
+                                        : 'No hay solicitudes de autorización en este periodo.'}
+                                </Text>
+                            </View>
+                        }
+                    />
+                    )}
                 </View>
             </ScrollView>
 
@@ -1848,6 +2090,28 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: '700',
         color: '#E2E8F0',
+    },
+    vistaTab: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        height: 34,
+        paddingHorizontal: 14,
+        borderRadius: 8,
+        borderWidth: 1.5,
+        marginRight: 8,
+    },
+    vistaTabActive: {
+        backgroundColor: '#3B82F6',
+        borderColor: '#60A5FA',
+    },
+    vistaTabText: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: '#94A3B8',
+    },
+    vistaTabTextActive: {
+        color: '#FFFFFF',
     },
     resetBtn: {
         padding: 6,

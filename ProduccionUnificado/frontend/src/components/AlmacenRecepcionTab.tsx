@@ -16,6 +16,8 @@ import {
     type TipoRequisicionId,
     formatFechaHoy,
     formatFechaDisplay,
+    formatearCantidad,
+    sanitizarCantidadInput,
     getTipoRequisicionLabel,
     esRequisicionEnRecepcion,
     puedeRegistrarRecepcionEnvio,
@@ -36,6 +38,7 @@ import {
 } from '../data/almacenMockData';
 import { extraerMensajeErrorApi } from '../services/almacenApi';
 import AlmacenEstadoBadge from './AlmacenEstadoBadge';
+import AlmacenComentariosCelda from './AlmacenComentariosCelda';
 import AlmacenContadorBadge from './AlmacenContadorBadge';
 import AlmacenCampoFecha from './AlmacenCampoFecha';
 import AlmacenFiltroEstado, { type FiltroEstadoValor } from './AlmacenFiltroEstado';
@@ -53,6 +56,7 @@ type ThemeColors = {
 interface AlmacenRecepcionTabProps {
     requisiciones: Requisicion[];
     onRegistrarRecepcion: (requisicionId: string, linea: RecepcionLineaProveedor) => Promise<Requisicion>;
+    onAbrirComentarios: (req: Requisicion) => void;
     colors: ThemeColors;
     isDarkMode: boolean;
     cardBg: string;
@@ -149,6 +153,7 @@ function GrupoSiNo({
 export default function AlmacenRecepcionTab({
     requisiciones,
     onRegistrarRecepcion,
+    onAbrirComentarios,
     colors,
     isDarkMode,
     cardBg,
@@ -457,6 +462,7 @@ export default function AlmacenRecepcionTab({
                     'LLEGADA EST.',
                     'PROVEEDORES',
                     'CÓD. RECEPCIÓN',
+                    'COMENTARIOS',
                     'INGRESADO POR',
                     'ESTADO',
                     'ACCIONES',
@@ -473,6 +479,7 @@ export default function AlmacenRecepcionTab({
                             col === 'LLEGADA EST.' && { width: 120 },
                             col === 'PROVEEDORES' && { flex: 1.1, minWidth: 130 },
                             col === 'CÓD. RECEPCIÓN' && { width: 130 },
+                            col === 'COMENTARIOS' && { flex: 1.1, minWidth: 140 },
                             col === 'INGRESADO POR' && { width: 120 },
                             col === 'ESTADO' && { width: 130 },
                             col === 'ACCIONES' && { width: 150 },
@@ -536,7 +543,7 @@ export default function AlmacenRecepcionTab({
                                     </Text>
                                 ) : null}
                                 <Text style={{ color: colors.subText, fontSize: 11 }}>
-                                    Req: {req.cantidad} {req.unidad}
+                                    Req: {formatearCantidad(req.cantidad)} {req.unidad}
                                 </Text>
                             </View>
                             <Text style={[recStyles.td, { width: 110, color: colors.text }]}>
@@ -599,6 +606,13 @@ export default function AlmacenRecepcionTab({
                                         </Text>
                                     ))
                                 )}
+                            </View>
+                            <View style={{ flex: 1.1, minWidth: 140, paddingRight: 6 }}>
+                                <AlmacenComentariosCelda
+                                    requisicion={req}
+                                    onPress={() => onAbrirComentarios(req)}
+                                    colors={colors}
+                                />
                             </View>
                             <Text
                                 style={[recStyles.td, { width: 120, color: colors.text, paddingRight: 6 }]}
@@ -1242,7 +1256,7 @@ export default function AlmacenRecepcionTab({
                                             placeholder="Cantidad"
                                             placeholderTextColor={colors.subText}
                                             value={cantidadLlegada}
-                                            onChangeText={(t) => setCantidadLlegada(t.replace(/[^0-9.,]/g, ''))}
+                                            onChangeText={(t) => setCantidadLlegada(sanitizarCantidadInput(t))}
                                             keyboardType="decimal-pad"
                                         />
                                         {reqModal?.unidad ? (

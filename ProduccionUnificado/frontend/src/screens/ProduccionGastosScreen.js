@@ -36,7 +36,7 @@ import { getFileServerUrl, getApiBaseUrl } from '../services/apiConfig';
 import api from '../services/apiClient';
 import { parseMontoInput, GastoListaPrecios } from '../utils/gastoPrecioForm';
 import { gastoPermiteEdicionTrasContabilidad } from '../utils/gastoEditPermission';
-import { resolveOvertimeShiftContext, applyLegacyLunchDiscount } from '../utils/overtimeLunch';
+import { resolveOvertimeShiftContext, pickDaySchedulesFromVersion, addDayScheduleCutPoints, isWithinOrdinaryShift, resolveLunchDiscountHours, appendLunchInfoLine } from '../utils/overtimeLunch';
 import {
     MSG_GASTO_HORAS_DUPLICADO,
     findDuplicateOvertimeAmongCandidates,
@@ -44,6 +44,10 @@ import {
 } from '../utils/duplicateOvertimeGasto';
 import { showAppAlert, extractApiErrorMessage, isOvertimeDuplicateMessage } from '../utils/appAlert';
 import { calcValorAPagarLabor, calcValorHoraLabor, parseNumeroLabor } from '../utils/laborHorasExtras';
+import GastoAutorizacionBloque from '../components/GastoAutorizacionBloque';
+import GastosCapturaBodyScroll from '../components/GastosCapturaBodyScroll';
+import { puedeEditarMontosGasto } from '../utils/gastoAutorizacionIntegracion';
+import { MODULOS_GASTO } from '../services/gastosAutorizacionApi';
 
 // TABS - Same structure as SST
 const TABS = [
@@ -54,6 +58,7 @@ const TABS = [
     { key: 'proveedores', label: 'Proveedores', icon: '🏢' },
     { key: 'tiposHora', label: 'H. Extras', icon: '⏱️' },
     { key: 'recargos', label: 'Recargos', icon: '🌙' },
+    { key: 'horarios', label: 'Horarios', icon: '🗓️' },
     { key: 'salarios', label: 'Salarios', icon: '💸' },
 ];
 
@@ -102,11 +107,11 @@ const COLOMBIAN_HOLIDAYS = [
     '2025-10-13', '2025-11-03', '2025-11-17', '2025-12-08', '2025-12-25',
     // 2026
     '2026-01-01', '2026-01-12', '2026-03-23', '2026-04-02', '2026-04-03', '2026-05-01',
-    '2026-05-18', '2026-06-08', '2026-06-15', '2026-06-29', '2026-07-20', '2026-08-07',
+    '2026-05-18', '2026-06-08', '2026-06-15', '2026-06-29', '2026-07-13', '2026-07-20', '2026-08-07',
     '2026-08-17', '2026-10-12', '2026-11-02', '2026-11-16', '2026-12-08', '2026-12-25'
 ];
 
-export default function ProduccionGastosScreen() {
+export default function ProduccionGastosScreen({ displayName }) {
     const { colors } = useTheme();
     const [activeTab, setActiveTab] = useState('gastos');
 
@@ -131,7 +136,7 @@ export default function ProduccionGastosScreen() {
             </View>
 
             {/* Content based on active tab */}
-            {activeTab === 'gastos' && <GastosTab />}
+            {activeTab === 'gastos' && <GastosTab displayName={displayName} />}
             {activeTab === 'graficas' && <GraficasTab />}
             {activeTab === 'rubros' && <RubrosTab />}
             {activeTab === 'productos' && <ProductosTab />}
@@ -139,13 +144,14 @@ export default function ProduccionGastosScreen() {
             {activeTab === 'proveedores' && <ProveedoresTab />}
             {activeTab === 'tiposHora' && <TiposHoraTab />}
             {activeTab === 'recargos' && <TiposRecargoTab />}
+            {activeTab === 'horarios' && <HorariosJornadaTab />}
             {activeTab === 'salarios' && <SalariosTab />}
         </View>
     );
 }
 
 // ===================== GASTOS TAB =====================
-function GastosTab() {
+function GastosTab({ displayName }) {
     const { colors: themeColors } = useTheme();
     const [loading, setLoading] = useState(true);
     const [serverUrl, setServerUrl] = useState('');
@@ -191,6 +197,8 @@ function GastosTab() {
     const [editItem, setEditItem] = useState(null);
     const [isLegalizing, setIsLegalizing] = useState(false); // State for UI rendering
     const isLegalizingRef = useRef(false); // Ref for robust state tracking
+    const autorizacionActivaRef = useRef(null);
+    const [authRefreshKey, setAuthRefreshKey] = useState(0);
     const [formData, setFormData] = useState({
         rubroId: '', proveedorId: '', usuarioId: '', maquinaId: '', tipoHoraId: '', tipoRecargoId: '',
         precio: '', precioBase: '', precioIva: '', fecha: new Date().toISOString().split('T')[0], nota: '', cantidadHoras: '',
@@ -201,6 +209,22 @@ function GastosTab() {
     const [formOvertimeError, setFormOvertimeError] = useState('');
     const [medioPago, setMedioPago] = useState(null); // 'credito' | 'efectivo' | null — obligatorio solo en gastos normales
     const [saving, setSaving] = useState(false);
+    const [jornadaOt, setJornadaOt] = useState(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        const load = async () => {
+            try {
+                const data = await produccionApi.getParametrosJornadaOt(formData.fecha);
+                if (!cancelled) setJornadaOt(data);
+            } catch (e) {
+                console.warn('No se pudo cargar jornada OT:', e);
+                if (!cancelled) setJornadaOt(null);
+            }
+        };
+        if (formData.fecha) load();
+        return () => { cancelled = true; };
+    }, [formData.fecha]);
 
     const [presupuestoInfo, setPresupuestoInfo] = useState(null);
     const [cotizaciones, setCotizaciones] = useState([]); // Added for quote automation
@@ -283,7 +307,7 @@ function GastosTab() {
             }
 
             if (usuario && factor > 0) {
-                const hourlyRate = (usuario.salario || 0) / 220;
+                const hourlyRate = calcValorHoraLabor(usuario.salario || 0, formData.fecha);
                 const total = hourlyRate * factor * parseFloat(formData.cantidadHoras);
                 setFormData(prev => ({ ...prev, precio: Math.round(total).toString() }));
             }
@@ -333,7 +357,7 @@ function GastosTab() {
         isLegalizingRef.current = false;
         setMedioPago(null);
         setFormOvertimeError('');
-        setFormData({ rubroId: '', proveedorId: '', usuarioId: '', maquinaId: '', tipoHoraId: '', tipoRecargoId: '', precio: '', precioBase: '', precioIva: '', fecha: new Date().toISOString().split('T')[0], nota: '', cantidadHoras: '', numeroFactura: '', facturaPdfUrl: '', numeroOP: '', esPendiente: false, esSolicitudCredito: false, horaInicio: '', horaFin: '' });
+        setFormData({ rubroId: '', proveedorId: '', usuarioId: '', maquinaId: '', tipoHoraId: '', tipoRecargoId: '', precio: '', precioBase: '', precioIva: '', fecha: new Date().toISOString().split('T')[0], nota: '', cantidadHoras: '', numeroFactura: '', facturaPdfUrl: '', numeroOP: '', esPendiente: false, esSolicitudCredito: false, horaInicio: '', horaFin: '', desdeAutorizacion: false });
         setBreakdown([]);
     };
 
@@ -383,10 +407,12 @@ function GastosTab() {
         const isSpecialDayStart = isSundayStart || isHolidayStart;
         const isSaturdayStart = startDate.getDay() === 6;
 
-        const { shiftEndMin, lunchWindow, usesScheduledShift } = resolveOvertimeShiftContext(startFull, endFull, {
+        const otCtx = resolveOvertimeShiftContext(startFull, endFull, {
             isSpecialDay: isSpecialDayStart,
             isSaturday: isSaturdayStart,
+            daySchedules: pickDaySchedulesFromVersion(jornadaOt, startDate),
         });
+        const { lunchWindow, usesScheduledShift, usesDaySchedule, lunchDiscountHours } = otCtx;
 
         const addBreakdown = (s, e, typeNameMatch, isHe, isSpecialDay) => {
             if (e <= s) return;
@@ -410,9 +436,7 @@ function GastosTab() {
 
         // Generar todos los puntos de corte relevantes en el rango [startFull, endFull]
         const cutPoints = new Set([startFull, endFull]);
-
-        // Añadir límite de turno base
-        if (shiftEndMin > startFull && shiftEndMin < endFull) cutPoints.add(shiftEndMin);
+        addDayScheduleCutPoints(cutPoints, otCtx, startFull, endFull);
 
         // Añadir límites nocturnos (19:00 y 06:00) y medianoche, en escala extendida
         [NIGHT_END, NIGHT_START, 1440, NIGHT_END + 1440, NIGHT_START + 1440].forEach(boundary => {
@@ -442,8 +466,8 @@ function GastosTab() {
             // Para turnos que cruzan medianoche, se respeta la regla del día de inicio del turno.
             const isSpecialDay = isSpecialDayStart;
 
-            // ¿Está dentro del turno base?
-            const isWithinShift = s < shiftEndMin;
+            // ¿Está dentro del turno base? (soporta varios bloques por día)
+            const isWithinShift = isWithinOrdinaryShift(mid, otCtx, s);
 
             // ¿Es horario nocturno? (19:00-06:00)
             const timeInDay = mid % 1440;
@@ -476,35 +500,23 @@ function GastosTab() {
             return `${isNegative ? '-' : ''}${hh}:${mm.toString().padStart(2, '0')}`;
         };
 
-        // --- LÓGICA DE DESCUENTO DE COMIDA (-1 HORA) ---
-        // Resta 1h directamente de las horas extra (solo visual + cálculo, NO se guarda como registro)
+        // --- COMIDA (solo informativa, no resta de HE) ---
         const totalDurationMin = endFull - startFull;
-        const lunchDiscountApplied = lunchWindowCtx || usesScheduledShift
-            ? 0
-            : (totalDurationMin >= 6 * 60 && !isSaturdayStart
-                ? applyLegacyLunchDiscount(breakdownItems, 1.0)
-                : 0);
-
-        if (lunchDiscountApplied > 0 && breakdownItems.some(item => item.hours > 0)) {
-                // Agregar línea informativa de COMIDA (solo visual, NO se guarda)
-                breakdownItems.push({ 
-                    type: '- COMIDA (Descuento)', 
-                    typeId: 0, 
-                    hours: -lunchDiscountApplied, 
-                    isHe: false,
-                    isLunch: true 
-                });
-        }
+        const lunchHoursToApply = resolveLunchDiscountHours(
+            { lunchWindow: lunchWindowCtx, lunchDiscountHours, usesScheduledShift, usesDaySchedule },
+            { totalDurationMin, isSaturday: isSaturdayStart }
+        );
+        appendLunchInfoLine(breakdownItems, lunchHoursToApply);
 
         // Limpiar items en cero para evitar mostrar horas extra inexistentes.
         const cleanedBreakdownItems = breakdownItems.filter(item => item.isLunch || item.hours > 0);
 
         setBreakdown(cleanedBreakdownItems.map(item => ({ ...item, formattedHours: formatHours(item.hours) })));
 
-        // Calcular costo total (EXCLUYE items de COMIDA, ya fue restado de las horas extra)
+        // Calcular costo total (EXCLUYE items de COMIDA informativa)
         let totalCost = 0;
         const salario = parseFloat(worker.salario) || 0;
-        const valorHoraBase = salario / 220;
+        const valorHoraBase = calcValorHoraLabor(salario, formData.fecha);
         cleanedBreakdownItems.filter(item => !item.isLunch).forEach(item => {
             const list = item.isHe ? tiposHora : tiposRecargo;
             const tipo = list.find(t => t.id == item.typeId);
@@ -518,7 +530,7 @@ function GastosTab() {
             const safeTotal = Math.max(0, Math.round(totalCost));
             setFormData(prev => ({ ...prev, precio: safeTotal.toString() }));
         }
-    }, [formData.usuarioId, formData.horaInicio, formData.horaFin, formData.fecha, formData.rubroId, usuarios, tiposHora, tiposRecargo, rubros]);
+    }, [formData.usuarioId, formData.horaInicio, formData.horaFin, formData.fecha, formData.rubroId, usuarios, tiposHora, tiposRecargo, rubros, jornadaOt]);
 
     useEffect(() => { calculateSmartBreakdown(); }, [calculateSmartBreakdown]);
 
@@ -537,6 +549,47 @@ function GastosTab() {
 
     const handleAdd = () => {
         resetForm();
+        autorizacionActivaRef.current = null;
+        setShowModal(true);
+    };
+
+    const handleRegistrarDirecto = (rubroId) => {
+        autorizacionActivaRef.current = null;
+        resetForm();
+        setFormData((prev) => ({ ...prev, rubroId: String(rubroId) }));
+        setShowModal(true);
+    };
+
+    const handleRegistrarDesdeAutorizacion = (sol) => {
+        autorizacionActivaRef.current = sol;
+        setEditItem(null);
+        setIsLegalizing(false);
+        isLegalizingRef.current = false;
+        resetForm();
+        const fecha = sol.fechaAproximada?.split('T')[0] || new Date().toISOString().split('T')[0];
+        setFormData({
+            rubroId: sol.rubroId ? String(sol.rubroId) : '',
+            proveedorId: sol.proveedorId ? String(sol.proveedorId) : '',
+            usuarioId: '',
+            maquinaId: '',
+            tipoHoraId: '',
+            tipoRecargoId: '',
+            precio: String(sol.cantidad ?? ''),
+            precioBase: String(sol.cantidad ?? ''),
+            precioIva: '0',
+            fecha,
+            nota: sol.razon || '',
+            cantidadHoras: '',
+            numeroFactura: '',
+            facturaPdfUrl: '',
+            numeroOP: '',
+            esPendiente: false,
+            esSolicitudCredito: sol.esSolicitudCredito || false,
+            horaInicio: '',
+            horaFin: '',
+            desdeAutorizacion: true,
+        });
+        setMedioPago(flagsToMedioPago(!!sol.esSolicitudCredito, !!sol.esEfectivo));
         setShowModal(true);
     };
 
@@ -659,7 +712,7 @@ function GastosTab() {
             if ((isHorasExtras || isRecargo) && breakdown.length > 0 && !editItem) {
                 const worker = usuarios.find(u => u.id == formData.usuarioId);
                 const salario = parseFloat(worker?.salario) || 0;
-                const valorHoraBase = salario / 220;
+                const valorHoraBase = calcValorHoraLabor(salario, formData.fecha);
 
                 const rubroHE = rubros.find(r => r.nombre.toLowerCase().includes('horas extras') || r.nombre.toLowerCase().includes('hora extra'))?.id;
                 const rubroRecargo = rubros.find(r => r.nombre.toLowerCase().includes('recargo'))?.id;
@@ -770,7 +823,12 @@ function GastosTab() {
                 }
 
                 if (editItem) { await produccionApi.updateGasto(editItem.id, { ...gastoData, id: editItem.id }); }
-                else { await produccionApi.createGasto(gastoData); }
+                else {
+                    const authId = autorizacionActivaRef.current?.id;
+                    await produccionApi.createGasto(gastoData, authId);
+                    autorizacionActivaRef.current = null;
+                    setAuthRefreshKey((k) => k + 1);
+                }
             }
 
             Alert.alert('Éxito', editItem ? 'Gasto actualizado' : 'Gasto registrado');
@@ -1119,16 +1177,27 @@ function GastosTab() {
                 </View>
             </View>
 
-            {/* Add Button - EXACT SST STYLE */}
-            <TouchableOpacity style={styles.addButton} onPress={handleAdd}>
-                <Text style={styles.addButtonText}>+ Agregar Gasto</Text>
-            </TouchableOpacity>
+            {/* Autorizaciones previas al registro de pago */}
+            <GastosCapturaBodyScroll>
+            <GastoAutorizacionBloque
+                modulo={MODULOS_GASTO.produccion}
+                anio={anio}
+                mes={mes}
+                displayName={displayName}
+                proveedores={proveedores}
+                rubros={rubros}
+                formatCurrency={formatCurrency}
+                formatDate={formatDate}
+                onRegistrarGasto={handleRegistrarDesdeAutorizacion}
+                onRegistrarDirecto={handleRegistrarDirecto}
+                refreshKey={authRefreshKey}
+            />
 
             {/* Gastos List */}
             {loading ? (
                 <ActivityIndicator size="large" color="#2563EB" style={styles.loading} />
             ) : (
-                <ScrollView style={styles.listContainer}>
+                <View style={styles.listContainer}>
                     {filteredGastos.length === 0 ? (
                         <View style={styles.emptyState}>
                             <Text style={styles.emptyText}>
@@ -1246,9 +1315,10 @@ function GastosTab() {
                             );
                         })
                     )}
-                </ScrollView>
+                </View>
             )
             }
+            </GastosCapturaBodyScroll>
 
 
             {/* Add/Edit Modal - EXACT SST STYLE */}
@@ -1512,23 +1582,23 @@ function GastosTab() {
                                             </>
                                         ) : (
                                             <>
-                                                <Text style={styles.label}>Precio base * {!formData.esPendiente && !formData.numeroFactura.trim() ? '(ingrese factura primero)' : ''}</Text>
+                                                <Text style={styles.label}>Precio base * {!puedeEditarMontosGasto(formData, editItem) ? '(ingrese factura primero)' : formData.desdeAutorizacion ? '(puede ajustar el monto real)' : ''}</Text>
                                                 <TextInput
-                                                    style={[styles.input, !formData.esPendiente && !formData.numeroFactura.trim() && styles.inputDisabled]}
+                                                    style={[styles.input, !puedeEditarMontosGasto(formData, editItem) && styles.inputDisabled]}
                                                     value={formData.precioBase}
                                                     onChangeText={(t) => setFormData(p => ({ ...p, precioBase: t }))}
                                                     keyboardType="numeric"
                                                     placeholder="$ 0"
-                                                    editable={formData.esPendiente || !!formData.numeroFactura.trim()}
+                                                    editable={puedeEditarMontosGasto(formData, editItem)}
                                                 />
                                                 <Text style={[styles.label, { marginTop: 10 }]}>IVA * (puede ser 0)</Text>
                                                 <TextInput
-                                                    style={[styles.input, !formData.esPendiente && !formData.numeroFactura.trim() && styles.inputDisabled]}
+                                                    style={[styles.input, !puedeEditarMontosGasto(formData, editItem) && styles.inputDisabled]}
                                                     value={formData.precioIva}
                                                     onChangeText={(t) => setFormData(p => ({ ...p, precioIva: t }))}
                                                     keyboardType="numeric"
                                                     placeholder="0"
-                                                    editable={formData.esPendiente || !!formData.numeroFactura.trim()}
+                                                    editable={puedeEditarMontosGasto(formData, editItem)}
                                                 />
                                                 <Text style={{ marginTop: 8, fontSize: 14, fontWeight: 'bold', color: '#059669' }}>
                                                     Total: {formatCurrency((parseMontoInput(formData.precioBase) ?? 0) + (parseMontoInput(formData.precioIva) ?? 0))}
@@ -2603,6 +2673,300 @@ function ProveedoresTab() {
     );
 }
 
+// ===================== HORARIOS JORNADA OT TAB =====================
+const DIAS_SEMANA_OT = [
+    { diaSemana: 1, label: 'Lunes' },
+    { diaSemana: 2, label: 'Martes' },
+    { diaSemana: 3, label: 'Miércoles' },
+    { diaSemana: 4, label: 'Jueves' },
+    { diaSemana: 5, label: 'Viernes' },
+    { diaSemana: 6, label: 'Sábado' },
+    { diaSemana: 0, label: 'Domingo' },
+];
+
+function newBloqueJornadaOt(diaSemana, overrides = {}) {
+    return {
+        diaSemana,
+        horaInicio: diaSemana === 0 ? '' : '07:00',
+        horaFin: diaSemana === 0 ? '' : '15:30',
+        descuentaComida: false,
+        minutosComida: 0,
+        ...overrides,
+    };
+}
+
+function emptyDiasJornadaOt() {
+    return DIAS_SEMANA_OT.map(d => newBloqueJornadaOt(d.diaSemana));
+}
+
+function HorariosJornadaTab() {
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [vigenteDesde, setVigenteDesde] = useState('2026-07-15');
+    const [dias, setDias] = useState(emptyDiasJornadaOt());
+
+    const loadData = useCallback(async (fecha) => {
+        try {
+            setLoading(true);
+            const data = await produccionApi.getParametrosJornadaOt(fecha || vigenteDesde);
+            if (data?.vigenteDesde) setVigenteDesde(data.vigenteDesde);
+            const loaded = [];
+            if (data?.dias?.length) {
+                data.dias.forEach(apiDia => {
+                    loaded.push({
+                        diaSemana: Number(apiDia.diaSemana),
+                        horaInicio: apiDia.horaInicio || '',
+                        horaFin: apiDia.horaFin || '',
+                        descuentaComida: !!apiDia.descuentaComida,
+                        minutosComida: Number(apiDia.minutosComida) || 0,
+                    });
+                });
+            }
+            // Asegurar al menos un slot por día (Domingo vacío)
+            DIAS_SEMANA_OT.forEach(meta => {
+                if (!loaded.some(d => d.diaSemana === meta.diaSemana)) {
+                    loaded.push(newBloqueJornadaOt(meta.diaSemana));
+                }
+            });
+            loaded.sort((a, b) => {
+                const orderA = a.diaSemana === 0 ? 7 : a.diaSemana;
+                const orderB = b.diaSemana === 0 ? 7 : b.diaSemana;
+                if (orderA !== orderB) return orderA - orderB;
+                return String(a.horaInicio || '').localeCompare(String(b.horaInicio || ''));
+            });
+            setDias(loaded);
+        } catch (error) {
+            console.error('Error cargando horarios OT:', error);
+            showAppAlert('Error', 'No se pudieron cargar los horarios');
+        } finally {
+            setLoading(false);
+        }
+    }, [vigenteDesde]);
+
+    useEffect(() => { loadData('2026-07-15'); }, []);
+
+    const updateBloque = (globalIndex, patch) => {
+        setDias(prev => prev.map((d, i) => (i === globalIndex ? { ...d, ...patch } : d)));
+    };
+
+    const addBloque = (diaSemana) => {
+        setDias(prev => {
+            const next = [...prev, newBloqueJornadaOt(diaSemana, { horaInicio: '13:00', horaFin: '17:00' })];
+            next.sort((a, b) => {
+                const orderA = a.diaSemana === 0 ? 7 : a.diaSemana;
+                const orderB = b.diaSemana === 0 ? 7 : b.diaSemana;
+                if (orderA !== orderB) return orderA - orderB;
+                return String(a.horaInicio || '').localeCompare(String(b.horaInicio || ''));
+            });
+            return next;
+        });
+    };
+
+    const removeBloque = (globalIndex) => {
+        setDias(prev => {
+            const target = prev[globalIndex];
+            if (!target) return prev;
+            const countSameDay = prev.filter(d => d.diaSemana === target.diaSemana).length;
+            if (countSameDay <= 1) {
+                showAppAlert('Aviso', 'Debe quedar al menos un horario por día. Puede dejarlo vacío si no aplica.');
+                return prev;
+            }
+            return prev.filter((_, i) => i !== globalIndex);
+        });
+    };
+
+    const handleSave = async () => {
+        if (!vigenteDesde) {
+            showAppAlert('Error', 'Indique la fecha de vigencia');
+            return;
+        }
+        try {
+            setSaving(true);
+            const payload = {
+                vigenteDesde,
+                dias: dias.map(d => ({
+                    diaSemana: d.diaSemana,
+                    horaInicio: d.diaSemana === 0 ? null : (d.horaInicio || null),
+                    horaFin: d.diaSemana === 0 ? null : (d.horaFin || null),
+                    descuentaComida: d.diaSemana === 0 ? false : !!d.descuentaComida,
+                    minutosComida: d.diaSemana === 0 || !d.descuentaComida ? 0 : (Number(d.minutosComida) || 0),
+                })),
+            };
+            await produccionApi.saveParametrosJornadaOt(payload);
+            showAppAlert('Éxito', 'Horarios guardados. Aplican a HE/recargos de todas las áreas desde la fecha de vigencia.');
+            await loadData(vigenteDesde);
+        } catch (error) {
+            console.error(error);
+            showAppAlert('Error', extractApiErrorMessage(error) || 'No se pudieron guardar los horarios');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (loading) {
+        return (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 }}>
+                <ActivityIndicator size="large" color="#2563EB" />
+            </View>
+        );
+    }
+
+    return (
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+            <Text style={styles.sectionTitle}>Horarios de jornada ordinaria (HE)</Text>
+            <Text style={{ color: '#6B7280', fontSize: 13, marginBottom: 16, lineHeight: 18 }}>
+                Define uno o varios turnos por día (inicio/fin) y si descuenta tiempo de comida. Aplica al cálculo de horas extras y recargos
+                en Producción, Talleres, Mantenimiento y Planeación desde la fecha de vigencia. Fechas anteriores conservan la lógica previa.
+            </Text>
+
+            <Text style={styles.label}>Vigente desde</Text>
+            {Platform.OS === 'web' ? (
+                <input
+                    type="date"
+                    value={vigenteDesde}
+                    onChange={(e) => setVigenteDesde(e.target.value)}
+                    style={{ padding: 12, fontSize: 16, borderRadius: 8, border: '1px solid #D1D5DB', backgroundColor: '#F9FAFB', width: '100%', boxSizing: 'border-box', marginBottom: 16 }}
+                />
+            ) : (
+                <TextInput
+                    style={[styles.input, { marginBottom: 16 }]}
+                    value={vigenteDesde}
+                    onChangeText={setVigenteDesde}
+                    placeholder="YYYY-MM-DD"
+                />
+            )}
+
+            {DIAS_SEMANA_OT.map(meta => {
+                const bloques = dias
+                    .map((d, index) => ({ ...d, globalIndex: index }))
+                    .filter(d => d.diaSemana === meta.diaSemana);
+                const isDomingo = meta.diaSemana === 0;
+                return (
+                    <View key={meta.diaSemana} style={[styles.gastoCard, { marginBottom: 12 }]}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                            <Text style={styles.gastoTipo}>{meta.label}</Text>
+                            {!isDomingo ? (
+                                <TouchableOpacity
+                                    onPress={() => addBloque(meta.diaSemana)}
+                                    style={{
+                                        paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+                                        backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#BFDBFE',
+                                    }}
+                                >
+                                    <Text style={{ color: '#2563EB', fontSize: 13, fontWeight: '600' }}>+ Agregar horario</Text>
+                                </TouchableOpacity>
+                            ) : null}
+                        </View>
+                        {isDomingo ? (
+                            <Text style={{ color: '#6B7280', fontSize: 13 }}>
+                                0 h ordinarias (domingo / festivo: todo es hora extra dominical)
+                            </Text>
+                        ) : (
+                            bloques.map((bloque, bi) => (
+                                <View
+                                    key={`${meta.diaSemana}-${bloque.globalIndex}`}
+                                    style={{
+                                        marginBottom: bi < bloques.length - 1 ? 12 : 0,
+                                        paddingBottom: bi < bloques.length - 1 ? 12 : 0,
+                                        borderBottomWidth: bi < bloques.length - 1 ? 1 : 0,
+                                        borderBottomColor: '#E5E7EB',
+                                    }}
+                                >
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                        <Text style={{ color: '#6B7280', fontSize: 12, fontWeight: '600' }}>
+                                            Horario {bi + 1}
+                                        </Text>
+                                        {bloques.length > 1 ? (
+                                            <TouchableOpacity onPress={() => removeBloque(bloque.globalIndex)}>
+                                                <Text style={{ color: '#DC2626', fontSize: 12, fontWeight: '600' }}>Eliminar</Text>
+                                            </TouchableOpacity>
+                                        ) : null}
+                                    </View>
+                                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.label}>Inicio</Text>
+                                            {Platform.OS === 'web' ? (
+                                                <input
+                                                    type="time"
+                                                    value={(bloque.horaInicio || '').slice(0, 5)}
+                                                    onChange={(e) => updateBloque(bloque.globalIndex, { horaInicio: e.target.value })}
+                                                    style={{ padding: 10, fontSize: 15, borderRadius: 8, border: '1px solid #D1D5DB', width: '100%', boxSizing: 'border-box' }}
+                                                />
+                                            ) : (
+                                                <TextInput
+                                                    style={styles.input}
+                                                    value={bloque.horaInicio || ''}
+                                                    onChangeText={(t) => updateBloque(bloque.globalIndex, { horaInicio: t })}
+                                                    placeholder="HH:mm"
+                                                />
+                                            )}
+                                        </View>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.label}>Fin</Text>
+                                            {Platform.OS === 'web' ? (
+                                                <input
+                                                    type="time"
+                                                    value={(bloque.horaFin || '').slice(0, 5)}
+                                                    onChange={(e) => updateBloque(bloque.globalIndex, { horaFin: e.target.value })}
+                                                    style={{ padding: 10, fontSize: 15, borderRadius: 8, border: '1px solid #D1D5DB', width: '100%', boxSizing: 'border-box' }}
+                                                />
+                                            ) : (
+                                                <TextInput
+                                                    style={styles.input}
+                                                    value={bloque.horaFin || ''}
+                                                    onChangeText={(t) => updateBloque(bloque.globalIndex, { horaFin: t })}
+                                                    placeholder="HH:mm"
+                                                />
+                                            )}
+                                        </View>
+                                    </View>
+                                    <TouchableOpacity
+                                        onPress={() => updateBloque(bloque.globalIndex, {
+                                            descuentaComida: !bloque.descuentaComida,
+                                            minutosComida: !bloque.descuentaComida ? (bloque.minutosComida || 30) : 0,
+                                        })}
+                                        style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}
+                                    >
+                                        <View style={{
+                                            width: 22, height: 22, borderRadius: 4, borderWidth: 2,
+                                            borderColor: bloque.descuentaComida ? '#2563EB' : '#9CA3AF',
+                                            backgroundColor: bloque.descuentaComida ? '#2563EB' : '#FFF',
+                                            marginRight: 8, alignItems: 'center', justifyContent: 'center',
+                                        }}>
+                                            {bloque.descuentaComida ? <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '700' }}>✓</Text> : null}
+                                        </View>
+                                        <Text style={{ color: '#374151', fontSize: 14 }}>Descuenta comida</Text>
+                                    </TouchableOpacity>
+                                    {bloque.descuentaComida ? (
+                                        <View>
+                                            <Text style={styles.label}>Minutos de comida</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                value={String(bloque.minutosComida ?? 0)}
+                                                onChangeText={(t) => updateBloque(bloque.globalIndex, { minutosComida: parseInt(t.replace(/\D/g, ''), 10) || 0 })}
+                                                keyboardType="numeric"
+                                                placeholder="30"
+                                            />
+                                        </View>
+                                    ) : null}
+                                </View>
+                            ))
+                        )}
+                    </View>
+                );
+            })}
+
+            <TouchableOpacity
+                style={[styles.submitButton, saving && styles.submitButtonDisabled, { marginTop: 8 }]}
+                onPress={handleSave}
+                disabled={saving}
+            >
+                {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>Guardar horarios</Text>}
+            </TouchableOpacity>
+        </ScrollView>
+    );
+}
+
 // ===================== TIPOS DE HORA TAB =====================
 function TiposHoraTab() {
     const [loading, setLoading] = useState(true);
@@ -2718,7 +3082,7 @@ function TiposHoraTab() {
             // Prepare data for Excel
             const excelData = combinedData.map(item => {
                 const salario = parseNumeroLabor(item.salario);
-                const valorHora = calcValorHoraLabor(salario);
+                const valorHora = calcValorHoraLabor(salario, item.fecha);
                 return {
                 'Fecha': new Date(item.fecha).toLocaleDateString('es-CO'),
                 'Nombre Operario': item.usuarioNombre,
@@ -3643,7 +4007,6 @@ const styles = StyleSheet.create({
     },
     // LIST
     listContainer: {
-        flex: 1,
         paddingHorizontal: 16,
     },
     emptyState: {
